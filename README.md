@@ -60,26 +60,10 @@ Add a comment on the same line or the line above in the relevant config file:
 |----|----------|-------------|-------|
 | [CFG001](docs/rules/CFG001.md) | error | `permissions.allow` contains unrestricted Bash pattern | LLM06 |
 | [CFG002](docs/rules/CFG002.md) | warn | `permissions.allow` contains unrestricted `Edit(*)`/`Write(*)` | LLM06 |
-| [CFG003](docs/rules/CFG003.md) | warn | `permissions.deny` is absent or empty | LLM06 |
-| [CFG004](docs/rules/CFG004.md) | error | `env` block contains a hardcoded secret | LLM02 |
-| [CFG005](docs/rules/CFG005.md) | warn | Hook command interpolates an unvalidated variable | LLM01 |
 
 ### `.claudeignore`
 
-| ID | Severity | Description | OWASP |
-|----|----------|-------------|-------|
-| [CFG010](docs/rules/CFG010.md) | warn | `.claudeignore` is absent | LLM02 |
-| [CFG011](docs/rules/CFG011.md) | error | `.env` files not excluded | LLM02 |
-| [CFG012](docs/rules/CFG012.md) | error | Private key files not excluded (`*.pem`, `*.key`, …) | LLM02 |
-| [CFG013](docs/rules/CFG013.md) | error | Cloud credential files not excluded | LLM02 |
-| [CFG014](docs/rules/CFG014.md) | error | SSH private keys not excluded | LLM02 |
-
 ### MCP server configuration (Claude Code)
-
-| ID | Severity | Description | OWASP |
-|----|----------|-------------|-------|
-| [CFG020](docs/rules/CFG020.md) | warn | MCP server uses `:latest` / unpinned version | LLM03 |
-| [CFG021](docs/rules/CFG021.md) | warn | `alwaysAllow` too broad for MCP server | LLM06 |
 
 ---
 
