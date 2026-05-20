@@ -61,3 +61,11 @@ func TestCFG001_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when settings absent, got %d", len(f))
 	}
 }
+
+func TestCFG001_UnrestrictedEditWrite_NoFinding(t *testing.T) {
+	// CFG001 must not flag Edit(*) or Write(*) — those belong to CFG002.
+	f := CFG001.Check(settingsTarget(t, `{"permissions":{"allow":["Edit(*)","Write(*)"]}}`))
+	if len(f) != 0 {
+		t.Errorf("expected no CFG001 finding for Edit(*)/Write(*), got %d", len(f))
+	}
+}

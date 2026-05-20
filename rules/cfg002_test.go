@@ -43,3 +43,11 @@ func TestCFG002_NoPermissions_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when permissions absent, got %d", len(f))
 	}
 }
+
+func TestCFG002_UnrestrictedBash_NoFinding(t *testing.T) {
+	// CFG002 must not flag Bash(*) — that belongs to CFG001.
+	f := CFG002.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(*)"]}}`))
+	if len(f) != 0 {
+		t.Errorf("expected no CFG002 finding for Bash(*), got %d", len(f))
+	}
+}
