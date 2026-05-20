@@ -1,0 +1,51 @@
+package parser
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+// Settings is a partial representation of Claude Code's settings.json.
+// Unknown keys are preserved in the raw map so rules can inspect them.
+type Settings struct {
+	Permissions *Permissions       `json:"permissions,omitempty"`
+	Env         map[string]string  `json:"env,omitempty"`
+	Hooks       map[string][]Hook  `json:"hooks,omitempty"`
+	MCPServers  map[string]MCPServer `json:"mcpServers,omitempty"`
+
+	// Raw holds the full decoded document for rules that need arbitrary access.
+	Raw map[string]json.RawMessage `json:"-"`
+}
+
+type Permissions struct {
+	Allow []string `json:"allow,omitempty"`
+	Deny  []string `json:"deny,omitempty"`
+}
+
+type Hook struct {
+	Command string `json:"command,omitempty"`
+}
+
+type MCPServer struct {
+	Command      string            `json:"command,omitempty"`
+	Args         []string          `json:"args,omitempty"`
+	AlwaysAllow  []string          `json:"alwaysAllow,omitempty"`
+	Env          map[string]string `json:"env,omitempty"`
+}
+
+// ParseSettings reads and decodes a settings.json file.
+func ParseSettings(path string) (*Settings, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var s Settings
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if err := json.Unmarshal(data, &s.Raw); err != nil {
+		return nil, fmt.Errorf("parse raw %s: %w", path, err)
+	}
+	return &s, nil
+}
