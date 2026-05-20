@@ -6,8 +6,8 @@ import (
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
 
-func TestCFG007_BypassPermissions(t *testing.T) {
-	f := CFG007.Check(settingsTarget(t, `{"defaultMode":"bypassPermissions"}`))
+func TestCFG004_BypassPermissions(t *testing.T) {
+	f := CFG004.Check(settingsTarget(t, `{"defaultMode":"bypassPermissions"}`))
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
 	}
@@ -16,8 +16,8 @@ func TestCFG007_BypassPermissions(t *testing.T) {
 	}
 }
 
-func TestCFG007_Auto(t *testing.T) {
-	f := CFG007.Check(settingsTarget(t, `{"defaultMode":"auto"}`))
+func TestCFG004_Auto(t *testing.T) {
+	f := CFG004.Check(settingsTarget(t, `{"defaultMode":"auto"}`))
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
 	}
@@ -26,30 +26,30 @@ func TestCFG007_Auto(t *testing.T) {
 	}
 }
 
-func TestCFG007_Default_NoFinding(t *testing.T) {
-	f := CFG007.Check(settingsTarget(t, `{"defaultMode":"default"}`))
+func TestCFG004_Default_NoFinding(t *testing.T) {
+	f := CFG004.Check(settingsTarget(t, `{"defaultMode":"default"}`))
 	if len(f) != 0 {
 		t.Errorf("expected no finding for defaultMode: default, got %d", len(f))
 	}
 }
 
-func TestCFG007_Absent_NoFinding(t *testing.T) {
-	f := CFG007.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(make *)"]}}`))
+func TestCFG004_Absent_NoFinding(t *testing.T) {
+	f := CFG004.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(make *)"]}}`))
 	if len(f) != 0 {
 		t.Errorf("expected no finding when defaultMode absent, got %d", len(f))
 	}
 }
 
-func TestCFG007_NoSettings_NoFinding(t *testing.T) {
-	f := CFG007.Check(&Target{})
+func TestCFG004_NoSettings_NoFinding(t *testing.T) {
+	f := CFG004.Check(&Target{})
 	if len(f) != 0 {
 		t.Errorf("expected no finding when settings absent, got %d", len(f))
 	}
 }
 
-func TestCFG007_AcceptEdits_NoFinding(t *testing.T) {
+func TestCFG004_AcceptEdits_NoFinding(t *testing.T) {
 	// "acceptEdits" is a separate mode — not flagged by this rule
-	f := CFG007.Check(settingsTarget(t, `{"defaultMode":"acceptEdits"}`))
+	f := CFG004.Check(settingsTarget(t, `{"defaultMode":"acceptEdits"}`))
 	if len(f) != 0 {
 		t.Errorf("expected no finding for acceptEdits mode, got %d", len(f))
 	}
