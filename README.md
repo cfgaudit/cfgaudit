@@ -65,6 +65,7 @@ Add a comment on the same line or the line above in the relevant config file:
 | [CFG001](docs/rules/CFG001.md) | error | `permissions.allow` contains unrestricted Bash pattern | LLM06 |
 | [CFG002](docs/rules/CFG002.md) | warn | `permissions.allow` contains unrestricted `Edit(*)`/`Write(*)` | LLM06 |
 | [CFG006](docs/rules/CFG006.md) | error | `enableAllProjectMcpServers: true` — auto-approves all repo MCP servers (CVE-2025-59536) | LLM06 |
+| [CFG007](docs/rules/CFG007.md) | error/warn | `defaultMode` set to `bypassPermissions` or `auto` | LLM06 |
 
 ### `.claudeignore`
 
