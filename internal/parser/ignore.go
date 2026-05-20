@@ -16,14 +16,14 @@ type IgnoreLine struct {
 // ParseIgnore reads a .claudeignore file and returns its effective pattern lines.
 // Returns an empty slice (not an error) when the file does not exist.
 func ParseIgnore(path string) ([]IgnoreLine, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var lines []IgnoreLine
 	scanner := bufio.NewScanner(f)

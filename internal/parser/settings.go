@@ -36,7 +36,7 @@ type MCPServer struct {
 
 // ParseSettings reads and decodes a settings.json file.
 func ParseSettings(path string) (*Settings, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
