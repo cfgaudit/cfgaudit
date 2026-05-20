@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/cfgaudit.png" alt="cfgaudit" width="460">
+</p>
+
 # cfgaudit
 
 Security auditor for AI-agent configuration files.
