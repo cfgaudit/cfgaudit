@@ -40,6 +40,12 @@ func ParseSettings(path string) (*Settings, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	return ParseSettingsBytes(data, path)
+}
+
+// ParseSettingsBytes decodes settings.json from an in-memory byte slice.
+// path is used only for error messages.
+func ParseSettingsBytes(data []byte, path string) (*Settings, error) {
 	var s Settings
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
