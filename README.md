@@ -42,6 +42,11 @@ cfgaudit --claude-version 2.1.148
 
 # Print cfgaudit version and exit
 cfgaudit --version
+
+# Run only specific rules (CSV or repeated; --only and --skip can be combined)
+cfgaudit --only CFG001,CFG003
+cfgaudit --only CFG001 --only CFG003
+cfgaudit --skip CFG006,CFG009
 ```
 
 **Scope-aware findings**

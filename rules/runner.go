@@ -21,12 +21,19 @@ type Versioned interface {
 // so the omission is visible in the output. A nil detected disables all
 // version gating — every rule runs unconditionally.
 //
+// If accept is non-nil it is consulted before each rule; rules for which
+// accept returns false are dropped silently (the caller, e.g. a CLI flag,
+// is expected to print its own "rule excluded" feedback if relevant).
+//
 // Every finding has its Scope back-filled from target.Scope when the rule
 // did not set one itself, so JSON consumers can filter by blast radius
 // without each rule having to remember to populate the field.
-func Run(target *Target, detected *version.Version) []finding.Finding {
+func Run(target *Target, detected *version.Version, accept func(Rule) bool) []finding.Finding {
 	var out []finding.Finding
 	for _, r := range All {
+		if accept != nil && !accept(r) {
+			continue
+		}
 		if detected != nil {
 			if skipMsg := versionSkip(r, *detected); skipMsg != "" {
 				out = append(out, finding.Finding{

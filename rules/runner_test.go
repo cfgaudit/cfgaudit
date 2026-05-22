@@ -30,7 +30,7 @@ func TestRun_NilVersion_RunsAllRules(t *testing.T) {
 	stub := &stubRule{id: "TST001", minVer: "9.9.9", results: []finding.Finding{{RuleID: "TST001", Severity: finding.Warn}}}
 	withRules(t, stub)
 
-	got := Run(&Target{SettingsFile: "x"}, nil)
+	got := Run(&Target{SettingsFile: "x"}, nil, nil)
 	if len(got) != 1 || got[0].Severity != finding.Warn {
 		t.Fatalf("expected 1 warn finding when version is nil, got %+v", got)
 	}
@@ -41,7 +41,7 @@ func TestRun_DetectedBelowMin_EmitsSkipNotice(t *testing.T) {
 	withRules(t, stub)
 
 	detected := version.Version{Major: 2, Minor: 1, Patch: 50}
-	got := Run(&Target{SettingsFile: "x"}, &detected)
+	got := Run(&Target{SettingsFile: "x"}, &detected, nil)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 finding (the skip notice), got %d", len(got))
 	}
@@ -58,7 +58,7 @@ func TestRun_DetectedAtOrAboveMin_RunsRule(t *testing.T) {
 	withRules(t, stub)
 
 	detected := version.Version{Major: 2, Minor: 1, Patch: 91}
-	got := Run(&Target{SettingsFile: "x"}, &detected)
+	got := Run(&Target{SettingsFile: "x"}, &detected, nil)
 	if len(got) != 1 || got[0].Severity != finding.Error {
 		t.Fatalf("expected rule to run at exact min version, got %+v", got)
 	}
@@ -69,7 +69,7 @@ func TestRun_EmptyMinVersion_RunsRule(t *testing.T) {
 	withRules(t, stub)
 
 	detected := version.Version{Major: 0, Minor: 0, Patch: 1}
-	got := Run(&Target{SettingsFile: "x"}, &detected)
+	got := Run(&Target{SettingsFile: "x"}, &detected, nil)
 	if len(got) != 1 || got[0].Severity != finding.Warn {
 		t.Fatalf("expected empty MinVersion to disable gating, got %+v", got)
 	}
@@ -80,7 +80,7 @@ func TestRun_NonVersionedRule_AlwaysRuns(t *testing.T) {
 	withRules(t, plain)
 
 	detected := version.Version{Major: 0, Minor: 0, Patch: 1}
-	got := Run(&Target{SettingsFile: "x"}, &detected)
+	got := Run(&Target{SettingsFile: "x"}, &detected, nil)
 	if len(got) != 1 {
 		t.Fatalf("expected non-Versioned rule to run, got %d findings", len(got))
 	}

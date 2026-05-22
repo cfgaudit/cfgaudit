@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
@@ -26,12 +28,22 @@ func main() {
 	user := flag.Bool("user", false, "also scan ~/.claude/settings.json")
 	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	showVersion := flag.Bool("version", false, "print cfgaudit version and exit")
+
+	var only, skip ruleSet
+	flag.Var(&only, "only", "run only these rule IDs (comma-separated; flag may be repeated)")
+	flag.Var(&skip, "skip", "skip these rule IDs (comma-separated; flag may be repeated)")
+
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Printf("cfgaudit %s\n", cfgauditVersion)
 		return
 	}
+
+	if unknown := unknownRuleIDs(only, skip, rules.All); len(unknown) > 0 {
+		fmt.Fprintf(os.Stderr, "cfgaudit: --only/--skip references unknown rule(s): %s\n", strings.Join(unknown, ", "))
+	}
+	accept := ruleFilter(only, skip)
 
 	dir := "."
 	if flag.NArg() > 0 {
@@ -48,7 +60,7 @@ func main() {
 
 	var all []finding.Finding
 	for _, target := range targets {
-		all = append(all, rules.Run(target, detected)...)
+		all = append(all, rules.Run(target, detected, accept)...)
 	}
 
 	switch *format {
@@ -155,4 +167,72 @@ func hasError(findings []finding.Finding) bool {
 		}
 	}
 	return false
+}
+
+// ruleSet is a flag.Value that collects rule IDs from one or more occurrences
+// of a flag. Each occurrence may pass a comma-separated list. Whitespace and
+// empty entries are tolerated. Used by `--only` and `--skip`.
+type ruleSet map[string]bool
+
+func (rs *ruleSet) String() string {
+	if rs == nil || *rs == nil {
+		return ""
+	}
+	ids := make([]string, 0, len(*rs))
+	for id := range *rs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, ",")
+}
+
+func (rs *ruleSet) Set(v string) error {
+	if *rs == nil {
+		*rs = ruleSet{}
+	}
+	for _, raw := range strings.Split(v, ",") {
+		id := strings.TrimSpace(raw)
+		if id != "" {
+			(*rs)[id] = true
+		}
+	}
+	return nil
+}
+
+// ruleFilter builds the `accept` predicate that rules.Run consults.
+// only takes precedence: when non-empty, a rule must appear in it to run.
+// skip then excludes any remaining matches.
+// A nil return means "no filtering" (all rules run).
+func ruleFilter(only, skip ruleSet) func(rules.Rule) bool {
+	if len(only) == 0 && len(skip) == 0 {
+		return nil
+	}
+	return func(r rules.Rule) bool {
+		id := r.ID()
+		if len(only) > 0 && !only[id] {
+			return false
+		}
+		return !skip[id]
+	}
+}
+
+// unknownRuleIDs returns any IDs in only or skip that no registered rule reports.
+// Used to warn the user about typos like `--only CFG999`.
+func unknownRuleIDs(only, skip ruleSet, all []rules.Rule) []string {
+	known := make(map[string]bool, len(all))
+	for _, r := range all {
+		known[r.ID()] = true
+	}
+	seen := map[string]bool{}
+	var unknown []string
+	for _, set := range []ruleSet{only, skip} {
+		for id := range set {
+			if !known[id] && !seen[id] {
+				seen[id] = true
+				unknown = append(unknown, id)
+			}
+		}
+	}
+	sort.Strings(unknown)
+	return unknown
 }

@@ -70,7 +70,7 @@ func TestRun_BackfillsScope(t *testing.T) {
 	stub := &stubRule{id: "TSTSCP", results: []finding.Finding{{RuleID: "TSTSCP", Severity: finding.Warn}}}
 	withRules(t, stub)
 
-	got := Run(&Target{SettingsFile: "x", Scope: finding.ScopeUser}, nil)
+	got := Run(&Target{SettingsFile: "x", Scope: finding.ScopeUser}, nil, nil)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(got))
 	}
@@ -87,7 +87,7 @@ func TestRun_PreservesExplicitScope(t *testing.T) {
 	}}}
 	withRules(t, stub)
 
-	got := Run(&Target{SettingsFile: "x", Scope: finding.ScopeUser}, nil)
+	got := Run(&Target{SettingsFile: "x", Scope: finding.ScopeUser}, nil, nil)
 	if got[0].Scope != finding.ScopeProjectLocal {
 		t.Errorf("Run must not overwrite an explicit Scope; got %q", got[0].Scope)
 	}
