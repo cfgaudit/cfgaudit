@@ -24,7 +24,7 @@ import (
 var cfgauditVersion = "dev"
 
 func main() {
-	format := flag.String("format", "text", "output format: text, json")
+	format := flag.String("format", "text", "output format: text, json, sarif")
 	user := flag.Bool("user", false, "also scan ~/.claude/settings.json")
 	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	showVersion := flag.Bool("version", false, "print cfgaudit version and exit")
@@ -68,6 +68,11 @@ func main() {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(all)
+	case "sarif":
+		if err := encodeSARIF(os.Stdout, all, cfgauditVersion, rules.All); err != nil {
+			fmt.Fprintf(os.Stderr, "cfgaudit: sarif encode: %v\n", err)
+			os.Exit(2)
+		}
 	default:
 		for _, f := range all {
 			fmt.Println(f)
