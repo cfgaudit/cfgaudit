@@ -2,15 +2,15 @@ package rules
 
 import "github.com/cfgaudit/cfgaudit/internal/finding"
 
-type cfg006 struct{}
+type cfg003 struct{}
 
-var CFG003 = &cfg006{}
+var CFG003 = &cfg003{}
 
 func init() { All = append(All, CFG003) }
 
-func (r *cfg006) ID() string { return "CFG003" }
+func (r *cfg003) ID() string { return "CFG003" }
 
-func (r *cfg006) Check(t *Target) []finding.Finding {
+func (r *cfg003) Check(t *Target) []finding.Finding {
 	if t.Settings == nil {
 		return nil
 	}

@@ -6,15 +6,15 @@ import (
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
 
-type cfg007 struct{}
+type cfg004 struct{}
 
-var CFG004 = &cfg007{}
+var CFG004 = &cfg004{}
 
 func init() { All = append(All, CFG004) }
 
-func (r *cfg007) ID() string { return "CFG004" }
+func (r *cfg004) ID() string { return "CFG004" }
 
-func (r *cfg007) Check(t *Target) []finding.Finding {
+func (r *cfg004) Check(t *Target) []finding.Finding {
 	if t.Settings == nil {
 		return nil
 	}
