@@ -14,6 +14,12 @@ func init() { All = append(All, CFG004) }
 
 func (r *cfg004) ID() string { return "CFG004" }
 
+// MinVersion returns the lowest Claude Code release that interprets the
+// defaultMode key. The bypassPermissions value has shipped since the early
+// 0.2.x series; the "auto" value was schema-validated by 2.1.91. The lower
+// bound keeps both branches reachable on older installs.
+func (r *cfg004) MinVersion() string { return "0.2.21" }
+
 func (r *cfg004) Check(t *Target) []finding.Finding {
 	if t.Settings == nil {
 		return nil

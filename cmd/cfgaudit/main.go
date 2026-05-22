@@ -10,18 +10,22 @@ import (
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
+	"github.com/cfgaudit/cfgaudit/internal/version"
 	"github.com/cfgaudit/cfgaudit/rules"
 )
 
 func main() {
 	format := flag.String("format", "text", "output format: text, json")
 	user := flag.Bool("user", false, "also scan ~/.claude/settings.json")
+	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	flag.Parse()
 
 	dir := "."
 	if flag.NArg() > 0 {
 		dir = flag.Arg(0)
 	}
+
+	detected := resolveClaudeVersion(*claudeVersion)
 
 	targets, err := buildTargets(dir, *user)
 	if err != nil {
@@ -31,9 +35,7 @@ func main() {
 
 	var all []finding.Finding
 	for _, target := range targets {
-		for _, r := range rules.All {
-			all = append(all, r.Check(target)...)
-		}
+		all = append(all, rules.Run(target, detected)...)
 	}
 
 	switch *format {
@@ -50,6 +52,32 @@ func main() {
 	if hasError(all) {
 		os.Exit(1)
 	}
+}
+
+// resolveClaudeVersion picks the version to use for rule gating.
+// Priority: explicit --claude-version flag > `claude --version` detection > nil.
+// A nil return disables version gating and runs every rule unconditionally.
+func resolveClaudeVersion(override string) *version.Version {
+	if override != "" {
+		v, err := version.Parse(override)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cfgaudit: --claude-version %q is not a recognised version; falling back to detection\n", override)
+		} else {
+			fmt.Fprintf(os.Stderr, "cfgaudit: scanning with Claude Code v%s (--claude-version)\n", v)
+			return &v
+		}
+	}
+	v, found, err := version.Detect()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cfgaudit: could not parse `claude --version` output (%v); running all rules without version gating\n", err)
+		return nil
+	}
+	if !found {
+		fmt.Fprintln(os.Stderr, "cfgaudit: `claude` binary not on PATH; running all rules without version gating")
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "cfgaudit: scanning with Claude Code v%s (detected)\n", v)
+	return &v
 }
 
 func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {

@@ -1,0 +1,2 @@
+# Tooling output that should never be committed.
+.playwright-mcp/
