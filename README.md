@@ -94,6 +94,7 @@ Add a comment on the same line or the line above in the relevant config file:
 | [CFG011](docs/rules/CFG011.md) | warn | MCP server `alwaysAllow` is too broad (wildcard, state-mutating tools, or 10+ entries) | LLM06 |
 | [CFG012](docs/rules/CFG012.md) | warn | `settings.json` contains an unknown top-level key or a value whose type contradicts the bundled SchemaStore schema | LLM02 |
 | [CFG013](docs/rules/CFG013.md) | warn | `.claude/settings.local.json` or `CLAUDE.local.md` exists in the repo but is not excluded by `.gitignore` | LLM02 |
+| [CFG014](docs/rules/CFG014.md) | error | hook command pipes `curl`/`wget` output directly into a shell or interpreter (remote code execution) | LLM03 |
 
 ### `.claudeignore`
 
