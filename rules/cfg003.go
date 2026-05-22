@@ -31,6 +31,6 @@ func (r *cfg003) Check(t *Target) []finding.Finding {
 		RuleID:   "CFG003",
 		Severity: finding.Error,
 		File:     t.SettingsFile,
-		Message:  "enableAllProjectMcpServers: true auto-approves every MCP server in any .mcp.json in the repository — anyone with commit access can execute arbitrary code (CVE-2025-59536)",
+		Message:  "enableAllProjectMcpServers: true auto-approves every MCP server in any .mcp.json in the repository — anyone with commit access can execute arbitrary code (CVE-2025-59536)" + userScopeNote(t),
 	}}
 }

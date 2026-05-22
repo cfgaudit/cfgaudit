@@ -38,14 +38,14 @@ func (r *cfg004) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG004",
 			Severity: finding.Error,
 			File:     t.SettingsFile,
-			Message:  "defaultMode: \"bypassPermissions\" disables all permission checks — Claude Code runs with full autonomy and no confirmation prompts",
+			Message:  "defaultMode: \"bypassPermissions\" disables all permission checks — Claude Code runs with full autonomy and no confirmation prompts" + userScopeNote(t),
 		}}
 	case "auto":
 		return []finding.Finding{{
 			RuleID:   "CFG004",
 			Severity: finding.Warn,
 			File:     t.SettingsFile,
-			Message:  "defaultMode: \"auto\" suppresses all confirmation prompts — review allow/deny rules carefully before enabling",
+			Message:  "defaultMode: \"auto\" suppresses all confirmation prompts — review allow/deny rules carefully before enabling" + userScopeNote(t),
 		}}
 	}
 	return nil

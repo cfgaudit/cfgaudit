@@ -20,6 +20,10 @@ type Versioned interface {
 // above detected are skipped and replaced by a single info-severity finding
 // so the omission is visible in the output. A nil detected disables all
 // version gating — every rule runs unconditionally.
+//
+// Every finding has its Scope back-filled from target.Scope when the rule
+// did not set one itself, so JSON consumers can filter by blast radius
+// without each rule having to remember to populate the field.
 func Run(target *Target, detected *version.Version) []finding.Finding {
 	var out []finding.Finding
 	for _, r := range All {
@@ -28,13 +32,20 @@ func Run(target *Target, detected *version.Version) []finding.Finding {
 				out = append(out, finding.Finding{
 					RuleID:   r.ID(),
 					Severity: finding.Info,
+					Scope:    target.Scope,
 					File:     target.SettingsFile,
 					Message:  skipMsg,
 				})
 				continue
 			}
 		}
-		out = append(out, r.Check(target)...)
+		results := r.Check(target)
+		for i := range results {
+			if results[i].Scope == "" {
+				results[i].Scope = target.Scope
+			}
+		}
+		out = append(out, results...)
 	}
 	return out
 }

@@ -63,7 +63,7 @@ func (r *cfg007) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG007",
 				Severity: finding.Error,
 				File:     t.SettingsFile,
-				Message:  "env." + k + " contains a hardcoded " + label + " — do not commit secrets to settings.json; reference a shell variable instead",
+				Message:  "env." + k + " contains a hardcoded " + label + " — do not commit secrets to settings.json; reference a shell variable instead" + userScopeNote(t),
 			})
 			continue
 		}
@@ -72,7 +72,7 @@ func (r *cfg007) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG007",
 				Severity: finding.Error,
 				File:     t.SettingsFile,
-				Message:  "env." + k + " has a secret-like name with a literal value — do not commit secrets to settings.json; reference a shell variable instead (e.g. \"$" + k + "\")",
+				Message:  "env." + k + " has a secret-like name with a literal value — do not commit secrets to settings.json; reference a shell variable instead (e.g. \"$" + k + "\")" + userScopeNote(t),
 			})
 		}
 	}

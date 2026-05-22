@@ -39,11 +39,15 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 				if len(vars) == 0 {
 					continue
 				}
+				sev := finding.Warn
+				if t.Scope == finding.ScopeUser {
+					sev = finding.Error
+				}
 				findings = append(findings, finding.Finding{
 					RuleID:   "CFG009",
-					Severity: finding.Warn,
+					Severity: sev,
 					File:     t.SettingsFile,
-					Message:  "hooks." + event + " command interpolates " + strings.Join(vars, ", ") + " — agent-controlled or external data inside a hook command can be abused for injection; use fixed arguments or pass data via stdin",
+					Message:  "hooks." + event + " command interpolates " + strings.Join(vars, ", ") + " — agent-controlled or external data inside a hook command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
 				})
 			}
 		}

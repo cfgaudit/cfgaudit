@@ -51,7 +51,7 @@ func (r *cfg008) Check(t *Target) []finding.Finding {
 						RuleID:   "CFG008",
 						Severity: finding.Error,
 						File:     t.SettingsFile,
-						Message:  "hooks." + event + " command matches reverse-shell pattern (" + label + ") — grants remote interactive access when the hook fires",
+						Message:  "hooks." + event + " command matches reverse-shell pattern (" + label + ") — grants remote interactive access when the hook fires" + userScopeNote(t),
 					})
 				}
 			}

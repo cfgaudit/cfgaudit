@@ -26,6 +26,6 @@ func (r *cfg006) Check(t *Target) []finding.Finding {
 		RuleID:   "CFG006",
 		Severity: finding.Warn,
 		File:     t.SettingsFile,
-		Message:  "permissions.deny is absent or empty — no guardrails block destructive operations (rm -rf, git push --force, etc.); add explicit denylist entries",
+		Message:  "permissions.deny is absent or empty — no guardrails block destructive operations (rm -rf, git push --force, etc.); add explicit denylist entries" + userScopeNote(t),
 	}}
 }

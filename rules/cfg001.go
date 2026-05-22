@@ -28,7 +28,7 @@ func (r *cfg001) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG001",
 				Severity: finding.Error,
 				File:     t.SettingsFile,
-				Message:  "permissions.allow contains \"" + entry + "\" — grants unrestricted shell access; scope to specific commands",
+				Message:  "permissions.allow contains \"" + entry + "\" — grants unrestricted shell access; scope to specific commands" + userScopeNote(t),
 			})
 		}
 	}

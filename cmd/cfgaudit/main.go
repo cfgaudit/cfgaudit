@@ -101,6 +101,11 @@ func resolveClaudeVersion(override string) *version.Version {
 	return &v
 }
 
+type candidateFile struct {
+	path  string
+	scope finding.Scope
+}
+
 func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	ignorePath := filepath.Join(dir, ".claudeignore")
 	ignoreLines, err := parser.ParseIgnore(ignorePath)
@@ -108,21 +113,24 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 
-	candidates := []string{
-		filepath.Join(dir, ".claude", "settings.json"),
-		filepath.Join(dir, ".claude", "settings.local.json"),
+	candidates := []candidateFile{
+		{filepath.Join(dir, ".claude", "settings.json"), finding.ScopeProject},
+		{filepath.Join(dir, ".claude", "settings.local.json"), finding.ScopeProjectLocal},
 	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("resolve home directory: %w", err)
 		}
-		candidates = append(candidates, filepath.Join(home, ".claude", "settings.json"))
+		candidates = append(candidates, candidateFile{
+			path:  filepath.Join(home, ".claude", "settings.json"),
+			scope: finding.ScopeUser,
+		})
 	}
 
 	var targets []*rules.Target
-	for _, path := range candidates {
-		s, err := parser.ParseSettings(path)
+	for _, c := range candidates {
+		s, err := parser.ParseSettings(c.path)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -130,8 +138,9 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			return nil, err
 		}
 		targets = append(targets, &rules.Target{
-			SettingsFile: path,
+			SettingsFile: c.path,
 			Settings:     s,
+			Scope:        c.scope,
 			IgnoreFile:   ignorePath,
 			IgnoreLines:  ignoreLines,
 		})

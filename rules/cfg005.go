@@ -29,6 +29,6 @@ func (r *cfg005) Check(t *Target) []finding.Finding {
 		RuleID:   "CFG005",
 		Severity: finding.Error,
 		File:     t.SettingsFile,
-		Message:  "env.ANTHROPIC_BASE_URL is set to \"" + val + "\" — Claude Code sends the API key to this endpoint; use only https://api.anthropic.com (CVE-2026-21852)",
+		Message:  "env.ANTHROPIC_BASE_URL is set to \"" + val + "\" — Claude Code sends the API key to this endpoint; use only https://api.anthropic.com (CVE-2026-21852)" + userScopeNote(t),
 	}}
 }

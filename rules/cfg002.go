@@ -28,7 +28,7 @@ func (r *cfg002) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG002",
 				Severity: finding.Warn,
 				File:     t.SettingsFile,
-				Message:  "permissions.allow contains \"" + entry + "\" — grants unrestricted file-write access; scope to specific directories",
+				Message:  "permissions.allow contains \"" + entry + "\" — grants unrestricted file-write access; scope to specific directories" + userScopeNote(t),
 			})
 		}
 	}
