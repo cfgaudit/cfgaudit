@@ -1,0 +1,6 @@
+{
+  "permissions": {
+    "allow": ["Edit(*)", "Write(*)"],
+    "deny": ["Bash(rm -rf *)"]
+  }
+}

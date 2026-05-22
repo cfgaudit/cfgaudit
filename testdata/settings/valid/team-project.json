@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run *)",
+      "Bash(npm test)",
+      "Bash(git status)",
+      "Bash(git diff)",
+      "Bash(git log)",
+      "Edit(src/**/*.ts)",
+      "Edit(tests/**/*.ts)",
+      "Read(.env.example)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Bash(npm publish*)",
+      "Read(.env)",
+      "Read(secrets/*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {"type": "command", "command": "prettier --write --list-different ."}
+        ]
+      }
+    ]
+  }
+}

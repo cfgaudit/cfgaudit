@@ -1,0 +1,6 @@
+{
+  "enableAllProjectMcpServers": true,
+  "permissions": {
+    "deny": ["Bash(rm -rf *)"]
+  }
+}

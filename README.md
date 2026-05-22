@@ -91,6 +91,19 @@ Add a comment on the same line or the line above in the relevant config file:
 
 ---
 
+## Test fixtures
+
+Real-world `settings.json` examples live under `testdata/settings/`:
+
+- `valid/` — configurations that must produce **zero** cfgaudit findings (minimal, fully-populated, team, managed-org).
+- `invalid/` — one fixture per rule, named `CFG###_<slug>.json`. Each must trigger the rule encoded in its prefix.
+
+`rules/fixtures_test.go` enforces both invariants on every Go test run, so fixtures and rule implementations stay in lockstep.
+
+A separate workflow (`.github/workflows/schema-validation.yml`) validates every file in `valid/` against the [SchemaStore Claude Code settings schema](https://json.schemastore.org/claude-code-settings.json) on push, on pull request, and nightly. If the upstream schema changes, the nightly run opens (or comments on) a tracking issue so the fixtures and rules can be brought back in sync before silent breakage.
+
+---
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).

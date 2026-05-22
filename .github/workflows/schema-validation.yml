@@ -1,0 +1,81 @@
+name: settings.json schema validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'testdata/settings/**'
+      - '.github/workflows/schema-validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'testdata/settings/**'
+      - '.github/workflows/schema-validation.yml'
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate fixtures against SchemaStore
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install ajv-cli
+        run: npm install -g ajv-cli ajv-formats
+
+      - name: Fetch Claude Code settings schema
+        run: |
+          curl -sSfL https://json.schemastore.org/claude-code-settings.json \
+            -o /tmp/claude-code-settings.schema.json
+
+      - name: Validate valid fixtures
+        run: |
+          set -e
+          for f in testdata/settings/valid/*.json; do
+            echo "Validating $f"
+            ajv validate -s /tmp/claude-code-settings.schema.json -d "$f" --strict=false
+          done
+
+      - name: Check invalid fixtures are structurally parseable
+        run: |
+          set -e
+          for f in testdata/settings/invalid/*.json; do
+            echo "Checking $f is valid JSON"
+            jq empty "$f"
+          done
+
+      - name: Open issue on nightly schema drift
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "Nightly schema validation failed"
+        run: |
+          existing=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // ""')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Nightly run failed again: $RUN_URL"
+          else
+            body=$(cat <<EOF
+          The nightly schema validation against [SchemaStore](https://json.schemastore.org/claude-code-settings.json) failed. The upstream Claude Code settings schema may have changed.
+
+          Run: $RUN_URL
+
+          Next steps:
+          1. Diff the upstream schema for added/renamed/removed keys.
+          2. Update affected fixtures under \`testdata/settings/\`.
+          3. Update rules that reference removed keys.
+          4. Close this issue.
+          EOF
+          )
+            gh issue create --title "$TITLE" --label "ci" --body "$body"
+          fi
