@@ -124,6 +124,12 @@ A separate workflow (`.github/workflows/schema-validation.yml`) validates every 
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, the test loop, and the step-by-step recipe for adding a new rule.
+
+---
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
