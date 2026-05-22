@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make *)",
+      "Bash(go build ./...)",
+      "Bash(go test ./...)",
+      "Read(./src/**)",
+      "Read(./tests/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(sudo *)",
+      "Read(.ssh/*)",
+      "Read(.aws/*)",
+      "Read(.env*)"
+    ]
+  },
+  "enabledMcpjsonServers": ["github", "filesystem-readonly"]
+}
