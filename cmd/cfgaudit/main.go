@@ -119,8 +119,9 @@ func resolveClaudeVersion(override string) *version.Version {
 }
 
 type candidateFile struct {
-	path  string
-	scope finding.Scope
+	path       string
+	scope      finding.Scope
+	projectDir string
 }
 
 func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
@@ -131,8 +132,8 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 
 	candidates := []candidateFile{
-		{filepath.Join(dir, ".claude", "settings.json"), finding.ScopeProject},
-		{filepath.Join(dir, ".claude", "settings.local.json"), finding.ScopeProjectLocal},
+		{filepath.Join(dir, ".claude", "settings.json"), finding.ScopeProject, dir},
+		{filepath.Join(dir, ".claude", "settings.local.json"), finding.ScopeProjectLocal, dir},
 	}
 	if includeUser {
 		home, err := os.UserHomeDir()
@@ -158,6 +159,7 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			SettingsFile: c.path,
 			Settings:     s,
 			Scope:        c.scope,
+			ProjectDir:   c.projectDir,
 			IgnoreFile:   ignorePath,
 			IgnoreLines:  ignoreLines,
 		})

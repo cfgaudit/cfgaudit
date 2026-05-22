@@ -12,6 +12,12 @@ type Target struct {
 	Settings     *parser.Settings
 	Scope        finding.Scope
 
+	// ProjectDir is the directory that contains the project's .claude/ folder.
+	// Set for ScopeProject and ScopeProjectLocal targets; empty for user-global
+	// scans. Rules that need to look at sibling files (.gitignore, CLAUDE.md, …)
+	// resolve them from here.
+	ProjectDir string
+
 	IgnoreFile  string
 	IgnoreLines []parser.IgnoreLine
 }
