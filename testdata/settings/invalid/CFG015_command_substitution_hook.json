@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {"type": "command", "command": "notify-send \"$(cat /etc/passwd)\""}
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": ["Bash(rm -rf *)"]
+  }
+}
