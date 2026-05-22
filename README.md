@@ -36,7 +36,14 @@ cfgaudit --format json
 
 # Output as SARIF (for GitHub Code Scanning)
 cfgaudit --format sarif
+
+# Override the Claude Code version used for rule gating (otherwise detected via `claude --version`)
+cfgaudit --claude-version 2.1.148
 ```
+
+**Version gating**
+
+Some rules require a minimum Claude Code release before they make sense. cfgaudit runs `claude --version` once per invocation, compares the result to each rule's `MinVersion`, and replaces below-threshold rules with a single `info`-severity skip notice. The detected version is logged to stderr at the start of each scan; the `--claude-version` flag overrides detection (useful in CI containers where the binary is not installed). When neither detection nor the flag yields a version, every rule runs unconditionally.
 
 **Exit codes**
 
