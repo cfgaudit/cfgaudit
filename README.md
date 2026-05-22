@@ -39,6 +39,9 @@ cfgaudit --format sarif
 
 # Override the Claude Code version used for rule gating (otherwise detected via `claude --version`)
 cfgaudit --claude-version 2.1.148
+
+# Print cfgaudit version and exit
+cfgaudit --version
 ```
 
 **Version gating**
