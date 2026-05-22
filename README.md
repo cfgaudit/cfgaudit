@@ -70,6 +70,7 @@ Add a comment on the same line or the line above in the relevant config file:
 | [CFG006](docs/rules/CFG006.md) | warn | `permissions.deny` is absent or empty — no guardrails block destructive operations | LLM06 |
 | [CFG007](docs/rules/CFG007.md) | error | `env` block contains a hardcoded secret (vendor key prefix or `*_TOKEN`/`*_SECRET`/...) | LLM02 |
 | [CFG008](docs/rules/CFG008.md) | error | hook command matches a reverse-shell pattern (`/dev/tcp/`, `nc -e`, `bash -i …`, `mkfifo`, `socat exec`) | LLM06 |
+| [CFG009](docs/rules/CFG009.md) | warn | hook command interpolates a shell variable (`$VAR` / `${VAR}`) — attacker-influenced data may reach a shell | LLM01 |
 
 ### `.claudeignore`
 
