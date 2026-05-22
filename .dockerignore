@@ -1,0 +1,7 @@
+.git
+.github
+.playwright-mcp
+docs
+README.md
+LICENSE
+*.md
