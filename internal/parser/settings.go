@@ -9,10 +9,10 @@ import (
 // Settings is a partial representation of Claude Code's settings.json.
 // Unknown keys are preserved in the raw map so rules can inspect them.
 type Settings struct {
-	Permissions *Permissions       `json:"permissions,omitempty"`
-	Env         map[string]string  `json:"env,omitempty"`
-	Hooks       map[string][]Hook  `json:"hooks,omitempty"`
-	MCPServers  map[string]MCPServer `json:"mcpServers,omitempty"`
+	Permissions *Permissions           `json:"permissions,omitempty"`
+	Env         map[string]string      `json:"env,omitempty"`
+	Hooks       map[string][]HookGroup `json:"hooks,omitempty"`
+	MCPServers  map[string]MCPServer   `json:"mcpServers,omitempty"`
 
 	// Raw holds the full decoded document for rules that need arbitrary access.
 	Raw map[string]json.RawMessage `json:"-"`
@@ -23,8 +23,17 @@ type Permissions struct {
 	Deny  []string `json:"deny,omitempty"`
 }
 
-type Hook struct {
+// HookGroup is the per-event hook entry: a matcher plus the commands it triggers.
+// Claude Code's hooks schema nests command definitions under a matcher group.
+type HookGroup struct {
+	Matcher string        `json:"matcher,omitempty"`
+	Hooks   []HookCommand `json:"hooks,omitempty"`
+}
+
+type HookCommand struct {
+	Type    string `json:"type,omitempty"`
 	Command string `json:"command,omitempty"`
+	Timeout int    `json:"timeout,omitempty"`
 }
 
 type MCPServer struct {
