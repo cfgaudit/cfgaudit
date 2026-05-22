@@ -72,6 +72,7 @@ Add a comment on the same line or the line above in the relevant config file:
 | [CFG008](docs/rules/CFG008.md) | error | hook command matches a reverse-shell pattern (`/dev/tcp/`, `nc -e`, `bash -i …`, `mkfifo`, `socat exec`) | LLM06 |
 | [CFG009](docs/rules/CFG009.md) | warn | hook command interpolates a shell variable (`$VAR` / `${VAR}`) — attacker-influenced data may reach a shell | LLM01 |
 | [CFG010](docs/rules/CFG010.md) | warn | MCP server uses unpinned package or image version (`@latest`, `:latest`, no `@version`) | LLM03 |
+| [CFG011](docs/rules/CFG011.md) | warn | MCP server `alwaysAllow` is too broad (wildcard, state-mutating tools, or 10+ entries) | LLM06 |
 
 ### `.claudeignore`
 
