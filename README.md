@@ -99,10 +99,11 @@ Add a comment on the same line or the line above in the relevant config file:
 | [CFG016](docs/rules/CFG016.md) | error/info | credential helper (`apiKeyHelper`, `awsCredentialExport`, `awsAuthRefresh`, `gcpAuthRefresh`) defined in project-scoped settings (CVE-2025-59536) | LLM02 |
 | [CFG017](docs/rules/CFG017.md) | error | MCP server sets `dangerouslyAllowBrowser: true` — browser-originated requests enable DNS-rebinding to RCE (CVE-2025-49596) | LLM06 |
 | [CFG018](docs/rules/CFG018.md) | warn | MCP server binds to all interfaces (`0.0.0.0` / `[::]`) — reachable by anyone on the LAN ("NeighborJack") | LLM06 |
+| [CFG019](docs/rules/CFG019.md) | error | MCP server `command` is a shell interpreter (`bash`, `sh`, `pwsh`, `cmd`, …) — server is an inline script, a hallmark of a poisoned config | LLM06 |
 
 ### `.mcp.json` and MCP servers (Claude Code)
 
-MCP rules (CFG010, CFG011, CFG017, CFG018) run against MCP servers from **both** sources: the inline `mcpServers` block in `settings.json` and the project's root `.mcp.json` — the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve. Findings are attributed to the file each server was declared in. A malformed `.mcp.json` is reported as a tool error rather than silently skipped.
+MCP rules (CFG010, CFG011, CFG017, CFG018, CFG019) run against MCP servers from **both** sources: the inline `mcpServers` block in `settings.json` and the project's root `.mcp.json` — the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve. Findings are attributed to the file each server was declared in. A malformed `.mcp.json` is reported as a tool error rather than silently skipped.
 
 ---
 
@@ -117,7 +118,7 @@ cfgaudit is a **static auditor of Claude Code configuration files**. It maps eac
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015 |
 | LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014 |
-| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017, CFG018 |
+| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG019 |
 
 **Not covered**
 
