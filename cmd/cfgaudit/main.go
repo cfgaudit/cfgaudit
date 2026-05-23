@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cfgaudit/cfgaudit/internal/config"
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
 	"github.com/cfgaudit/cfgaudit/internal/version"
@@ -27,6 +28,7 @@ func main() {
 	format := flag.String("format", "text", "output format: text, json, sarif")
 	user := flag.Bool("user", false, "also scan ~/.claude/settings.json")
 	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
+	configPath := flag.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
 	showVersion := flag.Bool("version", false, "print cfgaudit version and exit")
 
 	var only, skip ruleSet
@@ -43,12 +45,22 @@ func main() {
 	if unknown := unknownRuleIDs(only, skip, rules.All); len(unknown) > 0 {
 		fmt.Fprintf(os.Stderr, "cfgaudit: --only/--skip references unknown rule(s): %s\n", strings.Join(unknown, ", "))
 	}
-	accept := ruleFilter(only, skip)
 
 	dir := "."
 	if flag.NArg() > 0 {
 		dir = flag.Arg(0)
 	}
+
+	cfg, cfgPath, err := loadConfig(*configPath, dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cfgaudit: %v\n", err)
+		os.Exit(2)
+	}
+	if cfgPath != "" {
+		fmt.Fprintf(os.Stderr, "cfgaudit: using config %s\n", cfgPath)
+	}
+
+	accept := acceptWith(ruleFilter(only, skip), cfg)
 
 	detected := resolveClaudeVersion(*claudeVersion)
 
@@ -62,6 +74,7 @@ func main() {
 	for _, target := range targets {
 		all = append(all, rules.Run(target, detected, accept)...)
 	}
+	all = cfg.PostProcess(all, dir)
 
 	switch *format {
 	case "json":
@@ -80,8 +93,36 @@ func main() {
 		fmt.Printf("\ncfgaudit %s — %d %s\n", cfgauditVersion, len(all), pluralize("finding", len(all)))
 	}
 
-	if hasError(all) {
-		os.Exit(1)
+	if exitCode := cfg.ExitCode(all); exitCode != 0 {
+		os.Exit(exitCode)
+	}
+}
+
+// loadConfig resolves the .cfgaudit.yml to use: an explicit --config path (error
+// if missing) takes precedence over auto-discovery in dir. Returns (nil, "", nil)
+// when neither yields a file.
+func loadConfig(explicit, dir string) (*config.Config, string, error) {
+	if explicit != "" {
+		c, err := config.Load(explicit)
+		if err != nil {
+			return nil, "", err
+		}
+		return c, explicit, nil
+	}
+	return config.Discover(dir)
+}
+
+// acceptWith combines the CLI --only/--skip filter with the config's rule
+// disables. Returns nil (no filtering) only when neither constrains anything.
+func acceptWith(base func(rules.Rule) bool, cfg *config.Config) func(rules.Rule) bool {
+	if base == nil && cfg == nil {
+		return nil
+	}
+	return func(r rules.Rule) bool {
+		if base != nil && !base(r) {
+			return false
+		}
+		return cfg.RuleEnabled(r.ID())
 	}
 }
 
@@ -260,15 +301,6 @@ func loadProjectMCP(dir string) (map[string]parser.MCPServer, string, error) {
 		return nil, "", nil
 	}
 	return cfg.MCPServers, path, nil
-}
-
-func hasError(findings []finding.Finding) bool {
-	for _, f := range findings {
-		if f.Severity == finding.Error {
-			return true
-		}
-	}
-	return false
 }
 
 // ruleSet is a flag.Value that collects rule IDs from one or more occurrences

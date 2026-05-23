@@ -47,6 +47,9 @@ cfgaudit --version
 cfgaudit --only CFG001,CFG003
 cfgaudit --only CFG001 --only CFG003
 cfgaudit --skip CFG006,CFG009
+
+# Use an explicit config file (otherwise .cfgaudit.yml is auto-discovered)
+cfgaudit --config path/to/.cfgaudit.yml
 ```
 
 **Scope-aware findings**
@@ -71,6 +74,33 @@ Add a comment on the same line or the line above in the relevant config file:
 
 ```json
 // cfgaudit:ignore CFG001 -- intentional for local dev sandbox
+```
+
+**Configuration file (`.cfgaudit.yml`)**
+
+cfgaudit auto-discovers a `.cfgaudit.yml` (or `.cfgaudit.yaml`) in the scanned directory; `--config <path>` overrides discovery. CLI flags take precedence over the file.
+
+```yaml
+# Per-rule overrides
+rules:
+  CFG003: off           # disable a rule (flat form)
+  CFG004:
+    severity: warn      # override a rule's severity (also accepts the flat form CFG004: warn)
+
+# Drop findings below this severity ("error", "warn", "info")
+min-severity: warn
+
+# Treat warn findings as errors for the exit code
+strict: false
+
+# Always exit 0 on a successful run (advisory mode for non-blocking CI)
+no-exit-codes: false
+
+# Path globs (relative to the scanned dir) whose findings are excluded.
+# Supports *, ** and a trailing / for directory prefixes.
+exclude-paths:
+  - vendor/
+  - "**/.claude/settings.local.json"
 ```
 
 ---
