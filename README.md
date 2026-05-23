@@ -97,9 +97,7 @@ Add a comment on the same line or the line above in the relevant config file:
 | [CFG014](docs/rules/CFG014.md) | error | hook command pipes `curl`/`wget` output directly into a shell or interpreter (remote code execution) | LLM03 |
 | [CFG015](docs/rules/CFG015.md) | warn/error | hook command contains `$(…)` or backtick substitution (error if the substitution itself reaches the network) | LLM01 |
 
-### `.claudeignore`
-
-### MCP server configuration (Claude Code)
+### `.mcp.json` and MCP servers (Claude Code)
 
 MCP rules (CFG010, CFG011) run against MCP servers from **both** sources: the inline `mcpServers` block in `settings.json` and the project's root `.mcp.json` — the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve. Findings are attributed to the file each server was declared in. A malformed `.mcp.json` is reported as a tool error rather than silently skipped.
 
@@ -107,12 +105,27 @@ MCP rules (CFG010, CFG011) run against MCP servers from **both** sources: the in
 
 ## OWASP mapping
 
-| ID | Risk |
-|----|------|
-| LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) |
-| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) |
-| LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) |
-| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) |
+cfgaudit is a **static auditor of Claude Code configuration files**. It maps each finding to an [OWASP Top 10 for LLM Applications 2025](https://owasp.org/www-project-top-10-for-large-language-model-applications/) risk — but by design it only sees what is *declared in config*, not model behaviour, runtime traffic, or training data. That scope determines which risks it can and cannot address.
+
+**Covered**
+
+| ID | Risk | Example rules |
+|----|------|---------------|
+| LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015 |
+| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013 |
+| LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014 |
+| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011 |
+
+**Not covered**
+
+| ID | Risk | Why it is out of scope |
+|----|------|------------------------|
+| LLM04 | [Data and Model Poisoning](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM04_2025-Data_and_Model_Poisoning.html) | Concerns training data and model weights. cfgaudit audits config files, not models or training pipelines. |
+| LLM05 | [Improper Output Handling](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM05_2025-Improper_Output_Handling.html) | A runtime property of how downstream systems consume model output — not visible in static configuration. |
+| LLM07 | [System Prompt Leakage](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM07_2025-System_Prompt_Leakage.html) | Lives in prompt *content* (e.g. `CLAUDE.md`), not in settings. On the roadmap once CLAUDE.md scanning lands (see the open `rule` issues). |
+| LLM08 | [Vector and Embedding Weaknesses](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM08_2025-Vector_and_Embedding_Weaknesses.html) | Specific to RAG / embedding stores, which Claude Code configuration does not describe. |
+| LLM09 | [Misinformation](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM09_2025-Misinformation.html) | A model-output-quality concern, not a configuration setting. |
+| LLM10 | [Unbounded Consumption](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM10_2025-Unbounded_Consumption.html) | Runtime resource / cost / DoS behaviour, not expressed in the config cfgaudit reads. |
 
 ---
 
