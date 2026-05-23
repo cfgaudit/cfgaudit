@@ -120,7 +120,7 @@ func (c *Config) RuleEnabled(id string) bool {
 		return true
 	}
 	rc, ok := c.Rules[id]
-	return !(ok && rc.Off)
+	return !ok || !rc.Off
 }
 
 // PostProcess applies severity overrides, the min-severity filter, and
