@@ -34,6 +34,13 @@ type Target struct {
 	ClaudeMDFile    string
 	ClaudeMDContent string
 
+	// Policy*, when set, carry the organisation's custom permission policy from
+	// .cfgaudit.yml (evaluated by CFG025). RequireDeny lists commands that must be
+	// covered by permissions.deny; ForbidAllow lists commands that must not be
+	// grantable by permissions.allow. Attached to the project-scope target only.
+	PolicyRequireDeny []string
+	PolicyForbidAllow []string
+
 	IgnoreFile  string
 	IgnoreLines []parser.IgnoreLine
 }
