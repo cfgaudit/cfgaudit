@@ -118,12 +118,6 @@ func resolveClaudeVersion(override string) *version.Version {
 	return &v
 }
 
-type candidateFile struct {
-	path       string
-	scope      finding.Scope
-	projectDir string
-}
-
 func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	ignorePath := filepath.Join(dir, ".claudeignore")
 	ignoreLines, err := parser.ParseIgnore(ignorePath)
@@ -144,13 +138,18 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err != nil {
 		return nil, err
 	}
+	projectClaudeMDPath := filepath.Join(dir, "CLAUDE.md")
+	projectClaudeMD, err := loadClaudeMD(projectClaudeMDPath)
+	if err != nil {
+		return nil, err
+	}
 
 	var targets []*rules.Target
 
-	// Project scope: settings.json and .mcp.json share one target. It exists when
-	// either file is present.
-	if projectSettings != nil || len(projectMCP) > 0 {
-		targets = append(targets, &rules.Target{
+	// Project scope: settings.json, .mcp.json and CLAUDE.md share one target. It
+	// exists when any of them is present.
+	if projectSettings != nil || len(projectMCP) > 0 || projectClaudeMD != "" {
+		t := &rules.Target{
 			SettingsFile:   projectSettingsPath,
 			Settings:       projectSettings,
 			Scope:          finding.ScopeProject,
@@ -159,41 +158,77 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			ProjectMCPFile: mcpFile,
 			IgnoreFile:     ignorePath,
 			IgnoreLines:    ignoreLines,
+		}
+		if projectClaudeMD != "" {
+			t.ClaudeMDFile = projectClaudeMDPath
+			t.ClaudeMDContent = projectClaudeMD
+		}
+		targets = append(targets, t)
+	}
+
+	// Project-local scope: settings.local.json only.
+	localPath := filepath.Join(dir, ".claude", "settings.local.json")
+	localSettings, err := parseSettingsOptional(localPath)
+	if err != nil {
+		return nil, err
+	}
+	if localSettings != nil {
+		targets = append(targets, &rules.Target{
+			SettingsFile: localPath,
+			Settings:     localSettings,
+			Scope:        finding.ScopeProjectLocal,
+			ProjectDir:   dir,
+			IgnoreFile:   ignorePath,
+			IgnoreLines:  ignoreLines,
 		})
 	}
 
-	candidates := []candidateFile{
-		{filepath.Join(dir, ".claude", "settings.local.json"), finding.ScopeProjectLocal, dir},
-	}
+	// User scope: ~/.claude/settings.json and ~/.claude/CLAUDE.md (only with --user).
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("resolve home directory: %w", err)
 		}
-		candidates = append(candidates, candidateFile{
-			path:  filepath.Join(home, ".claude", "settings.json"),
-			scope: finding.ScopeUser,
-		})
-	}
-
-	for _, c := range candidates {
-		s, err := parseSettingsOptional(c.path)
+		userSettingsPath := filepath.Join(home, ".claude", "settings.json")
+		userSettings, err := parseSettingsOptional(userSettingsPath)
 		if err != nil {
 			return nil, err
 		}
-		if s == nil {
-			continue
+		userClaudeMDPath := filepath.Join(home, ".claude", "CLAUDE.md")
+		userClaudeMD, err := loadClaudeMD(userClaudeMDPath)
+		if err != nil {
+			return nil, err
 		}
-		targets = append(targets, &rules.Target{
-			SettingsFile: c.path,
-			Settings:     s,
-			Scope:        c.scope,
-			ProjectDir:   c.projectDir,
-			IgnoreFile:   ignorePath,
-			IgnoreLines:  ignoreLines,
-		})
+		if userSettings != nil || userClaudeMD != "" {
+			t := &rules.Target{
+				SettingsFile: userSettingsPath,
+				Settings:     userSettings,
+				Scope:        finding.ScopeUser,
+				IgnoreFile:   ignorePath,
+				IgnoreLines:  ignoreLines,
+			}
+			if userClaudeMD != "" {
+				t.ClaudeMDFile = userClaudeMDPath
+				t.ClaudeMDContent = userClaudeMD
+			}
+			targets = append(targets, t)
+		}
 	}
 	return targets, nil
+}
+
+// loadClaudeMD reads a CLAUDE.md file. A missing file yields ("", nil); the raw
+// text is returned otherwise. CLAUDE.md is free-form Markdown, so unlike
+// settings.json there is no parse step that can fail.
+func loadClaudeMD(path string) (string, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
 }
 
 // parseSettingsOptional parses a settings.json, returning (nil, nil) when the

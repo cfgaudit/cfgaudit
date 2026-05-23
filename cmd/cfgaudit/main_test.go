@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -160,5 +161,123 @@ func mustWrite(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func TestBuildTargets_LoadsProjectClaudeMD(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "CLAUDE.md"), "# Project memory\nBe helpful.\n")
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 project target from CLAUDE.md alone, got %d", len(targets))
+	}
+	tg := targets[0]
+	if tg.Scope != finding.ScopeProject {
+		t.Errorf("expected project scope, got %s", tg.Scope)
+	}
+	if tg.ClaudeMDFile != filepath.Join(dir, "CLAUDE.md") {
+		t.Errorf("expected ClaudeMDFile set, got %q", tg.ClaudeMDFile)
+	}
+	if !strings.Contains(tg.ClaudeMDContent, "Be helpful.") {
+		t.Errorf("expected raw CLAUDE.md content, got %q", tg.ClaudeMDContent)
+	}
+	if tg.Settings != nil {
+		t.Errorf("expected nil Settings when settings.json absent, got %+v", tg.Settings)
+	}
+}
+
+func TestBuildTargets_ClaudeMDSharesProjectTarget(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".claude", "settings.json"), `{"permissions":{"deny":["Read(.env)"]}}`)
+	mustWrite(t, filepath.Join(dir, "CLAUDE.md"), "# memory")
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var project []*rules.Target
+	for _, tg := range targets {
+		if tg.Scope == finding.ScopeProject {
+			project = append(project, tg)
+		}
+	}
+	if len(project) != 1 {
+		t.Fatalf("expected exactly 1 project target, got %d", len(project))
+	}
+	if project[0].Settings == nil || project[0].ClaudeMDContent == "" {
+		t.Errorf("expected settings.json and CLAUDE.md on the same project target")
+	}
+}
+
+func TestBuildTargets_NoClaudeMD_NoClaudeFields(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".claude", "settings.json"), `{"permissions":{"deny":["Read(.env)"]}}`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].ClaudeMDFile != "" || targets[0].ClaudeMDContent != "" {
+		t.Errorf("expected no CLAUDE.md fields when absent, got %+v", targets[0])
+	}
+}
+
+func TestBuildTargets_UserClaudeMD_WithUserFlag(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	mustWrite(t, filepath.Join(home, ".claude", "CLAUDE.md"), "# global memory")
+
+	dir := t.TempDir() // empty project
+	targets, err := buildTargets(dir, true)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var user *rules.Target
+	for _, tg := range targets {
+		if tg.Scope == finding.ScopeUser {
+			user = tg
+		}
+	}
+	if user == nil {
+		t.Fatalf("expected a user-scope target from ~/.claude/CLAUDE.md, got %d targets", len(targets))
+	}
+	if user.ClaudeMDFile != filepath.Join(home, ".claude", "CLAUDE.md") || user.ClaudeMDContent == "" {
+		t.Errorf("expected user CLAUDE.md loaded, got file=%q content=%q", user.ClaudeMDFile, user.ClaudeMDContent)
+	}
+}
+
+func TestBuildTargets_UserClaudeMD_SkippedWithoutUserFlag(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	mustWrite(t, filepath.Join(home, ".claude", "CLAUDE.md"), "# global memory")
+
+	dir := t.TempDir()
+	targets, err := buildTargets(dir, false) // no --user
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	if len(targets) != 0 {
+		t.Errorf("expected no targets without --user, got %d", len(targets))
+	}
+}
+
+func TestBuildTargets_ProjectLocalStillBuilt(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".claude", "settings.local.json"), `{"permissions":{"deny":["Read(.env)"]}}`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var found bool
+	for _, tg := range targets {
+		if tg.Scope == finding.ScopeProjectLocal {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a project-local target from settings.local.json")
 	}
 }

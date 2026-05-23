@@ -27,6 +27,13 @@ type Target struct {
 	ProjectMCP     map[string]parser.MCPServer
 	ProjectMCPFile string
 
+	// ClaudeMD carries the raw text and path of a CLAUDE.md loaded for this scope
+	// (project <dir>/CLAUDE.md, or user ~/.claude/CLAUDE.md with --user). Claude Code
+	// reads these as trusted system-context instructions every session, so they are
+	// a prompt-injection target. Both are empty when no CLAUDE.md is present.
+	ClaudeMDFile    string
+	ClaudeMDContent string
+
 	IgnoreFile  string
 	IgnoreLines []parser.IgnoreLine
 }
