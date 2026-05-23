@@ -116,6 +116,14 @@ Rules about MCP servers. The per-server checks run against MCP servers from **bo
 | [CFG020](docs/rules/CFG020.md) | error | MCP server `env` injects a shared library via the dynamic linker (`LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, …) | LLM06 |
 | [CFG021](docs/rules/CFG021.md) | warn | MCP server `env` routes traffic through a non-local proxy (`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`) — MITM and header-secret capture | LLM02 |
 
+### `CLAUDE.md` — project & user-global
+
+Claude Code reads `CLAUDE.md` as trusted system-context instructions every session, so a committed or user-global CLAUDE.md is a prompt-injection target. The project `CLAUDE.md` is scanned automatically; `~/.claude/CLAUDE.md` is scanned with `--user`.
+
+| ID | Severity | Description | OWASP |
+|----|----------|-------------|-------|
+| [CFG024](docs/rules/CFG024.md) | error | `CLAUDE.md` contains hidden Unicode control characters (Tags block, zero-width, BiDi/Trojan Source) — prompt injection / ASCII smuggling | LLM01 |
+
 ---
 
 ## OWASP mapping
@@ -126,7 +134,7 @@ cfgaudit is a **static auditor of Claude Code configuration files**. It maps eac
 
 | ID | Risk | Example rules |
 |----|------|---------------|
-| LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015 |
+| LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024 |
 | LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014 |
 | LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023 |
