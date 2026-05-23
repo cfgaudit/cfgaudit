@@ -77,10 +77,11 @@ type HookCommand struct {
 }
 
 type MCPServer struct {
-	Command     string            `json:"command,omitempty"`
-	Args        []string          `json:"args,omitempty"`
-	AlwaysAllow []string          `json:"alwaysAllow,omitempty"`
-	Env         map[string]string `json:"env,omitempty"`
+	Command                 string            `json:"command,omitempty"`
+	Args                    []string          `json:"args,omitempty"`
+	AlwaysAllow             []string          `json:"alwaysAllow,omitempty"`
+	Env                     map[string]string `json:"env,omitempty"`
+	DangerouslyAllowBrowser bool              `json:"dangerouslyAllowBrowser,omitempty"`
 }
 
 // MCPConfig is a project-level .mcp.json file: a bare object whose mcpServers

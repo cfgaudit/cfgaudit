@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "inspector": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/inspector@1.0.0"],
+      "dangerouslyAllowBrowser": true
+    }
+  }
+}
