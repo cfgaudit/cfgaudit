@@ -26,6 +26,20 @@ type Config struct {
 	Strict       bool                  `yaml:"strict"`
 	NoExitCodes  bool                  `yaml:"no-exit-codes"`
 	ExcludePaths []string              `yaml:"exclude-paths"`
+	Policy       Policy                `yaml:"policy"`
+}
+
+// Policy is the organisation's custom permission policy (evaluated by CFG025):
+// commands that must be blocked by permissions.deny, and commands that must not
+// be grantable by permissions.allow.
+type Policy struct {
+	RequireDeny []string `yaml:"require-deny"`
+	ForbidAllow []string `yaml:"forbid-allow"`
+}
+
+// Configured reports whether any policy entries are set.
+func (p Policy) Configured() bool {
+	return len(p.RequireDeny) > 0 || len(p.ForbidAllow) > 0
 }
 
 // RuleConfig is a per-rule override. It accepts either the flat form

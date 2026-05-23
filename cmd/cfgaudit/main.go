@@ -69,6 +69,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "cfgaudit: %v\n", err)
 		os.Exit(2)
 	}
+	attachPolicy(targets, cfg)
 
 	var all []finding.Finding
 	for _, target := range targets {
@@ -110,6 +111,21 @@ func loadConfig(explicit, dir string) (*config.Config, string, error) {
 		return c, explicit, nil
 	}
 	return config.Discover(dir)
+}
+
+// attachPolicy wires the org policy from .cfgaudit.yml onto the project-scope
+// target so CFG025 can enforce it. The project settings.json is the canonical
+// committed artifact a policy applies to; other scopes are left untouched.
+func attachPolicy(targets []*rules.Target, cfg *config.Config) {
+	if cfg == nil || !cfg.Policy.Configured() {
+		return
+	}
+	for _, t := range targets {
+		if t.Scope == finding.ScopeProject {
+			t.PolicyRequireDeny = cfg.Policy.RequireDeny
+			t.PolicyForbidAllow = cfg.Policy.ForbidAllow
+		}
+	}
 }
 
 // acceptWith combines the CLI --only/--skip filter with the config's rule

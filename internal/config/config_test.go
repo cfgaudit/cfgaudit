@@ -124,3 +124,19 @@ func TestDiscover_FindsFile(t *testing.T) {
 		t.Errorf("unexpected path %q", path)
 	}
 }
+
+func TestPolicy_Parse(t *testing.T) {
+	c := parseT(t, "policy:\n  require-deny:\n    - \"Bash(git commit:*)\"\n  forbid-allow:\n    - \"Bash(git commit:*)\"\n    - \"Bash(curl:*)\"\n")
+	if !c.Policy.Configured() {
+		t.Fatal("expected policy configured")
+	}
+	if len(c.Policy.RequireDeny) != 1 || len(c.Policy.ForbidAllow) != 2 {
+		t.Errorf("unexpected policy: %+v", c.Policy)
+	}
+}
+
+func TestPolicy_AbsentNotConfigured(t *testing.T) {
+	if parseT(t, "min-severity: warn\n").Policy.Configured() {
+		t.Error("policy should be unconfigured when absent")
+	}
+}
