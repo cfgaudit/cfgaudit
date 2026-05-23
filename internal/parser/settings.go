@@ -18,6 +18,46 @@ type Settings struct {
 	Raw map[string]json.RawMessage `json:"-"`
 }
 
+// CommandHelper is the {"type":"command","command":"…"} shape used by the
+// statusLine and fileSuggestion settings.
+type CommandHelper struct {
+	Type    string `json:"type,omitempty"`
+	Command string `json:"command,omitempty"`
+}
+
+// StringField returns a top-level key expected to hold a JSON string. Missing
+// keys and values of the wrong type both yield "" — accessors stay type-tolerant
+// so a single mistyped key never aborts the whole parse (CFG012 reports the
+// type mismatch separately). Used for the command-bearing keys Claude Code
+// executes besides hooks (apiKeyHelper, awsCredentialExport, awsAuthRefresh,
+// gcpAuthRefresh, otelHeadersHelper) — an RCE surface a repo-controlled
+// settings.json can abuse, the same class as a malicious hook (CVE-2025-59536).
+func (s *Settings) StringField(key string) string {
+	raw, ok := s.Raw[key]
+	if !ok {
+		return ""
+	}
+	var v string
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return ""
+	}
+	return v
+}
+
+// CommandHelperField returns the .command of a {"type":..,"command":..} object
+// key (statusLine, fileSuggestion). Missing or mistyped values yield "".
+func (s *Settings) CommandHelperField(key string) string {
+	raw, ok := s.Raw[key]
+	if !ok {
+		return ""
+	}
+	var v CommandHelper
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return ""
+	}
+	return v.Command
+}
+
 type Permissions struct {
 	Allow []string `json:"allow,omitempty"`
 	Deny  []string `json:"deny,omitempty"`

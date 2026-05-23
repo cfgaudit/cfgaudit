@@ -2,7 +2,6 @@ package rules
 
 import (
 	"regexp"
-	"sort"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -29,32 +28,19 @@ var reverseShellPatterns = []struct {
 }
 
 func (r *cfg008) Check(t *Target) []finding.Finding {
-	if t.Settings == nil || len(t.Settings.Hooks) == 0 {
+	if t == nil || t.Settings == nil {
 		return nil
 	}
 
-	events := make([]string, 0, len(t.Settings.Hooks))
-	for e := range t.Settings.Hooks {
-		events = append(events, e)
-	}
-	sort.Strings(events)
-
 	var findings []finding.Finding
-	for _, event := range events {
-		for _, group := range t.Settings.Hooks[event] {
-			for _, h := range group.Hooks {
-				if h.Command == "" {
-					continue
-				}
-				if label, ok := matchReverseShell(h.Command); ok {
-					findings = append(findings, finding.Finding{
-						RuleID:   "CFG008",
-						Severity: finding.Error,
-						File:     t.SettingsFile,
-						Message:  "hooks." + event + " command matches reverse-shell pattern (" + label + ") — grants remote interactive access when the hook fires" + userScopeNote(t),
-					})
-				}
-			}
+	for _, site := range commandSites(t.Settings) {
+		if label, ok := matchReverseShell(site.Command); ok {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG008",
+				Severity: finding.Error,
+				File:     t.SettingsFile,
+				Message:  site.Label + " matches reverse-shell pattern (" + label + ") — grants remote interactive access when it runs" + userScopeNote(t),
+			})
 		}
 	}
 	return findings

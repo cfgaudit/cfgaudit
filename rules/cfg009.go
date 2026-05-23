@@ -2,7 +2,6 @@ package rules
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -21,36 +20,26 @@ func (r *cfg009) ID() string { return "CFG009" }
 var hookVarRe = regexp.MustCompile(`\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))`)
 
 func (r *cfg009) Check(t *Target) []finding.Finding {
-	if t.Settings == nil || len(t.Settings.Hooks) == 0 {
+	if t == nil || t.Settings == nil {
 		return nil
 	}
 
-	events := make([]string, 0, len(t.Settings.Hooks))
-	for e := range t.Settings.Hooks {
-		events = append(events, e)
-	}
-	sort.Strings(events)
-
 	var findings []finding.Finding
-	for _, event := range events {
-		for _, group := range t.Settings.Hooks[event] {
-			for _, h := range group.Hooks {
-				vars := extractShellVars(h.Command)
-				if len(vars) == 0 {
-					continue
-				}
-				sev := finding.Warn
-				if t.Scope == finding.ScopeUser {
-					sev = finding.Error
-				}
-				findings = append(findings, finding.Finding{
-					RuleID:   "CFG009",
-					Severity: sev,
-					File:     t.SettingsFile,
-					Message:  "hooks." + event + " command interpolates " + strings.Join(vars, ", ") + " — agent-controlled or external data inside a hook command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
-				})
-			}
+	for _, site := range commandSites(t.Settings) {
+		vars := extractShellVars(site.Command)
+		if len(vars) == 0 {
+			continue
 		}
+		sev := finding.Warn
+		if t.Scope == finding.ScopeUser {
+			sev = finding.Error
+		}
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG009",
+			Severity: sev,
+			File:     t.SettingsFile,
+			Message:  site.Label + " interpolates " + strings.Join(vars, ", ") + " — agent-controlled or external data inside a command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
+		})
 	}
 	return findings
 }
