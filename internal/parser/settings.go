@@ -58,6 +58,30 @@ func (s *Settings) CommandHelperField(key string) string {
 	return v.Command
 }
 
+// SandboxConfig is the subset of the sandbox settings object cfgaudit inspects.
+// excludedCommands run outside the execution sandbox; bwrapPath/socatPath point
+// the sandbox's bubblewrap binary and network proxy and are documented as
+// honored only from managed settings.
+type SandboxConfig struct {
+	ExcludedCommands []string `json:"excludedCommands,omitempty"`
+	BwrapPath        string   `json:"bwrapPath,omitempty"`
+	SocatPath        string   `json:"socatPath,omitempty"`
+}
+
+// Sandbox decodes the top-level sandbox object. Returns nil when absent or of the
+// wrong type (CFG012 reports the schema mismatch separately).
+func (s *Settings) Sandbox() *SandboxConfig {
+	raw, ok := s.Raw["sandbox"]
+	if !ok {
+		return nil
+	}
+	var sc SandboxConfig
+	if err := json.Unmarshal(raw, &sc); err != nil {
+		return nil
+	}
+	return &sc
+}
+
 type Permissions struct {
 	Allow []string `json:"allow,omitempty"`
 	Deny  []string `json:"deny,omitempty"`
