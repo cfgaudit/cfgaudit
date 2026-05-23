@@ -37,10 +37,31 @@ type HookCommand struct {
 }
 
 type MCPServer struct {
-	Command      string            `json:"command,omitempty"`
-	Args         []string          `json:"args,omitempty"`
-	AlwaysAllow  []string          `json:"alwaysAllow,omitempty"`
-	Env          map[string]string `json:"env,omitempty"`
+	Command     string            `json:"command,omitempty"`
+	Args        []string          `json:"args,omitempty"`
+	AlwaysAllow []string          `json:"alwaysAllow,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+}
+
+// MCPConfig is a project-level .mcp.json file: a bare object whose mcpServers
+// map carries the same shape as the inline mcpServers block in settings.json.
+// This is the file enableAllProjectMcpServers / enabledMcpjsonServers auto-approve,
+// so MCP rules must reach it, not just the inline settings.json servers.
+type MCPConfig struct {
+	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
+}
+
+// ParseMCPConfig reads and decodes a project .mcp.json file.
+func ParseMCPConfig(path string) (*MCPConfig, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var c MCPConfig
+	if err := json.Unmarshal(data, &c); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return &c, nil
 }
 
 // ParseSettings reads and decodes a settings.json file.

@@ -131,8 +131,38 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 
+	// The project .mcp.json is parsed once and attached to the project-scope
+	// target (built below), so MCP rules cover it and .gitignore/sibling-file
+	// rules don't run twice.
+	projectMCP, mcpFile, err := loadProjectMCP(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	projectSettingsPath := filepath.Join(dir, ".claude", "settings.json")
+	projectSettings, err := parseSettingsOptional(projectSettingsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var targets []*rules.Target
+
+	// Project scope: settings.json and .mcp.json share one target. It exists when
+	// either file is present.
+	if projectSettings != nil || len(projectMCP) > 0 {
+		targets = append(targets, &rules.Target{
+			SettingsFile:   projectSettingsPath,
+			Settings:       projectSettings,
+			Scope:          finding.ScopeProject,
+			ProjectDir:     dir,
+			ProjectMCP:     projectMCP,
+			ProjectMCPFile: mcpFile,
+			IgnoreFile:     ignorePath,
+			IgnoreLines:    ignoreLines,
+		})
+	}
+
 	candidates := []candidateFile{
-		{filepath.Join(dir, ".claude", "settings.json"), finding.ScopeProject, dir},
 		{filepath.Join(dir, ".claude", "settings.local.json"), finding.ScopeProjectLocal, dir},
 	}
 	if includeUser {
@@ -146,14 +176,13 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
-	var targets []*rules.Target
 	for _, c := range candidates {
-		s, err := parser.ParseSettings(c.path)
+		s, err := parseSettingsOptional(c.path)
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
 			return nil, err
+		}
+		if s == nil {
+			continue
 		}
 		targets = append(targets, &rules.Target{
 			SettingsFile: c.path,
@@ -165,6 +194,37 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 	return targets, nil
+}
+
+// parseSettingsOptional parses a settings.json, returning (nil, nil) when the
+// file does not exist so callers can treat absence as "no target".
+func parseSettingsOptional(path string) (*parser.Settings, error) {
+	s, err := parser.ParseSettings(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return s, nil
+}
+
+// loadProjectMCP parses dir/.mcp.json. A missing file yields (nil, "", nil); a
+// malformed file is reported as an error so the user learns their .mcp.json is
+// not being scanned rather than silently trusting it.
+func loadProjectMCP(dir string) (map[string]parser.MCPServer, string, error) {
+	path := filepath.Join(dir, ".mcp.json")
+	cfg, err := parser.ParseMCPConfig(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	if len(cfg.MCPServers) == 0 {
+		return nil, "", nil
+	}
+	return cfg.MCPServers, path, nil
 }
 
 func hasError(findings []finding.Finding) bool {

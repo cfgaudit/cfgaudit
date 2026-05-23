@@ -2,7 +2,6 @@ package rules
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -29,27 +28,17 @@ var dangerousToolFragments = []string{
 const alwaysAllowSizeThreshold = 10
 
 func (r *cfg011) Check(t *Target) []finding.Finding {
-	if t.Settings == nil || len(t.Settings.MCPServers) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(t.Settings.MCPServers))
-	for n := range t.Settings.MCPServers {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-
 	var findings []finding.Finding
-	for _, name := range names {
-		s := t.Settings.MCPServers[name]
-		if len(s.AlwaysAllow) == 0 {
+	for _, ref := range t.mcpServerRefs() {
+		if len(ref.Server.AlwaysAllow) == 0 {
 			continue
 		}
-		if msg := analyzeAlwaysAllow(s.AlwaysAllow); msg != "" {
+		if msg := analyzeAlwaysAllow(ref.Server.AlwaysAllow); msg != "" {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG011",
 				Severity: finding.Warn,
-				File:     t.SettingsFile,
-				Message:  "mcpServers." + name + ".alwaysAllow " + msg,
+				File:     ref.File,
+				Message:  "mcpServers." + ref.Name + ".alwaysAllow " + msg,
 			})
 		}
 	}

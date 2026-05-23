@@ -2,7 +2,6 @@ package rules
 
 import (
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -25,24 +24,14 @@ var npmPackageRunners = map[string]bool{
 }
 
 func (r *cfg010) Check(t *Target) []finding.Finding {
-	if t.Settings == nil || len(t.Settings.MCPServers) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(t.Settings.MCPServers))
-	for n := range t.Settings.MCPServers {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-
 	var findings []finding.Finding
-	for _, name := range names {
-		s := t.Settings.MCPServers[name]
-		if msg := analyzeMCPVersionPin(s.Command, s.Args); msg != "" {
+	for _, ref := range t.mcpServerRefs() {
+		if msg := analyzeMCPVersionPin(ref.Server.Command, ref.Server.Args); msg != "" {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG010",
 				Severity: finding.Warn,
-				File:     t.SettingsFile,
-				Message:  "mcpServers." + name + ": " + msg,
+				File:     ref.File,
+				Message:  "mcpServers." + ref.Name + ": " + msg,
 			})
 		}
 	}

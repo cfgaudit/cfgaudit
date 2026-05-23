@@ -101,6 +101,8 @@ Add a comment on the same line or the line above in the relevant config file:
 
 ### MCP server configuration (Claude Code)
 
+MCP rules (CFG010, CFG011) run against MCP servers from **both** sources: the inline `mcpServers` block in `settings.json` and the project's root `.mcp.json` — the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve. Findings are attributed to the file each server was declared in. A malformed `.mcp.json` is reported as a tool error rather than silently skipped.
+
 ---
 
 ## OWASP mapping
