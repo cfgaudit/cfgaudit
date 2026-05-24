@@ -37,6 +37,9 @@ cfgaudit --format json
 # Output as SARIF 2.1.0 (for GitHub Code Scanning)
 cfgaudit --format sarif > cfgaudit.sarif
 
+# Output as Code Climate JSON (for GitLab Code Quality / merge-request findings)
+cfgaudit --format codeclimate > gl-code-quality.json
+
 # Override the Claude Code version used for rule gating (otherwise detected via `claude --version`)
 cfgaudit --claude-version 2.1.148
 

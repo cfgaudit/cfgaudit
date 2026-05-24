@@ -40,7 +40,7 @@ func main() {
 		}
 	}
 
-	format := flag.String("format", "text", "output format: text, json, sarif")
+	format := flag.String("format", "text", "output format: text, json, sarif, codeclimate")
 	user := flag.Bool("user", false, "also scan ~/.claude/settings.json")
 	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	configPath := flag.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
@@ -117,6 +117,11 @@ func main() {
 	case "sarif":
 		if err := encodeSARIF(os.Stdout, all, cfgauditVersion, rules.All); err != nil {
 			fmt.Fprintf(os.Stderr, "cfgaudit: sarif encode: %v\n", err)
+			os.Exit(2)
+		}
+	case "codeclimate", "codequality":
+		if err := encodeCodeClimate(os.Stdout, all, dir); err != nil {
+			fmt.Fprintf(os.Stderr, "cfgaudit: codeclimate encode: %v\n", err)
 			os.Exit(2)
 		}
 	default:
