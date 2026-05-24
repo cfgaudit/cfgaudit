@@ -88,7 +88,7 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 		}
 		switch d.Name() {
 		case "SKILL.md":
-			content, err := os.ReadFile(path) // #nosec G304 -- path from the user-supplied plugin dir
+			content, err := os.ReadFile(path) // #nosec G304,G122 -- local audit tool reading a user-supplied plugin tree; symlink TOCTOU is not in scope
 			if err != nil {
 				return err
 			}
