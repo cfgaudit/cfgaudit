@@ -16,7 +16,12 @@
       "Bash(sudo *)",
       "Read(.ssh/*)",
       "Read(.aws/*)",
-      "Read(.env*)"
+      "Read(.env*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.p12)",
+      "Read(**/*.pfx)",
+      "Read(**/*.jks)"
     ]
   },
   "enabledMcpjsonServers": ["github", "filesystem-readonly"]

@@ -16,7 +16,12 @@
       "Bash(git push --force*)",
       "Bash(npm publish*)",
       "Read(.env)",
-      "Read(secrets/*)"
+      "Read(secrets/*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.p12)",
+      "Read(**/*.pfx)",
+      "Read(**/*.jks)"
     ]
   },
   "hooks": {
