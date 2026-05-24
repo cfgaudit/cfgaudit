@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cfgaudit/cfgaudit/internal/config"
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/rules"
 )
@@ -377,4 +378,21 @@ func mustScan(t *testing.T, root string) []*rules.Target {
 		t.Fatalf("scanPluginRoot: %v", err)
 	}
 	return ts
+}
+
+func TestWithStrict(t *testing.T) {
+	if got := withStrict(nil, false); got != nil {
+		t.Errorf("nil cfg + no strict should stay nil, got %+v", got)
+	}
+	if got := withStrict(nil, true); got == nil || !got.Strict {
+		t.Errorf("nil cfg + strict should materialise a strict config, got %+v", got)
+	}
+	c := &config.Config{MinSeverity: "warn"}
+	if got := withStrict(c, true); !got.Strict || got.MinSeverity != "warn" {
+		t.Errorf("existing cfg + strict should set Strict and keep other fields, got %+v", got)
+	}
+	c2 := &config.Config{}
+	if got := withStrict(c2, false); got.Strict {
+		t.Errorf("existing cfg + no strict should not set Strict")
+	}
 }

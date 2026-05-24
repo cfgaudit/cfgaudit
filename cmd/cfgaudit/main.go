@@ -30,6 +30,7 @@ func main() {
 	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	configPath := flag.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
 	plugins := flag.String("plugins", "", "also scan a Claude Code plugin/skill package directory (SKILL.md, hooks, MCP servers)")
+	strict := flag.Bool("strict", false, "treat warn findings as errors for the exit code (also: strict: true in .cfgaudit.yml)")
 	showVersion := flag.Bool("version", false, "print cfgaudit version and exit")
 
 	var only, skip ruleSet
@@ -60,6 +61,7 @@ func main() {
 	if cfgPath != "" {
 		fmt.Fprintf(os.Stderr, "cfgaudit: using config %s\n", cfgPath)
 	}
+	cfg = withStrict(cfg, *strict)
 
 	accept := acceptWith(ruleFilter(only, skip), cfg)
 
@@ -134,6 +136,20 @@ func attachPolicy(targets []*rules.Target, cfg *config.Config) {
 			t.PolicyForbidAllow = cfg.Policy.ForbidAllow
 		}
 	}
+}
+
+// withStrict applies the --strict flag: it forces warn→error for the exit code,
+// taking precedence over the config. The flag cannot turn strict off — omit it to
+// defer to the config's `strict:` value. A nil config is materialised when needed.
+func withStrict(cfg *config.Config, strict bool) *config.Config {
+	if !strict {
+		return cfg
+	}
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	cfg.Strict = true
+	return cfg
 }
 
 // acceptWith combines the CLI --only/--skip filter with the config's rule

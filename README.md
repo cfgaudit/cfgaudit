@@ -53,6 +53,9 @@ cfgaudit --config path/to/.cfgaudit.yml
 
 # Also scan a Claude Code plugin/skill package
 cfgaudit --plugins ./my-plugin
+
+# Zero-tolerance CI: make warn findings fail the build too
+cfgaudit --strict
 ```
 
 **Scope-aware findings**
@@ -67,8 +70,8 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 
 | Code | Meaning |
 |------|---------|
-| `0` | No findings, or only `warn`/`info` |
-| `1` | At least one `error`-severity finding |
+| `0` | No findings, or only `warn`/`info` (without `--strict`) |
+| `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
 | `2` | Tool error (file not found, parse error) |
 
 **Suppressing a finding**
