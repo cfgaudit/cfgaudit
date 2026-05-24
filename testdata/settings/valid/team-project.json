@@ -21,7 +21,12 @@
       "Read(**/*.key)",
       "Read(**/*.p12)",
       "Read(**/*.pfx)",
-      "Read(**/*.jks)"
+      "Read(**/*.jks)",
+      "Read(**/.aws/credentials)",
+      "Read(**/.aws/config)",
+      "Read(**/.config/gcloud/**)",
+      "Read(**/application_default_credentials.json)",
+      "Read(**/.azure/**)"
     ]
   },
   "hooks": {

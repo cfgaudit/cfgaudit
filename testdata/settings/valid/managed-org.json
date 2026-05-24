@@ -21,7 +21,10 @@
       "Read(**/*.key)",
       "Read(**/*.p12)",
       "Read(**/*.pfx)",
-      "Read(**/*.jks)"
+      "Read(**/*.jks)",
+      "Read(**/.config/gcloud/**)",
+      "Read(**/application_default_credentials.json)",
+      "Read(**/.azure/**)"
     ]
   },
   "enabledMcpjsonServers": ["github", "filesystem-readonly"]
