@@ -2,30 +2,25 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"strings"
 
 	cfgaudit "github.com/cfgaudit/cfgaudit"
 )
 
-// runExplain implements `cfgaudit explain <RULE-ID>`: it renders the rule's
-// embedded documentation in a terminal-friendly form. Returns the exit code.
-func runExplain(w io.Writer, args []string) int {
+// explainOutput implements `cfgaudit explain <RULE-ID>`: it returns the rendered
+// rule documentation (or an error message) and the process exit code.
+func explainOutput(args []string) (string, int) {
 	if len(args) == 0 {
-		fmt.Fprintln(w, "usage: cfgaudit explain <RULE-ID>   (e.g. cfgaudit explain CFG001)")
-		fmt.Fprintln(w, "known rules: "+strings.Join(cfgaudit.RuleIDs(), ", "))
-		return 2
+		return "usage: cfgaudit explain <RULE-ID>   (e.g. cfgaudit explain CFG001)\n" +
+			"known rules: " + strings.Join(cfgaudit.RuleIDs(), ", ") + "\n", 2
 	}
 	id := strings.ToUpper(strings.TrimSpace(args[0]))
 	doc, ok := cfgaudit.RuleDoc(id)
 	if !ok {
-		fmt.Fprintf(w, "cfgaudit: unknown rule %q\n", id)
-		fmt.Fprintln(w, "known rules: "+strings.Join(cfgaudit.RuleIDs(), ", "))
-		return 2
+		return fmt.Sprintf("cfgaudit: unknown rule %q\nknown rules: %s\n", id, strings.Join(cfgaudit.RuleIDs(), ", ")), 2
 	}
-	fmt.Fprint(w, renderRuleDoc(doc))
-	fmt.Fprintf(w, "\nDocs: https://github.com/cfgaudit/cfgaudit/blob/main/docs/rules/%s.md\n", id)
-	return 0
+	return renderRuleDoc(doc) +
+		fmt.Sprintf("\nDocs: https://github.com/cfgaudit/cfgaudit/blob/main/docs/rules/%s.md\n", id), 0
 }
 
 // renderRuleDoc converts the rule Markdown to plain terminal text: it drops
@@ -42,8 +37,7 @@ func renderRuleDoc(md string) string {
 			continue
 		}
 		if !inFence {
-			line = strings.TrimLeft(line, "#")
-			line = strings.TrimPrefix(line, " ")
+			line = strings.TrimPrefix(strings.TrimLeft(line, "#"), " ")
 			line = strings.ReplaceAll(line, "**", "")
 		}
 		b.WriteString(line + "\n")

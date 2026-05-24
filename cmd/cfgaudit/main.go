@@ -28,7 +28,9 @@ func main() {
 	// Subcommands are dispatched before flag parsing so their args (e.g. a rule
 	// ID) aren't mistaken for the scan directory.
 	if len(os.Args) >= 2 && os.Args[1] == "explain" {
-		os.Exit(runExplain(os.Stdout, os.Args[2:]))
+		out, code := explainOutput(os.Args[2:])
+		fmt.Print(out)
+		os.Exit(code)
 	}
 
 	format := flag.String("format", "text", "output format: text, json, sarif")

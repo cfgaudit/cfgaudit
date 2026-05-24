@@ -1,17 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 )
 
-func TestRunExplain_KnownRule(t *testing.T) {
-	var b bytes.Buffer
-	if code := runExplain(&b, []string{"CFG001"}); code != 0 {
+func TestExplain_KnownRule(t *testing.T) {
+	out, code := explainOutput([]string{"CFG001"})
+	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
-	out := b.String()
 	if !strings.Contains(out, "CFG001") {
 		t.Errorf("expected output to mention CFG001, got: %s", out)
 	}
@@ -23,30 +21,29 @@ func TestRunExplain_KnownRule(t *testing.T) {
 	}
 }
 
-func TestRunExplain_CaseInsensitive(t *testing.T) {
-	var b bytes.Buffer
-	if code := runExplain(&b, []string{"cfg010"}); code != 0 {
+func TestExplain_CaseInsensitive(t *testing.T) {
+	if _, code := explainOutput([]string{"cfg010"}); code != 0 {
 		t.Errorf("expected lowercase id to resolve, got exit %d", code)
 	}
 }
 
-func TestRunExplain_UnknownRule(t *testing.T) {
-	var b bytes.Buffer
-	if code := runExplain(&b, []string{"CFG999"}); code != 2 {
+func TestExplain_UnknownRule(t *testing.T) {
+	out, code := explainOutput([]string{"CFG999"})
+	if code != 2 {
 		t.Errorf("expected exit 2 for unknown rule, got %d", code)
 	}
-	if !strings.Contains(b.String(), "unknown rule") {
-		t.Errorf("expected 'unknown rule' message, got: %s", b.String())
+	if !strings.Contains(out, "unknown rule") {
+		t.Errorf("expected 'unknown rule' message, got: %s", out)
 	}
 }
 
-func TestRunExplain_NoArg(t *testing.T) {
-	var b bytes.Buffer
-	if code := runExplain(&b, nil); code != 2 {
+func TestExplain_NoArg(t *testing.T) {
+	out, code := explainOutput(nil)
+	if code != 2 {
 		t.Errorf("expected exit 2 with no arg, got %d", code)
 	}
-	if !strings.Contains(b.String(), "usage") {
-		t.Errorf("expected usage message, got: %s", b.String())
+	if !strings.Contains(out, "usage") {
+		t.Errorf("expected usage message, got: %s", out)
 	}
 }
 
