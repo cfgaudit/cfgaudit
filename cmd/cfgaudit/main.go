@@ -29,6 +29,7 @@ func main() {
 	user := flag.Bool("user", false, "also scan ~/.claude/settings.json")
 	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	configPath := flag.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
+	plugins := flag.String("plugins", "", "also scan a Claude Code plugin/skill package directory (SKILL.md, hooks, MCP servers)")
 	showVersion := flag.Bool("version", false, "print cfgaudit version and exit")
 
 	var only, skip ruleSet
@@ -70,6 +71,13 @@ func main() {
 		os.Exit(2)
 	}
 	attachPolicy(targets, cfg)
+
+	pluginTargets, err := buildPluginTargets(dir, *plugins, *user)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cfgaudit: %v\n", err)
+		os.Exit(2)
+	}
+	targets = append(targets, pluginTargets...)
 
 	var all []finding.Finding
 	for _, target := range targets {

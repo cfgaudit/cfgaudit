@@ -50,6 +50,9 @@ cfgaudit --skip CFG006,CFG009
 
 # Use an explicit config file (otherwise .cfgaudit.yml is auto-discovered)
 cfgaudit --config path/to/.cfgaudit.yml
+
+# Also scan a Claude Code plugin/skill package
+cfgaudit --plugins ./my-plugin
 ```
 
 **Scope-aware findings**
@@ -165,6 +168,18 @@ Claude Code reads `CLAUDE.md` as trusted system-context instructions every sessi
 |----|----------|-------------|-------|
 | [CFG024](docs/rules/CFG024.md) | error | `CLAUDE.md` contains hidden Unicode control characters (Tags block, zero-width, BiDi/Trojan Source) — prompt injection / ASCII smuggling | LLM01 |
 | [CFG026](docs/rules/CFG026.md) | error/warn | `CLAUDE.md` contains instruction-bypass phrases (override / persona hijack / authority impersonation → error; permissive fictional framing → warn) | LLM01 |
+
+### Plugin & skill packages
+
+Installing a Claude Code plugin is a supply-chain trust decision. With `--plugins <dir>` (and auto-discovered when the scanned project bundles a `.claude-plugin/`, or `~/.claude/plugins/` under `--user`), cfgaudit looks **inside** the package and runs the existing rules against its bundled artifacts:
+
+| Artifact | Rules applied |
+|----------|---------------|
+| `SKILL.md` | CLAUDE.md content rules — CFG024 (hidden Unicode), CFG026 (instruction-bypass) |
+| `hooks/hooks.json` | command-content rules — CFG008, CFG009, CFG014, CFG015, CFG027, CFG028 |
+| `plugin.json` `mcpServers` | MCP rules — CFG010, CFG011, CFG017–CFG021 |
+
+Findings are attributed to the in-package file. Bundled binaries / arbitrary scripts are **not** content-scanned (that is general SAST, outside cfgaudit's config-audit scope).
 
 ---
 
