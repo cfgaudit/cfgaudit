@@ -56,6 +56,9 @@ cfgaudit --plugins ./my-plugin
 
 # Zero-tolerance CI: make warn findings fail the build too
 cfgaudit --strict
+
+# Explain a rule in the terminal (renders its docs)
+cfgaudit explain CFG001
 ```
 
 **Scope-aware findings**
