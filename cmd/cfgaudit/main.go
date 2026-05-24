@@ -27,10 +27,17 @@ var cfgauditVersion = "dev"
 func main() {
 	// Subcommands are dispatched before flag parsing so their args (e.g. a rule
 	// ID) aren't mistaken for the scan directory.
-	if len(os.Args) >= 2 && os.Args[1] == "explain" {
-		out, code := explainOutput(os.Args[2:])
-		fmt.Print(out)
-		os.Exit(code)
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "explain":
+			out, code := explainOutput(os.Args[2:])
+			fmt.Print(out)
+			os.Exit(code)
+		case "list":
+			out, code := listOutput(os.Args[2:])
+			fmt.Print(out)
+			os.Exit(code)
+		}
 	}
 
 	format := flag.String("format", "text", "output format: text, json, sarif")

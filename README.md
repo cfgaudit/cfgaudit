@@ -59,6 +59,11 @@ cfgaudit --strict
 
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
+
+# List all rules (filter by OWASP, or output JSON)
+cfgaudit list
+cfgaudit list --owasp LLM06
+cfgaudit list --format json
 ```
 
 **Scope-aware findings**
