@@ -175,6 +175,7 @@ Claude Code reads `CLAUDE.md` as trusted system-context instructions every sessi
 | [CFG033](docs/rules/CFG033.md) | error | `CLAUDE.md` contains a markdown image with an empty/placeholder query param (`![](https://x?d=)`) — data-exfiltration sink | LLM02 |
 | [CFG034](docs/rules/CFG034.md) | warn | `CLAUDE.md` contains Guidance/template role delimiters (`{{#system~}}` …) — role-injection markup | LLM01 |
 | [CFG035](docs/rules/CFG035.md) | error | `CLAUDE.md` instructs Claude to configure or trust an MCP server (`claude mcp add` …) — installs an attacker server | LLM06 |
+| [CFG036](docs/rules/CFG036.md) | error/warn | `CLAUDE.md` embeds shell commands for auto-execution/exfiltration (cmd-subst on secret paths, auto-exec + `curl https://…`) | LLM02 |
 
 ### Plugin & skill packages
 
@@ -199,7 +200,7 @@ cfgaudit is a **static auditor of Claude Code configuration files**. It maps eac
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034 |
-| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033 |
+| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014 |
 | LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035 |
 
