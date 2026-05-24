@@ -57,6 +57,9 @@ cfgaudit --plugins ./my-plugin
 # Zero-tolerance CI: make warn findings fail the build too
 cfgaudit --strict
 
+# Deeper shell analysis of hook commands (CFG045, needs the shellcheck binary)
+cfgaudit --shellcheck
+
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 
@@ -109,6 +112,9 @@ strict: false
 
 # Always exit 0 on a successful run (advisory mode for non-blocking CI)
 no-exit-codes: false
+
+# Run shellcheck on hook/helper commands (CFG045; needs the shellcheck binary)
+shellcheck: false
 
 # Path globs (relative to the scanned dir) whose findings are excluded.
 # Supports *, ** and a trailing / for directory prefixes.
@@ -163,6 +169,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG037](docs/rules/CFG037.md) | error | command reads or copies SSH private keys (`~/.ssh/id_rsa`, `id_ed25519`, …) — scans hooks and helpers | LLM02 |
 | [CFG038](docs/rules/CFG038.md) | error | command dumps environment variables to the network (`env`/`printenv` → `curl`/`nc`) — exfiltrates all secrets | LLM02 |
 | [CFG039](docs/rules/CFG039.md) | warn/error | command runs a recursive force-delete (`rm -rf`) — error when the target is broad (`~`, `/`, `..`, `$HOME`, `*`) | LLM06 |
+| [CFG045](docs/rules/CFG045.md) | error/warn/info | ShellCheck analysis of hook/helper commands (opt-in `--shellcheck`; SC codes in the message) | LLM06 |
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`
 
@@ -219,7 +226,7 @@ cfgaudit is a **static auditor of Claude Code configuration files**. It maps eac
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034 |
-| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044 |
+| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG045 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014 |
 | LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040 |
 

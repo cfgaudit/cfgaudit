@@ -41,6 +41,11 @@ type Target struct {
 	PolicyRequireDeny []string
 	PolicyForbidAllow []string
 
+	// ShellCheck enables CFG045 (running the shellcheck binary over command
+	// sites). Set by the CLI when --shellcheck / config requests it and the
+	// binary is available.
+	ShellCheck bool
+
 	IgnoreFile  string
 	IgnoreLines []parser.IgnoreLine
 }
