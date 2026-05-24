@@ -46,6 +46,7 @@ func main() {
 	configPath := flag.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
 	plugins := flag.String("plugins", "", "also scan a Claude Code plugin/skill package directory (SKILL.md, hooks, MCP servers)")
 	strict := flag.Bool("strict", false, "treat warn findings as errors for the exit code (also: strict: true in .cfgaudit.yml)")
+	shellcheck := flag.Bool("shellcheck", false, "run shellcheck on hook/helper commands (requires the shellcheck binary; also: shellcheck: true in .cfgaudit.yml)")
 	showVersion := flag.Bool("version", false, "print cfgaudit version and exit")
 
 	var only, skip ruleSet
@@ -96,6 +97,12 @@ func main() {
 	}
 	targets = append(targets, pluginTargets...)
 
+	if shellCheckEnabled(*shellcheck || cfg.ShellCheckEnabled()) {
+		for _, t := range targets {
+			t.ShellCheck = true
+		}
+	}
+
 	var all []finding.Finding
 	for _, target := range targets {
 		all = append(all, rules.Run(target, detected, accept)...)
@@ -136,6 +143,20 @@ func loadConfig(explicit, dir string) (*config.Config, string, error) {
 		return c, explicit, nil
 	}
 	return config.Discover(dir)
+}
+
+// shellCheckEnabled reports whether ShellCheck analysis should run: requested
+// (flag or config) and the binary is available. Warns to stderr when requested
+// but unavailable, so the scan continues gracefully without shell analysis.
+func shellCheckEnabled(requested bool) bool {
+	if !requested {
+		return false
+	}
+	if !rules.ShellcheckAvailable() {
+		fmt.Fprintln(os.Stderr, "cfgaudit: --shellcheck requested but the shellcheck binary is not on PATH; skipping shell analysis")
+		return false
+	}
+	return true
 }
 
 // attachPolicy wires the org policy from .cfgaudit.yml onto the project-scope

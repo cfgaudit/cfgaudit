@@ -27,6 +27,13 @@ type Config struct {
 	NoExitCodes  bool                  `yaml:"no-exit-codes"`
 	ExcludePaths []string              `yaml:"exclude-paths"`
 	Policy       Policy                `yaml:"policy"`
+	ShellCheck   bool                  `yaml:"shellcheck"`
+}
+
+// ShellCheckEnabled reports whether shellcheck analysis is requested via config.
+// Safe on a nil *Config.
+func (c *Config) ShellCheckEnabled() bool {
+	return c != nil && c.ShellCheck
 }
 
 // Policy is the organisation's custom permission policy (evaluated by CFG025):
