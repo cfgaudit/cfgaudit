@@ -75,3 +75,13 @@ func TestCFG023_NoPermissions_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding without permissions, got %+v", f)
 	}
 }
+
+func TestCFG023_WindowsLOLBinsAndShells(t *testing.T) {
+	for _, entry := range []string{"Bash(certutil *)", "Bash(bitsadmin *)", "Bash(mshta *)", "Bash(regsvr32 *)", "Bash(rundll32 *)", "Bash(powershell *)", "Bash(pwsh *)", "Bash(cmd *)"} {
+		json := `{"permissions":{"allow":["` + entry + `"]}}`
+		f := CFG023.Check(settingsTarget(t, json))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for %s, got %+v", entry, f)
+		}
+	}
+}

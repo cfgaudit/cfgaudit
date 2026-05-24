@@ -97,3 +97,13 @@ func TestCFG009_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when settings absent, got %d", len(f))
 	}
 }
+
+func TestCFG009_CmdPercentVar(t *testing.T) {
+	f := CFG009.Check(hookTarget(t, "echo %USERPROFILE% and %PATH%"))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for cmd %%VAR%%, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "%USERPROFILE%") {
+		t.Errorf("expected message to name the cmd var, got: %s", f[0].Message)
+	}
+}

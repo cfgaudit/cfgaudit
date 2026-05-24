@@ -19,6 +19,9 @@ func (r *cfg009) ID() string { return "CFG009" }
 // Command substitution ($(...)) and positional/special params ($1, $@, $?) are deliberately not matched.
 var hookVarRe = regexp.MustCompile(`\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))`)
 
+// cmdVarRe matches a Windows cmd.exe variable reference: %NAME%.
+var cmdVarRe = regexp.MustCompile(`%([A-Za-z_][A-Za-z0-9_]*)%`)
+
 func (r *cfg009) Check(t *Target) []finding.Finding {
 	if t == nil || t.Settings == nil {
 		return nil
@@ -45,23 +48,23 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 }
 
 func extractShellVars(cmd string) []string {
-	matches := hookVarRe.FindAllStringSubmatch(cmd, -1)
-	if len(matches) == 0 {
-		return nil
-	}
 	seen := map[string]bool{}
 	var out []string
-	for _, m := range matches {
+	addKey := func(key string) {
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, key)
+		}
+	}
+	for _, m := range hookVarRe.FindAllStringSubmatch(cmd, -1) {
 		name := m[1]
 		if name == "" {
 			name = m[2]
 		}
-		key := "$" + name
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		out = append(out, key)
+		addKey("$" + name)
+	}
+	for _, m := range cmdVarRe.FindAllStringSubmatch(cmd, -1) {
+		addKey("%" + m[1] + "%")
 	}
 	return out
 }

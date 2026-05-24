@@ -25,6 +25,8 @@ var reverseShellPatterns = []struct {
 	{regexp.MustCompile(`\bbash\s+-i\b[^|;&\n]{0,40}[>&]`), "interactive bash redirected"},
 	{regexp.MustCompile(`\bmkfifo\s+/tmp/`), "mkfifo staging in /tmp"},
 	{regexp.MustCompile(`\bsocat\b[^|;&\n]{0,80}\bexec\b`), "socat exec bridge"},
+	{regexp.MustCompile(`(?i)New-Object\s+(?:System\.)?Net\.Sockets\.TCPClient`), "PowerShell TCPClient reverse shell"},
+	{regexp.MustCompile(`(?i)(?:^|[\s"'` + "`" + `(])-e[a-z]*\s+[A-Za-z0-9+/=]{24,}`), "PowerShell encoded command (-EncodedCommand)"},
 }
 
 func (r *cfg008) Check(t *Target) []finding.Finding {
