@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.p12)",
+      "Read(**/*.pfx)",
+      "Read(**/*.jks)",
+      "Read(**/.aws/credentials)",
+      "Read(**/application_default_credentials.json)",
+      "Read(**/.azure/**)"
+    ]
+  }
+}
