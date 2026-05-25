@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cfgaudit . || true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | grep -qE '(settings\\.json|CLAUDE.*\\.md|\\.mcp\\.json|\\.claude/)' && cfgaudit . || true"
+          }
+        ]
+      }
+    ]
+  }
+}

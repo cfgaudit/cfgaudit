@@ -1,0 +1,41 @@
+#!/bin/sh
+# cfgaudit Claude Code plugin wrapper.
+#
+# The plugin prepends this bin/ directory to PATH, so a hook or skill calling
+# `cfgaudit` lands here. Resolve to a real cfgaudit, in order of preference:
+#   1. a binary bundled next to this script (e.g. fetched by a setup step),
+#   2. an installed cfgaudit already on PATH (excluding this wrapper),
+#   3. `go run` the published module,
+# otherwise fail with a clear install hint. No platform binaries are committed.
+set -eu
+
+self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+# 1) bundled binary alongside this wrapper
+for cand in "$self_dir/cfgaudit-bin" "$self_dir/../dist/cfgaudit"; do
+  if [ -x "$cand" ]; then
+    exec "$cand" "$@"
+  fi
+done
+
+# 2) a real cfgaudit elsewhere on PATH (skip this wrapper's own directory to
+#    avoid re-invoking ourselves)
+IFS=:
+for d in $PATH; do
+  [ "$d" = "$self_dir" ] && continue
+  if [ -x "$d/cfgaudit" ]; then
+    exec "$d/cfgaudit" "$@"
+  fi
+done
+unset IFS
+
+# 3) Go toolchain fallback
+if command -v go >/dev/null 2>&1; then
+  exec go run github.com/cfgaudit/cfgaudit/cmd/cfgaudit@latest "$@"
+fi
+
+echo "cfgaudit: not found. Install it with one of:" >&2
+echo "  brew install cfgaudit/tap/cfgaudit" >&2
+echo "  go install github.com/cfgaudit/cfgaudit/cmd/cfgaudit@latest" >&2
+echo "  (or download a binary from https://github.com/cfgaudit/cfgaudit/releases)" >&2
+exit 1

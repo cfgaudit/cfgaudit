@@ -1,0 +1,17 @@
+{
+  "name": "cfgaudit",
+  "metadata": {
+    "description": "cfgaudit — security scanner for AI-agent configuration files (Claude Code, Cursor, Windsurf, …)."
+  },
+  "owner": {
+    "name": "cfgaudit",
+    "url": "https://github.com/cfgaudit/cfgaudit"
+  },
+  "plugins": [
+    {
+      "name": "cfgaudit",
+      "source": "./",
+      "description": "Security scanner for AI-agent configuration files (Claude Code, Cursor, Windsurf, …)."
+    }
+  ]
+}
