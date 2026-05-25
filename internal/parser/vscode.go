@@ -48,6 +48,46 @@ func ParseVSCodeTasks(path string) (*VSCodeTasks, error) {
 	return &v, nil
 }
 
+// VSCodeSettings is a .vscode/settings.json file, read by VS Code and its forks
+// (Cursor, Windsurf). VS Code settings use flat dotted string keys (e.g.
+// "chat.tools.autoApprove"), so the document is kept as a raw key→value map and
+// queried by exact key rather than decoded into a struct.
+type VSCodeSettings struct {
+	Raw map[string]json.RawMessage
+}
+
+// BoolField returns the value of a boolean setting and whether it was present as
+// a JSON boolean. A missing key or a non-boolean value yields (false, false), so
+// callers can distinguish "explicitly true" from "absent / wrong type".
+func (s *VSCodeSettings) BoolField(key string) (val, present bool) {
+	if s == nil {
+		return false, false
+	}
+	raw, ok := s.Raw[key]
+	if !ok {
+		return false, false
+	}
+	var b bool
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return false, false
+	}
+	return b, true
+}
+
+// ParseVSCodeSettings reads and decodes a .vscode/settings.json file. Like
+// tasks.json it is JSONC, so comments and trailing commas are stripped first.
+func ParseVSCodeSettings(path string) (*VSCodeSettings, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(stripJSONC(data), &raw); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return &VSCodeSettings{Raw: raw}, nil
+}
+
 // stripJSONC removes // line comments, /* */ block comments, and trailing commas
 // from JSON-with-comments (the format VS Code uses for tasks.json / settings.json)
 // so the result decodes with encoding/json. String literals are left untouched.

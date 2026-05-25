@@ -383,7 +383,36 @@ func vscodeTargets(dir string) ([]*rules.Target, error) {
 			VSCodeTasksFile: tasksFile,
 		})
 	}
+
+	settings, settingsFile, err := loadVSCodeSettings(dir)
+	if err != nil {
+		return nil, err
+	}
+	if settings != nil {
+		targets = append(targets, &rules.Target{
+			Scope:              finding.ScopeProject,
+			VSCodeSettings:     settings,
+			VSCodeSettingsFile: settingsFile,
+		})
+	}
 	return targets, nil
+}
+
+// loadVSCodeSettings parses dir/.vscode/settings.json. A missing or empty file
+// yields (nil, "", nil); a malformed file is reported as an error.
+func loadVSCodeSettings(dir string) (*parser.VSCodeSettings, string, error) {
+	path := filepath.Join(dir, ".vscode", "settings.json")
+	v, err := parser.ParseVSCodeSettings(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	if v == nil || len(v.Raw) == 0 {
+		return nil, "", nil
+	}
+	return v, path, nil
 }
 
 // loadVSCodeTasks parses dir/.vscode/tasks.json. A missing file yields

@@ -266,6 +266,34 @@ func TestBuildTargets_DiscoversVSCodeTasks(t *testing.T) {
 	}
 }
 
+func TestBuildTargets_DiscoversVSCodeSettings(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".vscode", "settings.json"), `{
+  // JSONC
+  "editor.tabSize": 2,
+  "chat.tools.global.autoApprove": true,
+}`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var found *rules.Target
+	for _, tg := range targets {
+		if tg.VSCodeSettings != nil {
+			found = tg
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a target carrying VSCodeSettings")
+	}
+	if found.VSCodeSettingsFile != filepath.Join(dir, ".vscode", "settings.json") {
+		t.Errorf("unexpected settings file: %q", found.VSCodeSettingsFile)
+	}
+	if v, ok := found.VSCodeSettings.BoolField("chat.tools.global.autoApprove"); !ok || !v {
+		t.Errorf("expected autoApprove true on discovered settings, got (%v,%v)", v, ok)
+	}
+}
+
 func TestBuildTargets_DiscoversAgentMCPConfigs(t *testing.T) {
 	dir := t.TempDir()
 	// Cursor (mcpServers), VS Code (top-level "servers" variant), Cline.

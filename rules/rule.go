@@ -53,6 +53,13 @@ type Target struct {
 	VSCodeTasks     *parser.VSCodeTasks
 	VSCodeTasksFile string
 
+	// VSCodeSettings holds a parsed .vscode/settings.json (VS Code / Cursor /
+	// Windsurf workspace settings). A committed setting that blanket-auto-approves
+	// agent tools removes the human-in-the-loop (CFG048). Nil when absent;
+	// VSCodeSettingsFile is its path, used to attribute findings.
+	VSCodeSettings     *parser.VSCodeSettings
+	VSCodeSettingsFile string
+
 	// Policy*, when set, carry the organisation's custom permission policy from
 	// .cfgaudit.yml (evaluated by CFG025). RequireDeny lists commands that must be
 	// covered by permissions.deny; ForbidAllow lists commands that must not be

@@ -94,3 +94,28 @@ func TestParseVSCodeTasks_Malformed(t *testing.T) {
 		t.Error("expected error on malformed tasks.json")
 	}
 }
+
+func TestParseVSCodeSettings_DottedKeysAndBoolField(t *testing.T) {
+	src := `{
+  // workspace settings
+  "editor.tabSize": 2,
+  "chat.tools.global.autoApprove": true,
+  "chat.tools.autoApprove": false,
+}`
+	s, err := ParseVSCodeSettings(writeTempNamed(t, "settings.json", src))
+	if err != nil {
+		t.Fatalf("ParseVSCodeSettings: %v", err)
+	}
+	if v, ok := s.BoolField("chat.tools.global.autoApprove"); !ok || !v {
+		t.Errorf("expected global autoApprove true, got (%v,%v)", v, ok)
+	}
+	if v, ok := s.BoolField("chat.tools.autoApprove"); !ok || v {
+		t.Errorf("expected autoApprove present and false, got (%v,%v)", v, ok)
+	}
+	if _, ok := s.BoolField("editor.tabSize"); ok {
+		t.Error("expected non-boolean key to report present=false")
+	}
+	if _, ok := s.BoolField("missing.key"); ok {
+		t.Error("expected missing key to report present=false")
+	}
+}
