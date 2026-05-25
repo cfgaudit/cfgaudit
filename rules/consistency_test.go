@@ -4,17 +4,22 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
 
 var ruleIDPattern = regexp.MustCompile(`^CFG\d{3}$`)
 var readmeRuleIDRe = regexp.MustCompile(`\bCFG\d{3}\b`)
+var llmRe = regexp.MustCompile(`LLM\d{2}`)
+var sevTokenRe = regexp.MustCompile(`(?i)\b(error|warn|info)\b`)
+var findingSevRe = regexp.MustCompile(`finding\.(Error|Warn|Info)\b`)
 
 func TestRuleConsistency(t *testing.T) {
 	checkNoDuplicateIDs(t)
 
 	readme := loadFile(t, filepath.Join("..", "README.md"))
+	codeSev := codeSeverities(t)
 
 	for _, r := range All {
 		r := r
@@ -27,10 +32,134 @@ func TestRuleConsistency(t *testing.T) {
 
 			checkDocFile(t, id)
 			checkREADMEMention(t, id, readme)
+			checkSeverityAndOWASP(t, id, readme, codeSev[id])
 		})
 	}
 
 	checkNoPhantomREADMEIDs(t, readme)
+}
+
+// checkSeverityAndOWASP guards against doc/README drift the existence checks miss:
+//   - the doc-header severity must match the README rule-table severity, and
+//   - every severity the rule actually emits in code must be documented in one of
+//     them (catches e.g. a warn→error scope escalation that the docs omit), and
+//   - the OWASP risk in the doc header must match the README rule-table row.
+func checkSeverityAndOWASP(t *testing.T, id, readme string, codeSev map[string]bool) {
+	t.Helper()
+	doc, err := os.ReadFile(filepath.Join("..", "docs", "rules", id+".md")) //nolint:gosec // G304: known-safe local test path
+	if err != nil {
+		return // checkDocFile already reports a missing doc
+	}
+
+	row := readmeRuleRow(readme, id)
+	if row == "" {
+		t.Errorf("%s: no README rule-table row found", id)
+		return
+	}
+	cells := strings.Split(row, "|")
+	var readmeSev map[string]bool
+	if len(cells) > 2 {
+		readmeSev = sevSet(cells[2])
+	}
+	docSev := sevSet(severityHeader(string(doc)))
+
+	if !eqSevSet(docSev, readmeSev) {
+		t.Errorf("%s: severity mismatch — doc header %v vs README table %v", id, sevList(docSev), sevList(readmeSev))
+	}
+	documented := func(s string) bool { return docSev[s] || readmeSev[s] }
+	for s := range codeSev {
+		if !documented(s) {
+			t.Errorf("%s: code emits %q severity but neither the doc header nor the README table mentions it", id, s)
+		}
+	}
+
+	if docLLM, readmeLLM := llmRe.FindString(string(doc)), llmRe.FindString(row); docLLM != readmeLLM {
+		t.Errorf("%s: OWASP mismatch — doc %q vs README %q", id, docLLM, readmeLLM)
+	}
+}
+
+// codeSeverities scans the rule source files for the finding.Error/Warn/Info
+// literals each rule emits, keyed by rule ID. A rule that builds its severity
+// indirectly may be under-counted, so this is only used to assert that emitted
+// severities are documented — never the reverse.
+func codeSeverities(t *testing.T) map[string]map[string]bool {
+	t.Helper()
+	files, err := filepath.Glob("cfg*.go")
+	if err != nil {
+		t.Fatalf("glob rule sources: %v", err)
+	}
+	idRe := regexp.MustCompile(`return "(CFG\d{3})"`)
+	out := map[string]map[string]bool{}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f) //nolint:gosec // G304: globbed local test path
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		src := string(b)
+		m := idRe.FindStringSubmatch(src)
+		if m == nil {
+			continue
+		}
+		sev := map[string]bool{}
+		for _, s := range findingSevRe.FindAllStringSubmatch(src, -1) {
+			sev[strings.ToLower(s[1])] = true
+		}
+		out[m[1]] = sev
+	}
+	return out
+}
+
+// severityHeader returns the text after "**Severity:**" on the doc's header line.
+func severityHeader(doc string) string {
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.HasPrefix(line, "**Severity:**") {
+			return strings.TrimPrefix(line, "**Severity:**")
+		}
+	}
+	return ""
+}
+
+func sevSet(s string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range sevTokenRe.FindAllStringSubmatch(s, -1) {
+		out[strings.ToLower(m[1])] = true
+	}
+	return out
+}
+
+func eqSevSet(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
+}
+
+func sevList(s map[string]bool) []string {
+	out := make([]string, 0, len(s))
+	for k := range s {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// readmeRuleRow returns the README rule-table row that links to the rule's doc.
+func readmeRuleRow(readme, id string) string {
+	anchor := "](docs/rules/" + id + ".md)"
+	for _, line := range strings.Split(readme, "\n") {
+		if strings.Contains(line, anchor) && strings.HasPrefix(strings.TrimSpace(line), "|") {
+			return line
+		}
+	}
+	return ""
 }
 
 func checkNoDuplicateIDs(t *testing.T) {
