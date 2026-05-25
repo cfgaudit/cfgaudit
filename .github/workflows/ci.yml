@@ -92,12 +92,15 @@ jobs:
         with:
           persist-credentials: false
       # Run the composite action from this checkout against the repo itself.
+      # Pin to :latest, not the action's default image tag — that default points
+      # at the next release, whose image isn't built until the tag is pushed.
       - id: scan
         uses: ./
         with:
           format: sarif
           output: cfgaudit.sarif
           fail-on: never
+          image: ghcr.io/cfgaudit/cfgaudit:latest
       - name: Validate the action produced valid SARIF
         shell: bash
         env:
