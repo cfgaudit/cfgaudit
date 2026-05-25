@@ -1,11 +1,22 @@
 package rules
 
 import (
+	"path/filepath"
 	"sort"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
+
+// instructionName returns the base name of the loaded instruction file
+// (CLAUDE.md, .cursorrules, AGENTS.md, …) for use in finding messages, or a
+// generic fallback when unset.
+func (t *Target) instructionName() string {
+	if t != nil && t.InstructionFile != "" {
+		return filepath.Base(t.InstructionFile)
+	}
+	return "instruction file"
+}
 
 // Target is the parsed representation of a project's AI-agent configuration.
 // Fields are nil/empty when the corresponding file is absent.
@@ -27,12 +38,13 @@ type Target struct {
 	ProjectMCP     map[string]parser.MCPServer
 	ProjectMCPFile string
 
-	// ClaudeMD carries the raw text and path of a CLAUDE.md loaded for this scope
-	// (project <dir>/CLAUDE.md, or user ~/.claude/CLAUDE.md with --user). Claude Code
-	// reads these as trusted system-context instructions every session, so they are
-	// a prompt-injection target. Both are empty when no CLAUDE.md is present.
-	ClaudeMDFile    string
-	ClaudeMDContent string
+	// Instruction* carry the raw text and path of an agent instruction file loaded
+	// for this scope — Claude Code's CLAUDE.md, or another agent's equivalent
+	// (.cursorrules, .windsurfrules, AGENTS.md, .github/copilot-instructions.md).
+	// These are read as trusted system context, so they are a prompt-injection
+	// target. Both are empty when no instruction file is present.
+	InstructionFile    string
+	InstructionContent string
 
 	// Policy*, when set, carry the organisation's custom permission policy from
 	// .cfgaudit.yml (evaluated by CFG025). RequireDeny lists commands that must be

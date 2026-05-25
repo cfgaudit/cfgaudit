@@ -9,9 +9,9 @@ import (
 
 func claudeMDTarget(content string) *Target {
 	return &Target{
-		Scope:           finding.ScopeProject,
-		ClaudeMDFile:    "CLAUDE.md",
-		ClaudeMDContent: content,
+		Scope:              finding.ScopeProject,
+		InstructionFile:    "CLAUDE.md",
+		InstructionContent: content,
 	}
 }
 
@@ -76,5 +76,21 @@ func TestCFG024_MessageNamesCodepoint(t *testing.T) {
 func TestCFG024_NoClaudeMD_NoFinding(t *testing.T) {
 	if f := CFG024.Check(&Target{}); len(f) != 0 {
 		t.Errorf("expected no finding when no CLAUDE.md, got %+v", f)
+	}
+}
+
+// A non-CLAUDE.md instruction file (other agents) is attributed to its own name.
+func TestCFG024_AttributesNonClaudeFile(t *testing.T) {
+	tg := &Target{
+		Scope:              finding.ScopeProject,
+		InstructionFile:    ".cursorrules",
+		InstructionContent: "x" + string(rune(0x202E)) + "y",
+	}
+	f := CFG024.Check(tg)
+	if len(f) != 1 || f[0].File != ".cursorrules" {
+		t.Fatalf("expected finding attributed to .cursorrules, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, ".cursorrules") || strings.Contains(f[0].Message, "CLAUDE.md") {
+		t.Errorf("expected message to name .cursorrules and not CLAUDE.md, got %q", f[0].Message)
 	}
 }

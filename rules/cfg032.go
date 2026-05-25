@@ -62,20 +62,20 @@ var (
 // Claude's tokenizer but a strong adversarial-authorship signal). Code-fenced
 // matches are still reported.
 func (r *cfg032) Check(t *Target) []finding.Finding {
-	if t == nil || t.ClaudeMDContent == "" {
+	if t == nil || t.InstructionContent == "" {
 		return nil
 	}
-	c := t.ClaudeMDContent
+	c := t.InstructionContent
 	var findings []finding.Finding
 	add := func(off int, sev finding.Severity, msg string) {
 		line, col := posOf(c, off)
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG032",
 			Severity: sev,
-			File:     t.ClaudeMDFile,
+			File:     t.InstructionFile,
 			Line:     line,
 			Col:      col,
-			Message:  "CLAUDE.md line " + strconv.Itoa(line) + " " + msg,
+			Message:  t.instructionName() + " line " + strconv.Itoa(line) + " " + msg,
 		})
 	}
 

@@ -190,9 +190,9 @@ Rules about MCP servers. The per-server checks run against MCP servers from **bo
 | [CFG020](docs/rules/CFG020.md) | error | MCP server `env` injects a shared library via the dynamic linker (`LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, …) | LLM06 |
 | [CFG021](docs/rules/CFG021.md) | warn | MCP server `env` routes traffic through a non-local proxy (`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`) — MITM and header-secret capture | LLM02 |
 
-### `CLAUDE.md` — project & user-global
+### Instruction files — `CLAUDE.md` & other agents
 
-Claude Code reads `CLAUDE.md` as trusted system-context instructions every session, so a committed or user-global CLAUDE.md is a prompt-injection target. The project `CLAUDE.md` is scanned automatically; `~/.claude/CLAUDE.md` is scanned with `--user`.
+AI coding agents read their instruction files as trusted system-context every session, so a committed or user-global instruction file is a prompt-injection target. The project `CLAUDE.md` is scanned automatically and `~/.claude/CLAUDE.md` with `--user`. The same content rules also scan other agents' instruction files when present in the project: `.cursorrules`, `.cursor/rules/*.{md,mdc}`, `.windsurfrules`, `.windsurf/rules/*.md`, `AGENTS.md`, and `.github/copilot-instructions.md`. Findings name the file they came from.
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|

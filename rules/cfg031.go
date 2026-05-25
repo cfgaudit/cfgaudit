@@ -40,11 +40,11 @@ var sensitivePathRe = regexp.MustCompile(`(?i)(` +
 	`)`)
 
 func (r *cfg031) Check(t *Target) []finding.Finding {
-	if t == nil || t.ClaudeMDContent == "" {
+	if t == nil || t.InstructionContent == "" {
 		return nil
 	}
 	var findings []finding.Finding
-	for i, line := range strings.Split(t.ClaudeMDContent, "\n") {
+	for i, line := range strings.Split(t.InstructionContent, "\n") {
 		loc := sensitivePathRe.FindStringIndex(line)
 		if loc == nil {
 			continue
@@ -53,10 +53,10 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG031",
 			Severity: finding.Error,
-			File:     t.ClaudeMDFile,
+			File:     t.InstructionFile,
 			Line:     lineNo,
 			Col:      loc[0] + 1,
-			Message: "CLAUDE.md line " + strconv.Itoa(lineNo) + " references the sensitive file \"" + strings.TrimSpace(line[loc[0]:loc[1]]) +
+			Message: t.instructionName() + " line " + strconv.Itoa(lineNo) + " references the sensitive file \"" + strings.TrimSpace(line[loc[0]:loc[1]]) +
 				"\" — legitimate project guidance has no reason to point Claude at credential/secret files; this is a hallmark of an exfiltration payload. Remove it",
 		})
 	}
