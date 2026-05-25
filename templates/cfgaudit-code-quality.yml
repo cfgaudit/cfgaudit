@@ -2,7 +2,7 @@
 # via a GitLab Code Quality (Code Climate) report.
 #
 #   include:
-#     - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.0.1
+#     - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.0.2
 #       inputs:
 #         path: .
 #
@@ -18,7 +18,7 @@ spec:
       default: "."
       description: Directory to scan.
     version:
-      default: "1.0.1"
+      default: "1.0.2"
       description: cfgaudit ghcr.io image tag (pinned; do not use a moving tag).
     allow_failure:
       type: boolean
