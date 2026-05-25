@@ -282,8 +282,8 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			IgnoreLines:    ignoreLines,
 		}
 		if projectClaudeMD != "" {
-			t.ClaudeMDFile = projectClaudeMDPath
-			t.ClaudeMDContent = projectClaudeMD
+			t.InstructionFile = projectClaudeMDPath
+			t.InstructionContent = projectClaudeMD
 		}
 		targets = append(targets, t)
 	}
@@ -330,11 +330,71 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				IgnoreLines:  ignoreLines,
 			}
 			if userClaudeMD != "" {
-				t.ClaudeMDFile = userClaudeMDPath
-				t.ClaudeMDContent = userClaudeMD
+				t.InstructionFile = userClaudeMDPath
+				t.InstructionContent = userClaudeMD
 			}
 			targets = append(targets, t)
 		}
+	}
+
+	// Other agents' instruction files (Cursor, Windsurf, Copilot, AGENTS.md). Each
+	// becomes its own target so the CLAUDE.md content rules scan it, attributed to
+	// the source file. CLAUDE.md itself rides the project target above.
+	instr, err := instructionTargets(dir)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, instr...)
+
+	return targets, nil
+}
+
+// agentInstructionFiles lists the (non-CLAUDE.md) instruction files cfgaudit
+// scans across agents: single files plus glob patterns for rule directories.
+var (
+	agentInstructionFiles = []string{
+		".cursorrules",
+		".windsurfrules",
+		"AGENTS.md",
+		filepath.Join(".github", "copilot-instructions.md"),
+	}
+	agentInstructionGlobs = []string{
+		filepath.Join(".cursor", "rules", "*.md"),
+		filepath.Join(".cursor", "rules", "*.mdc"),
+		filepath.Join(".windsurf", "rules", "*.md"),
+	}
+)
+
+// instructionTargets discovers other agents' instruction files under dir and
+// returns one project-scope target per present, non-empty file. ProjectDir is
+// intentionally unset so file-based rules (e.g. CFG013) don't fire per file.
+func instructionTargets(dir string) ([]*rules.Target, error) {
+	var paths []string
+	for _, rel := range agentInstructionFiles {
+		paths = append(paths, filepath.Join(dir, rel))
+	}
+	for _, pat := range agentInstructionGlobs {
+		matches, err := filepath.Glob(filepath.Join(dir, pat))
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, matches...)
+	}
+
+	var targets []*rules.Target
+	for _, p := range paths {
+		content, err := loadClaudeMD(p)
+		if err != nil {
+			return nil, err
+		}
+		if content == "" {
+			continue
+		}
+		targets = append(targets, &rules.Target{
+			Scope:              finding.ScopeProject,
+			InstructionFile:    p,
+			InstructionContent: content,
+		})
 	}
 	return targets, nil
 }

@@ -92,7 +92,7 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 			if err != nil {
 				return err
 			}
-			targets = append(targets, &rules.Target{ClaudeMDFile: path, ClaudeMDContent: string(content)})
+			targets = append(targets, &rules.Target{InstructionFile: path, InstructionContent: string(content)})
 		case "hooks.json":
 			t, err := pluginHooksTarget(path)
 			if err != nil {

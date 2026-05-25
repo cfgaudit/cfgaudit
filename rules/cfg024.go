@@ -24,11 +24,11 @@ const bomRune rune = 0xFEFF
 // let an attacker embed instructions that are invisible in editors and review but
 // processed by the model. Reports the first occurrence with its line/column.
 func (r *cfg024) Check(t *Target) []finding.Finding {
-	if t == nil || t.ClaudeMDContent == "" {
+	if t == nil || t.InstructionContent == "" {
 		return nil
 	}
 	line, col := 1, 0
-	for i, ch := range t.ClaudeMDContent {
+	for i, ch := range t.InstructionContent {
 		if ch == '\n' {
 			line++
 			col = 0
@@ -42,10 +42,10 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 			return []finding.Finding{{
 				RuleID:   "CFG024",
 				Severity: finding.Error,
-				File:     t.ClaudeMDFile,
+				File:     t.InstructionFile,
 				Line:     line,
 				Col:      col,
-				Message:  fmt.Sprintf("CLAUDE.md contains a hidden Unicode control character U+%04X (%s) — invisible in editors and review but read by Claude as instructions; a prompt-injection / ASCII-smuggling vector. Remove all non-printable characters", ch, name),
+				Message:  fmt.Sprintf("%s contains a hidden Unicode control character U+%04X (%s) — invisible in editors and review but read by Claude as instructions; a prompt-injection / ASCII-smuggling vector. Remove all non-printable characters", t.instructionName(), ch, name),
 			}}
 		}
 	}

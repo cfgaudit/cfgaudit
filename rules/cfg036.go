@@ -32,10 +32,10 @@ var (
 // exfiltration command within 3 lines (error). C: an auto-execution directive
 // alone (warn). Matches inside fenced code blocks are still reported.
 func (r *cfg036) Check(t *Target) []finding.Finding {
-	if t == nil || t.ClaudeMDContent == "" {
+	if t == nil || t.InstructionContent == "" {
 		return nil
 	}
-	lines := strings.Split(t.ClaudeMDContent, "\n")
+	lines := strings.Split(t.InstructionContent, "\n")
 	n := len(lines)
 
 	directive := make([][]int, n)
@@ -44,9 +44,9 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	add := func(line, col int, sev finding.Severity, msg string) {
 		findings = append(findings, finding.Finding{
-			RuleID: "CFG036", Severity: sev, File: t.ClaudeMDFile,
+			RuleID: "CFG036", Severity: sev, File: t.InstructionFile,
 			Line: line + 1, Col: col + 1,
-			Message: "CLAUDE.md line " + strconv.Itoa(line+1) + " " + msg,
+			Message: t.instructionName() + " line " + strconv.Itoa(line+1) + " " + msg,
 		})
 	}
 
@@ -84,7 +84,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 		}
 		loc := directive[i]
 		if strings.Contains(lines[i][loc[0]:], ":") {
-			add(i, loc[0], finding.Warn, "contains an auto-execution directive (Part C) — \""+strings.TrimSpace(lines[i][loc[0]:loc[1]])+"\"; CLAUDE.md should describe tasks, not command Claude to auto-run things. Review it")
+			add(i, loc[0], finding.Warn, "contains an auto-execution directive (Part C) — \""+strings.TrimSpace(lines[i][loc[0]:loc[1]])+"\"; instruction files should describe tasks, not command Claude to auto-run things. Review it")
 		}
 	}
 	sort.SliceStable(findings, func(i, j int) bool {

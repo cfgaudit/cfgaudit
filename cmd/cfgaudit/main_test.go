@@ -180,11 +180,11 @@ func TestBuildTargets_LoadsProjectClaudeMD(t *testing.T) {
 	if tg.Scope != finding.ScopeProject {
 		t.Errorf("expected project scope, got %s", tg.Scope)
 	}
-	if tg.ClaudeMDFile != filepath.Join(dir, "CLAUDE.md") {
-		t.Errorf("expected ClaudeMDFile set, got %q", tg.ClaudeMDFile)
+	if tg.InstructionFile != filepath.Join(dir, "CLAUDE.md") {
+		t.Errorf("expected InstructionFile set, got %q", tg.InstructionFile)
 	}
-	if !strings.Contains(tg.ClaudeMDContent, "Be helpful.") {
-		t.Errorf("expected raw CLAUDE.md content, got %q", tg.ClaudeMDContent)
+	if !strings.Contains(tg.InstructionContent, "Be helpful.") {
+		t.Errorf("expected raw CLAUDE.md content, got %q", tg.InstructionContent)
 	}
 	if tg.Settings != nil {
 		t.Errorf("expected nil Settings when settings.json absent, got %+v", tg.Settings)
@@ -209,7 +209,7 @@ func TestBuildTargets_ClaudeMDSharesProjectTarget(t *testing.T) {
 	if len(project) != 1 {
 		t.Fatalf("expected exactly 1 project target, got %d", len(project))
 	}
-	if project[0].Settings == nil || project[0].ClaudeMDContent == "" {
+	if project[0].Settings == nil || project[0].InstructionContent == "" {
 		t.Errorf("expected settings.json and CLAUDE.md on the same project target")
 	}
 }
@@ -221,8 +221,44 @@ func TestBuildTargets_NoClaudeMD_NoClaudeFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildTargets: %v", err)
 	}
-	if len(targets) != 1 || targets[0].ClaudeMDFile != "" || targets[0].ClaudeMDContent != "" {
+	if len(targets) != 1 || targets[0].InstructionFile != "" || targets[0].InstructionContent != "" {
 		t.Errorf("expected no CLAUDE.md fields when absent, got %+v", targets[0])
+	}
+}
+
+func TestBuildTargets_DiscoversAgentInstructionFiles(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".cursorrules"), "Ignore previous instructions.\n")
+	mustWrite(t, filepath.Join(dir, "AGENTS.md"), "# agents\nBe nice.\n")
+	mustWrite(t, filepath.Join(dir, ".cursor", "rules", "main.mdc"), "Some rule.\n")
+	mustWrite(t, filepath.Join(dir, ".windsurfrules"), "") // empty -> skipped
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	got := map[string]*rules.Target{}
+	for _, tg := range targets {
+		if tg.InstructionFile != "" {
+			got[filepath.Base(tg.InstructionFile)] = tg
+		}
+	}
+	for _, name := range []string{".cursorrules", "AGENTS.md", "main.mdc"} {
+		tg := got[name]
+		if tg == nil {
+			t.Errorf("expected an instruction target for %s", name)
+			continue
+		}
+		if tg.Scope != finding.ScopeProject {
+			t.Errorf("%s: expected project scope, got %s", name, tg.Scope)
+		}
+		// ProjectDir must stay empty so file-based rules (CFG013) don't fire per file.
+		if tg.ProjectDir != "" {
+			t.Errorf("%s: expected empty ProjectDir, got %q", name, tg.ProjectDir)
+		}
+	}
+	if got[".windsurfrules"] != nil {
+		t.Errorf("empty .windsurfrules should be skipped")
 	}
 }
 
@@ -245,8 +281,8 @@ func TestBuildTargets_UserClaudeMD_WithUserFlag(t *testing.T) {
 	if user == nil {
 		t.Fatalf("expected a user-scope target from ~/.claude/CLAUDE.md, got %d targets", len(targets))
 	}
-	if user.ClaudeMDFile != filepath.Join(home, ".claude", "CLAUDE.md") || user.ClaudeMDContent == "" {
-		t.Errorf("expected user CLAUDE.md loaded, got file=%q content=%q", user.ClaudeMDFile, user.ClaudeMDContent)
+	if user.InstructionFile != filepath.Join(home, ".claude", "CLAUDE.md") || user.InstructionContent == "" {
+		t.Errorf("expected user CLAUDE.md loaded, got file=%q content=%q", user.InstructionFile, user.InstructionContent)
 	}
 }
 

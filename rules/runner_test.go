@@ -15,8 +15,8 @@ type stubRule struct {
 	results []finding.Finding
 }
 
-func (s *stubRule) ID() string                    { return s.id }
-func (s *stubRule) MinVersion() string            { return s.minVer }
+func (s *stubRule) ID() string                        { return s.id }
+func (s *stubRule) MinVersion() string                { return s.minVer }
 func (s *stubRule) Check(_ *Target) []finding.Finding { return s.results }
 
 func withRules(t *testing.T, rs ...Rule) {

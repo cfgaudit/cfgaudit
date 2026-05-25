@@ -25,12 +25,12 @@ var guidanceRe = regexp.MustCompile(`\{\{[#/](?:system|user|assistant)~?\}\}`)
 // code blocks are skipped, since a project may legitimately document the Guidance
 // library in code examples.
 func (r *cfg034) Check(t *Target) []finding.Finding {
-	if t == nil || t.ClaudeMDContent == "" {
+	if t == nil || t.InstructionContent == "" {
 		return nil
 	}
 	var findings []finding.Finding
 	inFence := false
-	for i, line := range strings.Split(t.ClaudeMDContent, "\n") {
+	for i, line := range strings.Split(t.InstructionContent, "\n") {
 		if isFenceDelimiter(line) {
 			inFence = !inFence
 			continue
@@ -46,10 +46,10 @@ func (r *cfg034) Check(t *Target) []finding.Finding {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG034",
 			Severity: finding.Warn,
-			File:     t.ClaudeMDFile,
+			File:     t.InstructionFile,
 			Line:     lineNo,
 			Col:      loc[0] + 1,
-			Message: "CLAUDE.md line " + strconv.Itoa(lineNo) + " contains Guidance/template role-delimiter syntax (\"" + line[loc[0]:loc[1]] +
+			Message: t.instructionName() + " line " + strconv.Itoa(lineNo) + " contains Guidance/template role-delimiter syntax (\"" + line[loc[0]:loc[1]] +
 				"\") — role markers have no legitimate use in project documentation and suggest an attempt to inject role-delimited content. Remove it",
 		})
 	}

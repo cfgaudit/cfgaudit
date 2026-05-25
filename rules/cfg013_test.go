@@ -106,9 +106,9 @@ func TestCFG013_GitignoreWildcardPatterns_NoFinding(t *testing.T) {
 
 func TestCFG013_GitignoreCoversClaudeLocalMd(t *testing.T) {
 	cases := map[string]string{
-		"literal":            "CLAUDE.local.md",
-		"basename-wildcard":  "*.local.md",
-		"prefix-wildcard":    "CLAUDE.local.*",
+		"literal":           "CLAUDE.local.md",
+		"basename-wildcard": "*.local.md",
+		"prefix-wildcard":   "CLAUDE.local.*",
 	}
 	for name, pattern := range cases {
 		t.Run(name, func(t *testing.T) {
