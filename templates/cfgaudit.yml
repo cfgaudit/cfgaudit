@@ -1,0 +1,43 @@
+# cfgaudit GitLab CI/CD component — run a config-security scan in a pipeline.
+#
+#   include:
+#     - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.0.1
+#       inputs:
+#         path: .
+#         format: text
+#
+# The job fails the pipeline when cfgaudit reports error-severity findings
+# (set allow_failure: true for advisory mode). The output is kept as an artifact.
+spec:
+  inputs:
+    stage:
+      default: test
+      description: Pipeline stage the job runs in.
+    path:
+      default: "."
+      description: Directory to scan.
+    format:
+      default: text
+      description: Output format — text, json, or sarif.
+    version:
+      default: "1.0.1"
+      description: cfgaudit ghcr.io image tag (pinned; do not use a moving tag).
+    allow_failure:
+      type: boolean
+      default: false
+      description: When true, findings do not block the pipeline (advisory mode).
+---
+cfgaudit:
+  stage: $[[ inputs.stage ]]
+  image:
+    name: "ghcr.io/cfgaudit/cfgaudit:$[[ inputs.version ]]"
+    entrypoint: [""]
+  script:
+    # Preserve cfgaudit's exit code (a bare `| tee` would mask it and the
+    # pipeline would never fail on error findings).
+    - cfgaudit --format "$[[ inputs.format ]]" "$[[ inputs.path ]]" > cfgaudit.out; rc=$?; cat cfgaudit.out; exit $rc
+  allow_failure: $[[ inputs.allow_failure ]]
+  artifacts:
+    paths:
+      - cfgaudit.out
+    when: always

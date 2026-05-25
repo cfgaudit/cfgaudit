@@ -1,0 +1,41 @@
+# cfgaudit GitLab CI/CD component — surface findings inline in merge requests
+# via a GitLab Code Quality (Code Climate) report.
+#
+#   include:
+#     - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.0.1
+#       inputs:
+#         path: .
+#
+# The report is uploaded as artifacts:reports:codequality, so findings appear in
+# the MR's Code Quality widget. Advisory by default (allow_failure: true) — the
+# widget surfaces findings without blocking the pipeline.
+spec:
+  inputs:
+    stage:
+      default: test
+      description: Pipeline stage the job runs in.
+    path:
+      default: "."
+      description: Directory to scan.
+    version:
+      default: "1.0.1"
+      description: cfgaudit ghcr.io image tag (pinned; do not use a moving tag).
+    allow_failure:
+      type: boolean
+      default: true
+      description: When true (default), findings surface in the MR widget without blocking.
+---
+cfgaudit-code-quality:
+  stage: $[[ inputs.stage ]]
+  image:
+    name: "ghcr.io/cfgaudit/cfgaudit:$[[ inputs.version ]]"
+    entrypoint: [""]
+  script:
+    - cfgaudit --format codeclimate "$[[ inputs.path ]]" > gl-code-quality-report.json; rc=$?; exit $rc
+  allow_failure: $[[ inputs.allow_failure ]]
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    paths:
+      - gl-code-quality-report.json
+    when: always

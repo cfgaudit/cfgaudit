@@ -172,6 +172,33 @@ Upload findings to GitHub Code Scanning via SARIF (add `permissions: security-ev
 
 ---
 
+## GitLab CI/CD component
+
+For GitLab pipelines, include the component (published to the [CI/CD Catalog](https://docs.gitlab.com/ci/components/)):
+
+```yaml
+include:
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.0.1
+    inputs:
+      path: .
+      format: text
+```
+
+Inputs: `stage`, `path`, `format`, `version` (pinned ghcr.io image tag), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`.
+
+To surface findings **inline in merge requests** via the Code Quality widget, use the second component (emits a GitLab Code Quality report):
+
+```yaml
+include:
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.0.1
+    inputs:
+      path: .
+```
+
+Pin the component to a released tag, not a moving ref — consistent with cfgaudit's own supply-chain guidance (CFG010/CFG013).
+
+---
+
 ## What cfgaudit checks
 
 Rules are grouped by the part of the configuration they target.
