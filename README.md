@@ -199,6 +199,32 @@ Pin the component to a released tag, not a moving ref — consistent with cfgaud
 
 ---
 
+## Claude Code plugin
+
+The repo doubles as a Claude Code plugin marketplace. Install it to get an on-demand scan command plus automatic scans when config files change:
+
+```
+/plugin marketplace add cfgaudit/cfgaudit
+/plugin install cfgaudit@cfgaudit
+```
+
+The plugin adds:
+
+- **`/cfgaudit:scan`** — scan the current project on demand.
+- A **Stop hook** (scan when a session ends) and a **PostToolUse hook** (scan after edits to `settings.json` / `CLAUDE.md` / `.mcp.json` / `.claude/` files).
+
+Hooks call a `cfgaudit` binary on your `PATH` (install via Homebrew or `go install` above); if none is found the bundled wrapper falls back to `go run`. Team rollout via `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "cfgaudit": { "source": { "source": "github", "repo": "cfgaudit/cfgaudit" } }
+  }
+}
+```
+
+---
+
 ## What cfgaudit checks
 
 Rules are grouped by the part of the configuration they target.
