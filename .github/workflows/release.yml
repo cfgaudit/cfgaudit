@@ -3,7 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      # Full semver tags only (vX.Y.Z) — not the moving vN GitHub Action tag.
+      - 'v*.*.*'
 
 permissions:
   contents: read

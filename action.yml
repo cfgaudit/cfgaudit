@@ -1,0 +1,103 @@
+name: cfgaudit
+description: Security auditor for AI-agent configuration files (Claude Code, Cursor, Windsurf, …).
+author: cfgaudit
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  path:
+    description: Directory to scan.
+    required: false
+    default: "."
+  format:
+    description: Output format — text, json, or sarif.
+    required: false
+    default: text
+  strict:
+    description: Treat warnings as errors (cfgaudit --strict).
+    required: false
+    default: "false"
+  user:
+    description: Also scan user-global config under ~/.claude ("true" to enable).
+    required: false
+    default: "false"
+  config:
+    description: Path to a .cfgaudit.yml config file (relative to the repo). Optional.
+    required: false
+    default: ""
+  plugins:
+    description: Path to a Claude Code plugin directory to also scan. Optional.
+    required: false
+    default: ""
+  output:
+    description: Write the report to this file instead of stdout (recommended for sarif, e.g. cfgaudit.sarif).
+    required: false
+    default: ""
+  fail-on:
+    description: >-
+      "error" (default) fails the step when cfgaudit exits non-zero (findings at
+      or above the configured threshold). "never" runs in advisory mode and always
+      succeeds — typical for "format: sarif", where Code Scanning surfaces findings.
+    required: false
+    default: error
+  image:
+    description: cfgaudit container image to run (advanced; override to pin a digest).
+    required: false
+    default: ghcr.io/cfgaudit/cfgaudit:1.0.1
+
+outputs:
+  exit-code:
+    description: cfgaudit's raw exit code (before fail-on handling).
+    value: ${{ steps.cfgaudit.outputs.exit-code }}
+  output-file:
+    description: Path to the written report file, when "output" was set.
+    value: ${{ steps.cfgaudit.outputs.output-file }}
+
+runs:
+  using: composite
+  steps:
+    - id: cfgaudit
+      shell: bash
+      env:
+        IN_PATH: ${{ inputs.path }}
+        IN_FORMAT: ${{ inputs.format }}
+        IN_STRICT: ${{ inputs.strict }}
+        IN_USER: ${{ inputs.user }}
+        IN_CONFIG: ${{ inputs.config }}
+        IN_PLUGINS: ${{ inputs.plugins }}
+        IN_OUTPUT: ${{ inputs.output }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+        IN_IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+
+        # Flags must precede the positional path: Go's flag parser stops at the
+        # first non-flag argument.
+        args=( --format "$IN_FORMAT" )
+        if [ "$IN_STRICT" = "true" ]; then args+=( --strict ); fi
+        if [ "$IN_USER" = "true" ]; then args+=( --user ); fi
+        if [ -n "$IN_CONFIG" ]; then args+=( --config "$IN_CONFIG" ); fi
+        if [ -n "$IN_PLUGINS" ]; then args+=( --plugins "$IN_PLUGINS" ); fi
+        args+=( "$IN_PATH" )
+
+        docker pull -q "$IN_IMAGE"
+
+        set +e
+        if [ -n "$IN_OUTPUT" ]; then
+          docker run --rm -v "$GITHUB_WORKSPACE:/github/workspace" -w /github/workspace \
+            "$IN_IMAGE" "${args[@]}" > "$IN_OUTPUT"
+        else
+          docker run --rm -v "$GITHUB_WORKSPACE:/github/workspace" -w /github/workspace \
+            "$IN_IMAGE" "${args[@]}"
+        fi
+        rc=$?
+        set -e
+
+        echo "exit-code=$rc" >> "$GITHUB_OUTPUT"
+        echo "output-file=$IN_OUTPUT" >> "$GITHUB_OUTPUT"
+
+        if [ "$IN_FAIL_ON" = "never" ]; then
+          exit 0
+        fi
+        exit "$rc"

@@ -144,6 +144,34 @@ policy:
 
 ---
 
+## GitHub Action
+
+Run cfgaudit in a workflow without installing anything — the action wraps the published container image:
+
+```yaml
+- uses: cfgaudit/cfgaudit@v1
+  with:
+    path: .
+```
+
+Upload findings to GitHub Code Scanning via SARIF (add `permissions: security-events: write` to the job):
+
+```yaml
+- uses: cfgaudit/cfgaudit@v1
+  with:
+    format: sarif
+    output: cfgaudit.sarif
+    fail-on: never          # advisory: let Code Scanning surface findings, don't fail the step
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: cfgaudit.sarif
+```
+
+**Inputs:** `path` (default `.`), `format` (`text`/`json`/`sarif`), `strict`, `user`, `config`, `plugins`, `output`, `fail-on` (`error`/`never`), `image`.
+**Outputs:** `exit-code`, `output-file`. By default the step fails on findings at or above the configured threshold; set `fail-on: never` for advisory mode.
+
+---
+
 ## What cfgaudit checks
 
 Rules are grouped by the part of the configuration they target.
