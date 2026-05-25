@@ -226,6 +226,46 @@ func TestBuildTargets_NoClaudeMD_NoClaudeFields(t *testing.T) {
 	}
 }
 
+func TestBuildTargets_DiscoversVSCodeTasks(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".vscode", "tasks.json"), `{
+  // JSONC
+  "version": "2.0.0",
+  "tasks": [ { "label": "boot", "runOptions": { "runOn": "folderOpen" } }, ],
+}`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var found *rules.Target
+	for _, tg := range targets {
+		if tg.VSCodeTasks != nil {
+			found = tg
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a target carrying VSCodeTasks")
+	}
+	if found.VSCodeTasksFile != filepath.Join(dir, ".vscode", "tasks.json") {
+		t.Errorf("unexpected tasks file: %q", found.VSCodeTasksFile)
+	}
+	if len(found.VSCodeTasks.Tasks) != 1 || found.VSCodeTasks.Tasks[0].Label != "boot" {
+		t.Errorf("unexpected tasks: %+v", found.VSCodeTasks.Tasks)
+	}
+	// An empty .vscode (no tasks.json) must not create a target.
+	dir2 := t.TempDir()
+	mustWrite(t, filepath.Join(dir2, ".vscode", "settings.json"), `{}`)
+	t2, err := buildTargets(dir2, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	for _, tg := range t2 {
+		if tg.VSCodeTasks != nil {
+			t.Error("expected no VSCodeTasks target when tasks.json absent")
+		}
+	}
+}
+
 func TestBuildTargets_DiscoversAgentMCPConfigs(t *testing.T) {
 	dir := t.TempDir()
 	// Cursor (mcpServers), VS Code (top-level "servers" variant), Cline.

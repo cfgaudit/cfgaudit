@@ -356,7 +356,52 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, mcp...)
 
+	// VS Code workspace files (.vscode/), read by VS Code / Cursor / Windsurf.
+	// Committed to a repo they are an auto-run / supply-chain surface.
+	vsc, err := vscodeTargets(dir)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, vsc...)
+
 	return targets, nil
+}
+
+// vscodeTargets discovers committable VS Code workspace files under dir and
+// returns a target per present one, so the corresponding rules fire attributed
+// to the source file. Shared by VS Code and its forks (Cursor, Windsurf).
+func vscodeTargets(dir string) ([]*rules.Target, error) {
+	var targets []*rules.Target
+	tasks, tasksFile, err := loadVSCodeTasks(dir)
+	if err != nil {
+		return nil, err
+	}
+	if tasks != nil {
+		targets = append(targets, &rules.Target{
+			Scope:           finding.ScopeProject,
+			VSCodeTasks:     tasks,
+			VSCodeTasksFile: tasksFile,
+		})
+	}
+	return targets, nil
+}
+
+// loadVSCodeTasks parses dir/.vscode/tasks.json. A missing file yields
+// (nil, "", nil); a file with no tasks yields the same so no empty target is
+// built. A malformed file is reported as an error.
+func loadVSCodeTasks(dir string) (*parser.VSCodeTasks, string, error) {
+	path := filepath.Join(dir, ".vscode", "tasks.json")
+	v, err := parser.ParseVSCodeTasks(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	if v == nil || len(v.Tasks) == 0 {
+		return nil, "", nil
+	}
+	return v, path, nil
 }
 
 // agentInstructionFiles lists the (non-CLAUDE.md) instruction files cfgaudit

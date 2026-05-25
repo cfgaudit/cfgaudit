@@ -46,6 +46,13 @@ type Target struct {
 	InstructionFile    string
 	InstructionContent string
 
+	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
+	// workspace tasks). A task set to run on folder-open is a zero-click code
+	// execution vector when committed to a repo (CFG047). Nil when absent;
+	// VSCodeTasksFile is its path, used to attribute findings.
+	VSCodeTasks     *parser.VSCodeTasks
+	VSCodeTasksFile string
+
 	// Policy*, when set, carry the organisation's custom permission policy from
 	// .cfgaudit.yml (evaluated by CFG025). RequireDeny lists commands that must be
 	// covered by permissions.deny; ForbidAllow lists commands that must not be
