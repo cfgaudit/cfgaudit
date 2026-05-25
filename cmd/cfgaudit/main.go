@@ -346,6 +346,16 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, instr...)
 
+	// Other agents' MCP config files (Cursor, VS Code, Windsurf, Cline). MCP is a
+	// shared standard, so the MCP rules apply unchanged; each config becomes its
+	// own target attributed to the source file. Claude Code's .mcp.json rides the
+	// project target above.
+	mcp, err := mcpConfigTargets(dir, includeUser)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, mcp...)
+
 	return targets, nil
 }
 
@@ -431,17 +441,84 @@ func parseSettingsOptional(path string) (*parser.Settings, error) {
 // not being scanned rather than silently trusting it.
 func loadProjectMCP(dir string) (map[string]parser.MCPServer, string, error) {
 	path := filepath.Join(dir, ".mcp.json")
+	servers, err := loadMCPConfigOptional(path)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(servers) == 0 {
+		return nil, "", nil
+	}
+	return servers, path, nil
+}
+
+// loadMCPConfigOptional parses an MCP config file, returning (nil, nil) when it
+// does not exist so callers can treat absence as "no servers". A malformed file
+// is an error.
+func loadMCPConfigOptional(path string) (map[string]parser.MCPServer, error) {
 	cfg, err := parser.ParseMCPConfig(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, "", nil
+			return nil, nil
 		}
-		return nil, "", err
+		return nil, err
 	}
-	if len(cfg.MCPServers) == 0 {
-		return nil, "", nil
+	return cfg.MCPServers, nil
+}
+
+// agentMCPFiles lists other agents' MCP config files relative to the project
+// root; userAgentMCPFiles lists user-global ones (relative to $HOME) discovered
+// only with --user. All share the { "mcpServers": … } shape (VS Code's "servers"
+// variant is folded in by ParseMCPConfig).
+var (
+	agentMCPFiles = []string{
+		filepath.Join(".cursor", "mcp.json"), // Cursor (project)
+		filepath.Join(".vscode", "mcp.json"), // VS Code / Copilot
+		"cline_mcp_settings.json",            // Cline
 	}
-	return cfg.MCPServers, path, nil
+	userAgentMCPFiles = []string{
+		filepath.Join(".cursor", "mcp.json"),                     // Cursor (user-global)
+		filepath.Join(".codeium", "windsurf", "mcp_config.json"), // Windsurf
+	}
+)
+
+// mcpConfigTargets discovers other agents' MCP config files and returns one
+// target per present, non-empty file, carrying only its servers so the MCP
+// rules fire (settings-shape and instruction rules stay inert). Findings are
+// attributed to the source file via ProjectMCPFile.
+func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
+	var targets []*rules.Target
+	add := func(path string, scope finding.Scope) error {
+		servers, err := loadMCPConfigOptional(path)
+		if err != nil {
+			return err
+		}
+		if len(servers) == 0 {
+			return nil
+		}
+		targets = append(targets, &rules.Target{
+			Scope:          scope,
+			ProjectMCP:     servers,
+			ProjectMCPFile: path,
+		})
+		return nil
+	}
+	for _, rel := range agentMCPFiles {
+		if err := add(filepath.Join(dir, rel), finding.ScopeProject); err != nil {
+			return nil, err
+		}
+	}
+	if includeUser {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("resolve home directory: %w", err)
+		}
+		for _, rel := range userAgentMCPFiles {
+			if err := add(filepath.Join(home, rel), finding.ScopeUser); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return targets, nil
 }
 
 // ruleSet is a flag.Value that collects rule IDs from one or more occurrences

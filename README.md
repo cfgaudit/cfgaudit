@@ -177,7 +177,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`
 
-Rules about MCP servers. The per-server checks run against MCP servers from **both** sources — the inline `mcpServers` block in `settings.json` and the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve) — and attribute each finding to the file the server was declared in. A malformed `.mcp.json` is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and applies to `settings.json` only.
+Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, and Windsurf's `~/.codeium/windsurf/mcp_config.json`. Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|

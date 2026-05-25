@@ -108,15 +108,20 @@ type MCPServer struct {
 	DangerouslyAllowBrowser bool              `json:"dangerouslyAllowBrowser,omitempty"`
 }
 
-// MCPConfig is a project-level .mcp.json file: a bare object whose mcpServers
-// map carries the same shape as the inline mcpServers block in settings.json.
-// This is the file enableAllProjectMcpServers / enabledMcpjsonServers auto-approve,
-// so MCP rules must reach it, not just the inline settings.json servers.
+// MCPConfig is a bare MCP config object whose mcpServers map carries the same
+// shape as the inline mcpServers block in settings.json. This covers Claude
+// Code's .mcp.json (the file enableAllProjectMcpServers / enabledMcpjsonServers
+// auto-approve) as well as other agents' MCP configs (Cursor, VS Code, Windsurf,
+// Cline), so the MCP rules reach all of them. VS Code's mcp.json uses a top-level
+// "servers" key instead of "mcpServers"; both are decoded and merged.
 type MCPConfig struct {
 	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
+	Servers    map[string]MCPServer `json:"servers,omitempty"`
 }
 
-// ParseMCPConfig reads and decodes a project .mcp.json file.
+// ParseMCPConfig reads and decodes an MCP config file. The VS Code "servers"
+// variant is folded into MCPServers so callers see a single map; on a name
+// collision the mcpServers entry wins.
 func ParseMCPConfig(path string) (*MCPConfig, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
 	if err != nil {
@@ -125,6 +130,17 @@ func ParseMCPConfig(path string) (*MCPConfig, error) {
 	var c MCPConfig
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if len(c.Servers) > 0 {
+		if c.MCPServers == nil {
+			c.MCPServers = make(map[string]MCPServer, len(c.Servers))
+		}
+		for name, srv := range c.Servers {
+			if _, ok := c.MCPServers[name]; !ok {
+				c.MCPServers[name] = srv
+			}
+		}
+		c.Servers = nil
 	}
 	return &c, nil
 }
