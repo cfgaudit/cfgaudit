@@ -100,10 +100,13 @@ jobs:
           fail-on: never
       - name: Validate the action produced valid SARIF
         shell: bash
+        env:
+          EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+          OUTPUT_FILE: ${{ steps.scan.outputs.output-file }}
         run: |
           test -f cfgaudit.sarif
           jq -e '.version == "2.1.0" and .runs[0].tool.driver.name == "cfgaudit"' cfgaudit.sarif > /dev/null
-          echo "action exit-code=${{ steps.scan.outputs.exit-code }}, output-file=${{ steps.scan.outputs.output-file }}"
+          echo "action exit-code=$EXIT_CODE, output-file=$OUTPUT_FILE"
 
   zizmor:
     name: Security (zizmor)
