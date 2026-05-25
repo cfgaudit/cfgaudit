@@ -1,0 +1,78 @@
+# GoReleaser configuration — cross-platform release binaries + Homebrew tap.
+# Validate locally with `goreleaser check`; dry-run with `goreleaser release --snapshot --clean`.
+version: 2
+
+project_name: cfgaudit
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: cfgaudit
+    main: ./cmd/cfgaudit
+    binary: cfgaudit
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    # Mirror the Dockerfile's ldflags so binaries report the same version string.
+    ldflags:
+      - -s -w -X main.cfgauditVersion={{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: cfgaudit
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE
+      - docs/rules/*.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+# Homebrew tap (cask — the supported form for pre-built binaries; `brews` is
+# deprecated). Installs the same way: `brew install cfgaudit/tap/cfgaudit`.
+homebrew_casks:
+  - name: cfgaudit
+    binaries:
+      - cfgaudit
+    repository:
+      owner: cfgaudit
+      name: homebrew-tap
+      # A PAT with contents:write on cfgaudit/homebrew-tap, set as the
+      # HOMEBREW_TAP_TOKEN secret on this repo (the default GITHUB_TOKEN cannot
+      # push to a different repository).
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/cfgaudit/cfgaudit"
+    description: "Security auditor for AI-agent configuration files"
+    license: "Apache-2.0"
+    commit_author:
+      name: goreleaser-bot
+      email: goreleaser@cfgaudit.dev
+
+release:
+  prerelease: auto

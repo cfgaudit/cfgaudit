@@ -14,11 +14,19 @@ Every finding maps to an [OWASP Top 10 for LLM Applications 2025](https://owasp.
 
 ## Install
 
+Homebrew (macOS / Linux):
+
+```sh
+brew install cfgaudit/tap/cfgaudit
+```
+
+With the Go toolchain:
+
 ```sh
 go install github.com/cfgaudit/cfgaudit/cmd/cfgaudit@latest
 ```
 
-Pre-built binaries will be available on the [releases page](https://github.com/cfgaudit/cfgaudit/releases) once the first stable version is tagged.
+Or download a pre-built binary (Linux / macOS / Windows, amd64 / arm64) from the [releases page](https://github.com/cfgaudit/cfgaudit/releases).
 
 ---
 
