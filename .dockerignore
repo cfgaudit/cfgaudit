@@ -1,7 +1,12 @@
 .git
 .github
 .playwright-mcp
-docs
 README.md
 LICENSE
 *.md
+
+# docs/rules/*.md is embedded by ruledoc.go (go:embed), so it must stay in the
+# build context. Exclude the rest of docs/ via the contents glob (a fully
+# excluded directory cannot be re-included by a negation).
+docs/*
+!docs/rules
