@@ -39,6 +39,10 @@ cfgaudit
 # Audit a specific project root
 cfgaudit /path/to/project
 
+# Output format defaults to "auto": a table on an interactive terminal, plain
+# text when piped or redirected. Force either with --format table / --format text.
+cfgaudit --format table
+
 # Output as JSON (for CI integration)
 cfgaudit --format json
 

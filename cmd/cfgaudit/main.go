@@ -40,7 +40,7 @@ func main() {
 		}
 	}
 
-	format := flag.String("format", "text", "output format: text, json, sarif, codeclimate")
+	format := flag.String("format", "auto", "output format: auto (table on a TTY, text otherwise), text, table, json, sarif, codeclimate")
 	user := flag.Bool("user", false, "also scan ~/.claude/settings.json")
 	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	configPath := flag.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
@@ -109,7 +109,7 @@ func main() {
 	}
 	all = cfg.PostProcess(all, dir)
 
-	switch *format {
+	switch resolveFormat(*format, isTTY(os.Stdout)) {
 	case "json":
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -124,6 +124,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "cfgaudit: codeclimate encode: %v\n", err)
 			os.Exit(2)
 		}
+	case "table":
+		renderTable(os.Stdout, all, cfgauditVersion)
 	default:
 		for _, f := range all {
 			fmt.Println(f)
