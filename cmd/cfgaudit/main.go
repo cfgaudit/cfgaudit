@@ -302,6 +302,10 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			ProjectDir:   dir,
 			IgnoreFile:   ignorePath,
 			IgnoreLines:  ignoreLines,
+			// Claude Code merges settings.json into settings.local.json, so the
+			// project deny list applies to the local file too (CFG006).
+			SiblingDeny: projectSettings != nil && projectSettings.Permissions != nil &&
+				len(projectSettings.Permissions.Deny) > 0,
 		})
 	}
 

@@ -37,6 +37,21 @@ func TestCFG006_NonEmptyDeny_NoFinding(t *testing.T) {
 	}
 }
 
+// settings.local.json with no deny of its own is fine when the sibling
+// settings.json already defines one — Claude Code merges them (issue #180).
+func TestCFG006_SiblingDeny_Suppressed(t *testing.T) {
+	tg := settingsTarget(t, `{"permissions":{"allow":["Bash(fhirlint validate *)"]}}`)
+	tg.Scope = finding.ScopeProjectLocal
+	tg.SiblingDeny = true
+	if f := CFG006.Check(tg); len(f) != 0 {
+		t.Errorf("expected no finding when a sibling settings.json has deny, got %+v", f)
+	}
+	tg.SiblingDeny = false
+	if f := CFG006.Check(tg); len(f) != 1 {
+		t.Errorf("expected a finding when no sibling deny exists, got %+v", f)
+	}
+}
+
 func TestCFG006_NoPermissions_NoFinding(t *testing.T) {
 	f := CFG006.Check(settingsTarget(t, `{"env":{"FOO":"bar"}}`))
 	if len(f) != 0 {

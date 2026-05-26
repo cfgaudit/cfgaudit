@@ -226,6 +226,43 @@ func TestBuildTargets_NoClaudeMD_NoClaudeFields(t *testing.T) {
 	}
 }
 
+func TestBuildTargets_LocalTargetGetsSiblingDeny(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".claude", "settings.json"), `{"permissions":{"deny":["Bash(rm -rf *)"]}}`)
+	mustWrite(t, filepath.Join(dir, ".claude", "settings.local.json"), `{"permissions":{"allow":["Bash(make *)"]}}`)
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var local *rules.Target
+	for _, tg := range targets {
+		if tg.Scope == finding.ScopeProjectLocal {
+			local = tg
+		}
+	}
+	if local == nil {
+		t.Fatal("expected a project-local target")
+	}
+	if !local.SiblingDeny {
+		t.Error("expected SiblingDeny=true when sibling settings.json has a deny list")
+	}
+
+	// No sibling deny → flag stays false.
+	dir2 := t.TempDir()
+	mustWrite(t, filepath.Join(dir2, ".claude", "settings.json"), `{"permissions":{"allow":["Bash(make *)"]}}`)
+	mustWrite(t, filepath.Join(dir2, ".claude", "settings.local.json"), `{"permissions":{"allow":["Bash(go *)"]}}`)
+	t2, err := buildTargets(dir2, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	for _, tg := range t2 {
+		if tg.Scope == finding.ScopeProjectLocal && tg.SiblingDeny {
+			t.Error("expected SiblingDeny=false when sibling settings.json has no deny")
+		}
+	}
+}
+
 func TestBuildTargets_DiscoversVSCodeTasks(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, ".vscode", "tasks.json"), `{
