@@ -74,6 +74,13 @@ type Target struct {
 
 	IgnoreFile  string
 	IgnoreLines []parser.IgnoreLine
+
+	// SiblingDeny is true when a higher-precedence sibling settings file already
+	// defines a non-empty permissions.deny — specifically, a project
+	// settings.json next to the settings.local.json this target represents.
+	// Claude Code merges the two at runtime, so a deny-absence finding on the
+	// local file would be a false positive (CFG006).
+	SiblingDeny bool
 }
 
 // mcpServerRef is a single MCP server definition paired with the file it was

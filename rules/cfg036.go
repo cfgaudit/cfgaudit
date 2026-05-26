@@ -19,7 +19,11 @@ func (r *cfg036) ID() string { return "CFG036" }
 
 var (
 	// Pattern A: command substitution ($(…) or backticks) reading a sensitive path.
-	cmdSubstSensitiveRe = regexp.MustCompile("(?i)(?:\\$\\(|`)[^)`]*(?:~/\\.ssh|~/\\.aws|~/\\.gcp|~/\\.config/gcloud|/etc/passwd|/etc/shadow|\\.env\\b|settings\\.json|\\.claude/|id_rsa|id_ed25519|credentials)")
+	// The \s requirement means a command must precede the path inside the
+	// delimiter (e.g. `cat ~/.ssh/id_rsa`), so a bare Markdown inline-code path
+	// (`.env.local`, `settings.json`) — which is documentation, not a command
+	// substitution — is not flagged.
+	cmdSubstSensitiveRe = regexp.MustCompile("(?i)(?:\\$\\(|`)[^)`]*\\s[^)`]*(?:~/\\.ssh|~/\\.aws|~/\\.gcp|~/\\.config/gcloud|/etc/passwd|/etc/shadow|\\.env\\b|settings\\.json|\\.claude/|id_rsa|id_ed25519|credentials)")
 	// Auto-execution directive (Patterns B and C).
 	autoExecRe = regexp.MustCompile(`(?i)(?:before\s+(?:each|every|any)\s+(?:task|session|request|command|run|step)|always\s+(?:run|execute|do)|at\s+(?:startup|session\s+start|the\s+start)|automatically\s+(?:run|execute))`)
 	// Network exfiltration command (Pattern B).

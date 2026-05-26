@@ -22,6 +22,11 @@ func (r *cfg006) Check(t *Target) []finding.Finding {
 	if len(t.Settings.Permissions.Deny) > 0 {
 		return nil
 	}
+	// A settings.local.json need not repeat the project deny list: Claude Code
+	// merges it with the sibling settings.json, whose deny rules still apply.
+	if t.SiblingDeny {
+		return nil
+	}
 	return []finding.Finding{{
 		RuleID:   "CFG006",
 		Severity: finding.Warn,
