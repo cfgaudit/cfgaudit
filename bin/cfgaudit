@@ -2,23 +2,24 @@
 # cfgaudit Claude Code plugin wrapper.
 #
 # The plugin prepends this bin/ directory to PATH, so a hook or skill calling
-# `cfgaudit` lands here. Resolve to a real cfgaudit, in order of preference:
-#   1. a binary bundled next to this script (e.g. fetched by a setup step),
-#   2. an installed cfgaudit already on PATH (excluding this wrapper),
-#   3. `go run` the published module,
-# otherwise fail with a clear install hint. No platform binaries are committed.
+# `cfgaudit` lands here. It resolves a real cfgaudit binary WITHOUT requiring a
+# Go toolchain, in order of preference:
+#   1. an installed cfgaudit already on PATH (Homebrew, go install, manual),
+#   2. a previously downloaded copy in the cache,
+#   3. the prebuilt release binary for this OS/arch — downloaded once and
+#      verified against the release checksums.
+# If none of those work, it prints a clear install hint. No platform binaries
+# are committed to the repo.
 set -eu
+
+# Kept in lockstep with the release (bumped alongside the distribution pins) so
+# the plugin runs the cfgaudit build that matches the installed plugin version.
+VERSION="1.1.0"
+REPO="cfgaudit/cfgaudit"
 
 self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-# 1) bundled binary alongside this wrapper
-for cand in "$self_dir/cfgaudit-bin" "$self_dir/../dist/cfgaudit"; do
-  if [ -x "$cand" ]; then
-    exec "$cand" "$@"
-  fi
-done
-
-# 2) a real cfgaudit elsewhere on PATH (skip this wrapper's own directory to
+# 1) a real cfgaudit elsewhere on PATH (skip this wrapper's own directory to
 #    avoid re-invoking ourselves)
 IFS=:
 for d in $PATH; do
@@ -29,13 +30,74 @@ for d in $PATH; do
 done
 unset IFS
 
-# 3) Go toolchain fallback
-if command -v go >/dev/null 2>&1; then
-  exec go run github.com/cfgaudit/cfgaudit/cmd/cfgaudit@latest "$@"
+os=$(uname -s | tr 'A-Z' 'a-z')
+arch=$(uname -m)
+case "$arch" in
+  x86_64 | amd64) arch=amd64 ;;
+  aarch64 | arm64) arch=arm64 ;;
+esac
+
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/cfgaudit"
+bin="$cache_dir/cfgaudit-$VERSION-$os-$arch"
+
+# 2) cached download from a previous run
+if [ -x "$bin" ]; then
+  exec "$bin" "$@"
 fi
 
-echo "cfgaudit: not found. Install it with one of:" >&2
-echo "  brew install cfgaudit/tap/cfgaudit" >&2
-echo "  go install github.com/cfgaudit/cfgaudit/cmd/cfgaudit@latest" >&2
-echo "  (or download a binary from https://github.com/cfgaudit/cfgaudit/releases)" >&2
-exit 1
+install_hint() {
+  echo "cfgaudit: $1" >&2
+  echo "Install it manually with one of:" >&2
+  echo "  brew install $REPO/tap/cfgaudit" >&2
+  echo "  go install github.com/$REPO/cmd/cfgaudit@latest" >&2
+  echo "  or download a binary from https://github.com/$REPO/releases" >&2
+  exit 1
+}
+
+case "$os" in
+  linux | darwin) ;;
+  *) install_hint "no prebuilt binary for OS '$os'." ;;
+esac
+
+# 3) download the prebuilt release binary (no Go required)
+asset="cfgaudit_${VERSION}_${os}_${arch}.tar.gz"
+base="https://github.com/$REPO/releases/download/v$VERSION"
+
+fetch() { # url dest
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$1" -o "$2"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$2" "$1"
+  else
+    return 1
+  fi
+}
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+if ! fetch "$base/$asset" "$tmp/$asset" || ! fetch "$base/checksums.txt" "$tmp/checksums.txt"; then
+  install_hint "could not download the prebuilt binary (need curl or wget and network access)."
+fi
+
+# verify the download against the published checksums when a hashing tool exists
+want=$(grep " $asset\$" "$tmp/checksums.txt" 2>/dev/null | awk '{print $1}')
+if command -v sha256sum >/dev/null 2>&1; then
+  got=$(sha256sum "$tmp/$asset" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  got=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
+else
+  got=""
+fi
+if [ -n "$got" ] && [ -n "$want" ] && [ "$got" != "$want" ]; then
+  install_hint "checksum mismatch for $asset — refusing to run the download."
+fi
+
+if ! tar -xzf "$tmp/$asset" -C "$tmp" cfgaudit 2>/dev/null; then
+  install_hint "could not extract cfgaudit from $asset."
+fi
+
+mkdir -p "$cache_dir"
+mv "$tmp/cfgaudit" "$bin"
+chmod +x "$bin"
+exec "$bin" "$@"
