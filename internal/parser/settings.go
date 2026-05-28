@@ -106,6 +106,14 @@ type MCPServer struct {
 	AlwaysAllow             []string          `json:"alwaysAllow,omitempty"`
 	Env                     map[string]string `json:"env,omitempty"`
 	DangerouslyAllowBrowser bool              `json:"dangerouslyAllowBrowser,omitempty"`
+
+	// Remote-transport fields (HTTP/SSE/WebSocket MCP servers). URL is the
+	// endpoint the agent connects to; Type is the transport ("http"/"sse"/…);
+	// Headers are sent on every request (often carrying auth secrets). Empty for
+	// stdio servers, which use Command/Args instead.
+	URL     string            `json:"url,omitempty"`
+	Type    string            `json:"type,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // MCPConfig is a bare MCP config object whose mcpServers map carries the same
