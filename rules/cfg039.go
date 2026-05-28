@@ -31,11 +31,11 @@ var (
 // can wipe a directory with no confirmation. warn normally; error when the
 // target is clearly broad (~, /, .., $HOME, *). Covers hooks and helpers.
 func (r *cfg039) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		sev, ok := rmForceDeleteSeverity(site.Command)
 		if !ok {
 			continue
@@ -47,7 +47,7 @@ func (r *cfg039) Check(t *Target) []finding.Finding {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG039",
 			Severity: sev,
-			File:     t.SettingsFile,
+			File:     site.File,
 			Message:  msg + userScopeNote(t),
 		})
 	}

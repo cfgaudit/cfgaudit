@@ -37,7 +37,7 @@ func (r *cfg027) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		seen := map[string]bool{}
 		for _, p := range persistencePatterns {
 			if seen[p.label] || !p.re.MatchString(site.Command) {
@@ -47,7 +47,7 @@ func (r *cfg027) Check(t *Target) []finding.Finding {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG027",
 				Severity: finding.Error,
-				File:     t.SettingsFile,
+				File:     site.File,
 				Message: site.Label + " installs a persistence mechanism (" + p.label +
 					") — it survives reboots and new sessions and runs outside Claude Code; a hook should never modify cron, shell startup files, or system services" + userScopeNote(t),
 			})

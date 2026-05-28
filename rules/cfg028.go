@@ -40,7 +40,7 @@ func (r *cfg028) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		if !matchesAny(trustWritePatterns, site.Command) {
 			continue
 		}
@@ -48,7 +48,7 @@ func (r *cfg028) Check(t *Target) []finding.Finding {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG028",
 			Severity: finding.Error,
-			File:     t.SettingsFile,
+			File:     site.File,
 			Message: site.Label + " writes to the Claude trust/config file \"" + target +
 				"\" — a self-perpetuating prompt-injection / persistence vector: it can re-inject hidden instructions or re-enable dangerous settings every session and restore itself after cleanup. A hook should never modify Claude's own configuration" + userScopeNote(t),
 		})

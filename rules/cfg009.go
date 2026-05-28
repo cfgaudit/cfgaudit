@@ -23,12 +23,12 @@ var hookVarRe = regexp.MustCompile(`\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_]
 var cmdVarRe = regexp.MustCompile(`%([A-Za-z_][A-Za-z0-9_]*)%`)
 
 func (r *cfg009) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil {
+	if t == nil {
 		return nil
 	}
 
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		vars := extractShellVars(site.Command)
 		if len(vars) == 0 {
 			continue
@@ -40,7 +40,7 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG009",
 			Severity: sev,
-			File:     t.SettingsFile,
+			File:     site.File,
 			Message:  site.Label + " interpolates " + strings.Join(vars, ", ") + " — agent-controlled or external data inside a command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
 		})
 	}

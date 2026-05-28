@@ -31,11 +31,11 @@ type scComment struct {
 // config, gated on the binary being available). ShellCheck understands shell
 // grammar, so it catches quoting/eval/pipe issues that regex rules miss.
 func (r *cfg045) Check(t *Target) []finding.Finding {
-	if t == nil || !t.ShellCheck || t.Settings == nil {
+	if t == nil || !t.ShellCheck {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		out, err := runShellcheck(site.Command)
 		if err != nil {
 			continue // exec error (e.g. binary vanished) — gated/handled by the CLI
@@ -44,7 +44,7 @@ func (r *cfg045) Check(t *Target) []finding.Finding {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG045",
 				Severity: scSeverity(c.Level),
-				File:     t.SettingsFile,
+				File:     site.File,
 				Message: fmt.Sprintf("%s — shellcheck SC%d (%s): %s", site.Label, c.Code, c.Level, c.Message) +
 					userScopeNote(t),
 			})

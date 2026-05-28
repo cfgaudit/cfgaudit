@@ -28,18 +28,18 @@ var (
 // …) in one shot. Both an env-dump primitive and a network tool must appear in
 // the same command. Covers hooks and command-running helpers.
 func (r *cfg038) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		if !envDumpRe.MatchString(site.Command) || !envNetworkRe.MatchString(site.Command) {
 			continue
 		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG038",
 			Severity: finding.Error,
-			File:     t.SettingsFile,
+			File:     site.File,
 			Message:  site.Label + " dumps environment variables to the network (env/printenv piped to a network tool) — this exfiltrates every secret in the shell, including ANTHROPIC_API_KEY and cloud credentials. Remove it" + userScopeNote(t),
 		})
 	}

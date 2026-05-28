@@ -114,6 +114,12 @@ type MCPServer struct {
 	URL     string            `json:"url,omitempty"`
 	Type    string            `json:"type,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
+
+	// HeadersHelper is a command executed to generate auth headers for a remote
+	// MCP server (the per-server analogue of settings.json otelHeadersHelper). It
+	// is a shell command, so a repo-controlled value is an RCE surface scanned by
+	// the command-content rules (CFG008/009/014/015/027/028/037/038/039/045).
+	HeadersHelper string `json:"headersHelper,omitempty"`
 }
 
 // MCPConfig is a bare MCP config object whose mcpServers map carries the same

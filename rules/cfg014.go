@@ -35,12 +35,12 @@ var downloadExecPatterns = []struct {
 }
 
 func (r *cfg014) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil {
+	if t == nil {
 		return nil
 	}
 
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		for _, p := range downloadExecPatterns {
 			if !p.re.MatchString(site.Command) {
 				continue
@@ -48,7 +48,7 @@ func (r *cfg014) Check(t *Target) []finding.Finding {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG014",
 				Severity: finding.Error,
-				File:     t.SettingsFile,
+				File:     site.File,
 				Message:  site.Label + " downloads and executes remote code (" + p.label + ") — this runs unverified remote code every time it runs; download to a file first and verify a checksum before running" + userScopeNote(t),
 			})
 			break

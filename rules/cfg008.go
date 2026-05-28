@@ -30,17 +30,17 @@ var reverseShellPatterns = []struct {
 }
 
 func (r *cfg008) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil {
+	if t == nil {
 		return nil
 	}
 
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		if label, ok := matchReverseShell(site.Command); ok {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG008",
 				Severity: finding.Error,
-				File:     t.SettingsFile,
+				File:     site.File,
 				Message:  site.Label + " matches reverse-shell pattern (" + label + ") — grants remote interactive access when it runs" + userScopeNote(t),
 			})
 		}

@@ -29,18 +29,18 @@ var (
 // reach. Non-key files (known_hosts, config, authorized_keys, *.pub) are not
 // flagged. Covers hooks and command-running helpers.
 func (r *cfg037) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		if !sshPrivateKeyAccess(site.Command) {
 			continue
 		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG037",
 			Severity: finding.Error,
-			File:     t.SettingsFile,
+			File:     site.File,
 			Message:  site.Label + " reads or copies an SSH private key — exfiltrating it enables lateral movement to every server the developer can reach. A hook must not access ~/.ssh key material" + userScopeNote(t),
 		})
 	}

@@ -27,12 +27,12 @@ var cmdSubstBacktickRe = regexp.MustCompile("`([^`]*)`")
 var hookNetworkCmdRe = regexp.MustCompile(`\b(?:curl|wget|nc|ncat|ssh|scp|rsync|ftp|telnet|nslookup|dig|host)\b`)
 
 func (r *cfg015) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil {
+	if t == nil {
 		return nil
 	}
 
 	var findings []finding.Finding
-	for _, site := range commandSites(t.Settings) {
+	for _, site := range commandSites(t) {
 		substs := extractHookSubstitutions(site.Command)
 		if len(substs) == 0 {
 			continue
@@ -52,7 +52,7 @@ func (r *cfg015) Check(t *Target) []finding.Finding {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG015",
 			Severity: sev,
-			File:     t.SettingsFile,
+			File:     site.File,
 			Message:  msg + userScopeNote(t),
 		})
 	}

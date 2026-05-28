@@ -6,56 +6,68 @@ import (
 	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
-// commandSite is one location in settings.json that holds a shell command string
-// Claude Code executes. The content rules (CFG008/009/014/015) inspect every site
-// uniformly: hooks are not the only place a repo-controlled settings file can
+// commandSite is one location that holds a shell command string Claude Code (or
+// another agent) executes. The content rules (CFG008/009/014/015/…) inspect every
+// site uniformly: hooks are not the only place a repo-controlled config can
 // smuggle a command — credential helpers (apiKeyHelper, awsCredentialExport, …),
-// the status line, OTEL headers, and file-suggestion scripts all run a shell
-// command too (CVE-2025-59536 attack class).
+// the status line, OTEL headers, file-suggestion scripts (CVE-2025-59536 attack
+// class), and each MCP server's headersHelper all run a shell command too.
 type commandSite struct {
 	// Label is the finding-friendly origin of the command, already phrased as a
 	// noun ending in "command" (e.g. "hooks.SessionStart command", "apiKeyHelper
 	// command") so rules can append their verb directly.
-	Label   string
+	Label string
+	// File is the config file the command was declared in, so a finding is
+	// attributed correctly (settings.json vs an MCP config such as .mcp.json).
+	File    string
 	Command string
 }
 
-// commandSites returns every non-empty command-bearing site in s, in a stable
-// order: hooks first (by event name), then the credential/runtime helpers in a
-// fixed order. Returns nil for nil settings.
-func commandSites(s *parser.Settings) []commandSite {
-	if s == nil {
+// commandSites returns every non-empty command-bearing site in the target, in a
+// stable order: settings.json hooks (by event name), then its credential/runtime
+// helpers, then each MCP server's headersHelper (attributed to the MCP source
+// file). Returns nil for a nil target.
+func commandSites(t *Target) []commandSite {
+	if t == nil {
 		return nil
 	}
 	var sites []commandSite
 
-	events := make([]string, 0, len(s.Hooks))
-	for e := range s.Hooks {
-		events = append(events, e)
-	}
-	sort.Strings(events)
-	for _, event := range events {
-		for _, group := range s.Hooks[event] {
-			for _, h := range group.Hooks {
-				if h.Command != "" {
-					sites = append(sites, commandSite{Label: "hooks." + event + " command", Command: h.Command})
+	if s := t.Settings; s != nil {
+		events := make([]string, 0, len(s.Hooks))
+		for e := range s.Hooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, group := range s.Hooks[event] {
+				for _, h := range group.Hooks {
+					if h.Command != "" {
+						sites = append(sites, commandSite{Label: "hooks." + event + " command", File: t.SettingsFile, Command: h.Command})
+					}
 				}
 			}
 		}
+
+		add := func(label, cmd string) {
+			if cmd != "" {
+				sites = append(sites, commandSite{Label: label + " command", File: t.SettingsFile, Command: cmd})
+			}
+		}
+		add("apiKeyHelper", s.StringField("apiKeyHelper"))
+		add("awsCredentialExport", s.StringField("awsCredentialExport"))
+		add("awsAuthRefresh", s.StringField("awsAuthRefresh"))
+		add("gcpAuthRefresh", s.StringField("gcpAuthRefresh"))
+		add("otelHeadersHelper", s.StringField("otelHeadersHelper"))
+		add("statusLine", s.CommandHelperField("statusLine"))
+		add("fileSuggestion", s.CommandHelperField("fileSuggestion"))
 	}
 
-	add := func(label, cmd string) {
-		if cmd != "" {
-			sites = append(sites, commandSite{Label: label + " command", Command: cmd})
+	for _, ref := range t.mcpServerRefs() {
+		if cmd := ref.Server.HeadersHelper; cmd != "" {
+			sites = append(sites, commandSite{Label: "mcpServers." + ref.Name + ".headersHelper command", File: ref.File, Command: cmd})
 		}
 	}
-	add("apiKeyHelper", s.StringField("apiKeyHelper"))
-	add("awsCredentialExport", s.StringField("awsCredentialExport"))
-	add("awsAuthRefresh", s.StringField("awsAuthRefresh"))
-	add("gcpAuthRefresh", s.StringField("gcpAuthRefresh"))
-	add("otelHeadersHelper", s.StringField("otelHeadersHelper"))
-	add("statusLine", s.CommandHelperField("statusLine"))
-	add("fileSuggestion", s.CommandHelperField("fileSuggestion"))
 
 	return sites
 }
