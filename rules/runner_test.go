@@ -86,6 +86,44 @@ func TestRun_NonVersionedRule_AlwaysRuns(t *testing.T) {
 	}
 }
 
+// TestVersionGating_Issue192 locks in the audit decision (#192): presence-based
+// rules (CFG003/CFG004) are NOT Claude-version-gated and fire even on an ancient
+// detected version, while the absence-based CFG006 IS gated and skips below its
+// MinVersion. This guards against re-adding a misleading MinVersion to
+// presence-based rules.
+func TestVersionGating_Issue192(t *testing.T) {
+	ancient := version.Version{Major: 0, Minor: 1, Patch: 0}
+
+	// CFG003 / CFG004: presence-based → real finding, not a skip notice.
+	for _, c := range []struct {
+		rule Rule
+		json string
+		id   string
+	}{
+		{CFG003, `{"enableAllProjectMcpServers": true}`, "CFG003"},
+		{CFG004, `{"defaultMode": "bypassPermissions"}`, "CFG004"},
+	} {
+		withRules(t, c.rule)
+		got := Run(settingsTarget(t, c.json), &ancient, nil)
+		if len(got) != 1 || got[0].RuleID != c.id || got[0].Severity == finding.Info {
+			t.Errorf("%s should fire on an ancient version (presence-based, not gated), got %+v", c.id, got)
+		}
+	}
+
+	// CFG006: absence-based → gated; skipped (info notice) below MinVersion.
+	withRules(t, CFG006)
+	got := Run(settingsTarget(t, `{"permissions":{"allow":["Bash(make *)"]}}`), &ancient, nil)
+	if len(got) != 1 || got[0].Severity != finding.Info {
+		t.Errorf("CFG006 should be version-gated (info skip) on an ancient version, got %+v", got)
+	}
+	// ...and fires normally once the version is recent enough.
+	recent := version.Version{Major: 2, Minor: 1, Patch: 150}
+	got = Run(settingsTarget(t, `{"permissions":{"allow":["Bash(make *)"]}}`), &recent, nil)
+	if len(got) != 1 || got[0].RuleID != "CFG006" || got[0].Severity != finding.Warn {
+		t.Errorf("CFG006 should fire normally on a recent version, got %+v", got)
+	}
+}
+
 // plainRule implements Rule but not Versioned.
 type plainRule struct{ id string }
 

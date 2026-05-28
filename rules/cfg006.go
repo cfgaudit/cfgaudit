@@ -11,8 +11,13 @@ func init() { All = append(All, CFG006) }
 func (r *cfg006) ID() string { return "CFG006" }
 
 // MinVersion returns the lowest Claude Code release where permissions.deny is
-// honoured. The deny list is a foundational feature present in every observed
-// release; the gate is effectively a no-op but is declared for uniformity.
+// honoured. Unlike the presence-based rules, CFG006 is absence-based — it fires
+// when the deny guardrail is *missing*, which is only meaningful on a version
+// that supports deny. That makes version-gating the correct tool here (it would
+// suppress a misleading "deny absent" finding on a pre-deny release). The deny
+// list is foundational and present in every observed release, so in practice the
+// gate is a no-op; it is declared because the gate is semantically right, not for
+// uniformity.
 func (r *cfg006) MinVersion() string { return "0.2.21" }
 
 func (r *cfg006) Check(t *Target) []finding.Finding {
