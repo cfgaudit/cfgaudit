@@ -82,7 +82,14 @@ cfgaudit explain CFG001
 cfgaudit list
 cfgaudit list --owasp LLM06
 cfgaudit list --format json
+
+# Sync deny rules between settings.json and .cfgaudit.yml policy
+cfgaudit policy generate            # settings.json permissions.deny -> .cfgaudit.yml require-deny
+cfgaudit policy apply --dry-run     # preview: .cfgaudit.yml require-deny -> settings.json permissions.deny
+cfgaudit policy apply               # write the missing deny entries
 ```
+
+**`policy` subcommand** — keeps `permissions.deny` (enforced by Claude Code) and `policy.require-deny` (audited by cfgaudit / CFG025) in sync. `generate` freezes the current runtime deny list as an auditable policy, preserving the rest of your `.cfgaudit.yml` (comments included). `apply` rolls a policy out to a project's settings; both merge **additively** (nothing is removed) and are idempotent. `apply` rewrites `settings.json` as 2-space-indented JSON with alphabetically-ordered top-level keys — run `--dry-run` first to preview.
 
 **Scope-aware findings**
 

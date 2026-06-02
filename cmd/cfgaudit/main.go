@@ -37,6 +37,10 @@ func main() {
 			out, code := listOutput(os.Args[2:])
 			fmt.Print(out)
 			os.Exit(code)
+		case "policy":
+			out, code := policyOutput(os.Args[2:])
+			fmt.Print(out)
+			os.Exit(code)
 		}
 	}
 
