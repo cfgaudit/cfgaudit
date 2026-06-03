@@ -1,7 +1,7 @@
 {
   "name": "cfgaudit",
   "description": "Security scanner for AI-agent configuration files — detects prompt injection, dangerous permissions, and credential exposure in settings.json, CLAUDE.md, MCP configs, and more.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": {
     "name": "cfgaudit",
     "url": "https://github.com/cfgaudit/cfgaudit"
