@@ -75,16 +75,35 @@ func TestCFG036_BenignCommandDocs_NoFinding(t *testing.T) {
 }
 
 // A bare sensitive path in Markdown inline code is documentation, not a command
-// substitution, and must not trip Part A (issue #179).
+// substitution, and must not trip Part A (issue #179). Config/dir references
+// (.claude/, settings.json) and prose "credentials" are not credential reads (#231).
 func TestCFG036_PartA_MarkdownInlineCodePath_NoFinding(t *testing.T) {
 	for _, s := range []string{
 		"All connection parameters come from `.env.local` (not committed).",
 		"Secrets live in `.env`; never commit it.",
 		"Project config is `.claude/settings.json`.",
 		"See `credentials` in the docs.",
+		// skills running/listing their own .claude/ files (#231)
+		"See `ls ~/.claude/skills/` for available skills.",
+		"Run `python3 .claude/scripts/build.py` to build.",
+		"Then `bash ~/.claude/hooks/setup.sh` runs once.",
+		"Process the credentials securely before use.",
 	} {
 		if f := CFG036.Check(claudeMDTarget(s)); len(f) != 0 {
 			t.Errorf("expected no Part A finding for inline-code path %q, got %+v", s, f)
+		}
+	}
+}
+
+// Real credential/secret reads via command substitution still fire Part A (#231).
+func TestCFG036_PartA_RealCredentialReads(t *testing.T) {
+	for _, s := range []string{
+		"x=`cat ~/.ssh/id_rsa`",
+		"value $(grep token credentials.json)",
+		"run `python -c \"open('.env').read()\"`",
+	} {
+		if f := CFG036.Check(claudeMDTarget(s)); len(f) == 0 {
+			t.Errorf("expected a Part A finding for %q, got none", s)
 		}
 	}
 }
