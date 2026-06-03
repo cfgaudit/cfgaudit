@@ -39,6 +39,12 @@ var sensitivePathRe = regexp.MustCompile(`(?i)(` +
 	`|[\w.\-/]+\.key\b` +
 	`)`)
 
+// pathActionRe matches a read/transmit verb that turns a sensitive-file reference
+// from a documentation *mention* into an instruction to access or exfiltrate it.
+// On the same line as the path → error; otherwise a bare mention is only a warn
+// (a skill may legitimately name a credential path in prose).
+var pathActionRe = regexp.MustCompile(`(?i)\b(read|cat|open|less|head|tail|view|print|echo|dump|copy|cp|scp|move|mv|send|upload|post|put|curl|wget|fetch|exfiltrat\w*|leak|transmit|mail|base64|gpg|tar|zip|attach|load|source|contents of|paste)\b`)
+
 func (r *cfg031) Check(t *Target) []finding.Finding {
 	if t == nil || t.InstructionContent == "" {
 		return nil
@@ -50,14 +56,22 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			continue
 		}
 		lineNo := i + 1
+		path := strings.TrimSpace(line[loc[0]:loc[1]])
+		sev := finding.Warn
+		msg := t.instructionName() + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
+			"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"
+		if pathActionRe.MatchString(line) {
+			sev = finding.Error
+			msg = t.instructionName() + " line " + strconv.Itoa(lineNo) + " instructs reading or sending the sensitive file \"" + path +
+				"\" — a hallmark of an exfiltration payload. Remove it"
+		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG031",
-			Severity: finding.Error,
+			Severity: sev,
 			File:     t.InstructionFile,
 			Line:     lineNo,
 			Col:      loc[0] + 1,
-			Message: t.instructionName() + " line " + strconv.Itoa(lineNo) + " references the sensitive file \"" + strings.TrimSpace(line[loc[0]:loc[1]]) +
-				"\" — legitimate project guidance has no reason to point Claude at credential/secret files; this is a hallmark of an exfiltration payload. Remove it",
+			Message:  msg,
 		})
 	}
 	return findings
