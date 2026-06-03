@@ -16,10 +16,24 @@ func init() { All = append(All, CFG029) }
 
 func (r *cfg029) ID() string { return "CFG029" }
 
-// permissionBypassRe matches CLAUDE.md text that instructs Claude to auto-approve
-// or skip confirmation — disabling the permission system via system context, the
+// permissionBypassRe matches text instructing Claude to auto-approve or skip
+// confirmation — disabling the permission system via system context, the
 // natural-language equivalent of defaultMode: bypassPermissions (CFG004).
-var permissionBypassRe = regexp.MustCompile(`(?i)(always\s+approve|auto-?approve|without\s+(?:asking|confirm(?:ation)?|prompt(?:ing)?|approval)|never\s+(?:ask|prompt|confirm|require\s+approval)|skip\s+confirm(?:ation)?|do\s+not\s+(?:ask|prompt|confirm)|bypass\s+(?:permission|confirmation|approval))`)
+//
+// Two groups. The first matches anywhere (unambiguous bypass language). The
+// second covers ask/prompt-based forms, which must carry a permission/run object
+// — so "never ask for approval" / "without asking before running" match, while
+// the benign "never ask the user for API keys" / "don't ask clarifying
+// questions" (UX / good practice) do not.
+var permissionBypassRe = regexp.MustCompile(`(?i)(` +
+	`always\s+approve` +
+	`|auto-?approve` +
+	`|bypass\s+(?:permission|confirmation|approval)` +
+	`|skip\s+(?:confirm(?:ation)?|approval|the\s+prompt)` +
+	`|without\s+(?:confirm(?:ation)?|approval|prompt(?:ing)?)` +
+	`|never\s+(?:prompt|confirm|require\s+approval)` +
+	`|(?:without\s+asking|never\s+ask(?:ing)?|do\s+not\s+ask|don'?t\s+ask|do\s+not\s+prompt)\s+(?:the\s+user\s+)?(?:for\s+)?(?:permission|approval|confirmation|before\s+(?:running|executing|proceeding|making|applying|doing))` +
+	`)`)
 
 func (r *cfg029) Check(t *Target) []finding.Finding {
 	if t == nil || t.InstructionContent == "" {
