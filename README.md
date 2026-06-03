@@ -322,7 +322,7 @@ AI coding agents read their instruction files as trusted system-context every se
 | [CFG035](docs/rules/CFG035.md) | error | `CLAUDE.md` instructs Claude to configure or trust an MCP server (`claude mcp add` …) — installs an attacker server | LLM06 |
 | [CFG036](docs/rules/CFG036.md) | error/warn | `CLAUDE.md` embeds shell commands for auto-execution/exfiltration (cmd-subst on secret paths, auto-exec + `curl https://…`) | LLM02 |
 | [CFG057](docs/rules/CFG057.md) | warn | instruction file embeds an encoded payload — a `data:` URI or base64 blob that decodes to an injection phrase or command (evades CFG024/CFG026) | LLM01 |
-| [CFG051](docs/rules/CFG051.md) | error | skill/command/subagent frontmatter `allowed-tools` grants unrestricted shell or all tools (`Bash`, `*`, `all`) — not narrowed by `disallowed-tools` | LLM06 |
+| [CFG051](docs/rules/CFG051.md) | error/warn | skill/command/subagent frontmatter `allowed-tools` grants unrestricted shell or all tools (`Bash`, `*`, `all`) — not narrowed by `disallowed-tools` | LLM06 |
 | [CFG056](docs/rules/CFG056.md) | warn | model-invocable skill/command/subagent has a broad/always-on `description` trigger ("for every request", "always invoke") — behaviour-hijack via greedy selection | LLM01 |
 
 ### Plugin & skill packages

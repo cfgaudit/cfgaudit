@@ -69,9 +69,11 @@ func analyzeAllowedTools(allowed, disallowed []string) (finding.Severity, string
 				return finding.Error, "grants all tools (\"" + tool + "\") — unrestricted tool access"
 			}
 		case low == "bash" || low == "bash(*)" || low == "shell" || low == "execute":
-			// Unrestricted shell: bare Bash (no Bash(cmd) restriction) or a wildcard.
+			// Unrestricted shell: broad and worth review, but a common, often
+			// legitimate declaration for skills that genuinely need a shell — warn,
+			// not error (which is reserved for total */all access above).
 			if !cancelled(tool) {
-				return finding.Error, "grants unrestricted shell access (\"" + tool + "\")"
+				return finding.Warn, "grants unrestricted shell access (\"" + tool + "\") — scope it to specific commands (e.g. Bash(npm test)) if possible"
 			}
 		}
 	}

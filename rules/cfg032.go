@@ -25,26 +25,16 @@ var authorityTags = map[string]bool{
 	"SUDO": true, "JAILBREAK": true, "DEVELOPER_MODE": true,
 }
 
-// htmlSafeTags are standard HTML/SVG tags (uppercased) that must not trip the
-// generic all-caps catch-all.
-var htmlSafeTags = map[string]bool{
-	"HTML": true, "HEAD": true, "BODY": true, "TABLE": true, "THEAD": true,
-	"TBODY": true, "TFOOT": true, "DIV": true, "SVG": true, "PRE": true,
-	"NAV": true, "IMG": true, "COL": true, "DEL": true, "INS": true, "WBR": true,
-}
-
-// placeholderWords are documentation-placeholder tokens; an all-caps tag whose
-// underscore-separated segments include one of these (e.g. <YOUR_API_KEY>,
-// <PROJECT_NAME>, <VERSION>) is a template placeholder, not an injection.
-var placeholderWords = map[string]bool{
-	"YOUR": true, "NAME": true, "KEY": true, "TOKEN": true, "SECRET": true,
-	"VALUE": true, "PATH": true, "URL": true, "URI": true, "VERSION": true,
-	"DATE": true, "TIME": true, "USER": true, "USERNAME": true, "EMAIL": true,
-	"PORT": true, "HOST": true, "ENV": true, "VAR": true, "ARG": true,
-	"DIR": true, "FILE": true, "FOLDER": true, "PROJECT": true, "BRANCH": true,
-	"REPO": true, "ORG": true, "REGION": true, "BUCKET": true, "ACCOUNT": true,
-	"NUMBER": true, "COUNT": true, "INDEX": true, "PLACEHOLDER": true,
-	"TODO": true, "FIXME": true, "ID": true,
+// authoritySuspiciousWords are segments that make a novel all-caps tag read as an
+// authority/permission/imperative claim rather than a benign field placeholder.
+// The generic all-caps catch-all only warns when a tag contains one of these;
+// everything else (template placeholders like <FILL>/<TASK>/<ISO>/<UUID>, field
+// names, HTML tags) is ignored, which keeps false positives low on real docs.
+var authoritySuspiciousWords = map[string]bool{
+	"MANDATORY": true, "REQUIRED": true, "FORCE": true, "FORCED": true,
+	"OVERRIDE": true, "BYPASS": true, "ENFORCE": true, "ELEVATED": true,
+	"PRIVILEGED": true, "SUPERUSER": true, "UNRESTRICTED": true, "UNLIMITED": true,
+	"NOAUTH": true, "NOPROMPT": true, "FULLACCESS": true,
 }
 
 var (
@@ -85,10 +75,10 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 		switch {
 		case authorityTags[tag]:
 			add(m[0], finding.Error, "contains pseudo-system authority tag \"<"+tag+">\" (Part A) — invented markup claiming system-level authority; remove it")
-		case htmlSafeTags[tag] || hasPlaceholderSegment(tag):
-			// standard HTML or a documentation placeholder — ignore
+		case hasAuthoritySegment(tag):
+			add(m[0], finding.Warn, "contains suspicious all-caps pseudo-tag \"<"+tag+">\" (Part A) — reads as an authority/permission claim, not a standard tag")
 		default:
-			add(m[0], finding.Warn, "contains suspicious all-caps pseudo-tag \"<"+tag+">\" (Part A) — not a standard tag; a signal of adversarial markup")
+			// benign all-caps tag — template placeholder, field name, or HTML — ignore
 		}
 	}
 
@@ -117,9 +107,9 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 	return findings
 }
 
-func hasPlaceholderSegment(tag string) bool {
+func hasAuthoritySegment(tag string) bool {
 	for _, seg := range strings.Split(tag, "_") {
-		if placeholderWords[seg] {
+		if authoritySuspiciousWords[seg] {
 			return true
 		}
 	}

@@ -33,6 +33,12 @@ func TestCFG032_Placeholders_NoFinding(t *testing.T) {
 		"Pin to <VERSION>.",
 		"Use <DIV> and <HTML> in examples.",
 		"<USER_EMAIL> goes here",
+		// real template placeholders observed in plugin skills (#219)
+		"Fill in <FILL> here.",
+		"Provider: <PROVIDER>",
+		"Timestamp <ISO> and <YYYYMMDD>",
+		"Source <SOURCE>, task <TASK>, id <UUID>",
+		"<INSTRUCTIONS> then <OUTPUT_DESCRIPTION> then <BACKGROUND_INFORMATION>",
 	} {
 		if f := CFG032.Check(claudeMDTarget(s)); len(f) != 0 {
 			t.Errorf("expected no finding for placeholder/html %q, got %+v", s, f)

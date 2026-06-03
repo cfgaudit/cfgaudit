@@ -22,6 +22,15 @@ var hookVarRe = regexp.MustCompile(`\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_]
 // cmdVarRe matches a Windows cmd.exe variable reference: %NAME%.
 var cmdVarRe = regexp.MustCompile(`%([A-Za-z_][A-Za-z0-9_]*)%`)
 
+// safeShellVars are framework-provided Claude Code variables holding trusted,
+// non-attacker-influenced paths (a plugin/hook locating its own files). A command
+// interpolating only these is not flagged; mixing them with other variables still
+// flags the others.
+var safeShellVars = map[string]bool{
+	"CLAUDE_PLUGIN_ROOT": true,
+	"CLAUDE_PROJECT_DIR": true,
+}
+
 func (r *cfg009) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -60,6 +69,9 @@ func extractShellVars(cmd string) []string {
 		name := m[1]
 		if name == "" {
 			name = m[2]
+		}
+		if safeShellVars[name] {
+			continue
 		}
 		addKey("$" + name)
 	}

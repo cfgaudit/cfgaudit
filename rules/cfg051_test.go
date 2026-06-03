@@ -12,18 +12,23 @@ func instructionTarget(file, content string) *Target {
 }
 
 func TestCFG051_BroadGrants(t *testing.T) {
-	cases := []struct{ name, fm, want string }{
-		{"all-star", "allowed-tools: \"*\"", "all tools"},
-		{"all-word", "allowed-tools: all", "all tools"},
-		{"bare-bash", "allowed-tools: Bash, Read", "unrestricted shell"},
-		{"bash-list", "allowed-tools:\n  - Bash\n  - Read", "unrestricted shell"},
-		{"shell", "allowed-tools: shell", "unrestricted shell"},
+	cases := []struct {
+		name, fm, want string
+		sev            finding.Severity
+	}{
+		// Total access → error.
+		{"all-star", "allowed-tools: \"*\"", "all tools", finding.Error},
+		{"all-word", "allowed-tools: all", "all tools", finding.Error},
+		// Unrestricted shell → warn (broad but commonly legitimate).
+		{"bare-bash", "allowed-tools: Bash, Read", "unrestricted shell", finding.Warn},
+		{"bash-list", "allowed-tools:\n  - Bash\n  - Read", "unrestricted shell", finding.Warn},
+		{"shell", "allowed-tools: shell", "unrestricted shell", finding.Warn},
 	}
 	for _, c := range cases {
 		content := "---\ndescription: x\n" + c.fm + "\n---\nbody\n"
 		f := CFG051.Check(instructionTarget(".claude/commands/c.md", content))
-		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, c.want) {
-			t.Errorf("%s: expected error containing %q, got %+v", c.name, c.want, f)
+		if len(f) != 1 || f[0].Severity != c.sev || !strings.Contains(f[0].Message, c.want) {
+			t.Errorf("%s: expected %s containing %q, got %+v", c.name, c.sev, c.want, f)
 		}
 	}
 }

@@ -57,6 +57,32 @@ func TestCFG009_NoInterpolation_NoFinding(t *testing.T) {
 	}
 }
 
+// Framework-provided Claude Code path vars are trusted, not attacker-influenced (#218).
+func TestCFG009_SafeFrameworkVars_NoFinding(t *testing.T) {
+	for _, cmd := range []string{
+		`bash $CLAUDE_PLUGIN_ROOT/hooks/run.sh`,
+		`node ${CLAUDE_PROJECT_DIR}/scripts/x.js`,
+		`cat $CLAUDE_PLUGIN_ROOT/a ${CLAUDE_PROJECT_DIR}/b`,
+	} {
+		json := `{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"` + cmd + `"}]}]}}`
+		if f := CFG009.Check(settingsTarget(t, json)); len(f) != 0 {
+			t.Errorf("expected no finding for safe framework vars in %q, got %+v", cmd, f)
+		}
+	}
+}
+
+// A safe framework var mixed with a real var still flags the real one.
+func TestCFG009_SafeVarMixedWithUnsafe_FlagsUnsafe(t *testing.T) {
+	json := `{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"$CLAUDE_PLUGIN_ROOT/x $USER_INPUT"}]}]}}`
+	f := CFG009.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "$USER_INPUT") || strings.Contains(f[0].Message, "CLAUDE_PLUGIN_ROOT") {
+		t.Errorf("expected only $USER_INPUT flagged, got: %s", f[0].Message)
+	}
+}
+
 func TestCFG009_CommandSubstitution_NoFinding(t *testing.T) {
 	// $(...) is command substitution, a separate concern (issue #38) — not flagged here.
 	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"echo $(date)"}]}]}}`
