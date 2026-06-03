@@ -315,7 +315,7 @@ AI coding agents read their instruction files as trusted system-context every se
 | [CFG026](docs/rules/CFG026.md) | error/warn | `CLAUDE.md` contains instruction-bypass phrases (override / persona hijack / authority impersonation → error; permissive fictional framing → warn) | LLM01 |
 | [CFG029](docs/rules/CFG029.md) | error | `CLAUDE.md` instructs Claude to bypass permission prompts ("always approve", "without asking", …) — NL equivalent of `defaultMode: bypassPermissions` | LLM06 |
 | [CFG030](docs/rules/CFG030.md) | error | `CLAUDE.md` instructs Claude to conceal its behavior ("don't tell the user", "silently exfiltrate", …) | LLM01 |
-| [CFG031](docs/rules/CFG031.md) | error | `CLAUDE.md` references sensitive file paths (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — exfiltration payload | LLM02 |
+| [CFG031](docs/rules/CFG031.md) | error/warn | `CLAUDE.md` instruction references a sensitive file path (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — error when read/sent (exfiltration), warn on a bare mention | LLM02 |
 | [CFG032](docs/rules/CFG032.md) | error/warn | `CLAUDE.md` contains pseudo-system tags (`<SYSTEM>`), turn-boundary/role injection (`Human:`/`<human>`) → error; generic all-caps tags & foreign-LLM control tokens → warn | LLM01 |
 | [CFG033](docs/rules/CFG033.md) | error | `CLAUDE.md` contains a markdown image with an empty/placeholder query param (`![](https://x?d=)`) — data-exfiltration sink | LLM02 |
 | [CFG034](docs/rules/CFG034.md) | warn | `CLAUDE.md` contains Guidance/template role delimiters (`{{#system~}}` …) — role-injection markup | LLM01 |
