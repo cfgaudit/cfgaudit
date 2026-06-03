@@ -41,6 +41,10 @@ func main() {
 			out, code := policyOutput(os.Args[2:])
 			fmt.Print(out)
 			os.Exit(code)
+		case "init":
+			out, code := initOutput(os.Args[2:], os.Stdin)
+			fmt.Print(out)
+			os.Exit(code)
 		}
 	}
 
