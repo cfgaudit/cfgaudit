@@ -307,7 +307,7 @@ Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG
 
 ### Instruction files — `CLAUDE.md` & other agents
 
-AI coding agents read their instruction files as trusted system-context every session, so a committed or user-global instruction file is a prompt-injection target. The project `CLAUDE.md` is scanned automatically and `~/.claude/CLAUDE.md` with `--user`. The same content rules also scan, when present in the project: `.cursorrules`, `.cursor/rules/*.{md,mdc}`, `.windsurfrules`, `.windsurf/rules/*.md`, `AGENTS.md`, `.github/copilot-instructions.md`, and Claude Code's custom **subagents** (`.claude/agents/*.md`) and **slash commands** (`.claude/commands/*.md`) — the latter two also under `~/.claude/` with `--user`. Findings name the file they came from.
+AI coding agents read their instruction files as trusted system-context every session, so a committed or user-global instruction file is a prompt-injection target. The project `CLAUDE.md` is scanned automatically and `~/.claude/CLAUDE.md` with `--user`. The same content rules also scan, when present in the project: `.cursorrules`, `.cursor/rules/*.{md,mdc}`, `.windsurfrules`, `.windsurf/rules/*.md`, `AGENTS.md`, `.github/copilot-instructions.md`, and Claude Code's custom **subagents** (`.claude/agents/*.md`), **slash commands** (`.claude/commands/*.md`), and **skills** (`.claude/skills/*/SKILL.md`) — these three also under `~/.claude/` with `--user`. Findings name the file they came from.
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|

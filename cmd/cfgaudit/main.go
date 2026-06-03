@@ -460,16 +460,19 @@ var (
 		filepath.Join(".cursor", "rules", "*.md"),
 		filepath.Join(".cursor", "rules", "*.mdc"),
 		filepath.Join(".windsurf", "rules", "*.md"),
-		// Claude Code custom subagents and slash commands — Markdown with a YAML
-		// frontmatter (description trigger, allowed-tools) read as trusted context.
+		// Claude Code custom subagents, slash commands, and skills — Markdown with a
+		// YAML frontmatter (description trigger, allowed-tools) read as trusted
+		// context. Skills live one directory deep: .claude/skills/<name>/SKILL.md.
 		filepath.Join(".claude", "agents", "*.md"),
 		filepath.Join(".claude", "commands", "*.md"),
+		filepath.Join(".claude", "skills", "*", "SKILL.md"),
 	}
 	// userInstructionGlobs are scanned only with --user (relative to $HOME): the
-	// user-global subagents and slash commands apply to every project.
+	// user-global subagents, slash commands, and skills apply to every project.
 	userInstructionGlobs = []string{
 		filepath.Join(".claude", "agents", "*.md"),
 		filepath.Join(".claude", "commands", "*.md"),
+		filepath.Join(".claude", "skills", "*", "SKILL.md"),
 	}
 )
 
