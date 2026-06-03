@@ -83,11 +83,18 @@ cfgaudit list
 cfgaudit list --owasp LLM06
 cfgaudit list --format json
 
+# Scaffold a hardened .claude/settings.json for a new project
+cfgaudit init                       # write a safe-default deny list
+cfgaudit init --dry-run             # print the JSON without writing
+cfgaudit init --interactive         # add project-specific deny entries
+
 # Sync deny rules between settings.json and .cfgaudit.yml policy
 cfgaudit policy generate            # settings.json permissions.deny -> .cfgaudit.yml require-deny
 cfgaudit policy apply --dry-run     # preview: .cfgaudit.yml require-deny -> settings.json permissions.deny
 cfgaudit policy apply               # write the missing deny entries
 ```
+
+**`init` subcommand** — scaffolds `.claude/settings.json` with a hardened baseline `permissions.deny` (credential/key/cloud/SSH read-denies plus destructive/network/privilege command classes) so a fresh project starts safe-by-default and passes the policy rules (CFG006/CFG041–CFG044) immediately. Aborts if the file exists (use `--force`, or `cfgaudit policy apply` to merge); `--dry-run` prints the JSON; `--interactive` adds project-specific entries.
 
 **`policy` subcommand** — keeps `permissions.deny` (enforced by Claude Code) and `policy.require-deny` (audited by cfgaudit / CFG025) in sync. `generate` freezes the current runtime deny list as an auditable policy, preserving the rest of your `.cfgaudit.yml` (comments included). `apply` rolls a policy out to a project's settings; both merge **additively** (nothing is removed) and are idempotent. `apply` rewrites `settings.json` as 2-space-indented JSON with alphabetically-ordered top-level keys — run `--dry-run` first to preview.
 
@@ -223,6 +230,7 @@ The plugin adds:
 
 - **`/cfgaudit:scan`** — scan the current project on demand.
 - **`/cfgaudit:explain <RULE>`** — explain a rule (what it checks, why, how to fix); with no argument it lists the rules.
+- **`/cfgaudit:init`** — scaffold a **project-aware** `.claude/settings.json`: Claude inspects the project's tooling and tailors the deny list on top of the baseline, then verifies 0 findings.
 - A **Stop hook** (scan when a session ends) and a **PostToolUse hook** (scan after edits to `settings.json` / `CLAUDE.md` / `.mcp.json` / `.claude/` files).
 
 Hooks call a `cfgaudit` binary on your `PATH` (install via Homebrew or `go install` above); if none is found the bundled wrapper downloads the matching prebuilt release binary for your OS/arch (checksum-verified and cached) — **no Go toolchain required**. Team rollout via `.claude/settings.json`:
