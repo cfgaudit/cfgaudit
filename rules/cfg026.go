@@ -28,7 +28,11 @@ type bypassPattern struct {
 var bypassPatterns = []bypassPattern{
 	{1, regexp.MustCompile(`(?i)(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|pay no attention to|do not follow|do not obey)\s*(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)`),
 		finding.Error, "instruction override", false},
-	{2, regexp.MustCompile(`(?i)(you\s+are\s+now|act\s+as|pretend\s+(you\s+are|to\s+be)|your\s+(new\s+)?(name|identity|persona)\s+is|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|GPT|an?\s+AI\s+without))`),
+	// Pattern 2 targets hijacking of Claude's own identity. Bare "act as <role>" /
+	// "pretend you are <role>" are the standard, legitimate way to define a skill's
+	// or subagent's persona, so they are NOT matched; act-as/pretend only matches
+	// when the target is adversarial (an unrestricted AI, DAN, the user, root, …).
+	{2, regexp.MustCompile(`(?i)(you\s+are\s+now\b|your\s+(new\s+)?(name|identity|persona)\s+is|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+(DAN|the\s+user|the\s+system|root|admin|an?\s+(unrestricted|unfiltered|jailbroken|uncensored)|an?\s+AI\s+(with\s+no|without)))`),
 		finding.Error, "persona / identity hijacking", false},
 	{3, regexp.MustCompile(`(?i)(as\s+(your\s+)?(developer|creator|trainer|Anthropic|operator|administrator|sys(tem)?\s*admin)|this\s+(is|message\s+is)\s+(from\s+)?(Anthropic|your\s+developer)|developer\s+mode\s+(enabled|activated|on)|jailbreak\s+(mode|enabled|activated))`),
 		finding.Error, "authority impersonation", false},
