@@ -59,6 +59,29 @@ var dangerousAllowLookup = func() map[string]allowCat {
 
 var bashAllowRe = regexp.MustCompile(`^Bash\((.*)\)$`)
 
+// gitReadOnlySubcmds are git subcommands that only inspect the repository. When an
+// allow entry pins one of these (e.g. Bash(git status:*)), the git arbitrary-exec
+// vector — which needs a flag before the subcommand, like `git -c alias=!sh` — is
+// not reachable, so the entry is not flagged. Unscoped Bash(git *) / Bash(git:*)
+// and state-changing subcommands (push, commit, config, remote, …) still are.
+var gitReadOnlySubcmds = map[string]bool{
+	"status": true, "diff": true, "log": true, "show": true, "rev-parse": true,
+	"describe": true, "blame": true, "ls-files": true, "ls-remote": true,
+	"shortlog": true, "reflog": true, "for-each-ref": true, "name-rev": true,
+	"symbolic-ref": true, "cat-file": true, "whatchanged": true, "grep": true,
+}
+
+// gitFirstSubcmd returns the lowercased first token after "git" in an allow
+// pattern's inner text (e.g. "git status:*" → "status"). A leading flag ("-c")
+// or empty (unscoped "git *"/"git:*") yields "" — never read-only.
+func gitFirstSubcmd(inner string) string {
+	rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(inner), "git"))
+	if i := strings.IndexAny(rest, " \t:*"); i >= 0 {
+		rest = rest[:i]
+	}
+	return strings.ToLower(rest)
+}
+
 // Check flags permissions.allow entries that grant a command which — when allowed
 // with open-ended arguments — yields arbitrary code execution, unrestricted
 // network access, privilege escalation, or lateral movement. Exactly-pinned
@@ -106,6 +129,11 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 	}
 	tok = strings.ToLower(strings.TrimSpace(tok))
 	if cat, ok := dangerousAllowLookup[tok]; ok {
+		// A git allow entry pinned to a read-only subcommand can't reach the
+		// arbitrary-exec-via-flags vector, so it is not flagged.
+		if tok == "git" && gitReadOnlySubcmds[gitFirstSubcmd(inner)] {
+			return "", allowCat{}, false
+		}
 		return tok, cat, true
 	}
 	return "", allowCat{}, false

@@ -37,6 +37,33 @@ func TestCFG023_ExecViaFlags_Warn(t *testing.T) {
 	}
 }
 
+// A git allow entry pinned to a read-only subcommand is exempt (#224), but the
+// unscoped/flag-injection/state-changing forms still warn.
+func TestCFG023_GitReadOnlySubcmd_NoFinding(t *testing.T) {
+	for _, entry := range []string{
+		"Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
+		"Bash(git rev-parse:*)", "Bash(git show *)", "Bash(git blame:*)",
+	} {
+		json := `{"permissions":{"allow":["` + entry + `"]}}`
+		if f := CFG023.Check(settingsTarget(t, json)); len(f) != 0 {
+			t.Errorf("expected no finding for read-only git %s, got %+v", entry, f)
+		}
+	}
+}
+
+func TestCFG023_GitDangerousForms_Warn(t *testing.T) {
+	for _, entry := range []string{
+		"Bash(git *)", "Bash(git:*)", "Bash(git -c core.pager=x status:*)",
+		"Bash(git config:*)", "Bash(git push:*)",
+	} {
+		json := `{"permissions":{"allow":["` + entry + `"]}}`
+		f := CFG023.Check(settingsTarget(t, json))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("expected 1 Warn for %s, got %+v", entry, f)
+		}
+	}
+}
+
 func TestCFG023_ExactCommand_NoFinding(t *testing.T) {
 	// No wildcard => the user pinned the exact command; exempt even for risky binaries.
 	for _, entry := range []string{"Bash(git status)", "Bash(curl https://api.example/health)", "Bash(npm test)"} {
