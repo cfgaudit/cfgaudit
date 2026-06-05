@@ -30,25 +30,27 @@ var mcpInstructionPatterns = []*regexp.Regexp{
 // Check flags CLAUDE.md content that instructs Claude to configure or trust an
 // MCP server. Matches inside fenced code blocks are still reported.
 func (r *cfg035) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for i, line := range strings.Split(t.InstructionContent, "\n") {
-		loc := firstMatch(mcpInstructionPatterns, line)
-		if loc == nil {
-			continue
+	for _, src := range t.instructionSources() {
+		for i, line := range strings.Split(src.Content, "\n") {
+			loc := firstMatch(mcpInstructionPatterns, line)
+			if loc == nil {
+				continue
+			}
+			lineNo := i + 1
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG035",
+				Severity: finding.Error,
+				File:     src.File,
+				Line:     lineNo,
+				Col:      loc[0] + 1,
+				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs Claude to configure or trust an MCP server (\"" + strings.TrimSpace(line[loc[0]:loc[1]]) +
+					"\") — instruction files must not contain MCP configuration instructions; a malicious one can silently install an attacker-controlled MCP server into your config. Remove it",
+			})
 		}
-		lineNo := i + 1
-		findings = append(findings, finding.Finding{
-			RuleID:   "CFG035",
-			Severity: finding.Error,
-			File:     t.InstructionFile,
-			Line:     lineNo,
-			Col:      loc[0] + 1,
-			Message: t.instructionName() + " line " + strconv.Itoa(lineNo) + " instructs Claude to configure or trust an MCP server (\"" + strings.TrimSpace(line[loc[0]:loc[1]]) +
-				"\") — instruction files must not contain MCP configuration instructions; a malicious one can silently install an attacker-controlled MCP server into your config. Remove it",
-		})
 	}
 	return findings
 }

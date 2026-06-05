@@ -29,25 +29,27 @@ var concealRe = regexp.MustCompile(`(?i)(` +
 	`)`)
 
 func (r *cfg030) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for i, line := range strings.Split(t.InstructionContent, "\n") {
-		loc := concealRe.FindStringIndex(line)
-		if loc == nil {
-			continue
+	for _, src := range t.instructionSources() {
+		for i, line := range strings.Split(src.Content, "\n") {
+			loc := concealRe.FindStringIndex(line)
+			if loc == nil {
+				continue
+			}
+			lineNo := i + 1
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG030",
+				Severity: finding.Error,
+				File:     src.File,
+				Line:     lineNo,
+				Col:      loc[0] + 1,
+				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs Claude to conceal its behaviour from the user (\"" + line[loc[0]:loc[1]] +
+					"\") — gagging the model is the social-engineering layer of a prompt injection; legitimate guidance never tells Claude to hide what it does. Remove it",
+			})
 		}
-		lineNo := i + 1
-		findings = append(findings, finding.Finding{
-			RuleID:   "CFG030",
-			Severity: finding.Error,
-			File:     t.InstructionFile,
-			Line:     lineNo,
-			Col:      loc[0] + 1,
-			Message: t.instructionName() + " line " + strconv.Itoa(lineNo) + " instructs Claude to conceal its behaviour from the user (\"" + line[loc[0]:loc[1]] +
-				"\") — gagging the model is the social-engineering layer of a prompt injection; legitimate guidance never tells Claude to hide what it does. Remove it",
-		})
 	}
 	return findings
 }

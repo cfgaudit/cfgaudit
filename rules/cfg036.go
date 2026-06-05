@@ -38,66 +38,70 @@ var (
 // exfiltration command within 3 lines (error). C: an auto-execution directive
 // alone (warn). Matches inside fenced code blocks are still reported.
 func (r *cfg036) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
-	lines := strings.Split(t.InstructionContent, "\n")
-	n := len(lines)
-
-	directive := make([][]int, n)
-	network := make([]bool, n)
-
 	var findings []finding.Finding
-	add := func(line, col int, sev finding.Severity, msg string) {
-		findings = append(findings, finding.Finding{
-			RuleID: "CFG036", Severity: sev, File: t.InstructionFile,
-			Line: line + 1, Col: col + 1,
-			Message: t.instructionName() + " line " + strconv.Itoa(line+1) + " " + msg,
+	for _, src := range t.instructionSources() {
+		lines := strings.Split(src.Content, "\n")
+		n := len(lines)
+
+		directive := make([][]int, n)
+		network := make([]bool, n)
+
+		var srcFindings []finding.Finding
+		add := func(line, col int, sev finding.Severity, msg string) {
+			srcFindings = append(srcFindings, finding.Finding{
+				RuleID: "CFG036", Severity: sev, File: src.File,
+				Line: line + 1, Col: col + 1,
+				Message: src.Name + " line " + strconv.Itoa(line+1) + " " + msg,
+			})
+		}
+
+		for i, line := range lines {
+			directive[i] = autoExecRe.FindStringIndex(line)
+			network[i] = netExfilRe.MatchString(line)
+			if loc := cmdSubstSensitiveRe.FindStringIndex(line); loc != nil {
+				add(i, loc[0], finding.Error, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
+			}
+		}
+
+		// A directive applies to the command that follows it, up to the next blank
+		// line (end of its command block) and at most 3 lines ahead. Looking only
+		// forward avoids associating a directive with an unrelated earlier command.
+		covered := make(map[int]bool)
+		for i := range lines {
+			if directive[i] == nil {
+				continue
+			}
+			for j := i; j <= min(n-1, i+3); j++ {
+				if j > i && strings.TrimSpace(lines[j]) == "" {
+					break
+				}
+				if network[j] {
+					add(i, directive[i][0], finding.Error, "combines an auto-execution directive with a network-exfiltration command (Part B) — instructs Claude to run a command that sends data to a remote host. Remove it")
+					covered[i] = true
+					break
+				}
+			}
+		}
+
+		for i := range lines {
+			if directive[i] == nil || covered[i] {
+				continue
+			}
+			loc := directive[i]
+			if strings.Contains(lines[i][loc[0]:], ":") {
+				add(i, loc[0], finding.Warn, "contains an auto-execution directive (Part C) — \""+strings.TrimSpace(lines[i][loc[0]:loc[1]])+"\"; instruction files should describe tasks, not command Claude to auto-run things. Review it")
+			}
+		}
+		sort.SliceStable(srcFindings, func(i, j int) bool {
+			if srcFindings[i].Line != srcFindings[j].Line {
+				return srcFindings[i].Line < srcFindings[j].Line
+			}
+			return srcFindings[i].Col < srcFindings[j].Col
 		})
+		findings = append(findings, srcFindings...)
 	}
-
-	for i, line := range lines {
-		directive[i] = autoExecRe.FindStringIndex(line)
-		network[i] = netExfilRe.MatchString(line)
-		if loc := cmdSubstSensitiveRe.FindStringIndex(line); loc != nil {
-			add(i, loc[0], finding.Error, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
-		}
-	}
-
-	// A directive applies to the command that follows it, up to the next blank
-	// line (end of its command block) and at most 3 lines ahead. Looking only
-	// forward avoids associating a directive with an unrelated earlier command.
-	covered := make(map[int]bool)
-	for i := range lines {
-		if directive[i] == nil {
-			continue
-		}
-		for j := i; j <= min(n-1, i+3); j++ {
-			if j > i && strings.TrimSpace(lines[j]) == "" {
-				break
-			}
-			if network[j] {
-				add(i, directive[i][0], finding.Error, "combines an auto-execution directive with a network-exfiltration command (Part B) — instructs Claude to run a command that sends data to a remote host. Remove it")
-				covered[i] = true
-				break
-			}
-		}
-	}
-
-	for i := range lines {
-		if directive[i] == nil || covered[i] {
-			continue
-		}
-		loc := directive[i]
-		if strings.Contains(lines[i][loc[0]:], ":") {
-			add(i, loc[0], finding.Warn, "contains an auto-execution directive (Part C) — \""+strings.TrimSpace(lines[i][loc[0]:loc[1]])+"\"; instruction files should describe tasks, not command Claude to auto-run things. Review it")
-		}
-	}
-	sort.SliceStable(findings, func(i, j int) bool {
-		if findings[i].Line != findings[j].Line {
-			return findings[i].Line < findings[j].Line
-		}
-		return findings[i].Col < findings[j].Col
-	})
 	return findings
 }

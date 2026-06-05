@@ -24,32 +24,38 @@ const bomRune rune = 0xFEFF
 // let an attacker embed instructions that are invisible in editors and review but
 // processed by the model. Reports the first occurrence with its line/column.
 func (r *cfg024) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
-	line, col := 1, 0
-	for i, ch := range t.InstructionContent {
-		if ch == '\n' {
-			line++
-			col = 0
-			continue
-		}
-		col++
-		if ch == bomRune && i == 0 {
-			continue // a single leading BOM is a benign encoding marker
-		}
-		if name, ok := suspiciousUnicode(ch); ok {
-			return []finding.Finding{{
-				RuleID:   "CFG024",
-				Severity: finding.Error,
-				File:     t.InstructionFile,
-				Line:     line,
-				Col:      col,
-				Message:  fmt.Sprintf("%s contains a hidden Unicode control character U+%04X (%s) — invisible in editors and review but read by Claude as instructions; a prompt-injection / ASCII-smuggling vector. Remove all non-printable characters", t.instructionName(), ch, name),
-			}}
+	var findings []finding.Finding
+	// One finding per source: the first hidden codepoint in each instruction
+	// file / prompt-hook is enough to flag it for cleanup.
+	for _, src := range t.instructionSources() {
+		line, col := 1, 0
+		for i, ch := range src.Content {
+			if ch == '\n' {
+				line++
+				col = 0
+				continue
+			}
+			col++
+			if ch == bomRune && i == 0 {
+				continue // a single leading BOM is a benign encoding marker
+			}
+			if name, ok := suspiciousUnicode(ch); ok {
+				findings = append(findings, finding.Finding{
+					RuleID:   "CFG024",
+					Severity: finding.Error,
+					File:     src.File,
+					Line:     line,
+					Col:      col,
+					Message:  fmt.Sprintf("%s contains a hidden Unicode control character U+%04X (%s) — invisible in editors and review but read by Claude as instructions; a prompt-injection / ASCII-smuggling vector. Remove all non-printable characters", src.Name, ch, name),
+				})
+				break
+			}
 		}
 	}
-	return nil
+	return findings
 }
 
 // suspiciousUnicode reports whether r is an invisible/control codepoint used to

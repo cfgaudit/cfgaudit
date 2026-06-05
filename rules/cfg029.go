@@ -36,25 +36,27 @@ var permissionBypassRe = regexp.MustCompile(`(?i)(` +
 	`)`)
 
 func (r *cfg029) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for i, line := range strings.Split(t.InstructionContent, "\n") {
-		loc := permissionBypassRe.FindStringIndex(line)
-		if loc == nil {
-			continue
+	for _, src := range t.instructionSources() {
+		for i, line := range strings.Split(src.Content, "\n") {
+			loc := permissionBypassRe.FindStringIndex(line)
+			if loc == nil {
+				continue
+			}
+			lineNo := i + 1
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG029",
+				Severity: finding.Error,
+				File:     src.File,
+				Line:     lineNo,
+				Col:      loc[0] + 1,
+				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs Claude to bypass permission prompts (\"" + line[loc[0]:loc[1]] +
+					"\") — this disables the permission system via system-context text, equivalent to defaultMode: bypassPermissions (CFG004). Remove it",
+			})
 		}
-		lineNo := i + 1
-		findings = append(findings, finding.Finding{
-			RuleID:   "CFG029",
-			Severity: finding.Error,
-			File:     t.InstructionFile,
-			Line:     lineNo,
-			Col:      loc[0] + 1,
-			Message: t.instructionName() + " line " + strconv.Itoa(lineNo) + " instructs Claude to bypass permission prompts (\"" + line[loc[0]:loc[1]] +
-				"\") — this disables the permission system via system-context text, equivalent to defaultMode: bypassPermissions (CFG004). Remove it",
-		})
 	}
 	return findings
 }

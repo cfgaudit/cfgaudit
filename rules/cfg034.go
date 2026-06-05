@@ -25,33 +25,35 @@ var guidanceRe = regexp.MustCompile(`\{\{[#/](?:system|user|assistant)~?\}\}`)
 // code blocks are skipped, since a project may legitimately document the Guidance
 // library in code examples.
 func (r *cfg034) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	inFence := false
-	for i, line := range strings.Split(t.InstructionContent, "\n") {
-		if isFenceDelimiter(line) {
-			inFence = !inFence
-			continue
+	for _, src := range t.instructionSources() {
+		inFence := false
+		for i, line := range strings.Split(src.Content, "\n") {
+			if isFenceDelimiter(line) {
+				inFence = !inFence
+				continue
+			}
+			if inFence {
+				continue
+			}
+			loc := guidanceRe.FindStringIndex(line)
+			if loc == nil {
+				continue
+			}
+			lineNo := i + 1
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG034",
+				Severity: finding.Warn,
+				File:     src.File,
+				Line:     lineNo,
+				Col:      loc[0] + 1,
+				Message: src.Name + " line " + strconv.Itoa(lineNo) + " contains Guidance/template role-delimiter syntax (\"" + line[loc[0]:loc[1]] +
+					"\") — role markers have no legitimate use in project documentation and suggest an attempt to inject role-delimited content. Remove it",
+			})
 		}
-		if inFence {
-			continue
-		}
-		loc := guidanceRe.FindStringIndex(line)
-		if loc == nil {
-			continue
-		}
-		lineNo := i + 1
-		findings = append(findings, finding.Finding{
-			RuleID:   "CFG034",
-			Severity: finding.Warn,
-			File:     t.InstructionFile,
-			Line:     lineNo,
-			Col:      loc[0] + 1,
-			Message: t.instructionName() + " line " + strconv.Itoa(lineNo) + " contains Guidance/template role-delimiter syntax (\"" + line[loc[0]:loc[1]] +
-				"\") — role markers have no legitimate use in project documentation and suggest an attempt to inject role-delimited content. Remove it",
-		})
 	}
 	return findings
 }

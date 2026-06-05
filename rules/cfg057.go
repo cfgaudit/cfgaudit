@@ -36,27 +36,29 @@ var (
 // and matching against known-malicious content keeps this high-signal — a random
 // base64 sample in docs does not decode to "ignore previous instructions".
 func (r *cfg057) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	add := func(line int, msg string) {
-		findings = append(findings, finding.Finding{
-			RuleID: "CFG057", Severity: finding.Warn, File: t.InstructionFile,
-			Line: line, Col: 1, Message: t.instructionName() + " line " + strconv.Itoa(line) + " " + msg + userScopeNote(t),
-		})
-	}
-
-	for i, line := range strings.Split(t.InstructionContent, "\n") {
-		lineNo := i + 1
-		if dataURIRe.MatchString(line) {
-			add(lineNo, "contains a data: URI — a trusted instruction file should not embed an inline data payload; it can smuggle hidden/encoded content. Remove it")
-			continue
+	for _, src := range t.instructionSources() {
+		add := func(line int, msg string) {
+			findings = append(findings, finding.Finding{
+				RuleID: "CFG057", Severity: finding.Warn, File: src.File,
+				Line: line, Col: 1, Message: src.Name + " line " + strconv.Itoa(line) + " " + msg + userScopeNote(t),
+			})
 		}
-		for _, b64 := range base64RunRe.FindAllString(line, -1) {
-			if decoded, ok := decodeBase64(b64); ok && decodedLooksMalicious(decoded) {
-				add(lineNo, "contains a base64 payload that decodes to instruction/command content — an encoded prompt-injection or command that evades plaintext scanning. Remove it")
-				break
+
+		for i, line := range strings.Split(src.Content, "\n") {
+			lineNo := i + 1
+			if dataURIRe.MatchString(line) {
+				add(lineNo, "contains a data: URI — a trusted instruction file should not embed an inline data payload; it can smuggle hidden/encoded content. Remove it")
+				continue
+			}
+			for _, b64 := range base64RunRe.FindAllString(line, -1) {
+				if decoded, ok := decodeBase64(b64); ok && decodedLooksMalicious(decoded) {
+					add(lineNo, "contains a base64 payload that decodes to instruction/command content — an encoded prompt-injection or command that evades plaintext scanning. Remove it")
+					break
+				}
 			}
 		}
 	}

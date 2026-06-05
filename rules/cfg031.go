@@ -46,33 +46,35 @@ var sensitivePathRe = regexp.MustCompile(`(?i)(` +
 var pathActionRe = regexp.MustCompile(`(?i)\b(read|cat|open|less|head|tail|view|print|echo|dump|copy|cp|scp|move|mv|send|upload|post|put|curl|wget|fetch|exfiltrat\w*|leak|transmit|mail|base64|gpg|tar|zip|attach|load|source|contents of|paste)\b`)
 
 func (r *cfg031) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for i, line := range strings.Split(t.InstructionContent, "\n") {
-		loc := sensitivePathRe.FindStringIndex(line)
-		if loc == nil {
-			continue
+	for _, src := range t.instructionSources() {
+		for i, line := range strings.Split(src.Content, "\n") {
+			loc := sensitivePathRe.FindStringIndex(line)
+			if loc == nil {
+				continue
+			}
+			lineNo := i + 1
+			path := strings.TrimSpace(line[loc[0]:loc[1]])
+			sev := finding.Warn
+			msg := src.Name + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
+				"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"
+			if pathActionRe.MatchString(line) {
+				sev = finding.Error
+				msg = src.Name + " line " + strconv.Itoa(lineNo) + " instructs reading or sending the sensitive file \"" + path +
+					"\" — a hallmark of an exfiltration payload. Remove it"
+			}
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG031",
+				Severity: sev,
+				File:     src.File,
+				Line:     lineNo,
+				Col:      loc[0] + 1,
+				Message:  msg,
+			})
 		}
-		lineNo := i + 1
-		path := strings.TrimSpace(line[loc[0]:loc[1]])
-		sev := finding.Warn
-		msg := t.instructionName() + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
-			"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"
-		if pathActionRe.MatchString(line) {
-			sev = finding.Error
-			msg = t.instructionName() + " line " + strconv.Itoa(lineNo) + " instructs reading or sending the sensitive file \"" + path +
-				"\" — a hallmark of an exfiltration payload. Remove it"
-		}
-		findings = append(findings, finding.Finding{
-			RuleID:   "CFG031",
-			Severity: sev,
-			File:     t.InstructionFile,
-			Line:     lineNo,
-			Col:      loc[0] + 1,
-			Message:  msg,
-		})
 	}
 	return findings
 }

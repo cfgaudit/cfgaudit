@@ -97,6 +97,11 @@ type HookGroup struct {
 type HookCommand struct {
 	Type    string `json:"type,omitempty"`
 	Command string `json:"command,omitempty"`
+	// Prompt is the injected context for a type:"prompt" hook — text Claude Code
+	// feeds into its own context when the hook event fires. Like an instruction
+	// file, it is read as trusted guidance, so it is a prompt-injection surface
+	// the instruction-content rules must scan (see instructionSources).
+	Prompt  string `json:"prompt,omitempty"`
 	Timeout int    `json:"timeout,omitempty"`
 }
 

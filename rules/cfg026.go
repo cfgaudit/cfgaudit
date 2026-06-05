@@ -46,37 +46,39 @@ var bypassPatterns = []bypassPattern{
 // (permissive fictional framing) is a warning and is skipped inside code, where
 // such phrases are usually legitimate examples.
 func (r *cfg026) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	inFence := false
-	for i, line := range strings.Split(t.InstructionContent, "\n") {
-		lineNo := i + 1
-		if isFenceDelimiter(line) {
-			inFence = !inFence
-			continue
-		}
-		for _, p := range bypassPatterns {
-			if p.skipCode && inFence {
+	for _, src := range t.instructionSources() {
+		inFence := false
+		for i, line := range strings.Split(src.Content, "\n") {
+			lineNo := i + 1
+			if isFenceDelimiter(line) {
+				inFence = !inFence
 				continue
 			}
-			loc := p.re.FindStringIndex(line)
-			if loc == nil {
-				continue
+			for _, p := range bypassPatterns {
+				if p.skipCode && inFence {
+					continue
+				}
+				loc := p.re.FindStringIndex(line)
+				if loc == nil {
+					continue
+				}
+				if p.skipCode && inInlineCode(line, loc[0]) {
+					continue
+				}
+				findings = append(findings, finding.Finding{
+					RuleID:   "CFG026",
+					Severity: p.sev,
+					File:     src.File,
+					Line:     lineNo,
+					Col:      loc[0] + 1,
+					Message: src.Name + " line " + strconv.Itoa(lineNo) + " contains a prompt-injection phrase (" + p.label + ", pattern " + strconv.Itoa(p.num) +
+						") — instruction files are read as trusted system context, so an embedded instruction here can override Claude's behaviour. Remove it",
+				})
 			}
-			if p.skipCode && inInlineCode(line, loc[0]) {
-				continue
-			}
-			findings = append(findings, finding.Finding{
-				RuleID:   "CFG026",
-				Severity: p.sev,
-				File:     t.InstructionFile,
-				Line:     lineNo,
-				Col:      loc[0] + 1,
-				Message: t.instructionName() + " line " + strconv.Itoa(lineNo) + " contains a prompt-injection phrase (" + p.label + ", pattern " + strconv.Itoa(p.num) +
-					") — instruction files are read as trusted system context, so an embedded instruction here can override Claude's behaviour. Remove it",
-			})
 		}
 	}
 	return findings
