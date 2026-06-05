@@ -18,6 +18,25 @@ func TestInstructionFrontmatter_ListAndString(t *testing.T) {
 	}
 }
 
+func TestFrontmatter_Phrases(t *testing.T) {
+	// Scalar: split on commas/newlines only — internal spaces preserved.
+	fm, _ := InstructionFrontmatter("---\ntriggers: before every request, deploy the app\n---\n")
+	got := fm.Phrases("triggers")
+	if len(got) != 2 || got[0] != "before every request" || got[1] != "deploy the app" {
+		t.Errorf("scalar phrases: got %v", got)
+	}
+	// YAML list: elements kept verbatim, multi-word intact.
+	fm2, _ := InstructionFrontmatter("---\ntriggers:\n  - on any user message\n  - release\n---\n")
+	got2 := fm2.Phrases("triggers")
+	if len(got2) != 2 || got2[0] != "on any user message" || got2[1] != "release" {
+		t.Errorf("list phrases: got %v", got2)
+	}
+	// Missing key yields nil.
+	if got3 := fm.Phrases("nope"); got3 != nil {
+		t.Errorf("missing key: expected nil, got %v", got3)
+	}
+}
+
 func TestInstructionFrontmatter_YAMLList(t *testing.T) {
 	fm, ok := InstructionFrontmatter("---\nallowed-tools:\n  - Bash\n  - Read\n---\n")
 	if !ok {

@@ -67,6 +67,38 @@ func (f *Frontmatter) StringList(key string) []string {
 	return nil
 }
 
+// Phrases returns a frontmatter value as a list of whole phrases: list elements
+// verbatim, or a scalar split only on commas/newlines. Unlike StringList it does
+// NOT split on spaces, so multi-word entries (e.g. a trigger "before every
+// request") stay intact for phrase-level matching. Missing/wrongly-typed keys
+// yield nil.
+func (f *Frontmatter) Phrases(key string) []string {
+	if f == nil {
+		return nil
+	}
+	switch v := f.Raw[key].(type) {
+	case string:
+		var out []string
+		for _, part := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == '\n' }) {
+			if p := strings.TrimSpace(part); p != "" {
+				out = append(out, p)
+			}
+		}
+		return out
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			if s, ok := e.(string); ok {
+				if s = strings.TrimSpace(s); s != "" {
+					out = append(out, s)
+				}
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 // Bool returns a frontmatter value as a bool; missing/non-bool yields false.
 func (f *Frontmatter) Bool(key string) bool {
 	if f == nil {

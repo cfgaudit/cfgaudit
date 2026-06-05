@@ -31,10 +31,10 @@ var greedyTriggerRes = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(?:applies|apply) to (?:all|every|any) (?:requests|tasks|prompts|messages|inputs|interactions)\b`),
 }
 
-// Check flags a model-invocable instruction file whose frontmatter description is
-// a greedy/always-on invocation trigger. Claude selects skills and slash commands
-// by their description, so a universal trigger in a committed file is a
-// behaviour-hijack vector. Files that opt out of model invocation
+// Check flags a model-invocable instruction file whose frontmatter declares a
+// greedy/always-on invocation trigger — in the `description` Claude selects on,
+// or in an explicit `triggers` field. A universal trigger in a committed file is
+// a behaviour-hijack vector. Files that opt out of model invocation
 // (disable-model-invocation: true) cannot be auto-triggered and are not flagged.
 func (r *cfg056) Check(t *Target) []finding.Finding {
 	if t == nil || t.InstructionContent == "" {
@@ -47,19 +47,29 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 	if fm.Bool("disable-model-invocation") {
 		return nil
 	}
-	desc := fm.String("description")
-	if desc == "" {
-		return nil
+
+	// Each greedy-trigger surface, in report order: the description first, then
+	// every entry of the explicit triggers field.
+	type triggerField struct{ field, text string }
+	var fields []triggerField
+	if desc := fm.String("description"); desc != "" {
+		fields = append(fields, triggerField{"description", desc})
 	}
-	for _, re := range greedyTriggerRes {
-		if loc := re.FindString(desc); loc != "" {
-			return []finding.Finding{{
-				RuleID:   "CFG056",
-				Severity: finding.Warn,
-				File:     t.InstructionFile,
-				Message: t.instructionName() + " frontmatter description is a broad/always-on invocation trigger (\"" + loc +
-					"\") — Claude auto-selects skills/commands by their description, so a universal trigger lets this run far beyond its stated purpose; scope the description to the specific task it handles" + userScopeNote(t),
-			}}
+	for _, tr := range fm.Phrases("triggers") {
+		fields = append(fields, triggerField{"triggers", tr})
+	}
+
+	for _, tf := range fields {
+		for _, re := range greedyTriggerRes {
+			if loc := re.FindString(tf.text); loc != "" {
+				return []finding.Finding{{
+					RuleID:   "CFG056",
+					Severity: finding.Warn,
+					File:     t.InstructionFile,
+					Message: t.instructionName() + " frontmatter " + tf.field + " is a broad/always-on invocation trigger (\"" + loc +
+						"\") — Claude auto-selects skills/commands by their description and triggers, so a universal trigger lets this run far beyond its stated purpose; scope it to the specific task it handles" + userScopeNote(t),
+				}}
+			}
 		}
 	}
 	return nil

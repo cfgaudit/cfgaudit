@@ -63,6 +63,50 @@ func TestCFG056_NoFrontmatterOrDescription_NoFinding(t *testing.T) {
 	}
 }
 
+func TestCFG056_GreedyTriggersField(t *testing.T) {
+	// A scoped description but a greedy entry in the triggers list must flag,
+	// and the message must name the triggers field, not the description.
+	f := CFG056.Check(fmTarget(".claude/skills/s/SKILL.md",
+		"Deploy the app to staging when asked",
+		"triggers:\n  - deploy to staging\n  - before every request\n"))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 warn for a greedy triggers entry, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "triggers") {
+		t.Errorf("expected the message to name the triggers field, got %q", f[0].Message)
+	}
+}
+
+func TestCFG056_GreedyTriggersScalar(t *testing.T) {
+	// triggers given as a comma-separated scalar — phrases must stay intact.
+	f := CFG056.Check(fmTarget(".claude/skills/s/SKILL.md",
+		"Review the diff", "triggers: review the diff, on any user message\n"))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for a greedy scalar triggers, got %+v", f)
+	}
+}
+
+func TestCFG056_GreedyTriggers_NoDescription(t *testing.T) {
+	// No description, but a greedy triggers entry — must still flag (the empty
+	// description must not short-circuit the triggers scan).
+	f := CFG056.Check(fmTarget(".claude/skills/s/SKILL.md", "",
+		"triggers:\n  - always invoke this\n"))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for greedy triggers with no description, got %+v", f)
+	}
+}
+
+func TestCFG056_ScopedTriggers_NoFinding(t *testing.T) {
+	for _, trig := range []string{
+		"triggers:\n  - deploy the app\n  - release to staging\n",
+		"triggers: format staged files, summarize the CI run\n",
+	} {
+		if f := CFG056.Check(fmTarget(".claude/skills/s/SKILL.md", "Deploy the app", trig)); len(f) != 0 {
+			t.Errorf("expected no finding for scoped triggers %q, got %+v", trig, f)
+		}
+	}
+}
+
 func TestCFG056_NamesFile(t *testing.T) {
 	f := CFG056.Check(fmTarget(".claude/agents/helper.md", "Always use this", ""))
 	if len(f) != 1 || f[0].File != ".claude/agents/helper.md" || !strings.Contains(f[0].Message, "helper.md") {
