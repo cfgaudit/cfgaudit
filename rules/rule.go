@@ -68,6 +68,13 @@ type Target struct {
 	Gemini     *parser.GeminiSettings
 	GeminiFile string
 
+	// Codex holds a parsed OpenAI Codex CLI config.toml (~/.codex/config.toml).
+	// approval_policy / sandbox_mode drive CFG063/CFG064, and its [mcp_servers]
+	// ride ProjectMCP so the MCP rules apply. Nil when absent; CodexFile is its
+	// path, used to attribute the Codex-specific findings.
+	Codex     *parser.CodexConfig
+	CodexFile string
+
 	// Policy*, when set, carry the organisation's custom permission policy from
 	// .cfgaudit.yml (evaluated by CFG025). RequireDeny lists commands that must be
 	// covered by permissions.deny; ForbidAllow lists commands that must not be

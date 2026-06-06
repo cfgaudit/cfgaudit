@@ -287,7 +287,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`
 
-Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, Windsurf's `~/.codeium/windsurf/mcp_config.json`, and the `mcpServers` block of Gemini CLI's `.gemini/settings.json` (+ `~/.gemini/settings.json` with `--user`). Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
+Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, Windsurf's `~/.codeium/windsurf/mcp_config.json`, the `mcpServers` block of Gemini CLI's `.gemini/settings.json` (+ `~/.gemini/settings.json` with `--user`), and the `[mcp_servers]` tables of OpenAI Codex CLI's `~/.codex/config.toml` (with `--user`). Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
@@ -375,6 +375,15 @@ Findings are attributed to the in-package file. Bundled binaries / arbitrary scr
 | [CFG060](docs/rules/CFG060.md) | error | Gemini `general.defaultApprovalMode` is `auto_edit` (or `yolo`) — auto-approves tool actions, the Gemini equivalent of `defaultMode: bypassPermissions` | LLM06 |
 | [CFG061](docs/rules/CFG061.md) | error/warn | Gemini sandbox weakened — `tools.sandboxAllowedPaths` exposes `/` or `~` (error), or `tools.sandboxNetworkAccess: true` gives sandboxed tools network egress (warn) | LLM06 |
 | [CFG062](docs/rules/CFG062.md) | warn | Gemini `security.blockGitExtensions: false` with no `security.allowedExtensions` allow-list — installs extensions from arbitrary Git repos (supply chain) | LLM03 |
+
+### OpenAI Codex CLI — `~/.codex/config.toml` & `AGENTS.md`
+
+[OpenAI Codex CLI](https://github.com/openai/codex) keeps its config in `~/.codex/config.toml` (TOML) and uses `AGENTS.md` as its project instruction file. `AGENTS.md` is already scanned by the shared instruction-content rules (CFG024–CFG036, CFG057). With `--user`, cfgaudit also parses `~/.codex/config.toml`: its `[mcp_servers]` ride the shared MCP rules (CFG010–CFG021, CFG049–CFG059), and two rules cover the Codex-specific settings:
+
+| ID | Severity | Description | OWASP |
+|----|----------|-------------|-------|
+| [CFG063](docs/rules/CFG063.md) | error/warn | Codex `approval_policy` is `never` (auto-approve all → error) or `on-failure` (deprecated, all auto-approved → warn) — the `bypassPermissions` analog | LLM06 |
+| [CFG064](docs/rules/CFG064.md) | error | Codex `sandbox_mode` is `danger-full-access` — sandbox disabled, tools get full filesystem and network access | LLM06 |
 
 ---
 
