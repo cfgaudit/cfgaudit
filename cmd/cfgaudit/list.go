@@ -14,6 +14,7 @@ type ruleSummary struct {
 	ID          string `json:"id"`
 	Severity    string `json:"severity"`
 	OWASP       string `json:"owasp"`
+	OWASPMCP    string `json:"owasp_mcp,omitempty"`
 	Description string `json:"description"`
 }
 
@@ -21,6 +22,7 @@ var (
 	docTitleRe = regexp.MustCompile(`(?m)^#\s+(CFG\d{3})\s*[—-]\s*(.+?)\s*$`)
 	docSevRe   = regexp.MustCompile(`(?m)^\*\*Severity:\*\*\s*(.+?)\s*$`)
 	docOwaspRe = regexp.MustCompile(`LLM\d{2}`)
+	docMcpRe   = regexp.MustCompile(`MCP\d{2}`)
 	sevTokenRe = regexp.MustCompile("`(error|warn|info)`")
 	mdInlineRe = regexp.MustCompile("`([^`]*)`")
 )
@@ -32,7 +34,7 @@ func listOutput(args []string) (string, int) {
 	var out strings.Builder
 	fs.SetOutput(&out)
 	format := fs.String("format", "text", "output format: text, json")
-	owasp := fs.String("owasp", "", "filter by OWASP category (e.g. LLM06)")
+	owasp := fs.String("owasp", "", "filter by OWASP category — LLM (e.g. LLM06) or MCP (e.g. MCP05)")
 	if err := fs.Parse(args); err != nil {
 		return out.String(), 2
 	}
@@ -45,7 +47,7 @@ func listOutput(args []string) (string, int) {
 			continue
 		}
 		s := summarize(id, doc)
-		if filter != "" && s.OWASP != filter {
+		if filter != "" && s.OWASP != filter && s.OWASPMCP != filter {
 			continue
 		}
 		rules = append(rules, s)
@@ -71,6 +73,11 @@ func summarize(id, doc string) ruleSummary {
 	}
 	if m := docOwaspRe.FindString(doc); m != "" {
 		s.OWASP = m
+	}
+	// Secondary, MCP-specific mapping — present only on the MCP-server rules
+	// (provisional, against OWASP MCP Top 10 v0.1).
+	if m := docMcpRe.FindString(doc); m != "" {
+		s.OWASPMCP = m
 	}
 	return s
 }
@@ -105,9 +112,9 @@ func contains(xs []string, v string) bool {
 
 func renderRuleTable(rules []ruleSummary) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%-7s %-11s %-7s %s\n", "ID", "SEVERITY", "OWASP", "DESCRIPTION")
+	fmt.Fprintf(&b, "%-7s %-11s %-7s %-7s %s\n", "ID", "SEVERITY", "OWASP", "MCP", "DESCRIPTION")
 	for _, r := range rules {
-		fmt.Fprintf(&b, "%-7s %-11s %-7s %s\n", r.ID, r.Severity, r.OWASP, r.Description)
+		fmt.Fprintf(&b, "%-7s %-11s %-7s %-7s %s\n", r.ID, r.Severity, r.OWASP, r.OWASPMCP, r.Description)
 	}
 	fmt.Fprintf(&b, "\n%d %s total\n", len(rules), pluralize("rule", len(rules)))
 	return b.String()

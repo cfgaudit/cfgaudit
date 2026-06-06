@@ -78,9 +78,10 @@ cfgaudit --shellcheck
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 
-# List all rules (filter by OWASP, or output JSON)
+# List all rules (filter by OWASP — LLM or MCP — or output JSON)
 cfgaudit list
 cfgaudit list --owasp LLM06
+cfgaudit list --owasp MCP05
 cfgaudit list --format json
 
 # Scaffold a hardened .claude/settings.json for a new project
@@ -304,6 +305,23 @@ Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG
 | [CFG050](docs/rules/CFG050.md) | error | MCP server `env` or `headers` contains a hardcoded secret (vendor key pattern, secret-like name, or auth header with a literal credential) | LLM02 |
 | [CFG054](docs/rules/CFG054.md) | warn | high-entropy value in `env`/`headers` that looks like a hardcoded secret under an innocuous key name (entropy fallback to CFG007/CFG050) | LLM02 |
 | [CFG052](docs/rules/CFG052.md) | warn | MCP server name declared in multiple sources (`settings.json` `mcpServers` + `.mcp.json`) — ambiguous precedence / shadowing | LLM03 |
+
+#### OWASP MCP Top 10 mapping (secondary)
+
+The MCP-server rules above carry a **secondary** mapping to the [OWASP Top 10 for Model Context Protocol](https://owasp.org/www-project-mcp-top-10/), in addition to their primary LLM Top 10 risk. It is a complementary lens for readers who think in the MCP taxonomy; the LLM mapping stays primary.
+
+> **Provisional.** Mapped against **OWASP MCP Top 10 v0.1 (Beta, Phase 3)** — IDs and titles may still change before final release. Filter from the CLI with `cfgaudit list --owasp MCP05`.
+
+| OWASP MCP (v0.1) | Rules |
+|------------------|-------|
+| MCP01 – Token Mismanagement & Secret Exposure | CFG021, CFG049, CFG050, CFG054 |
+| MCP02 – Privilege Escalation via Scope Creep | CFG003, CFG011, CFG053 |
+| MCP04 – Software Supply Chain Attacks & Dependency Tampering | CFG010, CFG055 |
+| MCP05 – Command Injection & Execution | CFG017, CFG019, CFG020 |
+| MCP07 – Insufficient Authentication & Authorization | CFG018 |
+| MCP09 – Shadow MCP Servers | CFG052 |
+
+MCP03 (Tool Poisoning), MCP06 (Intent Flow Subversion), MCP08 (Lack of Audit & Telemetry), and MCP10 (Context Injection & Over-Sharing) have no dedicated config rule yet — they involve runtime tool behaviour or live server inspection rather than a statically committed config surface.
 
 ### Instruction files — `CLAUDE.md` & other agents
 

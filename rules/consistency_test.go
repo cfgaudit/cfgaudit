@@ -162,6 +162,56 @@ func readmeRuleRow(readme, id string) string {
 	return ""
 }
 
+var (
+	readmeMCPRowRe = regexp.MustCompile(`(?m)^\|\s*(MCP\d{2})\b(.*)$`)
+	cfgIDRe        = regexp.MustCompile(`CFG\d{3}`)
+	docMCPHeaderRe = regexp.MustCompile(`\*\*OWASP MCP:\*\*\s*\[(MCP\d{2})`)
+)
+
+// TestMCPMappingConsistency keeps the provisional OWASP MCP Top 10 mapping in
+// sync between each rule's doc header (**OWASP MCP:** MCPxx) and the README MCP
+// mapping table — the same drift guard the LLM mapping gets, so the two never
+// diverge as the (still-beta) taxonomy shifts.
+func TestMCPMappingConsistency(t *testing.T) {
+	readme := loadFile(t, filepath.Join("..", "README.md"))
+
+	readmeMap := map[string]string{}
+	for _, m := range readmeMCPRowRe.FindAllStringSubmatch(readme, -1) {
+		mcp := m[1]
+		for _, id := range cfgIDRe.FindAllString(m[2], -1) {
+			if prev, ok := readmeMap[id]; ok && prev != mcp {
+				t.Errorf("%s listed under both %s and %s in the README MCP table", id, prev, mcp)
+			}
+			readmeMap[id] = mcp
+		}
+	}
+	if len(readmeMap) == 0 {
+		t.Fatal("no README MCP mapping rows parsed — has the table format changed?")
+	}
+
+	docMap := map[string]string{}
+	for _, r := range All {
+		doc, err := os.ReadFile(filepath.Join("..", "docs", "rules", r.ID()+".md")) //nolint:gosec // G304: known-safe local test path
+		if err != nil {
+			continue
+		}
+		if m := docMCPHeaderRe.FindStringSubmatch(string(doc)); m != nil {
+			docMap[r.ID()] = m[1]
+		}
+	}
+
+	for id, mcp := range docMap {
+		if readmeMap[id] != mcp {
+			t.Errorf("%s: doc header maps to %s but README MCP table says %q", id, mcp, readmeMap[id])
+		}
+	}
+	for id, mcp := range readmeMap {
+		if docMap[id] != mcp {
+			t.Errorf("%s: README MCP table maps to %s but doc header says %q", id, mcp, docMap[id])
+		}
+	}
+}
+
 func checkNoDuplicateIDs(t *testing.T) {
 	t.Helper()
 	seen := map[string]bool{}
