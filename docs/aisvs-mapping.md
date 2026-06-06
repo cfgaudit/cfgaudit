@@ -90,6 +90,6 @@ These AISVS chapters have no committed-agent-config surface cfgaudit can statica
 
 Walking the in-scope chapters, almost every uncovered requirement is **runtime, identity, hardware, or model/dataset** — outside a static config auditor's reach. The genuinely config-checkable requirements are already substantially covered by existing rules. One low-confidence candidate surfaced:
 
-- **C10.3.1 — alternate MCP transports (SSE) restricted to local/controlled use.** cfgaudit's CFG049 flags a *remote/cleartext* MCP URL by scheme and host, but not specifically a deprecated/weaker **`type: "sse"`** transport pointing at a non-loopback host. A narrow rule ("remote MCP server uses the legacy SSE transport") would be statically checkable from the `type` + `url` fields. Overlaps CFG049, so value is marginal — listed for consideration, not filed.
+- **C10.3.1 — alternate MCP transports (SSE) restricted to local/controlled use.** cfgaudit's CFG049 flags a *remote/cleartext* MCP URL by scheme and host, but not specifically a deprecated/weaker **`type: "sse"`** transport pointing at a non-loopback host. A narrow rule ("MCP server uses the deprecated SSE transport") would be statically checkable from the `type` field. Overlaps CFG049 in the remote-cleartext case, so value is marginal — tracked as [#254](https://github.com/cfgaudit/cfgaudit/issues/254).
 
 No high-confidence new-rule gaps were found; this is itself a useful result (AISVS's config-checkable surface is largely covered, and the rest is genuinely out of static-config scope).
