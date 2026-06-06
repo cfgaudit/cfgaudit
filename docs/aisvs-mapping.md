@@ -60,7 +60,7 @@ Overlaps cfgaudit's MCP-server rules; see also the **[OWASP MCP Top 10 mapping](
 |---|---|
 | **C10.1** Component Integrity & Supply-Chain Hygiene (10.1.1 trusted/verified components; 10.1.2 allowlisted server identifiers, reject unlisted) | **CFG010** (unpinned version), **CFG003/CFG053** (no blanket auto-approval of all repo servers), **CFG011** (`alwaysAllow` not over-broad), **CFG052** (server-name shadowing across sources). |
 | **C10.2** Authentication & Authorization (secret-hygiene subset) | **CFG050/CFG054** — no hardcoded credentials in MCP `env`/`headers`. |
-| **C10.3** Secure Transport & Network Boundary (10.3.1 encrypted transport; 10.3.3 DNS-rebinding / Origin-Host validation) | **CFG049** (remote/cleartext `http://`/`ws://` MCP URL), **CFG017** (`dangerouslyAllowBrowser` → DNS-rebinding to RCE), **CFG018** (binds to all interfaces — NeighborJack). |
+| **C10.3** Secure Transport & Network Boundary (10.3.1 encrypted transport / SSE restricted; 10.3.3 DNS-rebinding / Origin-Host validation) | **CFG049** (remote/cleartext `http://`/`ws://` MCP URL), **CFG058** (deprecated `type: "sse"` transport — 10.3.1), **CFG017** (`dangerouslyAllowBrowser` → DNS-rebinding to RCE), **CFG018** (binds to all interfaces — NeighborJack). |
 | **C10.5.1** Outbound access restricted to approved destinations | **CFG021** (`env` routes traffic through a non-local proxy), **CFG020** (dynamic-linker injection). |
 | **C10.6.2** Expose only allow-listed, statically-defined functions | **CFG011** (`alwaysAllow` breadth / least-privilege MCP tools). |
 
@@ -88,8 +88,8 @@ These AISVS chapters have no committed-agent-config surface cfgaudit can statica
 
 ## Gap analysis (statically-checkable AISVS requirements with no cfgaudit rule yet)
 
-Walking the in-scope chapters, almost every uncovered requirement is **runtime, identity, hardware, or model/dataset** — outside a static config auditor's reach. The genuinely config-checkable requirements are already substantially covered by existing rules. One low-confidence candidate surfaced:
+Walking the in-scope chapters, almost every uncovered requirement is **runtime, identity, hardware, or model/dataset** — outside a static config auditor's reach. The genuinely config-checkable requirements are already substantially covered by existing rules. One candidate surfaced and was implemented:
 
-- **C10.3.1 — alternate MCP transports (SSE) restricted to local/controlled use.** cfgaudit's CFG049 flags a *remote/cleartext* MCP URL by scheme and host, but not specifically a deprecated/weaker **`type: "sse"`** transport pointing at a non-loopback host. A narrow rule ("MCP server uses the deprecated SSE transport") would be statically checkable from the `type` field. Overlaps CFG049 in the remote-cleartext case, so value is marginal — tracked as [#254](https://github.com/cfgaudit/cfgaudit/issues/254).
+- **C10.3.1 — alternate MCP transports (SSE) restricted to local/controlled use.** cfgaudit's CFG049 flags a *remote/cleartext* MCP URL by scheme and host, but not the deprecated/weaker **`type: "sse"`** transport itself. Now covered by **CFG058**, which keys on the `type` field (statically checkable) — filed as #254, implemented.
 
-No high-confidence new-rule gaps were found; this is itself a useful result (AISVS's config-checkable surface is largely covered, and the rest is genuinely out of static-config scope).
+No further high-confidence new-rule gaps were found; this is itself a useful result (AISVS's config-checkable surface is largely covered, and the rest is genuinely out of static-config scope).

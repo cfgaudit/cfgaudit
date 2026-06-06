@@ -305,6 +305,7 @@ Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG
 | [CFG050](docs/rules/CFG050.md) | error | MCP server `env` or `headers` contains a hardcoded secret (vendor key pattern, secret-like name, or auth header with a literal credential) | LLM02 |
 | [CFG054](docs/rules/CFG054.md) | warn | high-entropy value in `env`/`headers` that looks like a hardcoded secret under an innocuous key name (entropy fallback to CFG007/CFG050) | LLM02 |
 | [CFG052](docs/rules/CFG052.md) | warn | MCP server name declared in multiple sources (`settings.json` `mcpServers` + `.mcp.json`) — ambiguous precedence / shadowing | LLM03 |
+| [CFG058](docs/rules/CFG058.md) | warn | MCP server uses the deprecated `type: "sse"` transport — superseded by Streamable HTTP (`type: "http"`); weaker transport with DNS-rebinding/Origin pitfalls | LLM02 |
 
 #### OWASP MCP Top 10 mapping (secondary)
 
@@ -314,7 +315,7 @@ The MCP-server rules above carry a **secondary** mapping to the [OWASP Top 10 fo
 
 | OWASP MCP (v0.1) | Rules |
 |------------------|-------|
-| MCP01 – Token Mismanagement & Secret Exposure | CFG021, CFG049, CFG050, CFG054 |
+| MCP01 – Token Mismanagement & Secret Exposure | CFG021, CFG049, CFG050, CFG054, CFG058 |
 | MCP02 – Privilege Escalation via Scope Creep | CFG003, CFG011, CFG053 |
 | MCP04 – Software Supply Chain Attacks & Dependency Tampering | CFG010, CFG055 |
 | MCP05 – Command Injection & Execution | CFG017, CFG019, CFG020 |
