@@ -212,6 +212,27 @@ func TestMCPMappingConsistency(t *testing.T) {
 	}
 }
 
+// TestAISVSMappingNoPhantomIDs ensures every rule referenced in the provisional
+// OWASP AISVS mapping doc is a real, registered rule — so a renamed/removed rule
+// can't leave a dangling reference in the mapping.
+func TestAISVSMappingNoPhantomIDs(t *testing.T) {
+	doc := loadFile(t, filepath.Join("..", "docs", "aisvs-mapping.md"))
+	implemented := map[string]bool{}
+	for _, r := range All {
+		implemented[r.ID()] = true
+	}
+	seen := false
+	for _, id := range cfgIDRe.FindAllString(doc, -1) {
+		seen = true
+		if !implemented[id] {
+			t.Errorf("aisvs-mapping.md references %s but no such rule is registered", id)
+		}
+	}
+	if !seen {
+		t.Fatal("no rule IDs found in aisvs-mapping.md — has the file moved?")
+	}
+}
+
 func checkNoDuplicateIDs(t *testing.T) {
 	t.Helper()
 	seen := map[string]bool{}
