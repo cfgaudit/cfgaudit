@@ -378,7 +378,68 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, vsc...)
 
+	// Gemini CLI settings.json (.gemini/, and ~/.gemini/ with --user). Carries the
+	// Gemini-specific security surface (CFG060–062) and its mcpServers ride
+	// ProjectMCP so the MCP rules apply. GEMINI.md rides instructionTargets above.
+	gem, err := geminiTargets(dir, includeUser)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, gem...)
+
 	return targets, nil
+}
+
+// geminiTargets discovers Gemini CLI settings.json files — .gemini/settings.json
+// (project) and ~/.gemini/settings.json (user, only with --user) — and returns
+// one target per present file. The Gemini-specific fields drive CFG060–062;
+// mcpServers are attached as ProjectMCP so the shared MCP rules fire, attributed
+// to the settings file.
+func geminiTargets(dir string, includeUser bool) ([]*rules.Target, error) {
+	var targets []*rules.Target
+	add := func(path string, scope finding.Scope) error {
+		gs, err := parseGeminiOptional(path)
+		if err != nil {
+			return err
+		}
+		if gs == nil {
+			return nil
+		}
+		targets = append(targets, &rules.Target{
+			Scope:          scope,
+			Gemini:         gs,
+			GeminiFile:     path,
+			ProjectMCP:     gs.MCPServers,
+			ProjectMCPFile: path,
+		})
+		return nil
+	}
+	if err := add(filepath.Join(dir, ".gemini", "settings.json"), finding.ScopeProject); err != nil {
+		return nil, err
+	}
+	if includeUser {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("resolve home directory: %w", err)
+		}
+		if err := add(filepath.Join(home, ".gemini", "settings.json"), finding.ScopeUser); err != nil {
+			return nil, err
+		}
+	}
+	return targets, nil
+}
+
+// parseGeminiOptional parses a Gemini settings.json, returning (nil, nil) when
+// the file does not exist so callers can treat absence as "no target".
+func parseGeminiOptional(path string) (*parser.GeminiSettings, error) {
+	gs, err := parser.ParseGeminiSettings(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return gs, nil
 }
 
 // vscodeTargets discovers committable VS Code workspace files under dir and
@@ -454,6 +515,7 @@ var (
 		".cursorrules",
 		".windsurfrules",
 		"AGENTS.md",
+		"GEMINI.md", // Gemini CLI project instruction file (analog to CLAUDE.md)
 		filepath.Join(".github", "copilot-instructions.md"),
 	}
 	agentInstructionGlobs = []string{
@@ -473,6 +535,7 @@ var (
 		filepath.Join(".claude", "agents", "*.md"),
 		filepath.Join(".claude", "commands", "*.md"),
 		filepath.Join(".claude", "skills", "*", "SKILL.md"),
+		filepath.Join(".gemini", "GEMINI.md"), // Gemini CLI user-global instruction file
 	}
 )
 

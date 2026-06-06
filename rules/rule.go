@@ -60,6 +60,14 @@ type Target struct {
 	VSCodeSettings     *parser.VSCodeSettings
 	VSCodeSettingsFile string
 
+	// Gemini holds a parsed Gemini CLI settings.json (.gemini/settings.json or
+	// ~/.gemini/settings.json). Its security surface mirrors Claude Code's
+	// settings.json — approval mode, sandbox, extension trust (CFG060–CFG062) —
+	// and its mcpServers ride ProjectMCP so the MCP rules apply. Nil when absent;
+	// GeminiFile is its path, used to attribute the Gemini-specific findings.
+	Gemini     *parser.GeminiSettings
+	GeminiFile string
+
 	// Policy*, when set, carry the organisation's custom permission policy from
 	// .cfgaudit.yml (evaluated by CFG025). RequireDeny lists commands that must be
 	// covered by permissions.deny; ForbidAllow lists commands that must not be

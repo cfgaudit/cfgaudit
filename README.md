@@ -287,7 +287,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`
 
-Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, and Windsurf's `~/.codeium/windsurf/mcp_config.json`. Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
+Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, Windsurf's `~/.codeium/windsurf/mcp_config.json`, and the `mcpServers` block of Gemini CLI's `.gemini/settings.json` (+ `~/.gemini/settings.json` with `--user`). Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
@@ -327,7 +327,7 @@ MCP03 (Tool Poisoning), MCP06 (Intent Flow Subversion), MCP08 (Lack of Audit & T
 
 ### Instruction files — `CLAUDE.md` & other agents
 
-AI coding agents read their instruction files as trusted system-context every session, so a committed or user-global instruction file is a prompt-injection target. The project `CLAUDE.md` is scanned automatically and `~/.claude/CLAUDE.md` with `--user`. The same content rules also scan, when present in the project: `.cursorrules`, `.cursor/rules/*.{md,mdc}`, `.windsurfrules`, `.windsurf/rules/*.md`, `AGENTS.md`, `.github/copilot-instructions.md`, and Claude Code's custom **subagents** (`.claude/agents/*.md`), **slash commands** (`.claude/commands/*.md`), and **skills** (`.claude/skills/*/SKILL.md`) — these three also under `~/.claude/` with `--user`. Findings name the file they came from.
+AI coding agents read their instruction files as trusted system-context every session, so a committed or user-global instruction file is a prompt-injection target. The project `CLAUDE.md` is scanned automatically and `~/.claude/CLAUDE.md` with `--user`. The same content rules also scan, when present in the project: `.cursorrules`, `.cursor/rules/*.{md,mdc}`, `.windsurfrules`, `.windsurf/rules/*.md`, `AGENTS.md`, `GEMINI.md` (Gemini CLI; `~/.gemini/GEMINI.md` with `--user`), `.github/copilot-instructions.md`, and Claude Code's custom **subagents** (`.claude/agents/*.md`), **slash commands** (`.claude/commands/*.md`), and **skills** (`.claude/skills/*/SKILL.md`) — these three also under `~/.claude/` with `--user`. Findings name the file they came from.
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
@@ -365,6 +365,16 @@ Findings are attributed to the in-package file. Bundled binaries / arbitrary scr
 |----|----------|-------------|-------|
 | [CFG047](docs/rules/CFG047.md) | error | `.vscode/tasks.json` task runs on folder open (`runOptions.runOn: "folderOpen"`) — zero-click code execution when the repo is opened; silent (`presentation.reveal: "never"`) is called out | LLM06 |
 | [CFG048](docs/rules/CFG048.md) | error | `.vscode/settings.json` blanket-auto-approves agent tools (`chat.tools.global.autoApprove` / `chat.tools.autoApprove: true`) — removes the confirmation prompt, cross-agent analogue of `bypassPermissions` | LLM06 |
+
+### Gemini CLI — `.gemini/settings.json` & `GEMINI.md`
+
+[Gemini CLI](https://github.com/google-gemini/gemini-cli) stores its config in `settings.json` with a security surface that mirrors Claude Code's. cfgaudit discovers `.gemini/settings.json` (project) and `~/.gemini/settings.json` (with `--user`), and `GEMINI.md` (project) / `~/.gemini/GEMINI.md` — the latter scanned by the same content rules as `CLAUDE.md` (CFG024–CFG036, CFG057). A Gemini `mcpServers` block rides the shared MCP rules (CFG010–CFG021, CFG049–CFG059), attributed to the settings file. Three rules cover the Gemini-specific settings:
+
+| ID | Severity | Description | OWASP |
+|----|----------|-------------|-------|
+| [CFG060](docs/rules/CFG060.md) | error | Gemini `general.defaultApprovalMode` is `auto_edit` (or `yolo`) — auto-approves tool actions, the Gemini equivalent of `defaultMode: bypassPermissions` | LLM06 |
+| [CFG061](docs/rules/CFG061.md) | error/warn | Gemini sandbox weakened — `tools.sandboxAllowedPaths` exposes `/` or `~` (error), or `tools.sandboxNetworkAccess: true` gives sandboxed tools network egress (warn) | LLM06 |
+| [CFG062](docs/rules/CFG062.md) | warn | Gemini `security.blockGitExtensions: false` with no `security.allowedExtensions` allow-list — installs extensions from arbitrary Git repos (supply chain) | LLM03 |
 
 ---
 
