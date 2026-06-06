@@ -387,7 +387,59 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, gem...)
 
+	// OpenAI Codex CLI config.toml (~/.codex/, only with --user — Codex config is
+	// user-global, not project-merged). Carries approval_policy / sandbox_mode
+	// (CFG063/064) and [mcp_servers] rides ProjectMCP. AGENTS.md (the committed
+	// project surface) rides instructionTargets above.
+	cdx, err := codexTargets(includeUser)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, cdx...)
+
 	return targets, nil
+}
+
+// codexTargets discovers the user-global OpenAI Codex config.toml
+// (~/.codex/config.toml, scanned only with --user). The Codex-specific fields
+// drive CFG063/064; [mcp_servers] are attached as ProjectMCP so the shared MCP
+// rules fire, attributed to the config file.
+func codexTargets(includeUser bool) ([]*rules.Target, error) {
+	if !includeUser {
+		return nil, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("resolve home directory: %w", err)
+	}
+	path := filepath.Join(home, ".codex", "config.toml")
+	cc, err := parseCodexOptional(path)
+	if err != nil {
+		return nil, err
+	}
+	if cc == nil {
+		return nil, nil
+	}
+	return []*rules.Target{{
+		Scope:          finding.ScopeUser,
+		Codex:          cc,
+		CodexFile:      path,
+		ProjectMCP:     cc.MCPServerMap(),
+		ProjectMCPFile: path,
+	}}, nil
+}
+
+// parseCodexOptional parses a Codex config.toml, returning (nil, nil) when the
+// file does not exist so callers can treat absence as "no target".
+func parseCodexOptional(path string) (*parser.CodexConfig, error) {
+	cc, err := parser.ParseCodexConfig(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return cc, nil
 }
 
 // geminiTargets discovers Gemini CLI settings.json files — .gemini/settings.json
