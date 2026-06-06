@@ -1,0 +1,88 @@
+name: Check typosquat allowlist
+
+# Monthly check that the CFG059 typosquat allowlist (rules/cfg059_data.go) is
+# still current. CFG059 compares MCP server packages against the official MCP
+# reference servers; when that upstream set changes — a server added or removed
+# in modelcontextprotocol/servers/src — an issue is opened so the allowlist (and
+# the snapshot in .github/mcp-reference-servers.txt) can be reviewed.
+#
+# Uses the GitHub src/ directory as the authoritative source, not the npm scope:
+# npm's public search is relevance-ranked (incomplete) and the @modelcontextprotocol
+# scope is full of demo/example servers, which would make a registry diff noisy.
+# The remote-host anchors in the allowlist have no upstream feed and are manual.
+
+on:
+  schedule:
+    - cron: "0 9 1 * *" # 09:00 UTC on the 1st of each month
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check CFG059 reference-server allowlist
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Compare reference servers against the snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          reviewed=$(grep -vE '^#|^[[:space:]]*$' .github/mcp-reference-servers.txt | sort -u)
+          upstream=$(gh api repos/modelcontextprotocol/servers/contents/src \
+            --jq '.[] | select(.type=="dir") | .name' | sort -u)
+
+          if [ -z "$upstream" ]; then
+            echo "::error::could not list modelcontextprotocol/servers/src"
+            exit 1
+          fi
+
+          added=$(comm -13 <(printf '%s\n' "$reviewed") <(printf '%s\n' "$upstream") || true)
+          removed=$(comm -23 <(printf '%s\n' "$reviewed") <(printf '%s\n' "$upstream") || true)
+
+          echo "reviewed:"; printf '%s\n' "$reviewed"
+          echo "upstream:"; printf '%s\n' "$upstream"
+
+          if [ -z "$added" ] && [ -z "$removed" ]; then
+            echo "Reference server set unchanged — CFG059 allowlist snapshot is current."
+            exit 0
+          fi
+
+          title="Typosquat allowlist review: MCP reference servers changed"
+          if [ "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')" != "0" ]; then
+            echo "an open review issue already exists; skipping."
+            exit 0
+          fi
+
+          added_md=$(printf '%s' "$added" | sed 's/^/- `server-/; s/$/`/' | grep . || echo "- (none)")
+          removed_md=$(printf '%s' "$removed" | sed 's/^/- `server-/; s/$/`/' | grep . || echo "- (none)")
+
+          body=$(cat <<EOF
+          The official MCP reference server set ([modelcontextprotocol/servers \`src/\`](https://github.com/modelcontextprotocol/servers/tree/main/src)) changed since the CFG059 typosquat allowlist was last curated.
+
+          **Added upstream** (consider adding \`@modelcontextprotocol/server-<name>\` to \`knownMCPPackages\`):
+          $added_md
+
+          **No longer upstream** (review whether to keep — keeping a known historical name still catches squats of it, so removal is optional):
+          $removed_md
+
+          Next steps:
+          1. Review \`rules/cfg059_data.go\` (\`knownMCPPackages\`) against the change.
+          2. Update the snapshot in \`.github/mcp-reference-servers.txt\` to match \`src/\`.
+
+          Run: $RUN_URL
+          EOF
+          )
+          gh issue create --title "$title" --label enhancement --body "$body"
+          echo "opened review issue."

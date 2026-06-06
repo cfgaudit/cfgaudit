@@ -1,0 +1,14 @@
+# Snapshot of the official MCP reference servers — the directory names under
+# modelcontextprotocol/servers/src — that the CFG059 typosquat allowlist
+# (rules/cfg059_data.go) was last curated against. The check-typosquat-allowlist
+# workflow alerts when this upstream set changes (a server added or removed), so
+# the allowlist can be reviewed. After reviewing, update both rules/cfg059_data.go
+# and this snapshot. (Remote-host anchors in cfg059_data.go have no authoritative
+# upstream feed and are maintained manually.)
+everything
+fetch
+filesystem
+git
+memory
+sequentialthinking
+time
