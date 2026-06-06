@@ -1,0 +1,18 @@
+{
+  "_comment": "Reviewed-through versions of the OWASP frameworks cfgaudit's mappings target. The check-framework-versions workflow alerts (opens an issue) when upstream moves past these. After reviewing a mapping against a newer version, bump the value here. Mappings live in: each rule doc's '**OWASP:**' (LLM Top 10) and '**OWASP MCP:**' (MCP Top 10) header lines, the README OWASP-MCP mapping table, and docs/aisvs-mapping.md (AISVS).",
+  "llm_top10": {
+    "name": "OWASP Top 10 for LLM Applications",
+    "repo": "OWASP/www-project-top-10-for-large-language-model-applications",
+    "reviewed_year": "2025"
+  },
+  "mcp_top10": {
+    "name": "OWASP MCP Top 10",
+    "repo": "OWASP/www-project-mcp-top-10",
+    "reviewed_phase": "Phase 3"
+  },
+  "aisvs": {
+    "name": "OWASP AISVS",
+    "repo": "OWASP/AISVS",
+    "reviewed_version": "1.0"
+  }
+}
