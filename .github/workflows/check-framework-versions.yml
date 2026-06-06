@@ -1,0 +1,105 @@
+name: Check framework versions
+
+# Weekly check for newer releases of the OWASP frameworks cfgaudit maps to.
+# When upstream moves past the reviewed-through version recorded in
+# .github/framework-versions.json, an issue is opened so the mapping can be
+# re-reviewed.
+#
+# The three frameworks expose their version differently, so each is checked its
+# own way (none publish a clean semver release feed like OWASP/ASVS does):
+#   - OWASP Top 10 for LLM Applications — year-tagged (2023, 2024, …); alert on a
+#     tag year newer than the reviewed edition.
+#   - OWASP AISVS — versioned by top-level directory (1.0, …); alert on a newer dir.
+#   - OWASP MCP Top 10 — no release feed; tracked via the lifecycle "We are here
+#     right now" phase marker on its index page (provisional v0.1, Phase 3).
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # 08:00 UTC every Monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check mapped framework versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Check OWASP framework versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          VF=.github/framework-versions.json
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          # Open a tracking issue unless an open one with the same title exists.
+          alert() { # title body
+            local title="$1" body="$2"
+            if [ "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')" != "0" ]; then
+              echo "an open issue already exists: $title"
+              return
+            fi
+            gh issue create --title "$title" --label enhancement --body "$body"
+            echo "opened issue: $title"
+          }
+
+          # ver_gt A B -> success when A is strictly newer than B (version sort).
+          ver_gt() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]; }
+
+          # --- OWASP Top 10 for LLM Applications (year tags) ---
+          llm_reviewed=$(jq -r '.llm_top10.reviewed_year' "$VF")
+          llm_latest=$(gh api repos/OWASP/www-project-top-10-for-large-language-model-applications/tags --jq '.[].name' \
+            | grep -oE '^[0-9]{4}' | sort -n | tail -1)
+          echo "LLM Top 10: reviewed_year=$llm_reviewed latest_tag_year=${llm_latest:-none}"
+          if [ -z "$llm_latest" ]; then echo "::error::could not read LLM Top 10 tags"; exit 1; fi
+          if [ "$llm_latest" -gt "$llm_reviewed" ]; then
+            alert "Framework update: OWASP Top 10 for LLM Applications $llm_latest available" \
+          "A newer OWASP Top 10 for LLM Applications edition (tag \`$llm_latest\`) exists upstream; cfgaudit's **primary** mapping targets the \`$llm_reviewed\` edition (the \`**OWASP:** LLMxx:$llm_reviewed\` lines across the rule docs and the README rule tables).
+
+          Re-review the LLMxx assignments against the \`$llm_latest\` edition; if still the best fit, bump \`llm_top10.reviewed_year\` in \`.github/framework-versions.json\`, otherwise update the affected rule-doc headers / README rows too.
+
+          Run: $RUN_URL"
+          fi
+
+          # --- OWASP AISVS (version directories) ---
+          aisvs_reviewed=$(jq -r '.aisvs.reviewed_version' "$VF")
+          aisvs_latest=$(gh api repos/OWASP/AISVS/contents --jq '.[] | select(.type=="dir") | .name' \
+            | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          echo "AISVS: reviewed=$aisvs_reviewed latest=${aisvs_latest:-none}"
+          if [ -z "$aisvs_latest" ]; then echo "::error::could not read AISVS version directories"; exit 1; fi
+          if ver_gt "$aisvs_latest" "$aisvs_reviewed"; then
+            alert "Framework update: OWASP AISVS $aisvs_latest available" \
+          "OWASP AISVS \`$aisvs_latest\` is published (newest version directory in [OWASP/AISVS](https://github.com/OWASP/AISVS)); cfgaudit's **secondary** AISVS mapping in \`docs/aisvs-mapping.md\` was last reviewed against \`$aisvs_reviewed\`.
+
+          Re-review the C4/C5/C6/C9/C10 mapping against \`$aisvs_latest\`, then bump \`aisvs.reviewed_version\` in \`.github/framework-versions.json\` and the version stamp in \`docs/aisvs-mapping.md\`.
+
+          Run: $RUN_URL"
+          fi
+
+          # --- OWASP MCP Top 10 (lifecycle phase marker; no release feed) ---
+          mcp_reviewed=$(jq -r '.mcp_top10.reviewed_phase' "$VF")
+          mcp_line=$(gh api repos/OWASP/www-project-mcp-top-10/contents/index.md -H "Accept: application/vnd.github.raw" \
+            | grep -i "we are here right now" || true)
+          mcp_current=$(printf '%s' "$mcp_line" | grep -oE 'Phase [0-9]+' | head -1 || true)
+          echo "MCP Top 10: reviewed_phase='$mcp_reviewed' current_phase='${mcp_current:-none}'"
+          if [ -z "$mcp_current" ]; then echo "::error::MCP Top 10 'we are here' phase marker not found — page format may have changed"; exit 1; fi
+          if [ "$mcp_current" != "$mcp_reviewed" ]; then
+            alert "Framework update: OWASP MCP Top 10 advanced to $mcp_current" \
+          "The OWASP MCP Top 10 lifecycle marker moved from \`$mcp_reviewed\` to \`$mcp_current\` (the \"We are here right now\" line in [OWASP/www-project-mcp-top-10](https://github.com/OWASP/www-project-mcp-top-10/blob/main/index.md)). cfgaudit maps to it as **provisional v0.1**; a move toward Final Release (Phase 4) means the MCPxx IDs/titles may have stabilised or changed.
+
+          Re-verify the MCP mapping (the README OWASP-MCP table, the \`**OWASP MCP:**\` rule-doc lines, and \`TestMCPMappingConsistency\`) against the current taxonomy, then bump \`mcp_top10.reviewed_phase\` in \`.github/framework-versions.json\` (and drop the \"provisional v0.1\" stamps once it is final).
+
+          Run: $RUN_URL"
+          fi
+
+          echo "framework version check complete."
