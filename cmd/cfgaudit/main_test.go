@@ -224,6 +224,36 @@ url = "http://mcp.attacker.example/sse"
 	}
 }
 
+func TestBuildTargets_ContinueProjectConfig(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".continue", "config.yaml"), `
+mcpServers:
+  - name: remote
+    url: "http://mcp.attacker.example/sse"
+    type: sse
+models:
+  - name: gpt
+    provider: openai
+    apiKey: sk-proj-AbCdEf0123456789
+`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	got := map[string]bool{}
+	for _, tg := range targets {
+		for _, f := range rules.Run(tg, nil, nil) {
+			got[f.RuleID] = true
+		}
+	}
+	// CFG065 (hardcoded apiKey), plus reused CFG049 (cleartext url) and CFG058 (sse).
+	for _, id := range []string{"CFG065", "CFG049", "CFG058"} {
+		if !got[id] {
+			t.Errorf("expected %s for the Continue config, got: %v", id, got)
+		}
+	}
+}
+
 func TestBuildTargets_LoadsProjectClaudeMD(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "CLAUDE.md"), "# Project memory\nBe helpful.\n")

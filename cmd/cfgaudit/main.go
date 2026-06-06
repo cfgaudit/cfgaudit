@@ -397,7 +397,67 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, cdx...)
 
+	// Continue config.yaml (.continue/, and ~/.continue/ with --user). Its
+	// mcpServers list rides ProjectMCP so the MCP rules apply; inline apiKey
+	// literals drive CFG065.
+	cont, err := continueTargets(dir, includeUser)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, cont...)
+
 	return targets, nil
+}
+
+// continueTargets discovers Continue config.yaml — .continue/config.yaml
+// (project) and ~/.continue/config.yaml (user, only with --user). The mcpServers
+// list is attached as ProjectMCP so the shared MCP rules fire (attributed to the
+// config file); the parsed config drives CFG065.
+func continueTargets(dir string, includeUser bool) ([]*rules.Target, error) {
+	var targets []*rules.Target
+	add := func(path string, scope finding.Scope) error {
+		cc, err := parseContinueOptional(path)
+		if err != nil {
+			return err
+		}
+		if cc == nil {
+			return nil
+		}
+		targets = append(targets, &rules.Target{
+			Scope:          scope,
+			Continue:       cc,
+			ContinueFile:   path,
+			ProjectMCP:     cc.MCPServerMap(),
+			ProjectMCPFile: path,
+		})
+		return nil
+	}
+	if err := add(filepath.Join(dir, ".continue", "config.yaml"), finding.ScopeProject); err != nil {
+		return nil, err
+	}
+	if includeUser {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("resolve home directory: %w", err)
+		}
+		if err := add(filepath.Join(home, ".continue", "config.yaml"), finding.ScopeUser); err != nil {
+			return nil, err
+		}
+	}
+	return targets, nil
+}
+
+// parseContinueOptional parses a Continue config.yaml, returning (nil, nil) when
+// the file does not exist so callers can treat absence as "no target".
+func parseContinueOptional(path string) (*parser.ContinueConfig, error) {
+	cc, err := parser.ParseContinueConfig(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return cc, nil
 }
 
 // codexTargets discovers the user-global OpenAI Codex config.toml

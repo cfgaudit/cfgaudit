@@ -75,6 +75,13 @@ type Target struct {
 	Codex     *parser.CodexConfig
 	CodexFile string
 
+	// Continue holds a parsed Continue config.yaml (.continue/config.yaml or
+	// ~/.continue/config.yaml). Its mcpServers list rides ProjectMCP so the MCP
+	// rules apply; inline model/MCP apiKey literals drive CFG065. Nil when absent;
+	// ContinueFile is its path, used to attribute the Continue-specific findings.
+	Continue     *parser.ContinueConfig
+	ContinueFile string
+
 	// Policy*, when set, carry the organisation's custom permission policy from
 	// .cfgaudit.yml (evaluated by CFG025). RequireDeny lists commands that must be
 	// covered by permissions.deny; ForbidAllow lists commands that must not be
