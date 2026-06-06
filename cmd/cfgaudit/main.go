@@ -634,6 +634,10 @@ var (
 		filepath.Join(".cursor", "rules", "*.md"),
 		filepath.Join(".cursor", "rules", "*.mdc"),
 		filepath.Join(".windsurf", "rules", "*.md"),
+		// GitHub Copilot path-specific instructions (newer than the repo-wide
+		// .github/copilot-instructions.md, which is in agentInstructionFiles) —
+		// committed Markdown loaded as Copilot context, same prompt-injection surface.
+		filepath.Join(".github", "instructions", "*.instructions.md"),
 		// Claude Code custom subagents, slash commands, and skills — Markdown with a
 		// YAML frontmatter (description trigger, allowed-tools) read as trusted
 		// context. Skills live one directory deep: .claude/skills/<name>/SKILL.md.
