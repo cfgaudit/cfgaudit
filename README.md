@@ -383,7 +383,7 @@ Findings are attributed to the in-package file. Bundled binaries / arbitrary scr
 
 ### OpenAI Codex CLI — `~/.codex/config.toml` & `AGENTS.md`
 
-[OpenAI Codex CLI](https://github.com/openai/codex) keeps its config in `~/.codex/config.toml` (TOML) and uses `AGENTS.md` as its project instruction file. `AGENTS.md` is already scanned by the shared instruction-content rules (CFG024–CFG036, CFG057). With `--user`, cfgaudit also parses `~/.codex/config.toml`: its `[mcp_servers]` ride the shared MCP rules (CFG010–CFG021, CFG049–CFG059), and two rules cover the Codex-specific settings:
+[OpenAI Codex CLI](https://github.com/openai/codex) keeps its config in `~/.codex/config.toml` (TOML) and uses `AGENTS.md` as its project instruction file. `AGENTS.md` is already scanned by the shared instruction-content rules (CFG024–CFG036, CFG057). With `--user`, cfgaudit also parses `~/.codex/config.toml`: its `[mcp_servers]` ride the shared MCP rules (CFG010–CFG021, CFG049–CFG059), its `notify` program (run by Codex on events) is scanned by the command-content rules (CFG008/014/015/027/028/037/038/039), and two rules cover the Codex-specific settings:
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|

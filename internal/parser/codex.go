@@ -14,6 +14,9 @@ type CodexConfig struct {
 	ApprovalPolicy string              `toml:"approval_policy"`
 	SandboxMode    string              `toml:"sandbox_mode"`
 	MCPServers     map[string]CodexMCP `toml:"mcp_servers"`
+	// Notify is a program (argv) Codex spawns on events; a committed value runs
+	// attacker-controlled code, so it is scanned by the command-content rules.
+	Notify []string `toml:"notify"`
 }
 
 // CodexMCP is a Codex [mcp_servers.<name>] table. stdio servers use

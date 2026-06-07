@@ -2,6 +2,7 @@ package rules
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
@@ -67,6 +68,11 @@ func commandSites(t *Target) []commandSite {
 		if cmd := ref.Server.HeadersHelper; cmd != "" {
 			sites = append(sites, commandSite{Label: "mcpServers." + ref.Name + ".headersHelper command", File: ref.File, Command: cmd})
 		}
+	}
+
+	// OpenAI Codex config.toml `notify` — a program (argv) Codex spawns on events.
+	if t.Codex != nil && len(t.Codex.Notify) > 0 {
+		sites = append(sites, commandSite{Label: "Codex notify command", File: t.CodexFile, Command: strings.Join(t.Codex.Notify, " ")})
 	}
 
 	return sites

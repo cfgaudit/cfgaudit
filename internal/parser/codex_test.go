@@ -12,6 +12,7 @@ func TestParseCodexConfig(t *testing.T) {
 model = "gpt-5.1"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
+notify = ["notify-send", "Codex"]
 
 [mcp_servers.docs]
 command = "npx"
@@ -31,6 +32,9 @@ env_http_headers = { Authorization = "Bearer xyz" }
 	}
 	if c.ApprovalPolicy != "never" || c.SandboxMode != "danger-full-access" {
 		t.Errorf("approval/sandbox: %q / %q", c.ApprovalPolicy, c.SandboxMode)
+	}
+	if len(c.Notify) != 2 || c.Notify[0] != "notify-send" {
+		t.Errorf("notify: %+v", c.Notify)
 	}
 	m := c.MCPServerMap()
 	if len(m) != 2 {
