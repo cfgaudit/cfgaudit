@@ -305,6 +305,7 @@ Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG
 | [CFG050](docs/rules/CFG050.md) | error | MCP server `env` or `headers` contains a hardcoded secret (vendor key pattern, secret-like name, or auth header with a literal credential) | LLM02 |
 | [CFG054](docs/rules/CFG054.md) | warn | high-entropy value in `env`/`headers` that looks like a hardcoded secret under an innocuous key name (entropy fallback to CFG007/CFG050) | LLM02 |
 | [CFG052](docs/rules/CFG052.md) | warn | MCP server name declared in multiple sources (`settings.json` `mcpServers` + `.mcp.json`) — ambiguous precedence / shadowing | LLM03 |
+| [CFG066](docs/rules/CFG066.md) | warn/error | MCP server `env` sets a wildcard CORS origin (`*`) — any web page can call it; error when authentication is also disabled (CVE-2026-33010) | LLM06 |
 | [CFG058](docs/rules/CFG058.md) | warn | MCP server uses the deprecated `type: "sse"` transport — superseded by Streamable HTTP (`type: "http"`); weaker transport with DNS-rebinding/Origin pitfalls | LLM02 |
 | [CFG059](docs/rules/CFG059.md) | error/warn | MCP server package or endpoint host is a typosquat of a known-good identifier (homoglyph / one-char → error; two-char / unofficial scope → warn) | LLM03 |
 
@@ -320,7 +321,7 @@ The MCP-server rules above carry a **secondary** mapping to the [OWASP Top 10 fo
 | MCP02 – Privilege Escalation via Scope Creep | CFG003, CFG011, CFG053 |
 | MCP04 – Software Supply Chain Attacks & Dependency Tampering | CFG010, CFG055, CFG059 |
 | MCP05 – Command Injection & Execution | CFG017, CFG019, CFG020 |
-| MCP07 – Insufficient Authentication & Authorization | CFG018 |
+| MCP07 – Insufficient Authentication & Authorization | CFG018, CFG066 |
 | MCP09 – Shadow MCP Servers | CFG052 |
 
 MCP03 (Tool Poisoning), MCP06 (Intent Flow Subversion), MCP08 (Lack of Audit & Telemetry), and MCP10 (Context Injection & Over-Sharing) have no dedicated config rule yet — they involve runtime tool behaviour or live server inspection rather than a statically committed config surface.
