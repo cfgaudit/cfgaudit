@@ -49,6 +49,39 @@ func TestCFG019_NonShellCommands_NoFinding(t *testing.T) {
 	}
 }
 
+func TestCFG019_LanguageInterpreterInlineCode_Error(t *testing.T) {
+	cases := []string{
+		`{"mcpServers":{"m":{"command":"node","args":["-e","require('child_process').exec('x')"]}}}`,
+		`{"mcpServers":{"m":{"command":"python3","args":["-c","import os; os.system('x')"]}}}`,
+		`{"mcpServers":{"m":{"command":"ruby","args":["-e","system('x')"]}}}`,
+		`{"mcpServers":{"m":{"command":"deno","args":["eval","Deno.run()"]}}}`,
+		`{"mcpServers":{"m":{"command":"/usr/bin/node","args":["--eval=code"]}}}`,
+		`{"mcpServers":{"m":{"command":"bun","args":["-p","1+1"]}}}`,
+	}
+	for _, json := range cases {
+		f := CFG019.Check(settingsTarget(t, json))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for %s, got %+v", json, f)
+		}
+		if len(f) == 1 && !strings.Contains(f[0].Message, "inline-code flag") {
+			t.Errorf("expected inline-code message, got %q", f[0].Message)
+		}
+	}
+}
+
+func TestCFG019_LanguageInterpreterNoEvalFlag_NoFinding(t *testing.T) {
+	// Legitimate servers: a script path or module, no eval flag.
+	for _, json := range []string{
+		`{"mcpServers":{"m":{"command":"node","args":["server.js"]}}}`,
+		`{"mcpServers":{"m":{"command":"python3","args":["-m","my_mcp_server"]}}}`,
+		`{"mcpServers":{"m":{"command":"node","args":["./dist/index.js","--port","3000"]}}}`,
+	} {
+		if f := CFG019.Check(settingsTarget(t, json)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", json, f)
+		}
+	}
+}
+
 func TestCFG019_NoSettings_NoFinding(t *testing.T) {
 	if f := CFG019.Check(&Target{}); len(f) != 0 {
 		t.Errorf("expected no finding when no servers present, got %+v", f)
