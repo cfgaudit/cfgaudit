@@ -299,7 +299,7 @@ Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG
 | [CFG011](docs/rules/CFG011.md) | warn | MCP server `alwaysAllow` is too broad (wildcard, state-mutating tools, or 10+ entries) | LLM06 |
 | [CFG017](docs/rules/CFG017.md) | error | MCP server sets `dangerouslyAllowBrowser: true` — browser-originated requests enable DNS-rebinding to RCE (CVE-2025-49596) | LLM06 |
 | [CFG018](docs/rules/CFG018.md) | warn | MCP server binds to all interfaces (`0.0.0.0` / `[::]`) — reachable by anyone on the LAN ("NeighborJack") | LLM06 |
-| [CFG019](docs/rules/CFG019.md) | error | MCP server `command` is a shell interpreter (`bash`, `sh`, `pwsh`, `cmd`, …) — server is an inline script, a hallmark of a poisoned config | LLM06 |
+| [CFG019](docs/rules/CFG019.md) | error | MCP server `command` runs an inline script — a shell interpreter (`bash`/`pwsh`/…) or a language interpreter with an eval flag (`node -e`, `python -c`, `deno eval`, …) — a hallmark of a poisoned config (CVE-2026-21518) | LLM06 |
 | [CFG020](docs/rules/CFG020.md) | error | MCP server `env` injects code at startup — dynamic linker (`LD_PRELOAD`/`DYLD_*`) or interpreter startup vectors `BASH_ENV`/`PYTHONSTARTUP`/`NODE_OPTIONS`/`RUBYOPT`/`PERL5OPT` (CVE-2026-44995) | LLM06 |
 | [CFG021](docs/rules/CFG021.md) | warn | MCP server `env` routes traffic through a non-local proxy (`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`) — MITM and header-secret capture | LLM02 |
 | [CFG049](docs/rules/CFG049.md) | error/warn | remote MCP server `url` points to a non-loopback host (cleartext `http://`/`ws://` or raw IP → error; TLS hostname → warn) — exfiltration / MITM channel | LLM02 |
