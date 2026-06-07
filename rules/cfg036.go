@@ -79,7 +79,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 					break
 				}
 				if network[j] {
-					add(i, directive[i][0], finding.Error, "combines an auto-execution directive with a network-exfiltration command (Part B) — instructs Claude to run a command that sends data to a remote host. Remove it")
+					add(i, directive[i][0], finding.Error, "combines an auto-execution directive with a network-exfiltration command (Part B) — instructs the agent to run a command that sends data to a remote host. Remove it")
 					covered[i] = true
 					break
 				}
@@ -92,7 +92,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 			}
 			loc := directive[i]
 			if strings.Contains(lines[i][loc[0]:], ":") {
-				add(i, loc[0], finding.Warn, "contains an auto-execution directive (Part C) — \""+strings.TrimSpace(lines[i][loc[0]:loc[1]])+"\"; instruction files should describe tasks, not command Claude to auto-run things. Review it")
+				add(i, loc[0], finding.Warn, "contains an auto-execution directive (Part C) — \""+strings.TrimSpace(lines[i][loc[0]:loc[1]])+"\"; instruction files should describe tasks, not command the agent to auto-run things. Review it")
 			}
 		}
 		sort.SliceStable(srcFindings, func(i, j int) bool {

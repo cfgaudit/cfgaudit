@@ -97,7 +97,7 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 
 		// Part C — foreign-LLM tokenizer control sequences (warn)
 		for _, loc := range foreignToken.FindAllStringIndex(c, -1) {
-			add(loc[0], finding.Warn, "contains a foreign-LLM control token \""+c[loc[0]:loc[1]]+"\" (Part C) — harmless to Claude's tokenizer, but a strong sign the file was adapted from a multi-model attack payload")
+			add(loc[0], finding.Warn, "contains a foreign-LLM control token \""+c[loc[0]:loc[1]]+"\" (Part C) — harmless to the agent's tokenizer, but a strong sign the file was adapted from a multi-model attack payload")
 		}
 
 		sort.SliceStable(srcFindings, func(i, j int) bool {

@@ -49,7 +49,7 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 					File:     src.File,
 					Line:     line,
 					Col:      col,
-					Message:  fmt.Sprintf("%s contains a hidden Unicode control character U+%04X (%s) — invisible in editors and review but read by Claude as instructions; a prompt-injection / ASCII-smuggling vector. Remove all non-printable characters", src.Name, ch, name),
+					Message:  fmt.Sprintf("%s contains a hidden Unicode control character U+%04X (%s) — invisible in editors and review but read by the agent as instructions; a prompt-injection / ASCII-smuggling vector. Remove all non-printable characters", src.Name, ch, name),
 				})
 				break
 			}

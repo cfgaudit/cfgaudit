@@ -152,7 +152,7 @@ func userScopeNote(t *Target) string {
 	if t == nil || t.Scope != finding.ScopeUser {
 		return ""
 	}
-	return " — user-global scope: this setting applies to every Claude Code project you open"
+	return " — user-global scope: this setting applies to every project you open"
 }
 
 // Rule is implemented by every cfgaudit check.

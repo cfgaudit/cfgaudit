@@ -76,7 +76,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					Line:     lineNo,
 					Col:      loc[0] + 1,
 					Message: src.Name + " line " + strconv.Itoa(lineNo) + " contains a prompt-injection phrase (" + p.label + ", pattern " + strconv.Itoa(p.num) +
-						") — instruction files are read as trusted system context, so an embedded instruction here can override Claude's behaviour. Remove it",
+						") — instruction files are read as trusted system context, so an embedded instruction here can override the agent's behaviour. Remove it",
 				})
 			}
 		}

@@ -27,7 +27,7 @@ var mcpInstructionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bmcp\b.*\b(?:alwaysAllow|trusted|allow\s+all)`),
 }
 
-// Check flags CLAUDE.md content that instructs Claude to configure or trust an
+// Check flags CLAUDE.md content that instructs the agent to configure or trust an
 // MCP server. Matches inside fenced code blocks are still reported.
 func (r *cfg035) Check(t *Target) []finding.Finding {
 	if t == nil {
@@ -47,7 +47,7 @@ func (r *cfg035) Check(t *Target) []finding.Finding {
 				File:     src.File,
 				Line:     lineNo,
 				Col:      loc[0] + 1,
-				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs Claude to configure or trust an MCP server (\"" + strings.TrimSpace(line[loc[0]:loc[1]]) +
+				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs the agent to configure or trust an MCP server (\"" + strings.TrimSpace(line[loc[0]:loc[1]]) +
 					"\") — instruction files must not contain MCP configuration instructions; a malicious one can silently install an attacker-controlled MCP server into your config. Remove it",
 			})
 		}
