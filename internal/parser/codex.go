@@ -17,6 +17,17 @@ type CodexConfig struct {
 	// Notify is a program (argv) Codex spawns on events; a committed value runs
 	// attacker-controlled code, so it is scanned by the command-content rules.
 	Notify []string `toml:"notify"`
+
+	// ChatGPTBaseURL and the per-provider base_url are model endpoints the API key
+	// is sent to; a cleartext remote value leaks it (CFG071).
+	ChatGPTBaseURL string                   `toml:"chatgpt_base_url"`
+	ModelProviders map[string]CodexProvider `toml:"model_providers"`
+}
+
+// CodexProvider is a [model_providers.<name>] table.
+type CodexProvider struct {
+	Name    string `toml:"name"`
+	BaseURL string `toml:"base_url"`
 }
 
 // CodexMCP is a Codex [mcp_servers.<name>] table. stdio servers use

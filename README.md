@@ -397,6 +397,7 @@ Findings are attributed to the in-package file. Bundled binaries / arbitrary scr
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG065](docs/rules/CFG065.md) | error | Continue config has a hardcoded inline `apiKey` literal on a `models[]` or remote `mcpServers[]` entry — a committed credential (`${{ secrets.* }}` references and placeholders are not flagged) | LLM02 |
+| [CFG071](docs/rules/CFG071.md) | error | model/provider base URL over cleartext `http://` to a remote host — Continue `models[].apiBase` or Codex `chatgpt_base_url`/`[model_providers].base_url`; the API key is sent in plaintext (multi-provider analogue of CFG005) | LLM02 |
 
 ---
 

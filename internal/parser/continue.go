@@ -37,6 +37,7 @@ type ContinueModel struct {
 	Name     string `yaml:"name"`
 	Provider string `yaml:"provider"`
 	APIKey   string `yaml:"apiKey"`
+	APIBase  string `yaml:"apiBase"`
 }
 
 // MCPServerMap converts the mcpServers list to the shared MCPServer shape so the
