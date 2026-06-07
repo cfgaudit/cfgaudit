@@ -299,7 +299,7 @@ Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG
 | [CFG017](docs/rules/CFG017.md) | error | MCP server sets `dangerouslyAllowBrowser: true` — browser-originated requests enable DNS-rebinding to RCE (CVE-2025-49596) | LLM06 |
 | [CFG018](docs/rules/CFG018.md) | warn | MCP server binds to all interfaces (`0.0.0.0` / `[::]`) — reachable by anyone on the LAN ("NeighborJack") | LLM06 |
 | [CFG019](docs/rules/CFG019.md) | error | MCP server `command` is a shell interpreter (`bash`, `sh`, `pwsh`, `cmd`, …) — server is an inline script, a hallmark of a poisoned config | LLM06 |
-| [CFG020](docs/rules/CFG020.md) | error | MCP server `env` injects a shared library via the dynamic linker (`LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES`, …) | LLM06 |
+| [CFG020](docs/rules/CFG020.md) | error | MCP server `env` injects code at startup — dynamic linker (`LD_PRELOAD`/`DYLD_*`) or interpreter startup vectors `BASH_ENV`/`PYTHONSTARTUP`/`NODE_OPTIONS`/`RUBYOPT`/`PERL5OPT` (CVE-2026-44995) | LLM06 |
 | [CFG021](docs/rules/CFG021.md) | warn | MCP server `env` routes traffic through a non-local proxy (`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`) — MITM and header-secret capture | LLM02 |
 | [CFG049](docs/rules/CFG049.md) | error/warn | remote MCP server `url` points to a non-loopback host (cleartext `http://`/`ws://` or raw IP → error; TLS hostname → warn) — exfiltration / MITM channel | LLM02 |
 | [CFG050](docs/rules/CFG050.md) | error | MCP server `env` or `headers` contains a hardcoded secret (vendor key pattern, secret-like name, or auth header with a literal credential) | LLM02 |
