@@ -53,7 +53,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 				File:     src.File,
 				Line:     lineNo,
 				Col:      loc[0] + 1,
-				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs Claude to bypass permission prompts (\"" + line[loc[0]:loc[1]] +
+				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs the agent to bypass permission prompts (\"" + line[loc[0]:loc[1]] +
 					"\") — this disables the permission system via system-context text, equivalent to defaultMode: bypassPermissions (CFG004). Remove it",
 			})
 		}

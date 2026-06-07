@@ -46,8 +46,8 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 				File:     src.File,
 				Line:     lineNo,
 				Col:      loc[0] + 1,
-				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs Claude to conceal its behaviour from the user (\"" + line[loc[0]:loc[1]] +
-					"\") — gagging the model is the social-engineering layer of a prompt injection; legitimate guidance never tells Claude to hide what it does. Remove it",
+				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs the agent to conceal its behaviour from the user (\"" + line[loc[0]:loc[1]] +
+					"\") — gagging the model is the social-engineering layer of a prompt injection; legitimate guidance never tells the agent to hide what it does. Remove it",
 			})
 		}
 	}

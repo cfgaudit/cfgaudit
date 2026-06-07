@@ -336,16 +336,16 @@ AI coding agents read their instruction files as trusted system-context every se
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
-| [CFG024](docs/rules/CFG024.md) | error | `CLAUDE.md` contains hidden Unicode control characters (Tags block, zero-width, BiDi/Trojan Source) — prompt injection / ASCII smuggling | LLM01 |
-| [CFG026](docs/rules/CFG026.md) | error/warn | `CLAUDE.md` contains instruction-bypass phrases (override / persona hijack / authority impersonation → error; permissive fictional framing → warn) | LLM01 |
-| [CFG029](docs/rules/CFG029.md) | error | `CLAUDE.md` instructs Claude to bypass permission prompts ("always approve", "without asking", …) — NL equivalent of `defaultMode: bypassPermissions` | LLM06 |
-| [CFG030](docs/rules/CFG030.md) | error | `CLAUDE.md` instructs Claude to conceal its behavior ("don't tell the user", "silently exfiltrate", …) | LLM01 |
-| [CFG031](docs/rules/CFG031.md) | error/warn | `CLAUDE.md` instruction references a sensitive file path (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — error when read/sent (exfiltration), warn on a bare mention | LLM02 |
-| [CFG032](docs/rules/CFG032.md) | error/warn | `CLAUDE.md` contains pseudo-system tags (`<SYSTEM>`), turn-boundary/role injection (`Human:`/`<human>`) → error; generic all-caps tags & foreign-LLM control tokens → warn | LLM01 |
-| [CFG033](docs/rules/CFG033.md) | error | `CLAUDE.md` contains a markdown image with an empty/placeholder query param (`![](https://x?d=)`) — data-exfiltration sink | LLM02 |
-| [CFG034](docs/rules/CFG034.md) | warn | `CLAUDE.md` contains Guidance/template role delimiters (`{{#system~}}` …) — role-injection markup | LLM01 |
-| [CFG035](docs/rules/CFG035.md) | error | `CLAUDE.md` instructs Claude to configure or trust an MCP server (`claude mcp add` …) — installs an attacker server | LLM06 |
-| [CFG036](docs/rules/CFG036.md) | error/warn | `CLAUDE.md` embeds shell commands for auto-execution/exfiltration (cmd-subst on secret paths, auto-exec + `curl https://…`) | LLM02 |
+| [CFG024](docs/rules/CFG024.md) | error | instruction file contains hidden Unicode control characters (Tags block, zero-width, BiDi/Trojan Source) — prompt injection / ASCII smuggling | LLM01 |
+| [CFG026](docs/rules/CFG026.md) | error/warn | instruction file contains instruction-bypass phrases (override / persona hijack / authority impersonation → error; permissive fictional framing → warn) | LLM01 |
+| [CFG029](docs/rules/CFG029.md) | error | instruction file instructs the agent to bypass permission prompts ("always approve", "without asking", …) — NL equivalent of `defaultMode: bypassPermissions` | LLM06 |
+| [CFG030](docs/rules/CFG030.md) | error | instruction file instructs the agent to conceal its behavior ("don't tell the user", "silently exfiltrate", …) | LLM01 |
+| [CFG031](docs/rules/CFG031.md) | error/warn | instruction file references a sensitive file path (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — error when read/sent (exfiltration), warn on a bare mention | LLM02 |
+| [CFG032](docs/rules/CFG032.md) | error/warn | instruction file contains pseudo-system tags (`<SYSTEM>`), turn-boundary/role injection (`Human:`/`<human>`) → error; generic all-caps tags & foreign-LLM control tokens → warn | LLM01 |
+| [CFG033](docs/rules/CFG033.md) | error | instruction file contains a markdown image with an empty/placeholder query param (`![](https://x?d=)`) — data-exfiltration sink | LLM02 |
+| [CFG034](docs/rules/CFG034.md) | warn | instruction file contains Guidance/template role delimiters (`{{#system~}}` …) — role-injection markup | LLM01 |
+| [CFG035](docs/rules/CFG035.md) | error | instruction file instructs the agent to configure or trust an MCP server (`claude mcp add` …) — installs an attacker server | LLM06 |
+| [CFG036](docs/rules/CFG036.md) | error/warn | instruction file embeds shell commands for auto-execution/exfiltration (cmd-subst on secret paths, auto-exec + `curl https://…`) | LLM02 |
 | [CFG057](docs/rules/CFG057.md) | warn | instruction file embeds an encoded payload — a `data:` URI or base64 blob that decodes to an injection phrase or command (evades CFG024/CFG026) | LLM01 |
 | [CFG051](docs/rules/CFG051.md) | error/warn | skill/command/subagent frontmatter `allowed-tools` grants unrestricted shell or all tools (`Bash`, `*`, `all`) — not narrowed by `disallowed-tools` | LLM06 |
 | [CFG056](docs/rules/CFG056.md) | warn | model-invocable skill/command/subagent has a broad/always-on `description` or `triggers` entry ("for every request", "always invoke") — behaviour-hijack via greedy selection | LLM01 |
