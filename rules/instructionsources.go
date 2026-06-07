@@ -1,6 +1,9 @@
 package rules
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // instructionSource is one block of agent-instruction text in scope for the
 // content rules (CFG024/026/029–036/057). It is either the loaded instruction
@@ -40,6 +43,34 @@ func (t *Target) instructionSources() []instructionSource {
 		})
 	}
 	srcs = append(srcs, t.promptHookSources()...)
+	srcs = append(srcs, t.continueRuleSources()...)
+	return srcs
+}
+
+// continueRuleSources returns one instructionSource per Continue rule and prompt
+// — trusted instruction context loaded by Continue, the same prompt-injection
+// surface as a CLAUDE.md — attributed to the Continue config file.
+func (t *Target) continueRuleSources() []instructionSource {
+	if t == nil || t.Continue == nil {
+		return nil
+	}
+	var srcs []instructionSource
+	label := func(kind, name string) string {
+		if name = strings.TrimSpace(name); name != "" {
+			return "Continue " + kind + " \"" + name + "\""
+		}
+		return "Continue " + kind
+	}
+	for _, r := range t.Continue.Rules {
+		if strings.TrimSpace(r.Text) != "" {
+			srcs = append(srcs, instructionSource{File: t.ContinueFile, Name: label("rule", r.Name), Content: r.Text})
+		}
+	}
+	for _, p := range t.Continue.Prompts {
+		if strings.TrimSpace(p.Prompt) != "" {
+			srcs = append(srcs, instructionSource{File: t.ContinueFile, Name: label("prompt", p.Name), Content: p.Prompt})
+		}
+	}
 	return srcs
 }
 

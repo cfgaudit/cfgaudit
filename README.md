@@ -392,7 +392,7 @@ Findings are attributed to the in-package file. Bundled binaries / arbitrary scr
 
 ### Continue — `.continue/config.yaml`
 
-[Continue](https://github.com/continuedev/continue) configures MCP servers and model providers in `config.yaml`. cfgaudit discovers `.continue/config.yaml` (project) and `~/.continue/config.yaml` (`--user`). Its `mcpServers` **list** rides the shared MCP rules (CFG010–CFG021, CFG049–CFG059) — a remote `type: "sse"` server trips CFG058, a non-loopback `url` trips CFG049, and so on. One Continue-specific rule covers inline credentials:
+[Continue](https://github.com/continuedev/continue) configures MCP servers and model providers in `config.yaml`. cfgaudit discovers `.continue/config.yaml` (project) and `~/.continue/config.yaml` (`--user`). Its `mcpServers` **list** rides the shared MCP rules (CFG010–CFG021, CFG049–CFG059) — a remote `type: "sse"` server trips CFG058, a non-loopback `url` trips CFG049, and so on; its `rules` and `prompts` (trusted instruction context) are scanned by the instruction-content rules (CFG024–CFG036, CFG057). Continue-specific rules:
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|

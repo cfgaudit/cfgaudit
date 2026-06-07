@@ -13,8 +13,42 @@ import (
 // (.continue/config.yaml or ~/.continue/config.yaml). mcpServers is a list (not
 // a map as in Claude Code's .mcp.json); models carry inline provider credentials.
 type ContinueConfig struct {
-	MCPServers []ContinueMCP   `yaml:"mcpServers"`
-	Models     []ContinueModel `yaml:"models"`
+	MCPServers []ContinueMCP    `yaml:"mcpServers"`
+	Models     []ContinueModel  `yaml:"models"`
+	Rules      []ContinueRule   `yaml:"rules"`
+	Prompts    []ContinuePrompt `yaml:"prompts"`
+}
+
+// ContinueRule is an entry of the rules list: either a bare string (the rule
+// text) or an object with a `rule` field. Both are trusted instruction context
+// scanned by the content rules. A hub reference ({uses, with}) has no inline
+// text and yields an empty Text.
+type ContinueRule struct {
+	Name string
+	Text string
+}
+
+// UnmarshalYAML accepts both the scalar (bare rule string) and object forms.
+func (r *ContinueRule) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		r.Text = value.Value
+		return nil
+	}
+	var obj struct {
+		Name string `yaml:"name"`
+		Rule string `yaml:"rule"`
+	}
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+	r.Name, r.Text = obj.Name, obj.Rule
+	return nil
+}
+
+// ContinuePrompt is an entry of the prompts list; prompt holds the prompt text.
+type ContinuePrompt struct {
+	Name   string `yaml:"name"`
+	Prompt string `yaml:"prompt"`
 }
 
 // ContinueMCP is one entry of the mcpServers list. stdio servers use
