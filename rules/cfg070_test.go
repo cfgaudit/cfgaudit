@@ -7,7 +7,7 @@ import (
 )
 
 func TestCFG070_RepoRelativeCommand_Warn(t *testing.T) {
-	for _, cmd := range []string{"./install.sh", "../tools/run", "scripts/server.py", `scripts\run.bat`} {
+	for _, cmd := range []string{"./install.sh", "../tools/run", "scripts/server.py", `scripts\run.bat`, "./tools/x.sh --flag"} {
 		json := `{"mcpServers":{"m":{"command":` + jsonQuote(cmd) + `}}}`
 		f := CFG070.Check(settingsTarget(t, json))
 		if len(f) != 1 || f[0].Severity != finding.Warn {
@@ -24,6 +24,11 @@ func TestCFG070_NonRepoLocalCommand_NoFinding(t *testing.T) {
 		"/usr/local/bin/mcp-server", // absolute
 		`C:\Tools\mcp.exe`,          // windows absolute
 		`\\host\share\mcp`,          // UNC
+		// 500-repo FP scan: these were false positives before the first-token / $~ fix
+		"npx -y @upstash/context7-mcp@latest",  // full command line; "/" is in the npm scope
+		"${HOME}/Apps/x/node_modules/.bin/qmd", // env/home expansion (absolute)
+		"~/bin/mcp-server",                     // home expansion
+		"$BIN_DIR/server",                      // env var
 	} {
 		json := `{"mcpServers":{"m":{"command":` + jsonQuote(cmd) + `}}}`
 		if f := CFG070.Check(settingsTarget(t, json)); len(f) != 0 {

@@ -19,14 +19,15 @@ func (r *cfg031) ID() string { return "CFG031" }
 // sensitivePathRe matches references to credential / secret files that legitimate
 // project documentation has no reason to point Claude at — a hallmark of an
 // exfiltration payload. The dotfile fragments match any home form (~/, $HOME,
-// /home/<u>/, /Users/<u>/) since the fragment itself is distinctive; the
-// ambiguous .claude/settings.json is anchored to a home prefix so a project-local
-// reference is not flagged.
+// /home/<u>/, /Users/<u>/) since the fragment itself is distinctive.
+//
+// Agent *config* files (.cursor/mcp.json, .claude/settings.json, …) are
+// deliberately NOT listed: setup docs and skills routinely reference them, so
+// flagging the mention is a false positive (500-repo FP scan). A real secret
+// inside such a config is caught at the value level by CFG007/CFG050, not here.
 var sensitivePathRe = regexp.MustCompile(`(?i)(` +
 	`\.ssh/(?:id_rsa|id_ed25519|id_dsa|id_ecdsa|known_hosts|config)\b` +
 	`|\.aws/(?:credentials|config)\b` +
-	`|(?:~|\$HOME|/home/[^/\s]+|/Users/[^/\s]+)/\.claude/settings(?:\.local)?\.json` +
-	`|\.cursor/mcp\.json` +
 	`|\.config/gcloud/` +
 	`|\.gnupg/` +
 	`|\.netrc\b` +

@@ -44,12 +44,24 @@ func (r *cfg070) Check(t *Target) []finding.Finding {
 
 // isRepoLocalCommandPath reports whether cmd is a relative path with a directory
 // component (./x, ../x, scripts/x, scripts\x) — i.e. an executable inside the
-// repo. Absolute paths (/usr/bin/x, C:\x, \\host\x), URLs, and bare PATH names
-// (npx, node, my-server) return false.
+// repo. Absolute paths (/usr/bin/x, C:\x, \\host\x), env/home expansions
+// (${HOME}/x, ~/x), URLs, and bare PATH names (npx, node, my-server) return false.
 func isRepoLocalCommandPath(cmd string) bool {
 	c := strings.TrimSpace(cmd)
+	if c == "" {
+		return false
+	}
+	// Consider only the executable (first whitespace-separated token): a value
+	// like "npx -y @scope/pkg" is the runner npx, and the "/" is in the package
+	// name, not a path separator.
+	if i := strings.IndexAny(c, " \t"); i >= 0 {
+		c = c[:i]
+	}
 	if c == "" || strings.Contains(c, "://") {
 		return false
+	}
+	if strings.HasPrefix(c, "$") || strings.HasPrefix(c, "~") {
+		return false // env / home expansion — resolves outside the repo
 	}
 	if strings.HasPrefix(c, "/") || strings.HasPrefix(c, `\\`) {
 		return false // POSIX-absolute or UNC
