@@ -344,7 +344,7 @@ AI coding agents read their instruction files as trusted system-context every se
 | [CFG032](docs/rules/CFG032.md) | error/warn | instruction file contains pseudo-system tags (`<SYSTEM>`), turn-boundary/role injection (`Human:`/`<human>`) → error; generic all-caps tags & foreign-LLM control tokens → warn | LLM01 |
 | [CFG033](docs/rules/CFG033.md) | error | instruction file contains a markdown image with an empty/placeholder query param (`![](https://x?d=)`) — data-exfiltration sink | LLM02 |
 | [CFG034](docs/rules/CFG034.md) | warn | instruction file contains Guidance/template role delimiters (`{{#system~}}` …) — role-injection markup | LLM01 |
-| [CFG035](docs/rules/CFG035.md) | error | instruction file instructs the agent to configure or trust an MCP server (`claude mcp add` …) — installs an attacker server | LLM06 |
+| [CFG035](docs/rules/CFG035.md) | error/warn | instruction file instructs the agent to configure or trust an MCP server — trust/allow-all → error; add/install (`claude mcp add`, skipped in code blocks) → warn | LLM06 |
 | [CFG036](docs/rules/CFG036.md) | error/warn | instruction file embeds shell commands for auto-execution/exfiltration (cmd-subst on secret paths, auto-exec + `curl https://…`) | LLM02 |
 | [CFG057](docs/rules/CFG057.md) | warn | instruction file embeds an encoded payload — a `data:` URI or base64 blob that decodes to an injection phrase or command (evades CFG024/CFG026) | LLM01 |
 | [CFG051](docs/rules/CFG051.md) | error/warn | skill/command/subagent frontmatter `allowed-tools` grants unrestricted shell or all tools (`Bash`, `*`, `all`) — not narrowed by `disallowed-tools` | LLM06 |
