@@ -49,7 +49,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 
 		for _, k := range sortedKeys(ref.Server.Env) {
 			v := strings.TrimSpace(ref.Server.Env[k])
-			if v == "" || shellRefRe.MatchString(v) {
+			if v == "" || isSecretReference(v) {
 				continue
 			}
 			if label, ok := matchSecretPattern(v); ok {
@@ -61,7 +61,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 
 		for _, k := range sortedKeys(ref.Server.Headers) {
 			v := strings.TrimSpace(ref.Server.Headers[k])
-			if v == "" || shellRefRe.MatchString(v) {
+			if v == "" || isSecretReference(v) {
 				continue
 			}
 			if label, ok := matchSecretPattern(v); ok {
@@ -71,7 +71,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 			// An auth header carrying a literal (non-placeholder) credential.
 			if authHeaderNames[strings.ToLower(k)] {
 				cred := strings.TrimSpace(authSchemeRe.ReplaceAllString(v, ""))
-				if cred == "" || shellRefRe.MatchString(cred) || placeholderRe.MatchString(cred) {
+				if cred == "" || isSecretReference(cred) || placeholderRe.MatchString(cred) {
 					continue
 				}
 				what := "a hardcoded credential"

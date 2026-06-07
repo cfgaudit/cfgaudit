@@ -79,7 +79,7 @@ func looksLikeSecretEntropy(key, value string) bool {
 		return false
 	}
 	// Structural exemptions: references, placeholders, prose, paths, URLs.
-	if shellRefRe.MatchString(v) || placeholderRe.MatchString(v) {
+	if isSecretReference(v) || placeholderRe.MatchString(v) {
 		return false
 	}
 	if strings.ContainsAny(v, " \t\r\n") {

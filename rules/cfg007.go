@@ -42,6 +42,19 @@ var secretSuffixes = []string{
 // shellRefRe matches a value that is a single shell-variable reference (e.g. "$FOO" or "${FOO}").
 var shellRefRe = regexp.MustCompile(`^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$`)
 
+// templateRefRe matches a value that is entirely a single template/interpolation
+// placeholder ({{X}}, %{X}, <% X %>, __X__) — resolved to a value at runtime, not
+// a committed literal secret. ${X} is already covered by shellRefRe.
+var templateRefRe = regexp.MustCompile(`^(?:\{\{.+?\}\}|%\{[^}]+\}|<%.+?%>|__[A-Z][A-Z0-9_]+__)$`)
+
+// isSecretReference reports whether v is a reference/placeholder that resolves to
+// a secret at runtime — a shell variable or a template placeholder — rather than
+// a committed literal, so the hardcoded-secret rules (CFG007/050/054) skip it.
+func isSecretReference(v string) bool {
+	v = strings.TrimSpace(v)
+	return shellRefRe.MatchString(v) || templateRefRe.MatchString(v)
+}
+
 func (r *cfg007) Check(t *Target) []finding.Finding {
 	if t.Settings == nil || t.Settings.Env == nil {
 		return nil
@@ -55,7 +68,7 @@ func (r *cfg007) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, k := range keys {
 		v := t.Settings.Env[k]
-		if v == "" || shellRefRe.MatchString(v) {
+		if v == "" || isSecretReference(v) {
 			continue
 		}
 		if label, ok := matchSecretPattern(v); ok {

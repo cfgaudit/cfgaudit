@@ -52,6 +52,11 @@ func TestCFG050_NotFlagged(t *testing.T) {
 		`{"mcpServers":{"m":{"url":"https://x/sse","headers":{"Authorization":"Bearer <your-token>"}}}}`, // placeholder
 		`{"mcpServers":{"m":{"url":"https://x/sse","headers":{"Accept":"application/json"}}}}`,           // non-auth header
 		`{"mcpServers":{"m":{"command":"npx","args":["-y","pkg"]}}}`,                                     // stdio, no secrets
+		// Template-placeholder references resolve at runtime — not committed secrets (CFG068 covers the
+		// endpoint-specific exfil case); CFG050 must not flag them as hardcoded credentials.
+		`{"mcpServers":{"m":{"url":"https://x/sse","headers":{"Authorization":"Bearer {{TOKEN}}"}}}}`, // handlebars template
+		`{"mcpServers":{"m":{"url":"https://x/sse","headers":{"X-Api-Key":"%{API_KEY}"}}}}`,           // %{} template
+		`{"mcpServers":{"m":{"command":"s","env":{"API_TOKEN":"{{LIBRECHAT_TOKEN}}"}}}}`,              // env template ref
 	}
 	for _, c := range cases {
 		if f := CFG050.Check(settingsTarget(t, c)); len(f) != 0 {
