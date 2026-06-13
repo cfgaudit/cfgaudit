@@ -270,6 +270,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG043](docs/rules/CFG043.md) | error | `permissions.deny` does not restrict cloud credential files (AWS `.aws`, GCP `gcloud`, Azure `.azure`) | LLM02 |
 | [CFG044](docs/rules/CFG044.md) | error | `permissions.deny` does not restrict SSH private keys (`.ssh/`, `id_rsa`/`id_ed25519`/…) | LLM02 |
 | [CFG007](docs/rules/CFG007.md) | error | `env` block contains a hardcoded secret (vendor key prefix or `*_TOKEN`/`*_SECRET`/...) | LLM02 |
+| [CFG073](docs/rules/CFG073.md) | error | `env`/MCP `env`/`headers` value is a hardcoded cryptocurrency signing credential — Ethereum private key (`0x`+64 hex) or BIP-39 seed phrase — which **cannot be rotated**; CFG054's entropy heuristic misses both | LLM02 |
 | [CFG008](docs/rules/CFG008.md) | error | command matches a reverse-shell pattern (`/dev/tcp/`, `nc -e`, `bash -i …`, `mkfifo`, `socat exec`) — scans hooks, credential/runtime helpers, and MCP `headersHelper` | LLM06 |
 | [CFG009](docs/rules/CFG009.md) | warn/error | command interpolates a shell variable (`$VAR` / `${VAR}`) — attacker-influenced data may reach a shell; escalates to `error` at user scope | LLM01 |
 | [CFG012](docs/rules/CFG012.md) | warn | `settings.json` contains an unknown top-level key or a value whose type contradicts the bundled SchemaStore schema | LLM02 |
@@ -411,7 +412,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057 |
-| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054 |
+| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055 |
 | LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053 |
 
