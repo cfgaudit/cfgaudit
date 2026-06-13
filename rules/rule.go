@@ -95,6 +95,14 @@ type Target struct {
 	// binary is available.
 	ShellCheck bool
 
+	// SkillsLock holds a parsed skills-lock.json (vercel-labs/skills CLI) at the
+	// repo root — the committed lock file declaring the external repos agent-skill
+	// (instruction) content is pulled from. An entry with an unpinned ref is a
+	// supply-chain surface (CFG074). Nil when absent; SkillsLockFile is its path,
+	// used to attribute findings.
+	SkillsLock     *parser.SkillsLock
+	SkillsLockFile string
+
 	// ClaudeVersion is the detected (or --claude-version override) Claude Code
 	// release, populated by the runner before rules run. Nil when version info is
 	// unavailable. Rules whose findings depend on version-gated runtime semantics

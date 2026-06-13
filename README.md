@@ -364,6 +364,14 @@ Installing a Claude Code plugin is a supply-chain trust decision. With `--plugin
 
 Findings are attributed to the in-package file. Bundled binaries / arbitrary scripts are **not** content-scanned (that is general SAST, outside cfgaudit's config-audit scope).
 
+### Agent-skills lockfile — `skills-lock.json`
+
+The [vercel-labs/skills](https://github.com/vercel-labs/skills) CLI (skills.sh) records the external sources it pulls agent **skills** (instruction content) from in a `skills-lock.json` at the repo root. cfgaudit scans the committable project-root file; the user-global `~/.agents/.skill-lock.json` is out of scope (not committable).
+
+| Rule | Severity | What it flags | OWASP |
+|------|----------|---------------|-------|
+| [CFG074](docs/rules/CFG074.md) | warn | a `skills-lock.json` entry pulls skill content from a remote source (`github`/`mintlify`/`huggingface`) without pinning `ref` to a full commit SHA — an unpinned source is a moving target an upstream owner can change under every contributor (`local` sources and full-SHA pins are not flagged) | LLM03 |
+
 ### VS Code workspace — `.vscode/`
 
 `.vscode/` files are committed into repositories and read by VS Code **and its forks (Cursor, Windsurf)**, so a committed workspace config is a repo-controlled auto-run / supply-chain surface. cfgaudit scans these automatically when present and attributes findings to the source file.
@@ -413,7 +421,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057 |
 | LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073 |
-| LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055 |
+| LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074 |
 | LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053 |
 
 **Not covered**

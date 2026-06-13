@@ -406,7 +406,42 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, cont...)
 
+	// skills-lock.json (vercel-labs/skills CLI) at the repo root — a committed lock
+	// file declaring which external repos agent-skill (instruction) content is
+	// pulled from. An unpinned source is a supply-chain surface (CFG074).
+	sl, slFile, err := loadSkillsLock(dir)
+	if err != nil {
+		return nil, err
+	}
+	if sl != nil {
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			SkillsLock:     sl,
+			SkillsLockFile: slFile,
+		})
+	}
+
 	return targets, nil
+}
+
+// loadSkillsLock parses dir/skills-lock.json (the project-local lock file written
+// by the vercel-labs/skills CLI). A missing file — or one with no skills — yields
+// (nil, "", nil) so no empty target is built. A malformed file is reported as an
+// error, like the other JSON config loaders. The user-global ~/.agents/.skill-lock.json
+// is deliberately not scanned: it is not committable, so it is out of scope.
+func loadSkillsLock(dir string) (*parser.SkillsLock, string, error) {
+	path := filepath.Join(dir, "skills-lock.json")
+	sl, err := parser.ParseSkillsLock(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	if sl == nil || len(sl.Skills) == 0 {
+		return nil, "", nil
+	}
+	return sl, path, nil
 }
 
 // continueTargets discovers Continue config.yaml — .continue/config.yaml
