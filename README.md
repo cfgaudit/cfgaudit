@@ -311,7 +311,7 @@ Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG
 | [CFG069](docs/rules/CFG069.md) | warn | MCP server `env` enables HTTP transport without log redaction / a quiet log level — request bodies (Bearer tokens, API keys) get logged (CVE-2026-42282/41495) | LLM02 |
 | [CFG070](docs/rules/CFG070.md) | warn | MCP server `command` is a repo-relative path (`./x`, `scripts/x`) — a committed in-repo executable that auto-runs on clone (CVE-2025-54135) | LLM03 |
 | [CFG058](docs/rules/CFG058.md) | warn | MCP server uses the deprecated `type: "sse"` transport — superseded by Streamable HTTP (`type: "http"`); weaker transport with DNS-rebinding/Origin pitfalls | LLM02 |
-| [CFG059](docs/rules/CFG059.md) | error/warn | MCP server package or endpoint host is a typosquat of a known-good identifier (homoglyph / one-char → error; two-char / unofficial scope → warn) | LLM03 |
+| [CFG059](docs/rules/CFG059.md) | error/warn | MCP server / hook package or endpoint host is a typosquat of a known-good identifier — covers `mcpServers` launchers and `npx`/`bunx`/`pnpm dlx`/`yarn dlx` packages run from any command site (homoglyph / one-char → error; two-char / unofficial scope → warn) | LLM03 |
 
 #### OWASP MCP Top 10 mapping (secondary)
 
