@@ -2,6 +2,7 @@ package rules
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -58,7 +59,84 @@ func (r *cfg059) Check(t *Target) []finding.Finding {
 			}
 		}
 	}
+
+	// Hook (and other command-bearing) sites can run an npm package via a runner
+	// too — a prompt-injected or repo-committed `npx <typosquat>` executes arbitrary
+	// code the same way an MCP launcher does. Scan every command site uniformly.
+	for _, site := range commandSites(t) {
+		seen := map[string]bool{}
+		for _, spec := range hookNpmPackageSpecs(site.Command) {
+			name := npmPackageName(spec)
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if m := bestSquat(name, knownHookToolPackages); m != nil {
+				findings = append(findings, finding.Finding{
+					RuleID:   "CFG059",
+					Severity: m.severity,
+					File:     site.File,
+					Message: site.Label + " runs npm package \"" + name + "\" which is suspiciously similar to \"" + m.official +
+						"\" (" + m.reason + ") — a typosquatted package runs arbitrary code the moment the hook fires. Verify the exact package name; suppress via .cfgaudit-ignore if intentional" + userScopeNote(t),
+				})
+			}
+		}
+	}
 	return findings
+}
+
+// shellSegmentRe splits a hook command string at the shell operators that separate
+// independent commands (&&, ||, |, ;, &, newline), so a runner invocation anywhere
+// in a chain like `eslint . && npx some-pkg` is examined on its own.
+var shellSegmentRe = regexp.MustCompile(`&&|\|\||[|;&\n]`)
+
+// hookNpmPackageSpecs extracts the package spec of every npm-runner invocation
+// (npx/bunx/pnpm dlx/yarn dlx) found in a hook command string. Path-like args
+// (./x, ../x, /x) are dropped — those run a local script, not a fetched package.
+func hookNpmPackageSpecs(command string) []string {
+	var specs []string
+	for _, seg := range shellSegmentRe.Split(command, -1) {
+		fields := strings.Fields(seg)
+		if len(fields) == 0 {
+			continue
+		}
+		runner := filepath.Base(fields[0])
+		if !npmPackageRunners[runner] {
+			continue
+		}
+		if spec := hookRunnerPackage(runner, fields[1:]); spec != "" && !isPathLikeArg(spec) {
+			specs = append(specs, spec)
+		}
+	}
+	return specs
+}
+
+// hookRunnerPackage returns the package spec a runner fetches and executes, or "".
+// Unlike mcpPackageArg it is strict about pnpm/yarn: only the `dlx`/`exec` form
+// runs a remote package, so bare `pnpm install` / `yarn build` (whose first token
+// is a subcommand, not a package) yields "" and is never treated as a package.
+func hookRunnerPackage(runner string, args []string) string {
+	if runner == "pnpm" || runner == "yarn" {
+		for i, a := range args {
+			if a != "dlx" && a != "exec" {
+				continue
+			}
+			for _, b := range args[i+1:] {
+				if strings.HasPrefix(b, "-") {
+					continue
+				}
+				return b
+			}
+		}
+		return ""
+	}
+	for _, a := range args { // npx / bunx: first non-flag arg is the package
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		return a
+	}
+	return ""
 }
 
 // squatMatch is a detected similarity to a known-good identifier.
