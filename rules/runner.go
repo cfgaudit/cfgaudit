@@ -29,6 +29,10 @@ type Versioned interface {
 // did not set one itself, so JSON consumers can filter by blast radius
 // without each rule having to remember to populate the field.
 func Run(target *Target, detected *version.Version, accept func(Rule) bool) []finding.Finding {
+	// Expose the detected version to rules whose findings depend on version-gated
+	// runtime semantics (e.g. the deny-all "*" glob handling in CFG041–044).
+	target.ClaudeVersion = detected
+
 	var out []finding.Finding
 	for _, r := range All {
 		if accept != nil && !accept(r) {

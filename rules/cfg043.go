@@ -41,6 +41,9 @@ func (r *cfg043) Check(t *Target) []finding.Finding {
 	if len(deny) == 0 {
 		return nil
 	}
+	if denyCoversEverything(deny, t.ClaudeVersion) {
+		return nil // a deny-all "*"/Read(**) entry already blocks every read
+	}
 	var missing, suggest []string
 	for _, p := range cloudProviders {
 		if !denyCoversAny(deny, p.re) {

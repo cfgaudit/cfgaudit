@@ -29,6 +29,9 @@ func (r *cfg041) Check(t *Target) []finding.Finding {
 	if len(deny) == 0 {
 		return nil // absent/empty deny is covered by CFG006
 	}
+	if denyCoversEverything(deny, t.ClaudeVersion) {
+		return nil // a deny-all "*"/Read(**) entry already blocks every read
+	}
 	if denyCoversAny(deny, envCoverRe) {
 		return nil
 	}

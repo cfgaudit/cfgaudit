@@ -29,6 +29,9 @@ func (r *cfg044) Check(t *Target) []finding.Finding {
 	if len(deny) == 0 {
 		return nil
 	}
+	if denyCoversEverything(deny, t.ClaudeVersion) {
+		return nil // a deny-all "*"/Read(**) entry already blocks every read
+	}
 	if denyCoversAny(deny, sshKeyCoverRe) {
 		return nil
 	}

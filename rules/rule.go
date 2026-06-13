@@ -6,6 +6,7 @@ import (
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
+	"github.com/cfgaudit/cfgaudit/internal/version"
 )
 
 // instructionName returns the base name of the loaded instruction file
@@ -93,6 +94,12 @@ type Target struct {
 	// sites). Set by the CLI when --shellcheck / config requests it and the
 	// binary is available.
 	ShellCheck bool
+
+	// ClaudeVersion is the detected (or --claude-version override) Claude Code
+	// release, populated by the runner before rules run. Nil when version info is
+	// unavailable. Rules whose findings depend on version-gated runtime semantics
+	// read it — e.g. the deny-all "*" glob (2.1.166) that suppresses CFG041–044.
+	ClaudeVersion *version.Version
 
 	IgnoreFile  string
 	IgnoreLines []parser.IgnoreLine
