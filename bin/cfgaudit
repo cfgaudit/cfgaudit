@@ -14,7 +14,7 @@ set -eu
 
 # Kept in lockstep with the release (bumped alongside the distribution pins) so
 # the plugin runs the cfgaudit build that matches the installed plugin version.
-VERSION="1.3.0"
+VERSION="1.4.0"
 REPO="cfgaudit/cfgaudit"
 
 self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
