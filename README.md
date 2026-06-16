@@ -370,7 +370,7 @@ The [vercel-labs/skills](https://github.com/vercel-labs/skills) CLI (skills.sh) 
 
 | Rule | Severity | What it flags | OWASP |
 |------|----------|---------------|-------|
-| [CFG074](docs/rules/CFG074.md) | warn | a `skills-lock.json` entry pulls skill content from a remote source (`github`/`mintlify`/`huggingface`) without pinning `ref` to a full commit SHA — an unpinned source is a moving target an upstream owner can change under every contributor (`local` sources and full-SHA pins are not flagged) | LLM03 |
+| [CFG074](docs/rules/CFG074.md) | warn | a `skills-lock.json` entry pulls skill content from a remote source with **no integrity pin** — no content hash (`computedHash`/`integrity`), resolved `commit`, or full-SHA `ref` — so an upstream owner can change the installed skill text under every contributor (pinned entries and `local` sources are not flagged) | LLM03 |
 
 ### VS Code workspace — `.vscode/`
 

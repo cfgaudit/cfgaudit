@@ -16,17 +16,25 @@ type SkillsLock struct {
 	Skills map[string]SkillEntry `json:"skills"`
 }
 
-// SkillEntry is one installed skill's source record.
+// SkillEntry is one installed skill's source record. The skills CLI records the
+// integrity of an installed skill in one of a few fields depending on its version;
+// any of them pins the content so the upstream cannot silently change it:
 //
-//   - Source     — upstream slug ("owner/repo") or an on-disk path for local skills.
-//   - SourceType — "github" | "mintlify" | "huggingface" | "local" (may be absent).
-//   - Ref        — branch, tag, or commit SHA the source is pinned to (optional).
-//   - SkillPath  — subdirectory within the source (optional).
+//   - Source       — upstream slug ("owner/repo") or an on-disk path for local skills.
+//   - SourceType   — "github" | "mintlify" | "huggingface" | "local" (may be absent).
+//   - Ref          — branch, tag, or commit SHA requested (optional; a bare branch/tag is mutable).
+//   - Commit       — the resolved commit SHA (40- or 64-hex; an immutable pin).
+//   - ComputedHash — SHA-256 of the fetched skill content (the dominant v1-schema pin).
+//   - Integrity    — SRI-style content hash ("sha256-…"; the commit/integrity schema variant).
+//   - SkillPath    — subdirectory within the source (optional).
 type SkillEntry struct {
-	Source     string `json:"source"`
-	SourceType string `json:"sourceType"`
-	Ref        string `json:"ref"`
-	SkillPath  string `json:"skillPath"`
+	Source       string `json:"source"`
+	SourceType   string `json:"sourceType"`
+	Ref          string `json:"ref"`
+	Commit       string `json:"commit"`
+	ComputedHash string `json:"computedHash"`
+	Integrity    string `json:"integrity"`
+	SkillPath    string `json:"skillPath"`
 }
 
 // ParseSkillsLock reads and decodes a skills-lock.json file. A read error
