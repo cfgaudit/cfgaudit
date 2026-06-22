@@ -33,6 +33,28 @@ func TestCFG001_UnrestrictedBashDoubleWildcard(t *testing.T) {
 	}
 }
 
+func TestCFG001_BareToolName_Unrestricted(t *testing.T) {
+	// A bare tool name with no parentheses grants all uses of that tool (docs:
+	// "Bash matches all Bash commands", equivalent to Bash(*)). PowerShell is an
+	// equivalent arbitrary-command surface.
+	for _, entry := range []string{"Bash", "PowerShell", "PowerShell(*)", "PowerShell(**)", " Bash "} {
+		json := `{"permissions":{"allow":["` + entry + `"]}}`
+		f := CFG001.Check(settingsTarget(t, json))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for unrestricted %q, got %+v", entry, f)
+		}
+	}
+}
+
+func TestCFG001_BareToolName_DenyAsk_NotFlagged(t *testing.T) {
+	// CFG001 scans permissions.allow only; a bare Bash in deny/ask is a restriction,
+	// not a grant, and must not be flagged.
+	f := CFG001.Check(settingsTarget(t, `{"permissions":{"deny":["Bash"],"ask":["PowerShell"]}}`))
+	if len(f) != 0 {
+		t.Errorf("expected no finding for bare Bash/PowerShell in deny/ask, got %+v", f)
+	}
+}
+
 func TestCFG001_ScopedBash_NoFinding(t *testing.T) {
 	f := CFG001.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(go test ./...)","Bash(make *)","Edit(src/*)"]
 }}`))

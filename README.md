@@ -256,8 +256,8 @@ General Claude Code settings: the permission model, environment block, lifecycle
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
-| [CFG001](docs/rules/CFG001.md) | error | `permissions.allow` contains unrestricted Bash pattern | LLM06 |
-| [CFG002](docs/rules/CFG002.md) | warn | `permissions.allow` contains unrestricted `Edit(*)`/`Write(*)` | LLM06 |
+| [CFG001](docs/rules/CFG001.md) | error | `permissions.allow` grants unrestricted shell — `Bash(*)`/`Bash(**)`, bare `Bash`, or `PowerShell`/`PowerShell(*)` | LLM06 |
+| [CFG002](docs/rules/CFG002.md) | warn | `permissions.allow` grants unrestricted file-write — `Edit(*)`/`Write(*)` or bare `Edit`/`Write` | LLM06 |
 | [CFG040](docs/rules/CFG040.md) | warn | `permissions.allow` contains unrestricted `WebFetch` (bare / `domain:*`) — fetch-any-URL exfiltration channel | LLM06 |
 | [CFG023](docs/rules/CFG023.md) | error/warn | `permissions.allow` grants a dangerous command with wildcard args (`curl`/`sudo`/`npx`/shells → error; `find`/`sed`/`git`/interpreters/`ssh` → warn) | LLM06 |
 | [CFG025](docs/rules/CFG025.md) | error | custom org policy from `.cfgaudit.yml` violated (`require-deny` / `forbid-allow`) — inert unless a `policy:` is configured | LLM06 |
