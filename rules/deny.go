@@ -60,11 +60,59 @@ func denyPattern(entry string) string {
 
 // denyCoversAny reports whether any deny entry's pattern matches re — used by the
 // deny-coverage rules (CFG041…) to check that a sensitive file class is blocked.
+// A Tool(param:value) entry naming the tool's canonicalized field is skipped: the
+// 2.1.178 param grammar ignores those forms (see ignoresParamForm), so they grant
+// no coverage even though the value substring would otherwise match re.
 func denyCoversAny(deny []string, re *regexp.Regexp) bool {
 	for _, e := range deny {
+		if ignoresParamForm(e) {
+			continue
+		}
 		if re.MatchString(denyPattern(e)) {
 			return true
 		}
 	}
 	return false
+}
+
+// canonicalizedParamFields maps a tool (lower-cased) to the one input parameter
+// Claude Code matches with its own canonicalizing rules and therefore IGNORES in
+// the generic Tool(param:value) form — emitting a startup warning rather than
+// enforcing it. A deny/ask rule written that way (e.g. Read(file_path:.env)) is a
+// no-op, so cfgaudit must not count it as coverage. The fix uses Bash(rm *),
+// Read(./path), WebFetch(domain:host), etc. instead.
+// Source: code.claude.com/docs/en/permissions — "Match by input parameter".
+var canonicalizedParamFields = map[string]string{
+	"bash":         "command",
+	"powershell":   "command",
+	"read":         "file_path",
+	"edit":         "file_path",
+	"write":        "file_path",
+	"grep":         "path",
+	"glob":         "path",
+	"notebookedit": "notebook_path",
+	"webfetch":     "url",
+}
+
+// ignoresParamForm reports whether entry is a Tool(param:value) rule whose param
+// is the tool's canonicalized field — a form Claude Code ignores (so it provides
+// no deny coverage). Tools' own specifiers (Read(.env), WebFetch(domain:x)) and
+// non-canonicalized params (Agent(model:opus)) are not matched.
+func ignoresParamForm(entry string) bool {
+	e := strings.TrimSpace(entry)
+	open := strings.IndexByte(e, '(')
+	if open < 0 || !strings.HasSuffix(e, ")") {
+		return false
+	}
+	field, ok := canonicalizedParamFields[strings.ToLower(strings.TrimSpace(e[:open]))]
+	if !ok {
+		return false
+	}
+	inner := e[open+1 : len(e)-1]
+	colon := strings.IndexByte(inner, ':')
+	if colon < 0 {
+		return false
+	}
+	// "Whitespace around the colon is ignored."
+	return strings.EqualFold(strings.TrimSpace(inner[:colon]), field)
 }
