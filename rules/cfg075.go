@@ -54,6 +54,13 @@ var (
 	// value (e.g. DATABASE_URL=postgres://…?sslmode=disable).
 	sslmodeDisableRe = regexp.MustCompile(`(?i)sslmode\s*=\s*disable`)
 
+	// connURLHostRe / connDSNHostRe extract the host from a connection string —
+	// the URL authority (scheme://user:pass@HOST:port/…) or a libpq host=… DSN
+	// field — so a loopback DB connection (where sslmode=disable is conventional
+	// and has no network path to MITM) is not flagged.
+	connURLHostRe = regexp.MustCompile(`(?i)://(?:[^@/\s]*@)?(\[[^\]]+\]|[^:/?\s"']+)`)
+	connDSNHostRe = regexp.MustCompile(`(?i)(?:^|[\s;])host\s*=\s*([^\s;"']+)`)
+
 	// tlsArgExact maps an unambiguous TLS-off arg token to its effect.
 	tlsArgExact = map[string]string{
 		"--insecure":             "disables TLS certificate verification",
@@ -96,6 +103,9 @@ func (r *cfg075) Check(t *Target) []finding.Finding {
 			case tlsVerifyKeyRe.MatchString(k) && isFalsy(v):
 				add(ref.File, loc+".env sets "+k+"="+tlsDisplay(v)+" — disables TLS certificate verification"+tlsMITMTail)
 			case sslmodeDisableRe.MatchString(v):
+				if h := connStringHost(v); h != "" && isLoopbackHost(h) {
+					break // loopback DB connection — sslmode=disable is conventional, no MITM path
+				}
 				// Do not echo the value — a connection string often carries a password.
 				add(ref.File, loc+".env sets "+k+" with sslmode=disable, so the connection runs without TLS"+tlsMITMTail)
 			}
@@ -121,4 +131,29 @@ func tlsDisplay(v string) string {
 		return `""`
 	}
 	return v
+}
+
+// connStringHost extracts the host from a DB connection string — the URL
+// authority (scheme://user:pass@HOST:port/…) or a libpq host=… DSN field.
+// Returns "" when no host is present (e.g. a Unix-socket DSN).
+func connStringHost(v string) string {
+	if m := connURLHostRe.FindStringSubmatch(v); m != nil {
+		return m[1]
+	}
+	if m := connDSNHostRe.FindStringSubmatch(v); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// isLoopbackHost reports whether a host names the local machine — there is no
+// network path to MITM, so sslmode=disable against it is conventional local-dev
+// configuration, not a finding.
+func isLoopbackHost(h string) bool {
+	h = strings.Trim(strings.ToLower(strings.TrimSpace(h)), "[]")
+	switch h {
+	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
+		return true
+	}
+	return strings.HasPrefix(h, "127.")
 }
