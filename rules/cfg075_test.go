@@ -69,6 +69,34 @@ func TestCFG075_SslmodeDisable_InConnectionString(t *testing.T) {
 	}
 }
 
+func TestCFG075_SslmodeDisable_LoopbackSkipped(t *testing.T) {
+	// sslmode=disable against a loopback DB is conventional local-dev config and
+	// must NOT be flagged (no network path to MITM).
+	for _, v := range []string{
+		"postgresql://user:pw@localhost:5432/db?sslmode=disable",
+		"postgres://app@127.0.0.1/db?sslmode=disable",
+		"postgresql://[::1]:5432/db?sslmode=disable",
+		"host=localhost dbname=db sslmode=disable",
+	} {
+		j := `{"s":{"env":{"DATABASE_URL":` + `"` + v + `"` + `}}}`
+		if f := CFG075.Check(mcpTarget(t, j)); len(f) != 0 {
+			t.Errorf("loopback %q should be skipped, got %+v", v, f)
+		}
+	}
+}
+
+func TestCFG075_SslmodeDisable_RemoteHost_Flagged(t *testing.T) {
+	for _, v := range []string{
+		"postgresql://user:pw@db.example.com:5432/db?sslmode=disable",
+		"host=prod-db.internal dbname=db sslmode=disable",
+	} {
+		j := `{"s":{"env":{"DATABASE_URL":` + `"` + v + `"` + `}}}`
+		if f := CFG075.Check(mcpTarget(t, j)); len(f) != 1 {
+			t.Errorf("remote %q should be flagged, got %+v", v, f)
+		}
+	}
+}
+
 func TestCFG075_Args_Insecure_And_NoCheckCert(t *testing.T) {
 	for _, arg := range []string{"--insecure", "--no-check-certificate"} {
 		j := `{"s":{"command":"sh","args":["-c","x ` + arg + `","` + arg + `"]}}`
