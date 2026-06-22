@@ -72,6 +72,41 @@ func TestCFG010_PnpmDlxUnpinned(t *testing.T) {
 	}
 }
 
+func TestCFG010_UvxUnpinned(t *testing.T) {
+	json := `{"mcpServers":{"py":{"command":"uvx","args":["mcp-server-fetch"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 Warn for unpinned uvx package, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "no version pin") {
+		t.Errorf("expected python pin message, got: %s", f[0].Message)
+	}
+}
+
+func TestCFG010_PipxRunUnpinned(t *testing.T) {
+	json := `{"mcpServers":{"py":{"command":"pipx","args":["run","some-mcp","--port","3000"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned pipx run package, got %+v", f)
+	}
+}
+
+func TestCFG010_PythonPinned_NoFinding(t *testing.T) {
+	// PEP 508 == pin, range specifiers, and the uvx @version form are all pinned.
+	for _, server := range []string{
+		`{"command":"uvx","args":["ruff==0.1.0"]}`,
+		`{"command":"uvx","args":["ruff@0.1.0"]}`,
+		`{"command":"uvx","args":["pkg>=1.2"]}`,
+		`{"command":"uvx","args":["pkg~=1.0"]}`,
+		`{"command":"pipx","args":["run","pycowsay==1.0"]}`,
+	} {
+		json := `{"mcpServers":{"py":` + server + `}}`
+		if f := CFG010.Check(settingsTarget(t, json)); len(f) != 0 {
+			t.Errorf("expected no finding for pinned python server %s, got %+v", server, f)
+		}
+	}
+}
+
 func TestCFG010_LocalPath_NoFinding(t *testing.T) {
 	json := `{"mcpServers":{"local":{"command":"npx","args":["./my-local-server","--port","3000"]}}}`
 	f := CFG010.Check(settingsTarget(t, json))
