@@ -31,7 +31,9 @@ jobs:
           persist-credentials: false
 
       - name: Install ajv-cli
-        run: npm install -g ajv-cli ajv-formats
+        # Dev-only JSON-schema validator tooling for this CI job; an ad-hoc global
+        # install is intentional here (no project lockfile pins it).
+        run: npm install -g ajv-cli ajv-formats # zizmor: ignore[adhoc-packages]
 
       - name: Fetch Claude Code settings schema
         run: |
