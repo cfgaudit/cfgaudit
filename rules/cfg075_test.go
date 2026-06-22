@@ -57,7 +57,7 @@ func TestCFG075_EnvKillSwitches(t *testing.T) {
 
 func TestCFG075_SslmodeDisable_InConnectionString(t *testing.T) {
 	// A password in the connection string must NOT be echoed into the finding.
-	j := `{"s":{"env":{"DATABASE_URL":"postgres://u:secretpw@host/db?sslmode=disable"}}}`
+	j := `{"s":{"env":{"DATABASE_URL":"postgres://u:secretpw@host/db?sslmode=disable"}}}` //nolint:gosec // G101: test fixture credential, asserting it is NOT echoed into the finding
 	f := CFG075.Check(mcpTarget(t, j))
 	if len(f) != 1 || f[0].Severity != finding.Error {
 		t.Fatalf("expected 1 error for sslmode=disable, got %+v", f)
