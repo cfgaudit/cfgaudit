@@ -90,6 +90,20 @@ func TestCFG023_FullWildcardLeftToCFG001(t *testing.T) {
 	}
 }
 
+// Bash(command:curl *) uses the 2.1.178 param form on the canonicalized `command`
+// field, which Claude Code ignores (startup warning, grants nothing). The inner
+// token parses to "command" — not a dangerous binary — so CFG023 does not flag it,
+// matching Claude's behaviour. The dangerous grant must use Bash's own specifier
+// (Bash(curl *) / Bash(curl:*)), which TestCFG023_ColonWildcardSyntax covers.
+func TestCFG023_CommandParamForm_NotFlagged(t *testing.T) {
+	for _, entry := range []string{"Bash(command:curl *)", "Bash(command:sudo *)"} {
+		json := `{"permissions":{"allow":["` + entry + `"]}}`
+		if f := CFG023.Check(settingsTarget(t, json)); len(f) != 0 {
+			t.Errorf("expected no finding for ignored param-form %q, got %+v", entry, f)
+		}
+	}
+}
+
 func TestCFG023_NonBashEntries_NoFinding(t *testing.T) {
 	f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["Edit(src/*)","Read(*)","WebFetch(*)"]}}`))
 	if len(f) != 0 {

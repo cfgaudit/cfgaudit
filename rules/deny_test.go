@@ -80,6 +80,54 @@ func TestCFG041to044_DenyAllStar_OldVersionStillFlags(t *testing.T) {
 	}
 }
 
+func TestIgnoresParamForm(t *testing.T) {
+	cases := []struct {
+		entry string
+		want  bool
+	}{
+		// Canonicalized fields Claude Code ignores in the param:value form.
+		{"Read(file_path:.env)", true},
+		{"Edit(file_path:secrets/**)", true},
+		{"Write(file_path:.env)", true},
+		{"Bash(command:rm *)", true},
+		{"PowerShell(command:Remove-Item *)", true},
+		{"Grep(path:.env)", true},
+		{"WebFetch(url:https://x)", true},
+		{"NotebookEdit(notebook_path:x.ipynb)", true},
+		{"Read( file_path : .env )", true}, // whitespace around colon ignored
+		{"read(file_path:.env)", true},     // tool name case-insensitive
+		// Tools' own valid specifiers / non-canonicalized params — NOT ignored.
+		{"Read(.env)", false},
+		{"Read(**/.env)", false},
+		{"WebFetch(domain:example.com)", false},
+		{"Agent(model:opus)", false},
+		{"Bash(rm *)", false},
+		{"Read(config:value.env)", false}, // 'config' is not Read's canonicalized field
+		{"*", false},
+		{"Read", false},
+	}
+	for _, c := range cases {
+		if got := ignoresParamForm(c.entry); got != c.want {
+			t.Errorf("ignoresParamForm(%q) = %v, want %v", c.entry, got, c.want)
+		}
+	}
+}
+
+func TestCFG041_IgnoredFilePathParamForm_StillFlags(t *testing.T) {
+	// Read(file_path:.env) is the param:value form Claude Code ignores (file_path
+	// is canonicalized), so it provides NO coverage — CFG041 must still fire even
+	// though the ".env" substring is present in the entry.
+	tgt := denyTarget(t, `"Read(file_path:.env)"`, ver(2, 2, 0))
+	if f := CFG041.Check(tgt); len(f) != 1 {
+		t.Errorf("expected CFG041 to fire on the ignored Read(file_path:.env) form, got %+v", f)
+	}
+	// The correct spelling still suppresses it.
+	tgt = denyTarget(t, `"Read(**/.env)","Read(**/.env.*)"`, ver(2, 2, 0))
+	if f := CFG041.Check(tgt); len(f) != 0 {
+		t.Errorf("expected CFG041 suppressed by Read(**/.env), got %+v", f)
+	}
+}
+
 func TestCFG041to044_ReadAllWildcard_Suppressed(t *testing.T) {
 	rules := []Rule{CFG041, CFG042, CFG043, CFG044}
 	// Read(**) blocks every read regardless of version.

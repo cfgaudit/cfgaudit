@@ -48,6 +48,19 @@ func TestCFG001_NoPermissions_NoFinding(t *testing.T) {
 	}
 }
 
+// The 2.1.178 Tool(param:value) grammar is deny/ask-only, and `command` is a
+// canonicalized field Claude Code ignores in that form (Bash(command:*) emits a
+// startup warning and grants nothing). So such an entry in permissions.allow is
+// not an unrestricted grant and CFG001 correctly does not flag it.
+func TestCFG001_CommandParamForm_NotFlagged(t *testing.T) {
+	for _, entry := range []string{"Bash(command:*)", "Bash(command:rm *)", "Bash(run_in_background:true)"} {
+		json := `{"permissions":{"allow":["` + entry + `"]}}`
+		if f := CFG001.Check(settingsTarget(t, json)); len(f) != 0 {
+			t.Errorf("expected no finding for param-form %q (Claude ignores it), got %+v", entry, f)
+		}
+	}
+}
+
 func TestCFG001_EmptyAllow_NoFinding(t *testing.T) {
 	f := CFG001.Check(settingsTarget(t, `{"permissions":{"allow":[]}}`))
 	if len(f) != 0 {
