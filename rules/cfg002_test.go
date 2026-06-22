@@ -30,6 +30,18 @@ func TestCFG002_BothUnrestricted(t *testing.T) {
 	}
 }
 
+func TestCFG002_BareToolName_Unrestricted(t *testing.T) {
+	// A bare Edit / Write with no parentheses grants unrestricted file writes,
+	// equivalent to Edit(*) / Write(*).
+	for _, entry := range []string{"Edit", "Write"} {
+		json := `{"permissions":{"allow":["` + entry + `"]}}`
+		f := CFG002.Check(settingsTarget(t, json))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("expected 1 Warn for bare %q, got %+v", entry, f)
+		}
+	}
+}
+
 func TestCFG002_ScopedEdit_NoFinding(t *testing.T) {
 	f := CFG002.Check(settingsTarget(t, `{"permissions":{"allow":["Edit(src/*)","Write(output/*)","Edit(**.go)"]}}`))
 	if len(f) != 0 {
