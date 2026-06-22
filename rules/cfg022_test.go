@@ -72,6 +72,38 @@ func TestCFG022_UserScope_AddsNote(t *testing.T) {
 	}
 }
 
+func TestCFG022_AllowAppleEvents_UserScope_Warn(t *testing.T) {
+	tgt := settingsTarget(t, `{"sandbox":{"allowAppleEvents":true}}`)
+	tgt.Scope = finding.ScopeUser
+	f := CFG022.Check(tgt)
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 Warn for allowAppleEvents in user scope, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "allowAppleEvents") {
+		t.Errorf("expected message to name allowAppleEvents, got: %s", f[0].Message)
+	}
+}
+
+func TestCFG022_AllowAppleEvents_ProjectScope_NoFinding(t *testing.T) {
+	// Project (and project-local) settings cannot enable allowAppleEvents — Claude
+	// Code ignores the key there — so a committed copy must not be flagged.
+	for _, sc := range []finding.Scope{finding.ScopeProject, finding.ScopeProjectLocal, ""} {
+		tgt := settingsTarget(t, `{"sandbox":{"allowAppleEvents":true}}`)
+		tgt.Scope = sc
+		if f := CFG022.Check(tgt); len(f) != 0 {
+			t.Errorf("expected no finding for allowAppleEvents in scope %q, got %+v", sc, f)
+		}
+	}
+}
+
+func TestCFG022_AllowAppleEvents_False_NoFinding(t *testing.T) {
+	tgt := settingsTarget(t, `{"sandbox":{"allowAppleEvents":false}}`)
+	tgt.Scope = finding.ScopeUser
+	if f := CFG022.Check(tgt); len(f) != 0 {
+		t.Errorf("expected no finding for allowAppleEvents:false, got %+v", f)
+	}
+}
+
 func TestCFG022_NoSandbox_NoFinding(t *testing.T) {
 	f := CFG022.Check(settingsTarget(t, `{"permissions":{"deny":["Read(.env)"]}}`))
 	if len(f) != 0 {

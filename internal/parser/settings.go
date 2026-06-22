@@ -61,11 +61,14 @@ func (s *Settings) CommandHelperField(key string) string {
 // SandboxConfig is the subset of the sandbox settings object cfgaudit inspects.
 // excludedCommands run outside the execution sandbox; bwrapPath/socatPath point
 // the sandbox's bubblewrap binary and network proxy and are documented as
-// honored only from managed settings.
+// honored only from managed settings. allowAppleEvents (macOS) lifts the Apple
+// Events block, which removes code-execution isolation; it is honored only from
+// user/managed/CLI settings (project settings cannot enable it).
 type SandboxConfig struct {
 	ExcludedCommands []string `json:"excludedCommands,omitempty"`
 	BwrapPath        string   `json:"bwrapPath,omitempty"`
 	SocatPath        string   `json:"socatPath,omitempty"`
+	AllowAppleEvents bool     `json:"allowAppleEvents,omitempty"`
 }
 
 // Sandbox decodes the top-level sandbox object. Returns nil when absent or of the
