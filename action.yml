@@ -44,7 +44,7 @@ inputs:
   image:
     description: cfgaudit container image to run (advanced; override to pin a digest).
     required: false
-    default: ghcr.io/cfgaudit/cfgaudit:1.5.0
+    default: ghcr.io/cfgaudit/cfgaudit:1.6.0
 
 outputs:
   exit-code:
