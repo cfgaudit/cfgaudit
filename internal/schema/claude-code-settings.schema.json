@@ -2508,6 +2508,10 @@
             "type": "string"
           },
           "description": "Entries for the auto mode classifier environment section. Replaces the built-in environment context entirely unless the literal string \"$defaults\" is included as an entry, which splices the built-in defaults in at that position."
+        },
+        "classifyAllShell": {
+          "type": "boolean",
+          "description": "When true (added in v2.1.193), routes all Bash/PowerShell commands through the auto mode classifier rather than only those matched by the built-in rules."
         }
       }
     },
