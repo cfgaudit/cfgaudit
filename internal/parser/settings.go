@@ -88,6 +88,9 @@ func (s *Settings) Sandbox() *SandboxConfig {
 type Permissions struct {
 	Allow []string `json:"allow,omitempty"`
 	Deny  []string `json:"deny,omitempty"`
+	// DefaultMode is the permission mode, nested under permissions in the schema
+	// (permissions.defaultMode) — NOT a top-level settings key. Read by CFG004.
+	DefaultMode string `json:"defaultMode,omitempty"`
 }
 
 // HookGroup is the per-event hook entry: a matcher plus the commands it triggers.
