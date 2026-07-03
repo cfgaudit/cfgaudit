@@ -101,7 +101,7 @@ func TestVersionGating_Issue192(t *testing.T) {
 		id   string
 	}{
 		{CFG003, `{"enableAllProjectMcpServers": true}`, "CFG003"},
-		{CFG004, `{"defaultMode": "bypassPermissions"}`, "CFG004"},
+		{CFG004, `{"permissions":{"defaultMode":"bypassPermissions"}}`, "CFG004"},
 	} {
 		withRules(t, c.rule)
 		got := Run(settingsTarget(t, c.json), &ancient, nil)

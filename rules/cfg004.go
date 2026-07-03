@@ -1,8 +1,6 @@
 package rules
 
 import (
-	"encoding/json"
-
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
 
@@ -19,19 +17,14 @@ func (r *cfg004) ID() string { return "CFG004" }
 // honours the key. Gating on the detected version would add no correctness and
 // could wrongly skip a stale dangerous value.
 
+// Check reads permissions.defaultMode — the schema-correct nested location. A
+// top-level `defaultMode` is not the schema key and is not honoured by Claude
+// Code, so matching it would be a false positive; it is deliberately NOT matched.
 func (r *cfg004) Check(t *Target) []finding.Finding {
-	if t.Settings == nil {
+	if t.Settings == nil || t.Settings.Permissions == nil {
 		return nil
 	}
-	raw, ok := t.Settings.Raw["defaultMode"]
-	if !ok {
-		return nil
-	}
-	var mode string
-	if err := json.Unmarshal(raw, &mode); err != nil {
-		return nil
-	}
-	switch mode {
+	switch t.Settings.Permissions.DefaultMode {
 	case "bypassPermissions":
 		return []finding.Finding{{
 			RuleID:   "CFG004",
