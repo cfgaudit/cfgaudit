@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -679,6 +680,9 @@ var (
 		filepath.Join(".claude", "agents", "*.md"),
 		filepath.Join(".claude", "commands", "*.md"),
 		filepath.Join(".claude", "skills", "*", "SKILL.md"),
+		// .claude/rules/ is NOT listed here: Claude Code discovers it recursively
+		// (subdirectories allowed), which the single-level filepath.Glob above can't
+		// express, so it is collected by claudeRulesFiles instead (#325).
 	}
 	// userInstructionGlobs are scanned only with --user (relative to $HOME): the
 	// user-global subagents, slash commands, and skills apply to every project.
@@ -719,6 +723,13 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err := addGlobs(dir, agentInstructionGlobs, finding.ScopeProject); err != nil {
 		return nil, err
 	}
+	projRules, err := claudeRulesFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range projRules {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -726,6 +737,13 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		}
 		if err := addGlobs(home, userInstructionGlobs, finding.ScopeUser); err != nil {
 			return nil, err
+		}
+		userRules, err := claudeRulesFiles(home)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range userRules {
+			paths = append(paths, scopedPath{m, finding.ScopeUser})
 		}
 	}
 
@@ -745,6 +763,36 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 	return targets, nil
+}
+
+// claudeRulesFiles returns every *.md file under <base>/.claude/rules, discovered
+// recursively. Claude Code loads .claude/rules/**/*.md as trusted instruction
+// context at the same priority as CLAUDE.md — unconditional files at launch and
+// conditional ones (carrying a `paths:` frontmatter) when a matching file is read
+// — and walks subdirectories to find them, so unlike the single-level globs this
+// needs a full walk (#325). A missing rules directory yields no files and no
+// error; results are sorted for deterministic ordering.
+func claudeRulesFiles(base string) ([]string, error) {
+	root := filepath.Join(base, ".claude", "rules")
+	var out []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// A missing .claude/rules directory is the common case — not an error.
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
+			out = append(out, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // loadClaudeMD reads a CLAUDE.md file. A missing file yields ("", nil); the raw
