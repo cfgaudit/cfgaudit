@@ -14,11 +14,16 @@ include:
 
 # Publish a CI/CD Catalog release for each vX.Y.Z tag (mirrored from GitHub).
 # Requires the project to be marked as a catalog resource in GitLab settings.
+# The rule matches semver tags ONLY: the moving major-alias tag `v1` is
+# re-pointed every release and its pipeline would otherwise try to create a
+# GitLab Release for tag `v1` — which already exists (releases are immutable
+# per tag) — and fail the `create-release` job on every release. Restricting to
+# vX.Y.Z skips `v1`/`v2`, so the alias-tag pipeline runs only the (green) test.
 create-release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   rules:
-    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   script:
     - echo "Publishing cfgaudit $CI_COMMIT_TAG to the CI/CD Catalog"
   release:
