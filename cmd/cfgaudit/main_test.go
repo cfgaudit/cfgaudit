@@ -569,6 +569,67 @@ func TestBuildTargets_DiscoversAgentInstructionFiles(t *testing.T) {
 	}
 }
 
+func TestBuildTargets_DiscoversClaudeRulesRecursively(t *testing.T) {
+	dir := t.TempDir()
+	// Unconditional rule at the top level and a conditional rule nested in a
+	// subdirectory — Claude Code discovers both recursively (#325).
+	mustWrite(t, filepath.Join(dir, ".claude", "rules", "style.md"), "Follow the house style.\n")
+	mustWrite(t, filepath.Join(dir, ".claude", "rules", "frontend", "react.md"), "---\npaths:\n  - \"**/*.tsx\"\n---\nUse hooks.\n")
+	mustWrite(t, filepath.Join(dir, ".claude", "rules", "notes.txt"), "not markdown, skip\n") // non-.md ignored
+	mustWrite(t, filepath.Join(dir, ".claude", "rules", "empty.md"), "")                      // empty -> skipped
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	got := map[string]*rules.Target{}
+	for _, tg := range targets {
+		if tg.InstructionFile != "" {
+			got[filepath.Base(tg.InstructionFile)] = tg
+		}
+	}
+	for _, name := range []string{"style.md", "react.md"} {
+		tg := got[name]
+		if tg == nil {
+			t.Errorf("expected a .claude/rules instruction target for %s", name)
+			continue
+		}
+		if tg.Scope != finding.ScopeProject {
+			t.Errorf("%s: expected project scope, got %s", name, tg.Scope)
+		}
+	}
+	if got["notes.txt"] != nil {
+		t.Errorf("non-markdown .claude/rules file should not be scanned")
+	}
+	if got["empty.md"] != nil {
+		t.Errorf("empty .claude/rules file should be skipped")
+	}
+}
+
+func TestBuildTargets_UserClaudeRules_WithUserFlag(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	mustWrite(t, filepath.Join(home, ".claude", "rules", "global.md"), "Global rule text.\n")
+
+	dir := t.TempDir() // empty project
+	targets, err := buildTargets(dir, true)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var user *rules.Target
+	for _, tg := range targets {
+		if tg.InstructionFile != "" && filepath.Base(tg.InstructionFile) == "global.md" {
+			user = tg
+		}
+	}
+	if user == nil {
+		t.Fatal("expected ~/.claude/rules/global.md discovered with --user")
+	}
+	if user.Scope != finding.ScopeUser {
+		t.Errorf("expected user scope, got %s", user.Scope)
+	}
+}
+
 func TestBuildTargets_UserClaudeMD_WithUserFlag(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
