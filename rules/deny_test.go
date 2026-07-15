@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/version"
@@ -125,6 +126,62 @@ func TestCFG041_IgnoredFilePathParamForm_StillFlags(t *testing.T) {
 	tgt = denyTarget(t, `"Read(**/.env)","Read(**/.env.*)"`, ver(2, 2, 0))
 	if f := CFG041.Check(tgt); len(f) != 0 {
 		t.Errorf("expected CFG041 suppressed by Read(**/.env), got %+v", f)
+	}
+}
+
+func TestReadDenyPattern(t *testing.T) {
+	cases := []struct {
+		entry   string
+		wantPat string
+		wantOK  bool
+	}{
+		// Read specifier forms — these DO provide read coverage.
+		{"Read(**/.env)", "**/.env", true},
+		{"Read(.env)", ".env", true},
+		{" read(~/.ssh/*) ", "~/.ssh/*", true}, // trimmed + case-insensitive tool
+		// Non-Read tools do not block the Read tool → no coverage.
+		{"Write(**/.env)", "", false},
+		{"NotebookEdit(**/.env)", "", false},
+		{"Glob(**/.env)", "", false},
+		{"Grep(**/.env)", "", false},
+		{"Edit(**/.env)", "", false},
+		{"Bash(rm -rf *)", "", false},
+		// Read(param:value) on the canonicalized field is ignored by Claude Code.
+		{"Read(file_path:.env)", "", false},
+		// Bare tool name / non-permission entries have no path glob.
+		{"Read", "", false},
+		{"*", "", false},
+	}
+	for _, c := range cases {
+		gotPat, gotOK := readDenyPattern(c.entry)
+		if gotOK != c.wantOK || gotPat != c.wantPat {
+			t.Errorf("readDenyPattern(%q) = (%q, %v), want (%q, %v)", c.entry, gotPat, gotOK, c.wantPat, c.wantOK)
+		}
+	}
+}
+
+func TestCFG041to044_NonReadDeny_ProvidesNoCoverage(t *testing.T) {
+	// A Write/NotebookEdit/Glob specifier form is ignored by Claude Code
+	// (>= 2.1.210); Edit/Grep denies don't block the Read tool. None of these
+	// cover a read of the sensitive file, so the findings must still fire. Each
+	// rule gets an entry spelling its own class so only the tool name differs.
+	cases := []struct {
+		rule Rule
+		deny string // a single deny entry, wrapped by the loop below
+	}{
+		{CFG041, `%s(**/.env)`},
+		{CFG042, `%s(**/*.pem)`},
+		{CFG043, `%s(**/.aws/credentials)`},
+		{CFG044, `%s(**/.ssh/**)`},
+	}
+	for _, tool := range []string{"Write", "NotebookEdit", "Glob", "Grep", "Edit"} {
+		for _, c := range cases {
+			entry := `"` + fmt.Sprintf(c.deny, tool) + `"`
+			tgt := denyTarget(t, entry, ver(2, 2, 0))
+			if f := c.rule.Check(tgt); len(f) != 1 {
+				t.Errorf("%s with deny [%s]: expected 1 finding (no read coverage), got %+v", c.rule.ID(), entry, f)
+			}
+		}
 	}
 }
 

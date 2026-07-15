@@ -47,28 +47,43 @@ func denyCoversEverything(deny []string, ver *version.Version) bool {
 	return false
 }
 
-// denyPattern returns the path/command pattern inside a permission entry,
-// stripping the Tool(...) wrapper (e.g. "Read(**/.env)" → "**/.env"). A bare
-// entry is returned unchanged.
-func denyPattern(entry string) string {
+// readDenyPattern returns the path glob of a Read(...) deny entry and true, or
+// ("", false) for any other entry. The deny-coverage rules (CFG041–044) ask
+// whether Claude can *read* a sensitive file class, and only a Read deny stops the
+// Read tool:
+//   - A Read deny also blocks the Edit tool on the same path (>= 2.1.208), but a
+//     Write / NotebookEdit / Glob / Grep / Edit deny does not block Read.
+//   - Claude Code ignores the Write(<glob>) / Glob(<glob>) / NotebookEdit(<glob>)
+//     specifier forms outright (startup warning, >= 2.1.210 — "use Edit(path) or
+//     Read(path) instead"), so they grant nothing at all.
+//   - The Read(param:value) form on the canonicalized file_path field is likewise
+//     ignored (see ignoresParamForm), so it yields no coverage even though the
+//     value substring would otherwise match.
+//
+// Deny-all wildcards (Read(**), the bare "*") are handled by denyCoversEverything,
+// which each caller checks first. Source: code.claude.com/docs/en/permissions.
+func readDenyPattern(entry string) (string, bool) {
 	e := strings.TrimSpace(entry)
-	if m := toolPatternRe.FindStringSubmatch(e); m != nil {
-		return m[1]
+	if ignoresParamForm(e) {
+		return "", false
 	}
-	return e
+	m := toolPatternRe.FindStringSubmatch(e)
+	if m == nil {
+		return "", false // bare tool name or non-permission entry — no path glob
+	}
+	if tool := e[:strings.IndexByte(e, '(')]; !strings.EqualFold(strings.TrimSpace(tool), "Read") {
+		return "", false
+	}
+	return m[1], true
 }
 
-// denyCoversAny reports whether any deny entry's pattern matches re — used by the
-// deny-coverage rules (CFG041…) to check that a sensitive file class is blocked.
-// A Tool(param:value) entry naming the tool's canonicalized field is skipped: the
-// 2.1.178 param grammar ignores those forms (see ignoresParamForm), so they grant
-// no coverage even though the value substring would otherwise match re.
+// denyCoversAny reports whether any Read deny entry's path glob matches re — used
+// by the deny-coverage rules (CFG041…) to check that a sensitive file class is
+// blocked from being read. Non-Read deny entries provide no read coverage (see
+// readDenyPattern).
 func denyCoversAny(deny []string, re *regexp.Regexp) bool {
 	for _, e := range deny {
-		if ignoresParamForm(e) {
-			continue
-		}
-		if re.MatchString(denyPattern(e)) {
+		if pat, ok := readDenyPattern(e); ok && re.MatchString(pat) {
 			return true
 		}
 	}
