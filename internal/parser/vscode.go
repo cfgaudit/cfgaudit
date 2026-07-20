@@ -74,6 +74,25 @@ func (s *VSCodeSettings) BoolField(key string) (val, present bool) {
 	return b, true
 }
 
+// ObjectField returns the entries of an object-valued setting and whether the key
+// was present as a JSON object. Entry values stay raw because callers differ: the
+// auto-approve edits map is pattern→bool, while the URL map allows either a bool
+// or an object of per-direction flags.
+func (s *VSCodeSettings) ObjectField(key string) (map[string]json.RawMessage, bool) {
+	if s == nil {
+		return nil, false
+	}
+	raw, ok := s.Raw[key]
+	if !ok {
+		return nil, false
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, false
+	}
+	return m, true
+}
+
 // ParseVSCodeSettings reads and decodes a .vscode/settings.json file. Like
 // tasks.json it is JSONC, so comments and trailing commas are stripped first.
 func ParseVSCodeSettings(path string) (*VSCodeSettings, error) {
