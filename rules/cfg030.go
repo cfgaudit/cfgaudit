@@ -20,8 +20,17 @@ func (r *cfg030) ID() string { return "CFG030" }
 // the user — the social-engineering layer of a prompt injection. The
 // silently/secretly branch is anchored to an action verb so ordinary phrasing
 // like "fails silently" does not false-positive.
+//
+// The optional direct object after the verb is what lets "never mention THIS to
+// the user" match: without it the target had to follow the verb almost
+// immediately, so the most natural phrasing fell out. Person pronouns
+// (him/her/them) are deliberately excluded — "never tell them the user's
+// password" is security-positive guidance, and an indirect-object slot would
+// turn it into a finding.
 var concealRe = regexp.MustCompile(`(?i)(` +
-	`(?:don'?t|do\s+not|never)\s+(?:tell|inform|mention|notify|reveal|disclose|show)(?:\s+(?:to|about))?\s+(?:the\s+)?(?:user|caller)` +
+	`(?:don'?t|do\s+not|never)\s+(?:tell|inform|mention|notify|reveal|disclose|show)` +
+	`(?:\s+(?:this|that|it|these|those|anything|everything|any\s+of\s+(?:this|that|it)))?` +
+	`(?:\s+(?:to|about))?\s+(?:the\s+)?(?:user|caller)` +
 	`|without\s+the\s+user(?:'s)?\s+(?:knowing|knowledge|awareness)` +
 	`|(?:silently|secretly)\s+(?:do|run|execute|perform|send|email|upload|exfiltrate|post|forward|delete|remove|modify|edit|change|install|add|disable|copy|leak)` +
 	`|pretend\s+(?:you|to)\s+(?:don'?t|didn'?t|did\s+not|do\s+not)` +
