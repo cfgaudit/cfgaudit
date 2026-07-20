@@ -70,6 +70,27 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Devin CLI .devin/config.json hooks. The shape matches Claude Code's — event
+	// name → groups of {type, command} — and the file is committed to version
+	// control by design, so the same command-content rules apply. Labelled
+	// distinctly so a finding names the file the command actually came from.
+	if t.Devin != nil && len(t.Devin.Hooks) > 0 {
+		events := make([]string, 0, len(t.Devin.Hooks))
+		for e := range t.Devin.Hooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, group := range t.Devin.Hooks[event] {
+				for _, h := range group.Hooks {
+					if h.Command != "" {
+						sites = append(sites, commandSite{Label: "Devin hooks." + event + " command", File: t.DevinFile, Command: h.Command})
+					}
+				}
+			}
+		}
+	}
+
 	// OpenAI Codex config.toml `notify` — a program (argv) Codex spawns on events.
 	if t.Codex != nil && len(t.Codex.Notify) > 0 {
 		sites = append(sites, commandSite{Label: "Codex notify command", File: t.CodexFile, Command: strings.Join(t.Codex.Notify, " ")})

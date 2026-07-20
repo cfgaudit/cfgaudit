@@ -122,9 +122,12 @@ type MCPServer struct {
 	// endpoint the agent connects to; Type is the transport ("http"/"sse"/…);
 	// Headers are sent on every request (often carrying auth secrets). Empty for
 	// stdio servers, which use Command/Args instead.
-	URL     string            `json:"url,omitempty"`
-	Type    string            `json:"type,omitempty"`
-	Headers map[string]string `json:"headers,omitempty"`
+	URL  string `json:"url,omitempty"`
+	Type string `json:"type,omitempty"`
+	// Transport is Devin's spelling of Type ("http"/"sse"); ParseDevinConfig
+	// folds it into Type so the shared MCP rules only ever read one field.
+	Transport string            `json:"transport,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
 
 	// HeadersHelper is a command executed to generate auth headers for a remote
 	// MCP server (the per-server analogue of settings.json otelHeadersHelper). It

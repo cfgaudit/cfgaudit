@@ -837,6 +837,20 @@ func loadProjectMCP(dir string) (map[string]parser.MCPServer, string, error) {
 	return servers, path, nil
 }
 
+// loadDevinConfigOptional parses .devin/config.json, returning (nil, nil) when it
+// does not exist. A malformed file is an error, so a Devin config that is
+// silently not being scanned is reported rather than treated as empty.
+func loadDevinConfigOptional(path string) (*parser.DevinConfig, error) {
+	c, err := parser.ParseDevinConfig(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return c, nil
+}
+
 // loadZedServersOptional parses .zed/settings.json and returns its
 // context_servers, or (nil, nil) when the file does not exist. A malformed file
 // is an error, so a Zed config that is silently not being scanned is reported
@@ -912,6 +926,25 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// Zed declares its MCP servers inside the project settings file rather than a
 	// dedicated MCP config, so it needs its own loader: a different key
 	// (context_servers) and JSONC, which Zed's settings allow.
+	// Devin CLI .devin/config.json — "shared team configuration committed to
+	// version control" per Devin's docs. Only permissions, mcpServers,
+	// read_config_from and hooks are honoured in a project config; we read the
+	// mcpServers (so the MCP rules fire) and the hooks (so the command rules do).
+	devinPath := filepath.Join(dir, ".devin", "config.json")
+	devinCfg, err := loadDevinConfigOptional(devinPath)
+	if err != nil {
+		return nil, err
+	}
+	if devinCfg != nil && (len(devinCfg.MCPServers) > 0 || len(devinCfg.Hooks) > 0) {
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			Devin:          devinCfg,
+			DevinFile:      devinPath,
+			ProjectMCP:     devinCfg.MCPServers,
+			ProjectMCPFile: devinPath,
+		})
+	}
+
 	zedPath := filepath.Join(dir, ".zed", "settings.json")
 	zedServers, err := loadZedServersOptional(zedPath)
 	if err != nil {

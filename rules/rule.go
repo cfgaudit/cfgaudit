@@ -76,6 +76,13 @@ type Target struct {
 	Codex     *parser.CodexConfig
 	CodexFile string
 
+	// Devin holds a parsed Devin CLI .devin/config.json — committable "shared team
+	// configuration" per Devin's docs. Its mcpServers ride ProjectMCP so the MCP
+	// rules apply, and its hooks become command sites. Nil when absent; DevinFile
+	// is its path, used to attribute the findings.
+	Devin     *parser.DevinConfig
+	DevinFile string
+
 	// Continue holds a parsed Continue config.yaml (.continue/config.yaml or
 	// ~/.continue/config.yaml). Its mcpServers list rides ProjectMCP so the MCP
 	// rules apply; inline model/MCP apiKey literals drive CFG065. Nil when absent;
