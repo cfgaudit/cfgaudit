@@ -28,6 +28,14 @@ go install github.com/cfgaudit/cfgaudit/cmd/cfgaudit@latest
 
 Or download a pre-built binary (Linux / macOS / Windows, amd64 / arm64) from the [releases page](https://github.com/cfgaudit/cfgaudit/releases).
 
+Container image:
+
+```sh
+docker run --rm -v "$PWD:/work" -w /work ghcr.io/cfgaudit/cfgaudit:latest .
+```
+
+The image runs unprivileged as uid `65532`, so the files you mount must be readable by that uid (normal `644`/`755` permissions are fine). cfgaudit only reads them — write the report with a shell redirection on the host (`> report.sarif`) rather than into the mount.
+
 ---
 
 ## Usage
