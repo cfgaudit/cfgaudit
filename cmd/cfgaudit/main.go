@@ -837,6 +837,21 @@ func loadProjectMCP(dir string) (map[string]parser.MCPServer, string, error) {
 	return servers, path, nil
 }
 
+// loadZedServersOptional parses .zed/settings.json and returns its
+// context_servers, or (nil, nil) when the file does not exist. A malformed file
+// is an error, so a Zed config that is silently not being scanned is reported
+// rather than mistaken for "no servers".
+func loadZedServersOptional(path string) (map[string]parser.MCPServer, error) {
+	servers, err := parser.ParseZedSettings(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return servers, nil
+}
+
 // loadMCPConfigOptional parses an MCP config file, returning (nil, nil) when it
 // does not exist so callers can treat absence as "no servers". A malformed file
 // is an error.
@@ -892,6 +907,22 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if err := add(filepath.Join(dir, rel), finding.ScopeProject); err != nil {
 			return nil, err
 		}
+	}
+
+	// Zed declares its MCP servers inside the project settings file rather than a
+	// dedicated MCP config, so it needs its own loader: a different key
+	// (context_servers) and JSONC, which Zed's settings allow.
+	zedPath := filepath.Join(dir, ".zed", "settings.json")
+	zedServers, err := loadZedServersOptional(zedPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(zedServers) > 0 {
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			ProjectMCP:     zedServers,
+			ProjectMCPFile: zedPath,
+		})
 	}
 	if includeUser {
 		home, err := os.UserHomeDir()

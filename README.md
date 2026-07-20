@@ -340,7 +340,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`
 
-Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, Windsurf's `~/.codeium/windsurf/mcp_config.json`, the `mcpServers` block of Gemini CLI's `.gemini/settings.json` (+ `~/.gemini/settings.json` with `--user`), the `[mcp_servers]` tables of OpenAI Codex CLI's `~/.codex/config.toml` (with `--user`), and the `mcpServers` list of Continue's `.continue/config.yaml` (+ `~/.continue/config.yaml` with `--user`). Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
+Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, Windsurf's `~/.codeium/windsurf/mcp_config.json`, the `context_servers` block of Zed's project-scoped `.zed/settings.json` (JSONC), the `mcpServers` block of Gemini CLI's `.gemini/settings.json` (+ `~/.gemini/settings.json` with `--user`), the `[mcp_servers]` tables of OpenAI Codex CLI's `~/.codex/config.toml` (with `--user`), and the `mcpServers` list of Continue's `.continue/config.yaml` (+ `~/.continue/config.yaml` with `--user`). Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
@@ -363,6 +363,7 @@ Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG
 | [CFG069](docs/rules/CFG069.md) | warn | MCP server `env` enables HTTP transport without log redaction / a quiet log level — request bodies (Bearer tokens, API keys) get logged (CVE-2026-42282/41495) | LLM02 |
 | [CFG075](docs/rules/CFG075.md) | error | MCP server `env`/`args` disables TLS certificate verification (`NODE_TLS_REJECT_UNAUTHORIZED=0`, `GIT_SSL_NO_VERIFY`, `--insecure`, `sslmode=disable`, …) — turns an `https://` endpoint into a MITM-able channel | LLM02 |
 | [CFG076](docs/rules/CFG076.md) | error/warn | MCP server `args` expose a broad filesystem root (`/`, `~`, `$HOME`, drive root → error; `..` parent traversal → warn) — a filesystem server scoped to the whole machine/home instead of one directory | LLM06 |
+| [CFG083](docs/rules/CFG083.md) | error | MCP server `args` carry a Chromium command-replacing launch switch (`--utility-cmd-prefix`, `--renderer-cmd-prefix`, `--gpu-launcher`, `--browser-subprocess-path`) — launching the browser runs an arbitrary binary (CVE-2026-57572 class); debugger/profiler prefixes are not flagged | LLM06 |
 | [CFG070](docs/rules/CFG070.md) | warn | MCP server `command` is a repo-relative path (`./x`, `scripts/x`) — a committed in-repo executable that auto-runs on clone (CVE-2025-54135) | LLM03 |
 | [CFG058](docs/rules/CFG058.md) | warn | MCP server uses the deprecated `type: "sse"` transport — superseded by Streamable HTTP (`type: "http"`); weaker transport with DNS-rebinding/Origin pitfalls | LLM02 |
 | [CFG059](docs/rules/CFG059.md) | error/warn | MCP server / hook package or endpoint host is a typosquat of a known-good identifier — covers `mcpServers` launchers and `npx`/`bunx`/`pnpm dlx`/`yarn dlx` packages run from any command site (homoglyph / one-char → error; two-char / unofficial scope → warn) | LLM03 |
@@ -378,7 +379,7 @@ The MCP-server rules above carry a **secondary** mapping to the [OWASP Top 10 fo
 | MCP01 – Token Mismanagement & Secret Exposure | CFG021, CFG049, CFG050, CFG054, CFG058, CFG068, CFG069, CFG075 |
 | MCP02 – Privilege Escalation via Scope Creep | CFG003, CFG011, CFG053, CFG076 |
 | MCP04 – Software Supply Chain Attacks & Dependency Tampering | CFG010, CFG055, CFG059, CFG070 |
-| MCP05 – Command Injection & Execution | CFG017, CFG019, CFG020 |
+| MCP05 – Command Injection & Execution | CFG017, CFG019, CFG020, CFG083 |
 | MCP07 – Insufficient Authentication & Authorization | CFG018, CFG066 |
 | MCP09 – Shadow MCP Servers | CFG052 |
 
