@@ -25,9 +25,16 @@ func (r *cfg029) ID() string { return "CFG029" }
 // — so "never ask for approval" / "without asking before running" match, while
 // the benign "never ask the user for API keys" / "don't ask clarifying
 // questions" (UX / good practice) do not.
+//
+// The approve-class accepts the adverb in either position. Leading is
+// unambiguous ("automatically approve …"). Trailing is not — "approve any
+// pending PR automatically" is ordinary review workflow, not a permission
+// bypass — so the postfix form additionally requires a permission-specific
+// object between the verb and the adverb.
 var permissionBypassRe = regexp.MustCompile(`(?i)(` +
-	`always\s+approve` +
+	`(?:always|automatically)\s+approve` +
 	`|auto-?approve` +
+	`|approve\b[^.\n]{0,30}?\b(?:permission|approval|confirmation|prompt)s?\b[^.\n]{0,25}?\b(?:automatically|without\s+asking|by\s+default)` +
 	`|bypass\s+(?:permission|confirmation|approval)` +
 	`|skip\s+(?:confirm(?:ation)?|approval|the\s+prompt)` +
 	`|without\s+(?:confirm(?:ation)?|approval|prompt(?:ing)?)` +
