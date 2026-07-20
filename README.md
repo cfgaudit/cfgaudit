@@ -308,6 +308,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG023](docs/rules/CFG023.md) | error/warn | `permissions.allow` grants a dangerous command with wildcard args (`curl`/`sudo`/`npx`/shells → error; `find`/`sed`/`git`/interpreters/`ssh` → warn) | LLM06 |
 | [CFG025](docs/rules/CFG025.md) | error | custom org policy from `.cfgaudit.yml` violated (`require-deny` / `forbid-allow`) — inert unless a `policy:` is configured | LLM06 |
 | [CFG004](docs/rules/CFG004.md) | error/warn | `defaultMode` set to `bypassPermissions` or `auto` | LLM06 |
+| [CFG085](docs/rules/CFG085.md) | error/warn | subagent frontmatter in `.claude/agents/*.md` weakens the permission mode (`permissionMode: bypassPermissions`/`dontAsk` → error; `auto`/`acceptEdits` → warn) — CFG004's modes reached through a committed agent file | LLM06 |
 | [CFG079](docs/rules/CFG079.md) | error/warn | `autoMode` weakens the auto-mode permission classifier — a broad `allow` entry (`*`/`Bash(*)` → error) or a `soft_deny` array that drops the built-in defaults by omitting `"$defaults"` (→ warn) | LLM06 |
 | [CFG005](docs/rules/CFG005.md) | error | `ANTHROPIC_BASE_URL` points to a non-Anthropic endpoint (CVE-2026-21852) | LLM02 |
 | [CFG046](docs/rules/CFG046.md) | warn/error | `OTEL_EXPORTER_OTLP_*ENDPOINT` redirects telemetry to a non-local collector (error for a raw IP) | LLM02 |
