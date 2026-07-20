@@ -26,7 +26,12 @@ type bypassPattern struct {
 }
 
 var bypassPatterns = []bypassPattern{
-	{1, regexp.MustCompile(`(?i)(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|pay no attention to|do not follow|do not obey)\s*(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)`),
+	// The determiner run between the verb and the qualifier is what makes the
+	// canonical "ignore ALL previous instructions" match: without it the pattern
+	// only fired when the qualifier followed the verb directly. It is a closed set
+	// on purpose — a generic `(?:\s+\w+){0,3}` filler would drag in benign prose,
+	// because the noun list carries broad words (data, content, context, text).
+	{1, regexp.MustCompile(`(?i)(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)`),
 		finding.Error, "instruction override", false},
 	// Pattern 2 targets hijacking of Claude's own identity. Bare "act as <role>" /
 	// "pretend you are <role>" are the standard, legitimate way to define a skill's
