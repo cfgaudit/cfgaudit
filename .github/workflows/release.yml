@@ -6,12 +6,39 @@ on:
       # Full semver tags only (vX.Y.Z) — not the moving vN GitHub Action tag.
       - 'v*.*.*'
 
-permissions:
-  contents: read
+# Default-deny at the workflow level; each job grants only what it needs, so the
+# gate never holds release or signing rights it has no use for.
+permissions: {}
 
 jobs:
+  # A tag can point at any commit — including one whose CI failed, or one that
+  # never reached main and so was never tested at all. Require a green CI run for
+  # this exact SHA before anything is published. Fails closed: no completed run
+  # means no release.
+  gate:
+    name: Require green CI
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # read this repo's workflow-run history
+    steps:
+      - name: Require a successful CI run for this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          conclusion=$(gh api \
+            "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed" \
+            --jq '.workflow_runs[0].conclusion // "none"')
+          echo "CI conclusion for $SHA: $conclusion"
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::Release blocked: CI for $SHA concluded '$conclusion', expected 'success'. If CI is still running for this commit, wait for it to finish and re-run this workflow; otherwise tag a commit whose CI passed on main."
+            exit 1
+          fi
+
   goreleaser:
     name: GoReleaser
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub release and upload archives/checksums
