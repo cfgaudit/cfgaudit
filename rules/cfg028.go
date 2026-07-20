@@ -15,7 +15,23 @@ func init() { All = append(All, CFG028) }
 func (r *cfg028) ID() string { return "CFG028" }
 
 // trustFile matches the Claude Code trust/config files a command must not rewrite.
-const trustFile = `(?:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settings\.json|\.mcp\.json|\.claude/)`
+//
+// Matched case-insensitively: on macOS and Windows the filesystem is
+// case-insensitive by default, so `> .Mcp.json` writes the genuine .mcp.json
+// while a case-sensitive pattern sees nothing. That gap is not theoretical —
+// CVE-2025-59944 (CWE-178) is exactly it, shipped in Cursor ≤1.6.23, where
+// case-sensitive checks guarding */.cursor/mcp.json were bypassed for RCE.
+//
+// The flag is scoped with (?i:…) rather than a leading (?i): this constant is
+// concatenated into the larger patterns below, and a bare flag would leak
+// case-insensitivity into whatever follows it in the enclosing group.
+//
+// The trade is deliberate: on a case-sensitive filesystem `.MCP.json` really is
+// a different, harmless file, so matching it is technically a false positive. A
+// static analyzer cannot know the target filesystem, the evading spelling is
+// contrived in legitimate config, and the miss it prevents is a full trust-file
+// overwrite.
+const trustFile = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settings\.json|\.mcp\.json|\.claude/)`
 
 var trustFileRe = regexp.MustCompile(trustFile)
 

