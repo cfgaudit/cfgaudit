@@ -83,6 +83,15 @@ type Target struct {
 	Devin     *parser.DevinConfig
 	DevinFile string
 
+	// AgentHooks holds a parsed Cursor .cursor/hooks.json or Copilot
+	// .github/hooks/*.json. Both are committable by design and run shell
+	// commands, so their entries become command sites. Nil when absent;
+	// AgentHooksFile is its path and AgentHooksKind names the agent ("Cursor" /
+	// "Copilot") so a finding says which format it came from.
+	AgentHooks     *parser.AgentHooks
+	AgentHooksFile string
+	AgentHooksKind string
+
 	// Continue holds a parsed Continue config.yaml (.continue/config.yaml or
 	// ~/.continue/config.yaml). Its mcpServers list rides ProjectMCP so the MCP
 	// rules apply; inline model/MCP apiKey literals drive CFG065. Nil when absent;
