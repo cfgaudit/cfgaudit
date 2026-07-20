@@ -91,6 +91,26 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Cursor .cursor/hooks.json and Copilot .github/hooks/*.json. Cursor's docs
+	// say these are "stored in version control alongside your code", and Copilot's
+	// are read from the repository, so both are committed shell commands running
+	// on someone else's machine. disableAllHooks turns the whole Copilot file off,
+	// so nothing in it runs.
+	if ah := t.AgentHooks; ah != nil && !ah.DisableAllHooks && len(ah.Hooks) > 0 {
+		events := make([]string, 0, len(ah.Hooks))
+		for e := range ah.Hooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, h := range ah.Hooks[event] {
+				if cmd := h.ShellCommand(); cmd != "" {
+					sites = append(sites, commandSite{Label: t.AgentHooksKind + " hooks." + event + " command", File: t.AgentHooksFile, Command: cmd})
+				}
+			}
+		}
+	}
+
 	// OpenAI Codex config.toml `notify` — a program (argv) Codex spawns on events.
 	if t.Codex != nil && len(t.Codex.Notify) > 0 {
 		sites = append(sites, commandSite{Label: "Codex notify command", File: t.CodexFile, Command: strings.Join(t.Codex.Notify, " ")})

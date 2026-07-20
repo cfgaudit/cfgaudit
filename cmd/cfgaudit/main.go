@@ -837,6 +837,47 @@ func loadProjectMCP(dir string) (map[string]parser.MCPServer, string, error) {
 	return servers, path, nil
 }
 
+// agentHookTargets discovers Cursor's .cursor/hooks.json and Copilot's
+// .github/hooks/*.json and returns one target per present file. A malformed file
+// is an error, like the other config loaders.
+func agentHookTargets(dir string) ([]*rules.Target, error) {
+	var targets []*rules.Target
+	add := func(path, kind string) error {
+		h, err := parser.ParseAgentHooks(path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if len(h.Hooks) == 0 {
+			return nil
+		}
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			AgentHooks:     h,
+			AgentHooksFile: path,
+			AgentHooksKind: kind,
+		})
+		return nil
+	}
+	if err := add(filepath.Join(dir, ".cursor", "hooks.json"), "Cursor"); err != nil {
+		return nil, err
+	}
+	// Copilot reads every *.json in .github/hooks, not one fixed filename.
+	matches, err := filepath.Glob(filepath.Join(dir, ".github", "hooks", "*.json"))
+	if err != nil {
+		return nil, fmt.Errorf("glob copilot hooks: %w", err)
+	}
+	sort.Strings(matches)
+	for _, m := range matches {
+		if err := add(m, "Copilot"); err != nil {
+			return nil, err
+		}
+	}
+	return targets, nil
+}
+
 // loadDevinConfigOptional parses .devin/config.json, returning (nil, nil) when it
 // does not exist. A malformed file is an error, so a Devin config that is
 // silently not being scanned is reported rather than treated as empty.
@@ -930,6 +971,15 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// version control" per Devin's docs. Only permissions, mcpServers,
 	// read_config_from and hooks are honoured in a project config; we read the
 	// mcpServers (so the MCP rules fire) and the hooks (so the command rules do).
+	// Cursor .cursor/hooks.json and Copilot .github/hooks/*.json — committable
+	// hook files whose entries run shell commands. Routed through commandSites so
+	// the command-content rules apply, attributed to the file they came from.
+	hookTargets, err := agentHookTargets(dir)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, hookTargets...)
+
 	devinPath := filepath.Join(dir, ".devin", "config.json")
 	devinCfg, err := loadDevinConfigOptional(devinPath)
 	if err != nil {
