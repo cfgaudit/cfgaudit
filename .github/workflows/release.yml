@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub release and upload archives/checksums
+      id-token: write # keyless signing of the provenance via Sigstore
+      attestations: write # write the attestation to the GitHub attestations API
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -26,6 +28,11 @@ jobs:
           go-version-file: go.mod
           cache: false # release builds published artifacts; avoid cache poisoning
 
+      # Provides the syft binary the `sboms:` block in .goreleaser.yml shells out
+      # to; without it GoReleaser fails the release rather than skipping SBOMs.
+      - name: Install syft (for SBOM generation)
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: "~> v2"
@@ -35,3 +42,14 @@ jobs:
           # PAT with contents:write on cfgaudit/homebrew-tap so the cask can be
           # pushed there (the default GITHUB_TOKEN is scoped to this repo only).
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      # Provenance for the release archives — proves each archive was built by
+      # this workflow from this repo at this commit. Runs after GoReleaser so
+      # dist/ is populated. Verify a downloaded archive with:
+      #   gh attestation verify cfgaudit_<ver>_<os>_<arch>.tar.gz -R cfgaudit/cfgaudit
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
