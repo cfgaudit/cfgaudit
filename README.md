@@ -38,6 +38,44 @@ The image runs unprivileged as uid `65532`, so the files you mount must be reada
 
 ---
 
+## Verifying a release
+
+Every release is built by a GitHub Actions workflow that publishes [build provenance](https://slsa.dev/), and the container image is additionally signed with [cosign](https://github.com/sigstore/cosign). Both are keyless — the signing identity *is* the workflow, so a verified artifact provably came from this repository's release pipeline.
+
+**Release archive** — provenance for the archive you downloaded:
+
+```sh
+gh attestation verify cfgaudit_1.7.0_linux_amd64.tar.gz -R cfgaudit/cfgaudit
+```
+
+**`checksums.txt`** — verify this too if you check downloads against it (the plugin wrapper in `bin/cfgaudit` does):
+
+```sh
+gh attestation verify checksums.txt -R cfgaudit/cfgaudit
+```
+
+**Container image** — provenance and signature, both bound to the image digest rather than a tag, since a tag can be repointed later:
+
+```sh
+DIGEST=$(docker buildx imagetools inspect ghcr.io/cfgaudit/cfgaudit:latest --format '{{.Manifest.Digest}}')
+
+gh attestation verify "oci://ghcr.io/cfgaudit/cfgaudit@$DIGEST" -R cfgaudit/cfgaudit
+
+cosign verify "ghcr.io/cfgaudit/cfgaudit@$DIGEST" \
+  --certificate-identity-regexp '^https://github.com/cfgaudit/cfgaudit/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Attestations are available for releases after v1.7.0; `checksums.txt` coverage starts with the release following that.
+
+### A note on SBOMs
+
+The container image carries its SBOM as a signed attestation. The per-archive `.sbom.json` files, by contrast, are published as **plain release assets, not attestations** — deliberately.
+
+Each one lists cfgaudit itself, its two dependencies (`gopkg.in/yaml.v3`, `github.com/BurntSushi/toml`), the Go standard library, and the archive's own digest. That is the same information `go.mod` already makes public, and the archive it describes is covered by provenance — so a swapped SBOM cannot make a tampered archive verify. If you need an SBOM you can trust end to end, use the image attestation, or regenerate one from a verified archive with [syft](https://github.com/anchore/syft).
+
+---
+
 ## Usage
 
 ```sh
