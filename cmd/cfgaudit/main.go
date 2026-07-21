@@ -892,6 +892,21 @@ func loadDevinConfigOptional(path string) (*parser.DevinConfig, error) {
 	return c, nil
 }
 
+// loadCopilotSettingsOptional parses .github/copilot/settings.json, returning
+// (nil, nil) when it does not exist. A malformed file is an error, so a settings
+// file that is silently not being scanned is reported rather than treated as
+// empty.
+func loadCopilotSettingsOptional(path string) (*parser.CopilotSettings, error) {
+	c, err := parser.ParseCopilotSettings(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return c, nil
+}
+
 // loadZedServersOptional parses .zed/settings.json and returns its
 // context_servers, or (nil, nil) when the file does not exist. A malformed file
 // is an error, so a Zed config that is silently not being scanned is reported
@@ -979,6 +994,22 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	targets = append(targets, hookTargets...)
+
+	// Copilot .github/copilot/settings.json — repository-level plugin settings.
+	// enabledPlugins / extraKnownMarketplaces install third-party code, the same
+	// surface CFG055 covers for Claude.
+	copilotPath := filepath.Join(dir, ".github", "copilot", "settings.json")
+	copilotCfg, err := loadCopilotSettingsOptional(copilotPath)
+	if err != nil {
+		return nil, err
+	}
+	if copilotCfg != nil && (len(copilotCfg.EnabledPlugins) > 0 || len(copilotCfg.ExtraKnownMarketplaces) > 0) {
+		targets = append(targets, &rules.Target{
+			Scope:               finding.ScopeProject,
+			CopilotSettings:     copilotCfg,
+			CopilotSettingsFile: copilotPath,
+		})
+	}
 
 	devinPath := filepath.Join(dir, ".devin", "config.json")
 	devinCfg, err := loadDevinConfigOptional(devinPath)

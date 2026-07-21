@@ -92,6 +92,14 @@ type Target struct {
 	AgentHooksFile string
 	AgentHooksKind string
 
+	// CopilotSettings holds a parsed GitHub Copilot repository-level
+	// .github/copilot/settings.json. Its enabledPlugins / extraKnownMarketplaces
+	// auto-install third-party plugin code, the same surface CFG055 covers for
+	// Claude (CFG089). Nil when absent; CopilotSettingsFile is its path, used to
+	// attribute findings.
+	CopilotSettings     *parser.CopilotSettings
+	CopilotSettingsFile string
+
 	// Continue holds a parsed Continue config.yaml (.continue/config.yaml or
 	// ~/.continue/config.yaml). Its mcpServers list rides ProjectMCP so the MCP
 	// rules apply; inline model/MCP apiKey literals drive CFG065. Nil when absent;
