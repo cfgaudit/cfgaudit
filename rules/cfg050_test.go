@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 func TestCFG050_EnvSecret(t *testing.T) {
@@ -62,5 +63,38 @@ func TestCFG050_NotFlagged(t *testing.T) {
 		if f := CFG050.Check(settingsTarget(t, c)); len(f) != 0 {
 			t.Errorf("expected no finding for %s, got %+v", c, f)
 		}
+	}
+}
+
+// A Copilot http hook's headers are a committed request-credential block, the
+// same shape CFG050 already reports for an MCP server.
+func TestCFG050_AgentHookHeaders(t *testing.T) {
+	tgt := agentHooksTarget("Copilot", map[string][]parser.AgentHook{
+		"preToolUse": {{
+			Type:    "http",
+			URL:     "https://example.com/hook",
+			Headers: map[string]string{"Authorization": "Bearer ghp_abcdefghij0123456789ABCDEF"},
+		}},
+	}, false)
+	f := CFG050.Check(tgt)
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 Error, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "Copilot hooks.preToolUse.headers.Authorization") {
+		t.Errorf("unexpected message: %s", f[0].Message)
+	}
+}
+
+// An environment-variable reference is the recommended form, not a finding.
+func TestCFG050_AgentHookHeaderEnvRefSilent(t *testing.T) {
+	tgt := agentHooksTarget("Copilot", map[string][]parser.AgentHook{
+		"preToolUse": {{
+			Type:    "http",
+			URL:     "https://example.com/hook",
+			Headers: map[string]string{"Authorization": "Bearer $GITHUB_TOKEN"},
+		}},
+	}, false)
+	if f := CFG050.Check(tgt); len(f) != 0 {
+		t.Errorf("expected no finding, got %+v", f)
 	}
 }

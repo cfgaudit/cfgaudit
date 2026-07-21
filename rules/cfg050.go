@@ -41,9 +41,11 @@ var placeholderRe = regexp.MustCompile(`(?i)^(<.*>|x{3,}|changeme|your[-_ ].*|to
 
 // Check flags hardcoded secrets in an MCP server's env or headers block — the
 // MCP analogue of CFG007 (which only covers settings.json env). Covers every MCP
-// source in scope. Shares CFG007's secret detector for values and key names.
+// source in scope, plus the headers of a Copilot `type: "http"` hook, which are
+// the same shape of committed request credential. Shares CFG007's secret detector
+// for values and key names.
 func (r *cfg050) Check(t *Target) []finding.Finding {
-	var findings []finding.Finding
+	findings := r.checkAgentHookHeaders(t)
 	for _, ref := range t.mcpServerRefs() {
 		base := "mcpServers." + ref.Name
 
@@ -59,27 +61,67 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 			}
 		}
 
-		for _, k := range sortedKeys(ref.Server.Headers) {
-			v := strings.TrimSpace(ref.Server.Headers[k])
-			if v == "" || isSecretReference(v) {
+		findings = append(findings, headerSecrets(base, ref.Server.Headers, ref.File, t)...)
+	}
+	return findings
+}
+
+// checkAgentHookHeaders reports hardcoded credentials in the headers of a Cursor
+// or Copilot `type: "http"` hook. The channel itself is CFG088's finding; a
+// literal secret sitting in its headers is the same problem CFG050 already
+// reports for an MCP server, in a different committed file.
+//
+// disableAllHooks does not suppress this one: a secret committed into a file is
+// leaked whether or not the agent currently runs the hook.
+func (r *cfg050) checkAgentHookHeaders(t *Target) []finding.Finding {
+	ah := t.AgentHooks
+	if ah == nil || len(ah.Hooks) == 0 {
+		return nil
+	}
+	events := make([]string, 0, len(ah.Hooks))
+	for e := range ah.Hooks {
+		events = append(events, e)
+	}
+	sort.Strings(events)
+
+	var findings []finding.Finding
+	for _, event := range events {
+		for _, h := range ah.Hooks[event] {
+			if len(h.Headers) == 0 {
 				continue
 			}
-			if label, ok := matchSecretPattern(v); ok {
-				findings = append(findings, secretFinding(base+".headers."+k, "a hardcoded "+label, ref.File, t))
+			base := t.AgentHooksKind + " hooks." + event
+			findings = append(findings, headerSecrets(base, h.Headers, t.AgentHooksFile, t)...)
+		}
+	}
+	return findings
+}
+
+// headerSecrets reports hardcoded credentials in a request-header block, by
+// value pattern (a recognised token shape) or by header name (an auth header
+// carrying a literal, non-placeholder credential).
+func headerSecrets(base string, headers map[string]string, file string, t *Target) []finding.Finding {
+	var findings []finding.Finding
+	for _, k := range sortedKeys(headers) {
+		v := strings.TrimSpace(headers[k])
+		if v == "" || isSecretReference(v) {
+			continue
+		}
+		if label, ok := matchSecretPattern(v); ok {
+			findings = append(findings, secretFinding(base+".headers."+k, "a hardcoded "+label, file, t))
+			continue
+		}
+		// An auth header carrying a literal (non-placeholder) credential.
+		if authHeaderNames[strings.ToLower(k)] {
+			cred := strings.TrimSpace(authSchemeRe.ReplaceAllString(v, ""))
+			if cred == "" || isSecretReference(cred) || placeholderRe.MatchString(cred) {
 				continue
 			}
-			// An auth header carrying a literal (non-placeholder) credential.
-			if authHeaderNames[strings.ToLower(k)] {
-				cred := strings.TrimSpace(authSchemeRe.ReplaceAllString(v, ""))
-				if cred == "" || isSecretReference(cred) || placeholderRe.MatchString(cred) {
-					continue
-				}
-				what := "a hardcoded credential"
-				if label, ok := matchSecretPattern(cred); ok {
-					what = "a hardcoded " + label
-				}
-				findings = append(findings, secretFinding(base+".headers."+k, what, ref.File, t))
+			what := "a hardcoded credential"
+			if label, ok := matchSecretPattern(cred); ok {
+				what = "a hardcoded " + label
 			}
+			findings = append(findings, secretFinding(base+".headers."+k, what, file, t))
 		}
 	}
 	return findings
@@ -90,7 +132,7 @@ func secretFinding(loc, what, file string, t *Target) finding.Finding {
 		RuleID:   "CFG050",
 		Severity: finding.Error,
 		File:     file,
-		Message:  loc + " contains " + what + " — do not commit secrets to an MCP config; reference an environment variable (e.g. \"${TOKEN}\") instead" + userScopeNote(t),
+		Message:  loc + " contains " + what + " — do not commit secrets to an agent config file; reference an environment variable (e.g. \"${TOKEN}\") instead" + userScopeNote(t),
 	}
 }
 

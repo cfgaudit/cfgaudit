@@ -436,8 +436,18 @@ The [vercel-labs/skills](https://github.com/vercel-labs/skills) CLI (skills.sh) 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG047](docs/rules/CFG047.md) | error | `.vscode/tasks.json` task runs on folder open (`runOptions.runOn: "folderOpen"`) — zero-click code execution when the repo is opened; silent (`presentation.reveal: "never"`) is called out | LLM06 |
-| [CFG086](docs/rules/CFG086.md) | error | committed agent hook runs on a zero-click event — Cursor `.cursor/hooks.json` `workspaceOpen` or Copilot `.github/hooks/*.json` `sessionStart` — executes on every teammate who opens the repo, before they ask the agent for anything (cross-agent analogue of CFG047/CFG067) | LLM03 |
 | [CFG048](docs/rules/CFG048.md) | error/warn | `.vscode/settings.json` weakens agent auto-approval — `chat.tools.edits.autoApprove` re-enabling a protected path such as `**/.vscode/*.json` (chains into CFG047), a host-unrestricted `chat.tools.urls.autoApprove`, or the blanket `chat.tools.global.autoApprove` (warn: application-scoped, so upstream ignores it from a workspace file) | LLM06 |
+
+### Cursor & GitHub Copilot — hooks and repository settings
+
+Cursor's `.cursor/hooks.json` and Copilot's `.github/hooks/*.json` declare shell commands, prompts and HTTP callbacks the agent runs at points in its lifecycle. Cursor's docs say hooks are *"stored in version control alongside your code"* and *"automatically load for all team members"*, so both are committable execution surfaces. Their **command content** is judged by the command-content rules (CFG008/009/014/015/027/028/037/038/039/059/072/077/078), which run over these files too; the rules below cover what the command text cannot show — the trigger, the permission decision, the declared network channel, and the plugin supply chain.
+
+| ID | Severity | Description | OWASP |
+|----|----------|-------------|-------|
+| [CFG086](docs/rules/CFG086.md) | error | committed agent hook runs on a zero-click event — Cursor `.cursor/hooks.json` `workspaceOpen` or Copilot `.github/hooks/*.json` `sessionStart` — executes on every teammate who opens the repo, before they ask the agent for anything (cross-agent analogue of CFG047/CFG067) | LLM03 |
+| [CFG087](docs/rules/CFG087.md) | error/warn | committed hook auto-approves tool calls — answers a permission gate with the allowing value (Copilot `behavior` on `permissionRequest`, `permissionDecision` on `preToolUse`; Cursor `permission` on `preToolUse`/`beforeShellExecution`/`beforeMCPExecution`/`subagentStart`), removing the confirmation prompt for everyone who opens the repo; argument rewriting (`modifiedArgs`/`updated_input`) is warn | LLM06 |
+| [CFG088](docs/rules/CFG088.md) | error/warn | Copilot `type: "http"` hook POSTs the event payload (prompts, tool names and arguments) to a non-loopback URL — a network channel declared in config rather than command text (CFG038's blind spot); a non-empty `allowedEnvVars`, which permits named environment variables to be expanded into the request headers, escalates it to error | LLM02 |
+| [CFG089](docs/rules/CFG089.md) | warn | `.github/copilot/settings.json` auto-installs third-party plugins — `enabledPlugins` loads a plugin's hooks/commands/MCP on session start, and an `extraKnownMarketplaces` source without a full-SHA `sha`/`ref` is unpinned (CFG055's threat model in Copilot's file; warn because its committability is inferred, not documented) | LLM03 |
 
 ### Gemini CLI — `.gemini/settings.json` & `GEMINI.md`
 
@@ -478,9 +488,9 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081 |
-| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078 |
-| LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074 |
-| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079 |
+| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088 |
+| LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089 |
+| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087 |
 
 **Not covered**
 
