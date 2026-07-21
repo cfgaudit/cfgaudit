@@ -388,11 +388,12 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, gem...)
 
-	// OpenAI Codex CLI config.toml (~/.codex/, only with --user — Codex config is
-	// user-global, not project-merged). Carries approval_policy / sandbox_mode
-	// (CFG063/064) and [mcp_servers] rides ProjectMCP. AGENTS.md (the committed
-	// project surface) rides instructionTargets above.
-	cdx, err := codexTargets(includeUser)
+	// OpenAI Codex CLI config.toml. Codex IS project-merged: besides the user
+	// ${CODEX_HOME}/config.toml it loads a repo-local .codex/config.toml (both at
+	// the git root and by walking parents), so the committed file is scanned
+	// without --user. Carries approval_policy / sandbox_mode (CFG063/064) and
+	// [mcp_servers] rides ProjectMCP. AGENTS.md rides instructionTargets above.
+	cdx, err := codexTargets(dir, includeUser)
 	if err != nil {
 		return nil, err
 	}
@@ -500,9 +501,39 @@ func parseContinueOptional(path string) (*parser.ContinueConfig, error) {
 // (~/.codex/config.toml, scanned only with --user). The Codex-specific fields
 // drive CFG063/064; [mcp_servers] are attached as ProjectMCP so the shared MCP
 // rules fire, attributed to the config file.
-func codexTargets(includeUser bool) ([]*rules.Target, error) {
+func codexTargets(dir string, includeUser bool) ([]*rules.Target, error) {
+	var targets []*rules.Target
+
+	// Project layer: a committed <repo>/.codex/config.toml. Codex resolves this
+	// from the git root and by walking parent directories; the scanned root is the
+	// committable form of both, and a parent outside the repo is not something a
+	// clone ships.
+	//
+	// The bare ${PWD}/config.toml layer is deliberately NOT scanned: the filename
+	// is far too generic (Hugo, Zola and others use it), so decoding every repo's
+	// config.toml as Codex config would turn an unrelated malformed file into a
+	// hard scan error for no coverage gain — the committed Codex form is
+	// .codex/config.toml.
+	projectPath := filepath.Join(dir, ".codex", "config.toml")
+	projectCfg, err := parseCodexOptional(projectPath)
+	if err != nil {
+		return nil, err
+	}
+	if projectCfg != nil {
+		// Codex refuses a subset of keys from a project layer; drop them so we do
+		// not report configuration the CLI ignores.
+		projectCfg.ApplyProjectLayerDenylist()
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			Codex:          projectCfg,
+			CodexFile:      projectPath,
+			ProjectMCP:     projectCfg.MCPServerMap(),
+			ProjectMCPFile: projectPath,
+		})
+	}
+
 	if !includeUser {
-		return nil, nil
+		return targets, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -514,15 +545,15 @@ func codexTargets(includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	if cc == nil {
-		return nil, nil
+		return targets, nil
 	}
-	return []*rules.Target{{
+	return append(targets, &rules.Target{
 		Scope:          finding.ScopeUser,
 		Codex:          cc,
 		CodexFile:      path,
 		ProjectMCP:     cc.MCPServerMap(),
 		ProjectMCPFile: path,
-	}}, nil
+	}), nil
 }
 
 // parseCodexOptional parses a Codex config.toml, returning (nil, nil) when the

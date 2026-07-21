@@ -68,3 +68,36 @@ func ParseCodexConfig(path string) (*CodexConfig, error) {
 	}
 	return &c, nil
 }
+
+// ApplyProjectLayerDenylist clears the fields Codex refuses to honour from a
+// project-local config layer, so cfgaudit does not report configuration the CLI
+// ignores.
+//
+// Codex loads a committed .codex/config.toml as a project layer, but guards a
+// subset of keys against it. From codex-rs/config/src/loader/mod.rs:
+//
+//	// Project-local config comes from repository contents, so it should not get to
+//	// choose where a user's credentials are sent or which local commands are run.
+//	const PROJECT_LOCAL_CONFIG_DENYLIST: &[&str] = &[
+//	    "openai_base_url", "chatgpt_base_url", "apps_mcp_product_sku",
+//	    "model_provider", "model_providers", "notify", "profile", "profiles",
+//	    "experimental_realtime_webrtc_call_base_url",
+//	    "experimental_realtime_ws_base_url", "otel",
+//	];
+//
+// Of those, cfgaudit reads three: notify (a command site) plus chatgpt_base_url
+// and model_providers (CFG071). Reporting them from a project file would be a
+// pure false positive — the same reasoning that keeps Devin's user-only
+// sandbox.excluded unmodelled.
+//
+// approval_policy, sandbox_mode and mcp_servers are deliberately NOT on the
+// upstream denylist, which is why CFG063/CFG064 and the MCP family do apply to a
+// committed file.
+func (c *CodexConfig) ApplyProjectLayerDenylist() {
+	if c == nil {
+		return
+	}
+	c.Notify = nil
+	c.ChatGPTBaseURL = ""
+	c.ModelProviders = nil
+}
