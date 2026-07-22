@@ -769,6 +769,13 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range projRules {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
+	projSkills, err := agentSkillsFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range projSkills {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -782,6 +789,13 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			return nil, err
 		}
 		for _, m := range userRules {
+			paths = append(paths, scopedPath{m, finding.ScopeUser})
+		}
+		userSkills, err := agentSkillsFiles(home)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range userSkills {
 			paths = append(paths, scopedPath{m, finding.ScopeUser})
 		}
 	}
@@ -811,6 +825,41 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 // — and walks subdirectories to find them, so unlike the single-level globs this
 // needs a full walk (#325). A missing rules directory yields no files and no
 // error; results are sorted for deterministic ordering.
+// agentSkillsFiles returns every SKILL.md under <base>/.agents/skills, discovered
+// recursively. `.agents/skills/` is a cross-agent convention: it is read from the
+// scanned project (not just the vendor's own repo) by OpenHands, OpenAI Codex,
+// charmbracelet/crush, block/goose, and Moonshot's Kimi Code — each loading a
+// committed SKILL.md there as trusted skill context, verified against those five
+// codebases (#394). A skill is instruction text, so the content rules apply to it
+// exactly as they do to .claude/skills/*/SKILL.md.
+//
+// Recursive walk (not filepath.Glob) because the agents discover subdirectories,
+// like .claude/rules (#325). Only SKILL.md is collected, matching how
+// .claude/skills is treated — OpenHands additionally loads plain *.md under this
+// dir, but scanning a skill's bundled helper markdown as instruction content
+// would be a false positive, so that superset is deliberately left out.
+func agentSkillsFiles(base string) ([]string, error) {
+	root := filepath.Join(base, ".agents", "skills")
+	var out []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !d.IsDir() && strings.EqualFold(filepath.Base(path), "SKILL.md") {
+			out = append(out, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 func claudeRulesFiles(base string) ([]string, error) {
 	root := filepath.Join(base, ".claude", "rules")
 	var out []string
