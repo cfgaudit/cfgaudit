@@ -58,7 +58,6 @@ var aveByRule = map[string]string{
 	"CFG081": "AVE-2026-00027", // survive compaction → multi-turn persistence
 	"CFG085": "AVE-2026-00048", // subagent perm mode → unsafe delegation
 	"CFG090": "AVE-2026-00032", // network reconnaissance instruction
-	"CFG091": "AVE-2026-00036", // lateral-movement pivot instruction
 
 	// command content
 	"CFG008": "AVE-2026-00004", // reverse shell → shell-pipe code execution
