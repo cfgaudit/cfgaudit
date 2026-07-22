@@ -694,9 +694,17 @@ var (
 		".cursorrules",
 		".windsurfrules",
 		"AGENTS.md",
+		"AGENT.md",  // singular — Amp's convention, also loaded by xAI's Grok CLI
 		"GEMINI.md", // Gemini CLI project instruction file (analog to CLAUDE.md)
 		filepath.Join(".github", "copilot-instructions.md"),
 	}
+	// Matching is case-sensitive (exact filename). Some agents also load
+	// mixed-case spellings such as `Agents.md` / `Claude.md`; those are
+	// deliberately out of scope here. Case-insensitive filename discovery is a
+	// cross-cutting change — it would alter discovery for every agent and needs a
+	// custom walk (Go's filepath.Glob is case-sensitive) — so it is left to a
+	// separate decision rather than folded into this list. This is the same
+	// case-sensitivity surface CFG028 already reasons about for trust files.
 	agentInstructionGlobs = []string{
 		filepath.Join(".cursor", "rules", "*.md"),
 		filepath.Join(".cursor", "rules", "*.mdc"),
