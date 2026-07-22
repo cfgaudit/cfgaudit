@@ -1,6 +1,8 @@
 # cfgaudit ↔ AVE (behavioral crosswalk & gap analysis)
 
-> **Secondary, provisional lens — more provisional than the others.** Mapped against [AVE — Agentic Vulnerability Enumeration](https://github.com/aveproject/ave) (record set **v1.1.0**, 59 records). The [OWASP Top 10 for LLM Applications 2025](https://owasp.org/www-project-top-10-for-large-language-model-applications/) stays cfgaudit's **primary** mapping (one risk per rule, in each rule doc and the README). Unlike the [OWASP MCP Top 10](../README.md#owasp-mcp-top-10-mapping-secondary) and [AISVS](aisvs-mapping.md) lenses, AVE ids are **not** stamped into rule doc-headers or machine output, and deliberately so: AVE is early (single-vendor, two prior reference implementations). This file is the whole coupling — a standalone artifact. If AVE stalls, delete this file; if it matures (a second independent non-vendor implementation, or an OWASP/framework reference), promote it to per-rule headers the way the MCP Top 10 mapping was.
+> **Secondary, provisional lens — more provisional than the others.** Mapped against [AVE — Agentic Vulnerability Enumeration](https://github.com/aveproject/ave) (record set **v1.1.0**, 59 records). The [OWASP Top 10 for LLM Applications 2025](https://owasp.org/www-project-top-10-for-large-language-model-applications/) stays cfgaudit's **primary** mapping (one risk per rule, in each rule doc and the README).
+>
+> **Emitted in machine output.** Each mapped rule's primary AVE id — together with its OWASP LLM id — rides in `cfgaudit`'s JSON and SARIF output (`AVEID` in JSON; `properties.ave_id` on the SARIF rule and result, keeping the CFG id as the SARIF `ruleId`). The rule→AVE mapping is a **single file**, [`cmd/cfgaudit/avemap.go`](../cmd/cfgaudit/avemap.go), not a per-rule doc-header line — deliberately, so the whole coupling remains one file to delete if AVE stalls. This crosswalk is the human-readable companion and the source of truth the map is kept in sync with (a consistency test guards against drift). If AVE gains a second independent non-vendor implementation or an OWASP/framework reference, the mapping graduates from "provisional" without structural change.
 
 ## What this mapping is — and is not
 
@@ -16,12 +18,12 @@ Even within the 44, the boundary is real: cfgaudit does not connect to servers, 
 
 | Bucket | Count |
 |---|--:|
-| Covered — ≥1 CFG rule maps cleanly | 24 |
+| Covered — ≥1 CFG rule maps cleanly | 26 |
 | Partial — committable slice or adjacent shape only | 11 |
-| Gap — committable, no CFG rule (rule candidate) | 4 |
+| Gap — committable, no CFG rule (rule candidate) | 2 |
 | Out of scope — labelled static by AVE, beyond static-config auditing | 5 |
 
-cfgaudit maps (covered + partial) to **35 of 44**. The 5 out-of-scope records are a note back to AVE — see the last section.
+cfgaudit maps (covered + partial) to **37 of 44**. The 5 out-of-scope records are a note back to AVE — see the last section.
 
 ---
 
@@ -31,25 +33,27 @@ cfgaudit maps (covered + partial) to **35 of 44**. The 5 out-of-scope records ar
 | CFG | AVE |
 |---|---|
 | CFG024 hidden Unicode | AVE-2026-00029 homoglyph / Unicode obfuscation |
-| CFG026 override / persona / authority | AVE-2026-00007 goal hijack · 00009 jailbreak · 00014 false authority |
-| CFG029 bypass permission prompts | AVE-2026-00012 false permission grant · 00021 autonomous action without confirmation |
+| CFG026 override / persona / authority | AVE-2026-00007 goal hijack · AVE-2026-00009 jailbreak · AVE-2026-00014 false authority |
+| CFG029 bypass permission prompts | AVE-2026-00012 false permission grant · AVE-2026-00021 autonomous action without confirmation |
 | CFG030 conceal behavior | AVE-2026-00010 covert instruction concealment |
-| CFG032 pseudo-system / role injection | AVE-2026-00025 conversation-history injection · 00030 false role claim |
-| CFG035 configure/trust MCP from instructions | AVE-2026-00011 dynamic tool call *(partial)* · 00034 dynamic skill import *(partial)* |
-| CFG036 embedded shell for exfil / auto-exec | AVE-2026-00003 credential exfil · 00013 PII exfil · 00006 crypto drain *(partial)* |
-| CFG056 broad / always-on trigger | AVE-2026-00058 deceptive trigger scope · 00038 unbounded tool use *(partial)* · 00022 scope creep *(partial)* |
-| CFG057 encoded payload | AVE-2026-00057 obfuscated payload evading scanners · 00026 output-encoding exfil *(partial)* |
+| CFG032 pseudo-system / role injection | AVE-2026-00025 conversation-history injection · AVE-2026-00030 false role claim |
+| CFG035 configure/trust MCP from instructions | AVE-2026-00011 dynamic tool call *(partial)* · AVE-2026-00034 dynamic skill import *(partial)* |
+| CFG036 embedded shell for exfil / auto-exec | AVE-2026-00003 credential exfil · AVE-2026-00013 PII exfil · AVE-2026-00006 crypto drain *(partial)* |
+| CFG056 broad / always-on trigger | AVE-2026-00058 deceptive trigger scope · AVE-2026-00038 unbounded tool use *(partial)* · AVE-2026-00022 scope creep *(partial)* |
+| CFG057 encoded payload | AVE-2026-00057 obfuscated payload evading scanners · AVE-2026-00026 output-encoding exfil *(partial)* |
 | CFG081 survive compaction | AVE-2026-00027 multi-turn instruction persistence |
+| CFG090 network reconnaissance | AVE-2026-00032 network-reconnaissance instruction |
+| CFG091 lateral movement | AVE-2026-00036 lateral movement / agent pivot |
 | CFG051 / CFG085 delegation & tool grants | AVE-2026-00048 unsafe agent delegation chain |
-| CFG031 sensitive path · CFG033 image-exfil sink | AVE-2026-00003 · 00013 · 00039 covert channel *(partial)* |
+| CFG031 sensitive path · CFG033 image-exfil sink | AVE-2026-00003 · AVE-2026-00013 · AVE-2026-00039 covert channel *(partial)* |
 
 ### Command content
 | CFG | AVE |
 |---|---|
-| CFG008 reverse shell · CFG014 curl\|sh · CFG019 inline script / eval | AVE-2026-00004 shell-pipe code execution · 00033 unsafe deserialization / eval |
+| CFG008 reverse shell · CFG014 curl\|sh · CFG019 inline script / eval | AVE-2026-00004 shell-pipe code execution · AVE-2026-00033 unsafe deserialization / eval |
 | CFG039 rm -rf | AVE-2026-00005 recursive filesystem destruction |
 | CFG027 persistence · CFG028 write trust files | AVE-2026-00008 self-replication |
-| CFG037 SSH keys · CFG038 env dump · CFG072 DNS exfil | AVE-2026-00003 · 00013 · 00039 |
+| CFG037 SSH keys · CFG038 env dump · CFG072 DNS exfil | AVE-2026-00003 · AVE-2026-00013 · AVE-2026-00039 |
 
 ### MCP configuration
 | CFG | AVE |
@@ -58,18 +62,16 @@ cfgaudit maps (covered + partial) to **35 of 44**. The 5 out-of-scope records ar
 | CFG052 name shadowing · CFG059 typosquat | AVE-2026-00017 server impersonation / spoofing |
 | CFG019 inline script · CFG020 env code injection · CFG070 repo-relative command | AVE-2026-00055 command execution via untrusted MCP launch config |
 
-**Partial, worth flagging** — AVE-2026-00002 (tool-description injection), 00041 (server-card injection) and 00046 (tool-hook hijack) describe reading a **live** tool manifest or intercepting a running registry. cfgaudit does not connect to servers, so it covers these **only** when the tool description or hook ships in a committed `--plugins` package. For live servers they are behavioral-scanner (SkillSpector / clawscan) territory.
+**Partial, worth flagging** — AVE-2026-00002 (tool-description injection), AVE-2026-00041 (server-card injection) and AVE-2026-00046 (tool-hook hijack) describe reading a **live** tool manifest or intercepting a running registry. cfgaudit does not connect to servers, so it covers these **only** when the tool description or hook ships in a committed `--plugins` package. For live servers they are behavioral-scanner (SkillSpector / clawscan) territory.
 
 ---
 
 ## Direction 2 — AVE gaps → cfgaudit rule candidates
 
-Four `static_detection` classes a committed instruction / skill file can carry, with no CFG rule today:
+Two `static_detection` classes a committed instruction / skill file can carry, with no CFG rule today (CFG090/CFG091 shipped the other two — AVE-2026-00032 / AVE-2026-00036):
 
 | AVE | Status | Note |
 |---|---|---|
-| **AVE-2026-00032** network-reconnaissance instruction | **filed — #395** | instruction-content family, `warn` (AVE MEDIUM) |
-| **AVE-2026-00036** lateral-movement / pivot instruction | **filed — #396** | sibling of #395; recon→pivot pair |
 | **AVE-2026-00015** system-prompt extraction | deferred | maps to OWASP LLM07, which cfgaudit treats as runtime — the *leak* is runtime, the *instruction* is static; decide the boundary before filing |
 | **AVE-2026-00059** fragmented cross-description injection (ShareLock-class) | deferred | structurally needs multi-source correlation cfgaudit can't do today (every rule checks one file in isolation; the attack's defining property is that no single description is flaggable) — the attack-chain-correlation idea would serve both |
 
@@ -106,8 +108,8 @@ Five records carry `detection_stage: static_detection` but are not auditable fro
 | AVE-2026-00052 command injection via tool-call parameter | **server-side source** (SAST of the MCP implementation) |
 | AVE-2026-00053 path traversal via path parameter | **server-side source** (SAST) |
 
-00052 / 00053 are server *implementation* flaws, a distinct layer from the rest of AVE. A finer `detection_layer` value (e.g. `server_source`) would let consumers tell config-auditable from SAST-required.
+AVE-2026-00052 / AVE-2026-00053 are server *implementation* flaws, a distinct layer from the rest of AVE. A finer `detection_layer` value (e.g. `server_source`) would let consumers tell config-auditable from SAST-required.
 
 ---
 
-*Mappings are class-level behavioral equivalence, not asserted identity. Generated against AVE record set v1.1.0 and cfgaudit CFG001–CFG089; records 00052–00059 were the most recent AVE additions at authoring and should be re-checked on the next AVE release. A machine-readable form in AVE's own crosswalk schema (`cfgaudit-to-ave.json`) exists for upstream contribution to their `crosswalks/` directory.*
+*Mappings are class-level behavioral equivalence, not asserted identity. Generated against AVE record set v1.1.0 and cfgaudit CFG001–CFG089; records AVE-2026-00052–AVE-2026-00059 were the most recent AVE additions at authoring and should be re-checked on the next AVE release. A machine-readable form in AVE's own crosswalk schema (`cfgaudit-to-ave.json`) exists for upstream contribution to their `crosswalks/` directory.*

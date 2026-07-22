@@ -122,7 +122,7 @@ func main() {
 	case "json":
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(all)
+		_ = enc.Encode(withTaxonomy(all))
 	case "sarif":
 		if err := encodeSARIF(os.Stdout, all, cfgauditVersion, rules.All); err != nil {
 			fmt.Fprintf(os.Stderr, "cfgaudit: sarif encode: %v\n", err)

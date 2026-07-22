@@ -81,3 +81,34 @@ func TestEncodeSARIF_Shape(t *testing.T) {
 			run.Results[0].Locations[0].PhysicalLocation.Region)
 	}
 }
+
+// AVE-in-SARIF contract: a mapped rule carries its AVE id and OWASP id in
+// properties on both the rule catalog entry and each result, while the CFG id
+// stays the ruleId (cfgaudit is CFG-native, not AVE-native). Locks the output
+// contract, since removing these keys later would be a breaking change.
+func TestEncodeSARIF_TaxonomyProperties(t *testing.T) {
+	findings := []finding.Finding{
+		{RuleID: "CFG090", Severity: finding.Warn, File: "CLAUDE.md", Line: 3, Message: "recon"},
+	}
+	var buf bytes.Buffer
+	if err := encodeSARIF(&buf, findings, "0.1.0", []rules.Rule{stubRule{id: "CFG090"}}); err != nil {
+		t.Fatalf("encodeSARIF: %v", err)
+	}
+	var doc sarifDoc
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	run := doc.Runs[0]
+
+	res := run.Results[0]
+	if res.RuleID != "CFG090" {
+		t.Errorf("ruleId must stay the CFG id, got %q", res.RuleID)
+	}
+	if res.Properties["ave_id"] != "AVE-2026-00032" || res.Properties["owasp_llm"] != "LLM06" {
+		t.Errorf("result properties wrong: %v", res.Properties)
+	}
+	rule := run.Tool.Driver.Rules[0]
+	if rule.Properties["ave_id"] != "AVE-2026-00032" || rule.Properties["owasp_llm"] != "LLM06" {
+		t.Errorf("rule properties wrong: %v", rule.Properties)
+	}
+}
