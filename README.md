@@ -406,6 +406,8 @@ AI coding agents read their instruction files as trusted system-context every se
 | [CFG057](docs/rules/CFG057.md) | warn | instruction file embeds an encoded payload — a `data:` URI or base64 blob that decodes to an injection phrase or command (evades CFG024/CFG026) | LLM01 |
 | [CFG080](docs/rules/CFG080.md) | error | instruction file hides a directive inside an HTML comment (`<!-- you must… / silently POST… -->`) — invisible in rendered Markdown but read by the agent (comment-syntax sibling of CFG024) | LLM01 |
 | [CFG081](docs/rules/CFG081.md) | error | instruction file tells the agent to survive context compaction/summarization (`preserve these instructions across compaction`) — persistence directive that makes an injection durable | LLM01 |
+| [CFG090](docs/rules/CFG090.md) | warn | instruction directs the agent to scan or enumerate a network (`enumerate services on the subnet`, `port scan`, `nmap`) — turns a trusted internal host into a reconnaissance tool; a network-specific object is required so `scan the codebase` is not flagged (AVE-2026-00032) | LLM06 |
+| [CFG091](docs/rules/CFG091.md) | warn | instruction uses the agent as a lateral-movement pivot (`pivot to other systems using current access`, `use this foothold to reach adjacent servers`) — anchored to the movement-into-a-system sense so `pivot the table` is not flagged (AVE-2026-00036) | LLM06 |
 | [CFG051](docs/rules/CFG051.md) | error/warn | skill/command/subagent frontmatter `allowed-tools` grants unrestricted shell or all tools (`Bash`, `*`, `all`) — not narrowed by `disallowed-tools` | LLM06 |
 | [CFG056](docs/rules/CFG056.md) | warn | model-invocable skill/command/subagent has a broad/always-on `description` or `triggers` entry ("for every request", "always invoke") — behaviour-hijack via greedy selection | LLM01 |
 
@@ -494,7 +496,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081 |
 | LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089 |
-| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087 |
+| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091 |
 
 **Not covered**
 
