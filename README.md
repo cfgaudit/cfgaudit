@@ -45,7 +45,7 @@ Every release is built by a GitHub Actions workflow that publishes [build proven
 **Release archive** — provenance for the archive you downloaded:
 
 ```sh
-gh attestation verify cfgaudit_1.8.0_linux_amd64.tar.gz -R cfgaudit/cfgaudit
+gh attestation verify cfgaudit_1.9.0_linux_amd64.tar.gz -R cfgaudit/cfgaudit
 ```
 
 **`checksums.txt`** — verify this too if you check downloads against it (the plugin wrapper in `bin/cfgaudit` does):
@@ -243,7 +243,7 @@ For GitLab pipelines, include the component (published to the [CI/CD Catalog](ht
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.8.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.9.0
     inputs:
       path: .
       format: text
@@ -255,7 +255,7 @@ To surface findings **inline in merge requests** via the Code Quality widget, us
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.8.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.9.0
     inputs:
       path: .
 ```
