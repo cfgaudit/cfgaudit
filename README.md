@@ -8,7 +8,7 @@ Security auditor for AI-agent configuration files.
 
 cfgaudit scans the configuration of AI coding assistants — starting with [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — and flags settings that violate the principle of least privilege or leave sensitive files exposed to the agent's context.
 
-Every finding maps to an [OWASP Top 10 for LLM Applications 2025](https://owasp.org/www-project-top-10-for-large-language-model-applications/) risk (the primary mapping). Two secondary lenses are also provided: the [OWASP MCP Top 10](#owasp-mcp-top-10-mapping-secondary) for the MCP-server rules, and the [OWASP AISVS 1.0 mapping](docs/aisvs-mapping.md) for teams who verify against the AI Security Verification Standard.
+Every finding maps to an [OWASP Top 10 for LLM Applications 2025](https://owasp.org/www-project-top-10-for-large-language-model-applications/) risk (the primary mapping). Two secondary lenses are also provided: the [OWASP MCP Top 10](#owasp-mcp-top-10-mapping-secondary) for the MCP-server rules, and the [OWASP AISVS 1.0 mapping](docs/aisvs-mapping.md) for teams who verify against the AI Security Verification Standard. A behavioral [crosswalk to AVE](docs/cfgaudit-to-ave.md) (Agentic Vulnerability Enumeration) is also maintained as a standalone artifact — a gap analysis rather than a per-rule mapping, since AVE is early.
 
 ---
 
