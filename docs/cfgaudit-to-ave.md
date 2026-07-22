@@ -18,12 +18,12 @@ Even within the 44, the boundary is real: cfgaudit does not connect to servers, 
 
 | Bucket | Count |
 |---|--:|
-| Covered — ≥1 CFG rule maps cleanly | 26 |
+| Covered — ≥1 CFG rule maps cleanly | 25 |
 | Partial — committable slice or adjacent shape only | 11 |
-| Gap — committable, no CFG rule (rule candidate) | 2 |
+| Gap — committable, no CFG rule (rule candidate) | 3 |
 | Out of scope — labelled static by AVE, beyond static-config auditing | 5 |
 
-cfgaudit maps (covered + partial) to **37 of 44**. The 5 out-of-scope records are a note back to AVE — see the last section.
+cfgaudit maps (covered + partial) to **36 of 44**. The 5 out-of-scope records are a note back to AVE — see the last section.
 
 ---
 
@@ -43,7 +43,6 @@ cfgaudit maps (covered + partial) to **37 of 44**. The 5 out-of-scope records ar
 | CFG057 encoded payload | AVE-2026-00057 obfuscated payload evading scanners · AVE-2026-00026 output-encoding exfil *(partial)* |
 | CFG081 survive compaction | AVE-2026-00027 multi-turn instruction persistence |
 | CFG090 network reconnaissance | AVE-2026-00032 network-reconnaissance instruction |
-| CFG091 lateral movement | AVE-2026-00036 lateral movement / agent pivot |
 | CFG051 / CFG085 delegation & tool grants | AVE-2026-00048 unsafe agent delegation chain |
 | CFG031 sensitive path · CFG033 image-exfil sink | AVE-2026-00003 · AVE-2026-00013 · AVE-2026-00039 covert channel *(partial)* |
 
@@ -68,10 +67,11 @@ cfgaudit maps (covered + partial) to **37 of 44**. The 5 out-of-scope records ar
 
 ## Direction 2 — AVE gaps → cfgaudit rule candidates
 
-Two `static_detection` classes a committed instruction / skill file can carry, with no CFG rule today (CFG090/CFG091 shipped the other two — AVE-2026-00032 / AVE-2026-00036):
+Three `static_detection` classes with no CFG rule today (CFG090 ships AVE-2026-00032; AVE-2026-00036 was implemented as CFG091 but reverted after a pre-release FP analysis — see below):
 
 | AVE | Status | Note |
 |---|---|---|
+| **AVE-2026-00036** lateral movement / agent pivot | deferred (was CFG091, reverted) | a pre-release FP analysis found the vocabulary ("lateral movement", "pivot to other systems") is intent-ambiguous — it appears overwhelmingly in security-tool self-description, defensive/detection contexts ("prevent/identify lateral movement"), and offensive-agent capability tables that a static linter cannot distinguish from a malicious directive. Not statically detectable with acceptable precision |
 | **AVE-2026-00015** system-prompt extraction | deferred | maps to OWASP LLM07, which cfgaudit treats as runtime — the *leak* is runtime, the *instruction* is static; decide the boundary before filing |
 | **AVE-2026-00059** fragmented cross-description injection (ShareLock-class) | deferred | structurally needs multi-source correlation cfgaudit can't do today (every rule checks one file in isolation; the attack's defining property is that no single description is flaggable) — the attack-chain-correlation idea would serve both |
 
