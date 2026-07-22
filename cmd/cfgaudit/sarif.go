@@ -35,15 +35,17 @@ type sarifDriver struct {
 }
 
 type sarifRule struct {
-	ID      string `json:"id"`
-	HelpURI string `json:"helpUri,omitempty"`
+	ID         string            `json:"id"`
+	HelpURI    string            `json:"helpUri,omitempty"`
+	Properties map[string]string `json:"properties,omitempty"`
 }
 
 type sarifResult struct {
-	RuleID    string          `json:"ruleId"`
-	Level     string          `json:"level"`
-	Message   sarifMessage    `json:"message"`
-	Locations []sarifLocation `json:"locations"`
+	RuleID     string            `json:"ruleId"`
+	Level      string            `json:"level"`
+	Message    sarifMessage      `json:"message"`
+	Locations  []sarifLocation   `json:"locations"`
+	Properties map[string]string `json:"properties,omitempty"`
 }
 
 type sarifMessage struct {
@@ -96,11 +98,31 @@ func sarifRules(rs []rules.Rule) []sarifRule {
 	for _, r := range rs {
 		id := r.ID()
 		out = append(out, sarifRule{
-			ID:      id,
-			HelpURI: "https://github.com/cfgaudit/cfgaudit/blob/main/docs/rules/" + id + ".md",
+			ID:         id,
+			HelpURI:    "https://github.com/cfgaudit/cfgaudit/blob/main/docs/rules/" + id + ".md",
+			Properties: taxonomyProps(id),
 		})
 	}
 	return out
+}
+
+// taxonomyProps returns the SARIF properties bag carrying a rule's taxonomy ids.
+// cfgaudit's SARIF rule identity stays the CFG id (helpUri points at our docs);
+// the OWASP LLM id and the AVE id ride in properties instead of hijacking ruleId
+// — the placement AVE's own SARIF convention blesses ("repeated on result for
+// tooling that ignores the rules block"). nil when a rule has neither.
+func taxonomyProps(id string) map[string]string {
+	props := map[string]string{}
+	if o := ruleOWASP(id); o != "" {
+		props["owasp_llm"] = o
+	}
+	if a := ruleAVE(id); a != "" {
+		props["ave_id"] = a
+	}
+	if len(props) == 0 {
+		return nil
+	}
+	return props
 }
 
 func sarifResults(findings []finding.Finding) []sarifResult {
@@ -118,10 +140,11 @@ func sarifResults(findings []finding.Finding) []sarifResult {
 			}
 		}
 		out = append(out, sarifResult{
-			RuleID:    f.RuleID,
-			Level:     sarifLevel(f.Severity),
-			Message:   sarifMessage{Text: f.Message},
-			Locations: []sarifLocation{loc},
+			RuleID:     f.RuleID,
+			Level:      sarifLevel(f.Severity),
+			Message:    sarifMessage{Text: f.Message},
+			Locations:  []sarifLocation{loc},
+			Properties: taxonomyProps(f.RuleID),
 		})
 	}
 	return out
