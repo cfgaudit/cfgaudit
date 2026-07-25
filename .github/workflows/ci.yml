@@ -170,6 +170,10 @@ jobs:
         with:
           persist-credentials: false
       - name: Install zizmor
-        run: pip install zizmor
+        # Pinned: zizmor 1.27.0 logs a passed --gh-token in cleartext
+        # (GHSA-f42p-wjw5-97qh), fixed in 1.28.0. This job passes GITHUB_TOKEN,
+        # so an unpinned install could pull the leaking version and print the
+        # token into the public Actions log.
+        run: pip install zizmor==1.28.0
       - name: Run zizmor
         run: zizmor --gh-token "${{ secrets.GITHUB_TOKEN }}" .github/workflows/
