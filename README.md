@@ -492,7 +492,7 @@ Codex guards a subset of keys against repo contents (`PROJECT_LOCAL_CONFIG_DENYL
 
 **A committed `.claude/` or `.cursor/` directory is also a Grok execution surface.** Grok's `[compat.claude]`/`[compat.cursor]` settings default to on, so out of the box it executes hooks from `.claude/settings.json`/`.cursor/hooks.json` and loads MCP servers from `.claude.json`/`.cursor/mcp.json`/`.mcp.json`. The rules cfgaudit already applies to those files therefore protect Grok users too.
 
-Grok's `[permission] allow` rules (which apply without a folder-trust prompt), its `.grok/agents/*.md` `permissionMode` frontmatter, and its `SessionStart` zero-click hooks are tracked as follow-up rules (#385, #386, #387). `.grok/sandbox.toml` is deliberately not modelled: it is additive-only and the user wins name collisions, so a repo cannot weaken a user's sandbox profile.
+Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `SessionStart` zero-click hooks (CFG086) are flagged like the Claude/Cursor/Copilot equivalents. `.grok/config.toml` `[permission] allow` rules are **not** flagged: tracing the Grok source showed they are folder-trust gated (an untrusted clone contributes none), they merge across scopes with `deny > ask > allow` so a user's `deny` always wins over a repo `allow`, and `allow` matching is segmented (a `Bash(git *)` rule cannot auto-approve a chained `git … && rm -rf /`) — so the committed-permission threat is far weaker than a config linter can meaningfully flag. `.grok/sandbox.toml` is deliberately not modelled either: it is additive-only and the user wins name collisions, so a repo cannot weaken a user's sandbox profile.
 
 ---
 
