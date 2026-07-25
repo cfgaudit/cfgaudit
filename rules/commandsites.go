@@ -91,6 +91,28 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// xAI Grok CLI .grok/hooks/*.json. The hook file has the same event → matcher
+	// groups → {type, command} shape as Claude Code's, and Grok's user guide marks
+	// these committable, so the command handlers are command sites. Only the
+	// "command" handler type runs a shell command; "http" handlers carry a url and
+	// no command, so they are skipped here.
+	if gh := t.GrokHooks; gh != nil && len(gh.Hooks) > 0 {
+		events := make([]string, 0, len(gh.Hooks))
+		for e := range gh.Hooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, group := range gh.Hooks[event] {
+				for _, h := range group.Hooks {
+					if h.Command != "" {
+						sites = append(sites, commandSite{Label: "Grok hooks." + event + " command", File: t.GrokHooksFile, Command: h.Command})
+					}
+				}
+			}
+		}
+	}
+
 	// Cursor .cursor/hooks.json and Copilot .github/hooks/*.json. Cursor's docs
 	// say these are "stored in version control alongside your code", and Copilot's
 	// are read from the repository, so both are committed shell commands running

@@ -342,7 +342,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`
 
-Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, Windsurf's `~/.codeium/windsurf/mcp_config.json`, the `context_servers` block of Zed's project-scoped `.zed/settings.json` (JSONC), the `mcpServers` block of Devin CLI's `.devin/config.json` (whose `transport` field is folded into `type`), the `mcpServers` block of Gemini CLI's `.gemini/settings.json` (+ `~/.gemini/settings.json` with `--user`), the `[mcp_servers]` tables of OpenAI Codex CLI's `.codex/config.toml` (project-scoped, plus `~/.codex/config.toml` with `--user`), and the `mcpServers` list of Continue's `.continue/config.yaml` (+ `~/.continue/config.yaml` with `--user`). Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
+Rules about MCP servers. MCP is a shared standard, so the per-server checks (CFG010–CFG021) are **cross-agent**: they run against the inline `mcpServers` block in `settings.json`, the project's root `.mcp.json` (the file that `enableAllProjectMcpServers` / `enabledMcpjsonServers` auto-approve), and other agents' MCP configs when present — `.cursor/mcp.json` (+ `~/.cursor/mcp.json` with `--user`), `.vscode/mcp.json` (VS Code's top-level `servers` key is handled), `cline_mcp_settings.json`, Windsurf's `~/.codeium/windsurf/mcp_config.json`, the `context_servers` block of Zed's project-scoped `.zed/settings.json` (JSONC), the `mcpServers` block of Devin CLI's `.devin/config.json` (whose `transport` field is folded into `type`), the `mcpServers` block of Gemini CLI's `.gemini/settings.json` (+ `~/.gemini/settings.json` with `--user`), the `[mcp_servers]` tables of OpenAI Codex CLI's `.codex/config.toml` (project-scoped, plus `~/.codex/config.toml` with `--user`), the `[mcp_servers]` tables of xAI Grok CLI's `.grok/config.toml` (transport inferred from `command` vs `url`), and the `mcpServers` list of Continue's `.continue/config.yaml` (+ `~/.continue/config.yaml` with `--user`). Each finding is attributed to the file the server was declared in. A malformed config is reported as a tool error rather than silently skipped. `CFG003` governs the blanket auto-approval flag and is Claude Code–specific (`settings.json` only).
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
@@ -481,6 +481,18 @@ Codex guards a subset of keys against repo contents (`PROJECT_LOCAL_CONFIG_DENYL
 |----|----------|-------------|-------|
 | [CFG065](docs/rules/CFG065.md) | error | Continue config has a hardcoded inline `apiKey` literal on a `models[]` or remote `mcpServers[]` entry — a committed credential (`${{ secrets.* }}` references and placeholders are not flagged) | LLM02 |
 | [CFG071](docs/rules/CFG071.md) | error | model/provider base URL over cleartext `http://` to a remote host — Continue `models[].apiBase` or Codex `chatgpt_base_url`/`[model_providers].base_url`; the API key is sent in plaintext (multi-provider analogue of CFG005) | LLM02 |
+
+### xAI Grok CLI — `.grok/`
+
+[Grok CLI](https://github.com/xai-org/grok-build) keeps its config in `.grok/`, and its user guide marks the project config committable (*"Project (committed) | `<project>/.grok/config.toml` | Yes (commit it)"*). cfgaudit scans the committable surfaces, all of which ride on existing rules with no Grok-specific rule logic:
+
+- **`.grok/config.toml`** `[mcp_servers]` (TOML, snake_case; the transport is inferred from `command` vs `url`, there is no `type` field) rides the shared MCP rules (CFG010–CFG021, CFG049–CFG059). A project config contributes only `[mcp_servers]`/`[plugins]`/`[permission]`; `[ui]`/`[sandbox]`/`[telemetry]`/`[model.*]` load only from `~/.grok/config.toml`, so cfgaudit does not read them from a scanned repo (they would be false positives).
+- **`.grok/hooks/*.json`** command handlers become command sites (CFG008/014/027/028/037/038/039/072/077/078). Grok's hook file has the same shape as Claude Code's.
+- **`.grok/rules/*.md`** and **`.grok/agents/*.md`** are scanned as instruction content (CFG024–CFG036, CFG057, CFG080/CFG081).
+
+**A committed `.claude/` or `.cursor/` directory is also a Grok execution surface.** Grok's `[compat.claude]`/`[compat.cursor]` settings default to on, so out of the box it executes hooks from `.claude/settings.json`/`.cursor/hooks.json` and loads MCP servers from `.claude.json`/`.cursor/mcp.json`/`.mcp.json`. The rules cfgaudit already applies to those files therefore protect Grok users too.
+
+Grok's `[permission] allow` rules (which apply without a folder-trust prompt), its `.grok/agents/*.md` `permissionMode` frontmatter, and its `SessionStart` zero-click hooks are tracked as follow-up rules (#385, #386, #387). `.grok/sandbox.toml` is deliberately not modelled: it is additive-only and the user wins name collisions, so a repo cannot weaken a user's sandbox profile.
 
 ---
 

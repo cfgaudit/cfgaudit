@@ -100,6 +100,13 @@ type Target struct {
 	CopilotSettings     *parser.CopilotSettings
 	CopilotSettingsFile string
 
+	// GrokHooks holds a parsed xAI Grok CLI .grok/hooks/*.json file. Grok's hook
+	// files are committable and run shell commands, so their command handlers
+	// become command sites (the command-content family). The zero-click trigger
+	// is a separate rule (#387). Nil when absent; GrokHooksFile is its path.
+	GrokHooks     *parser.GrokHooks
+	GrokHooksFile string
+
 	// Continue holds a parsed Continue config.yaml (.continue/config.yaml or
 	// ~/.continue/config.yaml). Its mcpServers list rides ProjectMCP so the MCP
 	// rules apply; inline model/MCP apiKey literals drive CFG065. Nil when absent;
