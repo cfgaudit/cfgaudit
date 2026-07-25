@@ -508,7 +508,12 @@ Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `Sessio
 |----|----------|-------------|-------|
 | [CFG091](docs/rules/CFG091.md) | error | qwen `tools.approvalMode` is `"yolo"` — auto-approves every tool call incl. shell with no prompt, and folder trust is off by default so a committed file applies unprompted | LLM06 |
 
-Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated shell, not a committed escalation), `"auto-edit"` is stricter than that default, and `tools.autoAccept` is vestigial (no consumer in the approval path). The remaining committed-config footguns (a `.qwen/sandbox.Dockerfile` and Claude-marketplace plugin ingestion) are scoped into follow-up rules ([#390](https://github.com/cfgaudit/cfgaudit/issues/390)).
+Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated shell, not a committed escalation), `"auto-edit"` is stricter than that default, and `tools.autoAccept` is vestigial (no consumer in the approval path).
+
+Two further surfaces were scoped and, after source verification, deliberately **not** ruled — neither fires from a scanned repo without a manual step, so a rule would report a trigger that does not exist:
+
+- **`.qwen/sandbox.Dockerfile`** is inert for normally-installed users. qwen builds it only from a cloned qwen-code source tree with the `BUILD_SANDBOX` env var set (an npm-installed binary hits an explicit `throw`), on top of needing the sandbox enabled and docker/podman present — none of which a committed file can express.
+- **Marketplace/extension install** and **Claude-config MCP import** are user-command-driven (`/extensions`, `/import-config`), never auto-loaded from committed config. There is no `enabledPlugins`/`extraKnownMarketplaces` equivalent in `.qwen/settings.json`. The `<repo>/.claude/settings.json` that `/import-config --scope project` would pull is already covered by cfgaudit's Claude/MCP rules.
 
 ---
 
