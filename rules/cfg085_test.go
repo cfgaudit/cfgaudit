@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -81,5 +82,41 @@ func TestCFG085_NoFrontmatter_NoFinding(t *testing.T) {
 func TestCFG085_NoTarget_NoFinding(t *testing.T) {
 	if f := CFG085.Check(&Target{}); len(f) != 0 {
 		t.Errorf("expected no finding for an empty target, got %+v", f)
+	}
+}
+
+// #386: Grok .grok/agents/*.md uses the same permissionMode field, but Grok
+// wires only bypassPermissions at spawn — the softer modes are forward-compat
+// and inert, so reporting them would be a false positive.
+func grokAgentTarget(mode string) *Target {
+	fm := "---\nname: helper\n"
+	if mode != "" {
+		fm += "permissionMode: " + mode + "\n"
+	}
+	fm += "---\n\nBody text.\n"
+	return &Target{
+		Scope:              finding.ScopeProject,
+		InstructionFile:    ".grok/agents/helper.md",
+		InstructionContent: fm,
+	}
+}
+
+func TestCFG085_Grok_BypassPermissions_Error(t *testing.T) {
+	f := CFG085.Check(grokAgentTarget("bypassPermissions"))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 Error for Grok bypassPermissions, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "Grok") {
+		t.Errorf("expected the message to mention Grok, got %q", f[0].Message)
+	}
+}
+
+func TestCFG085_Grok_ForwardCompatModes_NoFinding(t *testing.T) {
+	// dontAsk/auto/acceptEdits are parsed by Grok but not wired at spawn, so a
+	// committed value is inert and must not be flagged.
+	for _, mode := range []string{"dontAsk", "auto", "acceptEdits"} {
+		if f := CFG085.Check(grokAgentTarget(mode)); len(f) != 0 {
+			t.Errorf("expected no finding for Grok inert mode %q, got %+v", mode, f)
+		}
 	}
 }
