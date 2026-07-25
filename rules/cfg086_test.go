@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -235,5 +236,70 @@ func TestCFG086_Gemini_RuntimeHook_NoFinding(t *testing.T) {
 	})
 	if f := CFG086.Check(tgt); len(f) != 0 {
 		t.Errorf("expected no finding for a runtime hook, got %+v", f)
+	}
+}
+
+// #416: qwen has TWO zero-click events — SessionStart and InstructionsLoaded.
+func qwenHooksTarget(hooks map[string]json.RawMessage, disableAll bool) *Target {
+	return &Target{
+		Scope:    finding.ScopeProject,
+		Qwen:     &parser.QwenSettings{Hooks: hooks, DisableAllHooks: disableAll},
+		QwenFile: ".qwen/settings.json",
+	}
+}
+
+func TestCFG086_Qwen_ZeroClickEvents(t *testing.T) {
+	for _, event := range []string{"SessionStart", "InstructionsLoaded"} {
+		tgt := qwenHooksTarget(map[string]json.RawMessage{
+			event: json.RawMessage(`[{"hooks":[{"type":"command","command":"./setup.sh"}]}]`),
+		}, false)
+		f := CFG086.Check(tgt)
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Fatalf("%s: expected 1 Error, got %+v", event, f)
+		}
+		if !strings.Contains(f[0].Message, "qwen hooks."+event) {
+			t.Errorf("%s: message = %q", event, f[0].Message)
+		}
+	}
+}
+
+// Events that need an active session/turn are not zero-click.
+func TestCFG086_Qwen_ExplicitEvent_NoFinding(t *testing.T) {
+	for _, event := range []string{"PreToolUse", "SessionEnd", "SubagentStart", "PreCompact", "Notification"} {
+		tgt := qwenHooksTarget(map[string]json.RawMessage{
+			event: json.RawMessage(`[{"hooks":[{"type":"command","command":"./x.sh"}]}]`),
+		}, false)
+		if f := CFG086.Check(tgt); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %+v", event, f)
+		}
+	}
+}
+
+// qwen matches event names as exact PascalCase; a misspelling never fires.
+func TestCFG086_Qwen_MisspelledEvent_NoFinding(t *testing.T) {
+	for _, event := range []string{"sessionStart", "session_start", "instructionsloaded"} {
+		tgt := qwenHooksTarget(map[string]json.RawMessage{
+			event: json.RawMessage(`[{"hooks":[{"type":"command","command":"./x.sh"}]}]`),
+		}, false)
+		if f := CFG086.Check(tgt); len(f) != 0 {
+			t.Errorf("%q: expected no finding (qwen never fires it), got %+v", event, f)
+		}
+	}
+}
+
+// disableAllHooks suppresses; an http handler runs no shell command.
+func TestCFG086_Qwen_Suppressed_NoFinding(t *testing.T) {
+	disabled := qwenHooksTarget(map[string]json.RawMessage{
+		"SessionStart": json.RawMessage(`[{"hooks":[{"type":"command","command":"./x.sh"}]}]`),
+	}, true)
+	if f := CFG086.Check(disabled); len(f) != 0 {
+		t.Errorf("disableAllHooks should suppress, got %+v", f)
+	}
+
+	httpOnly := qwenHooksTarget(map[string]json.RawMessage{
+		"SessionStart": json.RawMessage(`[{"hooks":[{"type":"http","url":"https://h.example"}]}]`),
+	}, false)
+	if f := CFG086.Check(httpOnly); len(f) != 0 {
+		t.Errorf("an http hook runs no shell command, got %+v", f)
 	}
 }

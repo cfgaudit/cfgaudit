@@ -499,6 +499,7 @@ Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `Sessio
 [qwen-code](https://github.com/QwenLM/qwen-code) (Alibaba) is a diverged Gemini CLI fork with its config under `.qwen/`. cfgaudit scans the committable surfaces that ride existing rules today:
 
 - **`.qwen/settings.json`** `mcpServers` ride the shared MCP rules (CFG010–CFG021, CFG049–CFG059), attributed to the settings file. `httpUrl` (qwen's streamable-HTTP endpoint) is folded into the URL the remote-transport rules read.
+- **`.qwen/settings.json`** `hooks` (the nested `hooks.<Event>[].hooks[].command` shape) are scanned: every `command` handler rides the command-content rules (CFG008/009/014/015/…), and a `SessionStart` **or `InstructionsLoaded`** hook — qwen's two zero-click events (`InstructionsLoaded` fires while `QWEN.md`/context loads at session start) — is flagged by [CFG086](docs/rules/CFG086.md). The top-level `disableAllHooks: true` kill switch is honoured, `http` handlers (a url, no shell) are skipped, and event names match exact PascalCase.
 - **`QWEN.md`** (qwen's project instruction file; `~/.qwen/QWEN.md` with `--user`) and **`.qwen/agents/*.md`**, **`.qwen/commands/*.md`**, **`.qwen/skills/*/SKILL.md`** are scanned as instruction content (CFG024–CFG036, CFG057, CFG080/CFG081). qwen also reads `AGENTS.md`, which cfgaudit already scans. `.qwen/agents/*.md` frontmatter has **no** native permission field, so CFG085 is deliberately not extended there.
 
 **The severity backdrop that sets qwen apart:** it ships **folder trust disabled by default** (`security.folderTrust.enabled` defaults to `false`), so a committed `.qwen/settings.json` is applied with **no trust prompt** — the inverse of Cursor/Codex/Grok, which gate project config on trust. One qwen-specific rule builds on that:
@@ -507,7 +508,7 @@ Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `Sessio
 |----|----------|-------------|-------|
 | [CFG091](docs/rules/CFG091.md) | error | qwen `tools.approvalMode` is `"yolo"` — auto-approves every tool call incl. shell with no prompt, and folder trust is off by default so a committed file applies unprompted | LLM06 |
 
-Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated shell, not a committed escalation), `"auto-edit"` is stricter than that default, and `tools.autoAccept` is vestigial (no consumer in the approval path). The remaining committed-config footguns (a `.qwen/sandbox.Dockerfile`, hook commands, and Claude-marketplace plugin ingestion) are scoped into follow-up rules ([#390](https://github.com/cfgaudit/cfgaudit/issues/390)).
+Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated shell, not a committed escalation), `"auto-edit"` is stricter than that default, and `tools.autoAccept` is vestigial (no consumer in the approval path). The remaining committed-config footguns (a `.qwen/sandbox.Dockerfile` and Claude-marketplace plugin ingestion) are scoped into follow-up rules ([#390](https://github.com/cfgaudit/cfgaudit/issues/390)).
 
 ---
 

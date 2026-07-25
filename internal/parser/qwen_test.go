@@ -77,3 +77,52 @@ func TestParseQwenSettings_Malformed(t *testing.T) {
 		t.Error("expected an error for malformed JSON")
 	}
 }
+
+// HookGroups decodes event arrays and skips the reserved enabled/disabled/
+// notifications keys that qwen tolerates inside the hooks object — a bool or
+// string-array there must NOT fail the whole parse.
+func TestParseQwenSettings_HookGroups(t *testing.T) {
+	path := writeQwen(t, `{
+		"hooks": {
+			"enabled": true,
+			"disabled": ["some-hook"],
+			"notifications": {"x": 1},
+			"SessionStart": [ { "hooks": [ { "type": "command", "command": "./boot.sh" } ] } ],
+			"PreToolUse": [ { "matcher": "run_shell_command", "hooks": [ { "type": "command", "command": "./guard.sh" } ] } ]
+		}
+	}`)
+	qs, err := ParseQwenSettings(path)
+	if err != nil {
+		t.Fatalf("ParseQwenSettings: %v (reserved keys must not break the parse)", err)
+	}
+	g := qs.HookGroups()
+	if len(g) != 2 {
+		t.Fatalf("expected 2 event groups (SessionStart, PreToolUse), got %d: %+v", len(g), g)
+	}
+	if len(g["SessionStart"]) != 1 || g["SessionStart"][0].Hooks[0].Command != "./boot.sh" {
+		t.Errorf("SessionStart: %+v", g["SessionStart"])
+	}
+	if _, ok := g["enabled"]; ok {
+		t.Error("reserved key 'enabled' must not appear as an event")
+	}
+}
+
+func TestParseQwenSettings_HooksDisabled(t *testing.T) {
+	on := writeQwen(t, `{"disableAllHooks": true, "hooks": {"SessionStart": [{"hooks":[{"type":"command","command":"x"}]}]}}`)
+	qs, err := ParseQwenSettings(on)
+	if err != nil {
+		t.Fatalf("ParseQwenSettings: %v", err)
+	}
+	if !qs.HooksDisabled() {
+		t.Error("expected HooksDisabled() true when disableAllHooks is set")
+	}
+
+	off := writeQwen(t, `{"hooks": {"SessionStart": []}}`)
+	qs2, _ := ParseQwenSettings(off)
+	if qs2.HooksDisabled() {
+		t.Error("expected HooksDisabled() false when disableAllHooks is absent")
+	}
+	if qs2.HookGroups() != nil {
+		t.Error("expected nil HookGroups when the only event array is empty")
+	}
+}

@@ -93,6 +93,25 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 			findings = append(findings, zeroClickFinding(t, "Gemini", geminiZeroClickEvent, zeroClickHookEvents["sessionstart"], t.GeminiFile))
 		}
 	}
+
+	// qwen (.qwen/settings.json hooks: event → matcher groups → command handlers).
+	// qwen matches event names as exact PascalCase (no normalization), its kill
+	// switch is top-level disableAllHooks, and it has TWO zero-click events:
+	// SessionStart (startup/resume) and InstructionsLoaded (fires while QWEN.md and
+	// the context files load at session init, before any user action). Committed
+	// hooks run unprompted because qwen ships folder trust off by default.
+	if q := t.Qwen; q != nil && !q.HooksDisabled() {
+		hooks := q.HookGroups()
+		for _, event := range sortedKeys2(hooks) {
+			when, zeroClick := qwenZeroClickEvents[event]
+			if !zeroClick {
+				continue
+			}
+			if grokEventHasCommand(hooks[event], nil) {
+				findings = append(findings, zeroClickFinding(t, "qwen", event, when, t.QwenFile))
+			}
+		}
+	}
 	return findings
 }
 
@@ -100,6 +119,13 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 // asks the agent for anything (on startup and resume). Gemini matches event names
 // as exact PascalCase, so the literal spelling is used.
 const geminiZeroClickEvent = "SessionStart"
+
+// qwenZeroClickEvents are qwen's exact-PascalCase hook events that fire before the
+// user does anything, mapped to the "when" phrasing for the finding message.
+var qwenZeroClickEvents = map[string]string{
+	"SessionStart":       "starting a session",
+	"InstructionsLoaded": "loading its instruction files (QWEN.md and context) at session start",
+}
 
 // zeroClickFinding builds the shared CFG086 finding for a zero-click hook.
 func zeroClickFinding(t *Target, kind, event, when, file string) finding.Finding {
