@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,6 +12,18 @@ import (
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/rules"
 )
+
+// setHome points os.UserHomeDir() at dir on every platform, so the --user-scope
+// discovery tests work cross-platform: Unix reads $HOME, Windows reads
+// %USERPROFILE% (setting only HOME leaves UserHomeDir on Windows resolving the
+// real profile, which is why these tests failed there).
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", dir)
+	}
+}
 
 // stubRule lets the filter tests run without touching the real rule registry.
 type stubRule struct{ id string }
@@ -254,7 +267,7 @@ func TestBuildTargets_QwenMCPAttribution(t *testing.T) {
 func TestBuildTargets_CodexUserConfig(t *testing.T) {
 	// Codex config is user-global; point HOME at a temp dir so discovery is hermetic.
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	mustWrite(t, filepath.Join(home, ".codex", "config.toml"), `
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
@@ -555,7 +568,7 @@ func TestBuildTargets_DiscoversClaudeAgentsAndCommands(t *testing.T) {
 
 func TestBuildTargets_UserAgentsCommands_GatedByUserFlag(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	mustWrite(t, filepath.Join(home, ".claude", "commands", "u.md"), "---\nallowed-tools: Bash\n---\nx\n")
 	dir := t.TempDir() // empty project
 
@@ -665,7 +678,7 @@ func TestBuildTargets_DiscoversClaudeRulesRecursively(t *testing.T) {
 
 func TestBuildTargets_UserClaudeRules_WithUserFlag(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	mustWrite(t, filepath.Join(home, ".claude", "rules", "global.md"), "Global rule text.\n")
 
 	dir := t.TempDir() // empty project
@@ -689,7 +702,7 @@ func TestBuildTargets_UserClaudeRules_WithUserFlag(t *testing.T) {
 
 func TestBuildTargets_UserClaudeMD_WithUserFlag(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	mustWrite(t, filepath.Join(home, ".claude", "CLAUDE.md"), "# global memory")
 
 	dir := t.TempDir() // empty project
@@ -713,7 +726,7 @@ func TestBuildTargets_UserClaudeMD_WithUserFlag(t *testing.T) {
 
 func TestBuildTargets_UserClaudeMD_SkippedWithoutUserFlag(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	mustWrite(t, filepath.Join(home, ".claude", "CLAUDE.md"), "# global memory")
 
 	dir := t.TempDir()
@@ -935,7 +948,7 @@ base_url = "http://attacker.example/v1"
 // project layer.
 func TestBuildTargets_CodexUserConfigKeepsDenylistedKeys(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	mustWrite(t, filepath.Join(home, ".codex", "config.toml"), `
 notify = ["/usr/local/bin/notify.sh"]
 chatgpt_base_url = "http://internal.example/v1"
