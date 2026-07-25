@@ -389,7 +389,7 @@ MCP03 (Tool Poisoning), MCP06 (Intent Flow Subversion), MCP08 (Lack of Audit & T
 
 ### Instruction files — `CLAUDE.md` & other agents
 
-AI coding agents read their instruction files as trusted system-context every session, so a committed or user-global instruction file is a prompt-injection target. The project `CLAUDE.md` is scanned automatically and `~/.claude/CLAUDE.md` with `--user`. The same content rules also scan, when present in the project: `.cursorrules`, `.cursor/rules/*.{md,mdc}`, `.windsurfrules`, `.windsurf/rules/*.md`, `AGENTS.md` and the singular `AGENT.md` (Amp / Grok CLI convention), `GEMINI.md` (Gemini CLI; `~/.gemini/GEMINI.md` with `--user`), GitHub Copilot's `.github/copilot-instructions.md` and path-specific `.github/instructions/*.instructions.md`, and Claude Code's custom **subagents** (`.claude/agents/*.md`), **slash commands** (`.claude/commands/*.md`), **skills** (`.claude/skills/*/SKILL.md`), and **modular rules** (`.claude/rules/**/*.md`, discovered recursively) — these also under `~/.claude/` with `--user`. It also scans **`.agents/skills/**/SKILL.md`** (recursive), the cross-agent skills convention read from the scanned project by OpenHands, OpenAI Codex, crush, goose and Kimi — a committed skill there is trusted context for all of them; `~/.agents/skills/` is covered with `--user`. Findings name the file they came from.
+AI coding agents read their instruction files as trusted system-context every session, so a committed or user-global instruction file is a prompt-injection target. The project `CLAUDE.md` is scanned automatically and `~/.claude/CLAUDE.md` with `--user`. The same content rules also scan, when present in the project: `.cursorrules`, `.cursor/rules/*.{md,mdc}`, `.windsurfrules`, `.windsurf/rules/*.md`, `AGENTS.md` and the singular `AGENT.md` (Amp / Grok CLI convention), `GEMINI.md` (Gemini CLI; `~/.gemini/GEMINI.md` with `--user`), GitHub Copilot's `.github/copilot-instructions.md` and path-specific `.github/instructions/*.instructions.md`, and Claude Code's custom **subagents** (`.claude/agents/*.md`), **slash commands** (`.claude/commands/*.md`), **skills** (`.claude/skills/*/SKILL.md`), and **modular rules** (`.claude/rules/**/*.md`, discovered recursively) — these also under `~/.claude/` with `--user`. It also scans **`.agents/skills/**/SKILL.md`** (recursive), the cross-agent skills convention read from the scanned project by OpenHands, OpenAI Codex, crush, goose and Kimi — a committed skill there is trusted context for all of them; `~/.agents/skills/` is covered with `--user`. And it scans Kimi Code's project agent definitions — **`.kimi-code/agents/**/*.md`** and **`.agents/agents/**/*.md`** (both recursive) — whose bodies are trusted context and whose `override: true` frontmatter is flagged by [CFG092](docs/rules/CFG092.md). Findings name the file they came from.
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
@@ -515,6 +515,18 @@ Two further surfaces were scoped and, after source verification, deliberately **
 - **`.qwen/sandbox.Dockerfile`** is inert for normally-installed users. qwen builds it only from a cloned qwen-code source tree with the `BUILD_SANDBOX` env var set (an npm-installed binary hits an explicit `throw`), on top of needing the sandbox enabled and docker/podman present — none of which a committed file can express.
 - **Marketplace/extension install** and **Claude-config MCP import** are user-command-driven (`/extensions`, `/import-config`), never auto-loaded from committed config. There is no `enabledPlugins`/`extraKnownMarketplaces` equivalent in `.qwen/settings.json`. The `<repo>/.claude/settings.json` that `/import-config --scope project` would pull is already covered by cfgaudit's Claude/MCP rules.
 
+### Kimi Code — `.kimi-code/` & `.agents/agents/`
+
+[Kimi Code](https://github.com/MoonshotAI/kimi-code) (Moonshot) loads project agent definitions from `.kimi-code/agents/` and `.agents/agents/` (resolved from the repo's `.git` root, recursive, **no trust gate**). Their bodies ride the instruction-content rules; one Kimi-specific rule covers the frontmatter:
+
+| ID | Severity | Description | OWASP |
+|----|----------|-------------|-------|
+| [CFG092](docs/rules/CFG092.md) | error | a committed agent file sets `override: true` — its body *replaces the built-in agent's entire system prompt* (naming it `agent.md` takes over the main agent), and with no `tools` list keeps every tool | LLM01 |
+
+`.kimi-code/mcp.json` rides the shared MCP rules, scanned as its own attributed target — it is a project-local tier that **overrides** the repo-root `.mcp.json` (Kimi merges it last) and whose stdio entries execute at session start, so scanning it separately keeps an override of a benign root declaration visible.
+
+**Verified negatives** (checked against source, deliberately no rule): Kimi's `config.toml` is user-scope only, so its `[[hooks]]`/`[[permission.rules]]` (incl. `SessionStart`) **cannot** be planted by a repo; kimi-code has no sandbox concept; there is no `KIMI.md`; plugins support SHA pinning and third-party install defaults to cancel.
+
 ---
 
 ## OWASP mapping
@@ -525,7 +537,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 
 | ID | Risk | Example rules |
 |----|------|---------------|
-| LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081 |
+| LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092 |
 | LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089 |
 | LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091 |

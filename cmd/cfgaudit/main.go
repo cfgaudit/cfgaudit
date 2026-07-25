@@ -857,6 +857,13 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range projSkills {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
+	projKimi, err := kimiAgentFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range projKimi {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -936,6 +943,41 @@ func agentSkillsFiles(base string) ([]string, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// kimiAgentFiles returns every *.md under <base>/.kimi-code/agents and
+// <base>/.agents/agents, discovered recursively. Kimi Code loads project agent
+// definitions from both directories (resolved from the nearest .git ancestor of
+// the working directory), scanning subdirectories, so — like claudeRulesFiles —
+// this needs a full walk rather than a single-level glob. A committed file there
+// is trusted instruction context with no trust gate, and its frontmatter can carry
+// override: true (CFG092). A missing directory yields no files and no error;
+// results are sorted for deterministic ordering.
+func kimiAgentFiles(base string) ([]string, error) {
+	var out []string
+	for _, rel := range []string{
+		filepath.Join(".kimi-code", "agents"),
+		filepath.Join(".agents", "agents"),
+	} {
+		root := filepath.Join(base, rel)
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
+				return err
+			}
+			if !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
+				out = append(out, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	sort.Strings(out)
 	return out, nil
@@ -1138,9 +1180,10 @@ func loadMCPConfigOptional(path string) (map[string]parser.MCPServer, error) {
 // variant is folded in by ParseMCPConfig).
 var (
 	agentMCPFiles = []string{
-		filepath.Join(".cursor", "mcp.json"), // Cursor (project)
-		filepath.Join(".vscode", "mcp.json"), // VS Code / Copilot
-		"cline_mcp_settings.json",            // Cline
+		filepath.Join(".cursor", "mcp.json"),    // Cursor (project)
+		filepath.Join(".vscode", "mcp.json"),    // VS Code / Copilot
+		"cline_mcp_settings.json",               // Cline
+		filepath.Join(".kimi-code", "mcp.json"), // Kimi Code project MCP — same {mcpServers} shape as .mcp.json; it OVERRIDES the repo-root .mcp.json (Kimi spreads it last) and its stdio entries execute at session start, so it is scanned as its own attributed target rather than merged (which would hide the override)
 	}
 	userAgentMCPFiles = []string{
 		filepath.Join(".cursor", "mcp.json"),                     // Cursor (user-global)
