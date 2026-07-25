@@ -494,6 +494,15 @@ Codex guards a subset of keys against repo contents (`PROJECT_LOCAL_CONFIG_DENYL
 
 Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `SessionStart` zero-click hooks (CFG086) are flagged like the Claude/Cursor/Copilot equivalents. `.grok/config.toml` `[permission] allow` rules are **not** flagged: tracing the Grok source showed they are folder-trust gated (an untrusted clone contributes none), they merge across scopes with `deny > ask > allow` so a user's `deny` always wins over a repo `allow`, and `allow` matching is segmented (a `Bash(git *)` rule cannot auto-approve a chained `git … && rm -rf /`) — so the committed-permission threat is far weaker than a config linter can meaningfully flag. `.grok/sandbox.toml` is deliberately not modelled either: it is additive-only and the user wins name collisions, so a repo cannot weaken a user's sandbox profile.
 
+### qwen-code — `.qwen/` & `QWEN.md`
+
+[qwen-code](https://github.com/QwenLM/qwen-code) (Alibaba) is a diverged Gemini CLI fork with its config under `.qwen/`. cfgaudit scans the committable surfaces that ride existing rules today:
+
+- **`.qwen/settings.json`** `mcpServers` ride the shared MCP rules (CFG010–CFG021, CFG049–CFG059), attributed to the settings file. `httpUrl` (qwen's streamable-HTTP endpoint) is folded into the URL the remote-transport rules read.
+- **`QWEN.md`** (qwen's project instruction file; `~/.qwen/QWEN.md` with `--user`) and **`.qwen/agents/*.md`**, **`.qwen/commands/*.md`**, **`.qwen/skills/*/SKILL.md`** are scanned as instruction content (CFG024–CFG036, CFG057, CFG080/CFG081). qwen also reads `AGENTS.md`, which cfgaudit already scans. `.qwen/agents/*.md` frontmatter has **no** native permission field, so CFG085 is deliberately not extended there.
+
+**The severity backdrop that sets qwen apart:** it ships **folder trust disabled by default** (`security.folderTrust.enabled` defaults to `false`), so a committed `.qwen/settings.json` is applied with **no trust prompt** — the inverse of Cursor/Codex/Grok, which gate project config on trust. Its committed-config footguns (an `.qwen/settings.json` `tools.approvalMode: "yolo"` / `tools.autoAccept`, a `.qwen/sandbox.Dockerfile`, and Claude-marketplace plugin ingestion) are being scoped into follow-up rules ([#390](https://github.com/cfgaudit/cfgaudit/issues/390)); this first pass wires the MCP and instruction-content coverage.
+
 ---
 
 ## OWASP mapping

@@ -399,6 +399,17 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, cdx...)
 
+	// qwen-code settings.json (.qwen/, and ~/.qwen/ with --user). A diverged Gemini
+	// CLI fork; its mcpServers ride ProjectMCP so the MCP rules apply, attributed to
+	// the settings file. QWEN.md and .qwen/{agents,commands,skills} ride
+	// instructionTargets above. qwen ships folder trust off by default, so a
+	// committed .qwen/settings.json applies with no trust prompt (#390).
+	qwen, err := qwenTargets(dir, includeUser)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, qwen...)
+
 	// Continue config.yaml (.continue/, and ~/.continue/ with --user). Its
 	// mcpServers list rides ProjectMCP so the MCP rules apply; inline apiKey
 	// literals drive CFG065.
@@ -621,6 +632,56 @@ func parseGeminiOptional(path string) (*parser.GeminiSettings, error) {
 	return gs, nil
 }
 
+// qwenTargets discovers qwen-code settings.json files — .qwen/settings.json
+// (project) and ~/.qwen/settings.json (user, only with --user) — and returns one
+// target per present file, mapping mcpServers onto ProjectMCP so the shared MCP
+// rules fire, attributed to the settings file. The qwen-specific approval /
+// sandbox / hooks surface is scoped to follow-up rules (#390).
+func qwenTargets(dir string, includeUser bool) ([]*rules.Target, error) {
+	var targets []*rules.Target
+	add := func(path string, scope finding.Scope) error {
+		qs, err := parseQwenOptional(path)
+		if err != nil {
+			return err
+		}
+		if qs == nil {
+			return nil
+		}
+		targets = append(targets, &rules.Target{
+			Scope:          scope,
+			ProjectMCP:     qs.MCPServerMap(),
+			ProjectMCPFile: path,
+		})
+		return nil
+	}
+	if err := add(filepath.Join(dir, ".qwen", "settings.json"), finding.ScopeProject); err != nil {
+		return nil, err
+	}
+	if includeUser {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("resolve home directory: %w", err)
+		}
+		if err := add(filepath.Join(home, ".qwen", "settings.json"), finding.ScopeUser); err != nil {
+			return nil, err
+		}
+	}
+	return targets, nil
+}
+
+// parseQwenOptional parses a qwen-code settings.json, returning (nil, nil) when
+// the file does not exist so callers can treat absence as "no target".
+func parseQwenOptional(path string) (*parser.QwenSettings, error) {
+	qs, err := parser.ParseQwenSettings(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return qs, nil
+}
+
 // vscodeTargets discovers committable VS Code workspace files under dir and
 // returns a target per present one, so the corresponding rules fire attributed
 // to the source file. Shared by VS Code and its forks (Cursor, Windsurf).
@@ -696,6 +757,7 @@ var (
 		"AGENTS.md",
 		"AGENT.md",  // singular — Amp's convention, also loaded by xAI's Grok CLI
 		"GEMINI.md", // Gemini CLI project instruction file (analog to CLAUDE.md)
+		"QWEN.md",   // qwen-code project instruction file (verified: DEFAULT_CONTEXT_FILENAME)
 		filepath.Join(".github", "copilot-instructions.md"),
 	}
 	// Matching is case-sensitive (exact filename). Some agents also load
@@ -729,6 +791,15 @@ var (
 		// frontmatter fields (permissionMode, tools) are a separate rule (#386).
 		filepath.Join(".grok", "rules", "*.md"),
 		filepath.Join(".grok", "agents", "*.md"),
+		// qwen-code custom subagents, slash commands, and skills — committable
+		// Markdown read as trusted context (#390). Verified to exist: .qwen/agents/*.md
+		// (native frontmatter has NO permission field, so CFG085 is correctly not
+		// extended — only the instruction-content rules apply to the body),
+		// .qwen/commands/*.md, and one-deep .qwen/skills/<name>/SKILL.md. (.qwen/rules
+		// was NOT found in source and is deliberately omitted.)
+		filepath.Join(".qwen", "agents", "*.md"),
+		filepath.Join(".qwen", "commands", "*.md"),
+		filepath.Join(".qwen", "skills", "*", "SKILL.md"),
 	}
 	// userInstructionGlobs are scanned only with --user (relative to $HOME): the
 	// user-global subagents, slash commands, and skills apply to every project.
@@ -737,6 +808,7 @@ var (
 		filepath.Join(".claude", "commands", "*.md"),
 		filepath.Join(".claude", "skills", "*", "SKILL.md"),
 		filepath.Join(".gemini", "GEMINI.md"), // Gemini CLI user-global instruction file
+		filepath.Join(".qwen", "QWEN.md"),     // qwen-code user-global instruction file
 	}
 )
 
