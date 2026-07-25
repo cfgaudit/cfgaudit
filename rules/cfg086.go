@@ -75,13 +75,31 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 			if !zeroClick {
 				continue
 			}
-			if grokEventHasCommand(gh.Hooks[event]) {
+			if grokEventHasCommand(gh.Hooks[event], nil) {
 				findings = append(findings, zeroClickFinding(t, "Grok", event, when, t.GrokHooksFile))
 			}
 		}
 	}
+
+	// Gemini (.gemini/settings.json: event → matcher groups → command handlers).
+	// SessionStart is Gemini's only zero-click event (BeforeAgent needs a submitted
+	// prompt), and Gemini matches event names as EXACT PascalCase with no
+	// normalization — so this checks the literal spelling, not a collapsed key, to
+	// avoid flagging a misspelled hook Gemini would silently never run.
+	// hooksConfig.enabled: false / disabled turn hooks off (honored in commandSites
+	// and here).
+	if g := t.Gemini; g != nil && !g.HooksDisabled() && len(g.Hooks) > 0 {
+		if groups, ok := g.Hooks[geminiZeroClickEvent]; ok && grokEventHasCommand(groups, g.DisabledHookNames()) {
+			findings = append(findings, zeroClickFinding(t, "Gemini", geminiZeroClickEvent, zeroClickHookEvents["sessionstart"], t.GeminiFile))
+		}
+	}
 	return findings
 }
+
+// geminiZeroClickEvent is the single Gemini hook event that fires before the user
+// asks the agent for anything (on startup and resume). Gemini matches event names
+// as exact PascalCase, so the literal spelling is used.
+const geminiZeroClickEvent = "SessionStart"
 
 // zeroClickFinding builds the shared CFG086 finding for a zero-click hook.
 func zeroClickFinding(t *Target, kind, event, when, file string) finding.Finding {
@@ -97,10 +115,12 @@ func zeroClickFinding(t *Target, kind, event, when, file string) finding.Finding
 
 // grokEventHasCommand reports whether any handler in the matcher groups runs a
 // shell command (type "command"); an http handler carries a url and no command.
-func grokEventHasCommand(groups []parser.HookGroup) bool {
+// disabled names handlers switched off by name (Gemini's hooksConfig.disabled),
+// which are skipped; pass nil when the format has no such list (Grok).
+func grokEventHasCommand(groups []parser.HookGroup, disabled map[string]bool) bool {
 	for _, g := range groups {
 		for _, h := range g.Hooks {
-			if h.Command != "" {
+			if h.Command != "" && !disabled[h.Name] {
 				return true
 			}
 		}
