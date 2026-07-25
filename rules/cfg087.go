@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 type cfg087 struct{}
@@ -80,10 +81,24 @@ var permissionDecidingEvents = map[string][]decisionField{
 // config file and is not visible here; a hook that delegates to a remote endpoint
 // (type: "http") is CFG088's finding.
 func (r *cfg087) Check(t *Target) []finding.Finding {
+	var findings []finding.Finding
+
+	// Cursor/Copilot (flat AgentHooks). disableAllHooks turns the file off.
 	ah := t.AgentHooks
-	if ah == nil || ah.DisableAllHooks || len(ah.Hooks) == 0 {
-		return nil
+	if ah != nil && !ah.DisableAllHooks && len(ah.Hooks) > 0 {
+		findings = append(findings, r.checkAgentHooks(t, ah)...)
 	}
+
+	// Gemini (.gemini/settings.json BeforeTool arg-rewrite — warn only, no
+	// auto-approve exists there; see checkGemini).
+	findings = append(findings, r.checkGemini(t)...)
+	return findings
+}
+
+// checkAgentHooks handles Cursor's .cursor/hooks.json and Copilot's
+// .github/hooks/*.json, whose events answer a permission gate with an allowing
+// value (error) or rewrite the tool arguments (warn).
+func (r *cfg087) checkAgentHooks(t *Target, ah *parser.AgentHooks) []finding.Finding {
 	events := make([]string, 0, len(ah.Hooks))
 	for e := range ah.Hooks {
 		events = append(events, e)
@@ -125,6 +140,56 @@ func (r *cfg087) Check(t *Target) []finding.Finding {
 					continue
 				}
 				break // one finding per hook entry; the strongest match wins
+			}
+		}
+	}
+	return findings
+}
+
+// geminiToolInputRe matches a Gemini BeforeTool hook printing an argument-rewrite
+// output. The field is nested (hookSpecificOutput.tool_input); matching the key
+// alone is enough, since only BeforeTool honours it.
+var geminiToolInputRe = jsonKey("tool_input")
+
+// checkGemini flags a Gemini .gemini/settings.json BeforeTool hook that rewrites
+// the tool arguments (hookSpecificOutput.tool_input) — the same warn as Copilot's
+// modifiedArgs and Cursor's updated_input.
+//
+// There is deliberately NO error case for Gemini. Unlike Cursor/Copilot, a Gemini
+// hook cannot auto-approve a tool call: decision:"allow"/"approve" are inert (no
+// consumer reads them — verified against gemini-cli hook-utils.ts/scheduler.ts),
+// and only decision:"deny"/"block" (blocks) and decision:"ask" (forces a prompt)
+// take effect. A hook can add friction or deny, never skip the confirmation, so
+// matching an "allow" value here would report a bypass that does not exist.
+func (r *cfg087) checkGemini(t *Target) []finding.Finding {
+	g := t.Gemini
+	if g == nil || g.HooksDisabled() || len(g.Hooks) == 0 {
+		return nil
+	}
+	// Gemini matches event names as exact PascalCase; tool_input is honoured only
+	// at BeforeTool, so a rewrite output under any other event is ignored by Gemini
+	// and not flagged.
+	groups, ok := g.Hooks["BeforeTool"]
+	if !ok {
+		return nil
+	}
+	disabled := g.DisabledHookNames()
+	var findings []finding.Finding
+	for _, group := range groups {
+		for _, h := range group.Hooks {
+			if h.Command == "" || disabled[h.Name] {
+				continue
+			}
+			if geminiToolInputRe.MatchString(h.Command) {
+				findings = append(findings, finding.Finding{
+					RuleID:   "CFG087",
+					Severity: finding.Warn,
+					Scope:    t.Scope,
+					File:     t.GeminiFile,
+					Message: "Gemini hooks.BeforeTool rewrites the tool arguments before execution (hookSpecificOutput.tool_input) — " +
+						"a committed hook silently overrides the arguments the model chose, so what runs is not what was proposed. " +
+						"Review the substitution, or block the call (decision: \"deny\") instead of rewriting it" + userScopeNote(t),
+				})
 			}
 		}
 	}
