@@ -69,6 +69,13 @@ type Target struct {
 	Gemini     *parser.GeminiSettings
 	GeminiFile string
 
+	// Qwen holds a parsed qwen-code settings.json (.qwen/settings.json or
+	// ~/.qwen/settings.json). Its tools.approvalMode / tools.autoAccept drive
+	// CFG091, and its mcpServers ride ProjectMCP so the MCP rules apply. Nil when
+	// absent; QwenFile is its path, used to attribute the qwen-specific findings.
+	Qwen     *parser.QwenSettings
+	QwenFile string
+
 	// Codex holds a parsed OpenAI Codex CLI config.toml (~/.codex/config.toml).
 	// approval_policy / sandbox_mode drive CFG063/CFG064, and its [mcp_servers]
 	// ride ProjectMCP so the MCP rules apply. Nil when absent; CodexFile is its
