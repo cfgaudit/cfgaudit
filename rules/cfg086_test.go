@@ -143,3 +143,97 @@ func TestCFG086_Grok_HTTPHook_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding for an http hook, got %+v", f)
 	}
 }
+
+// #389: Gemini .gemini/settings.json SessionStart is zero-click (startup/resume).
+func geminiHooksTarget(gs *parser.GeminiSettings) *Target {
+	return &Target{
+		Scope:      finding.ScopeProject,
+		Gemini:     gs,
+		GeminiFile: ".gemini/settings.json",
+	}
+}
+
+func TestCFG086_Gemini_SessionStart(t *testing.T) {
+	tgt := geminiHooksTarget(&parser.GeminiSettings{
+		Hooks: map[string][]parser.HookGroup{
+			"SessionStart": {{Hooks: []parser.HookCommand{{Type: "command", Command: "./setup.sh"}}}},
+		},
+	})
+	f := CFG086.Check(tgt)
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 Error, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "Gemini hooks.SessionStart") {
+		t.Errorf("expected the message to name the Gemini file, got %q", f[0].Message)
+	}
+}
+
+// BeforeAgent fires only after a prompt is submitted (one-click), and BeforeTool
+// needs an active turn — neither is zero-click.
+func TestCFG086_Gemini_ExplicitEvent_NoFinding(t *testing.T) {
+	for _, event := range []string{"BeforeAgent", "BeforeTool", "AfterModel", "SessionEnd"} {
+		tgt := geminiHooksTarget(&parser.GeminiSettings{
+			Hooks: map[string][]parser.HookGroup{
+				event: {{Hooks: []parser.HookCommand{{Type: "command", Command: "./x.sh"}}}},
+			},
+		})
+		if f := CFG086.Check(tgt); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", event, f)
+		}
+	}
+}
+
+// Gemini matches event names as exact PascalCase; a misspelled event is silently
+// never run, so flagging it would be a false "this executes" claim.
+func TestCFG086_Gemini_MisspelledEvent_NoFinding(t *testing.T) {
+	for _, event := range []string{"sessionStart", "session_start", "sessionstart"} {
+		tgt := geminiHooksTarget(&parser.GeminiSettings{
+			Hooks: map[string][]parser.HookGroup{
+				event: {{Hooks: []parser.HookCommand{{Type: "command", Command: "./x.sh"}}}},
+			},
+		})
+		if f := CFG086.Check(tgt); len(f) != 0 {
+			t.Errorf("expected no finding for non-PascalCase %q (Gemini never fires it), got %+v", event, f)
+		}
+	}
+}
+
+// hooksConfig.enabled: false disables the hook system, so nothing runs.
+func TestCFG086_Gemini_HooksDisabled_NoFinding(t *testing.T) {
+	off := false
+	tgt := geminiHooksTarget(&parser.GeminiSettings{
+		HooksConfig: &parser.GeminiHooksConfig{Enabled: &off},
+		Hooks: map[string][]parser.HookGroup{
+			"SessionStart": {{Hooks: []parser.HookCommand{{Type: "command", Command: "./x.sh"}}}},
+		},
+	})
+	if f := CFG086.Check(tgt); len(f) != 0 {
+		t.Errorf("expected no finding when hooksConfig.enabled is false, got %+v", f)
+	}
+}
+
+// A SessionStart hook switched off by name in hooksConfig.disabled does not run.
+func TestCFG086_Gemini_HookDisabledByName_NoFinding(t *testing.T) {
+	tgt := geminiHooksTarget(&parser.GeminiSettings{
+		HooksConfig: &parser.GeminiHooksConfig{Disabled: []string{"boot"}},
+		Hooks: map[string][]parser.HookGroup{
+			"SessionStart": {{Hooks: []parser.HookCommand{{Type: "command", Name: "boot", Command: "./x.sh"}}}},
+		},
+	})
+	if f := CFG086.Check(tgt); len(f) != 0 {
+		t.Errorf("expected no finding for a name-disabled hook, got %+v", f)
+	}
+}
+
+// A runtime handler carries no shell command, so SessionStart with only a runtime
+// hook is not flagged.
+func TestCFG086_Gemini_RuntimeHook_NoFinding(t *testing.T) {
+	tgt := geminiHooksTarget(&parser.GeminiSettings{
+		Hooks: map[string][]parser.HookGroup{
+			"SessionStart": {{Hooks: []parser.HookCommand{{Type: "runtime", Name: "x"}}}},
+		},
+	})
+	if f := CFG086.Check(tgt); len(f) != 0 {
+		t.Errorf("expected no finding for a runtime hook, got %+v", f)
+	}
+}

@@ -132,7 +132,10 @@ type HookGroup struct {
 }
 
 type HookCommand struct {
-	Type    string `json:"type,omitempty"`
+	Type string `json:"type,omitempty"`
+	// Name identifies the hook. Gemini CLI keys its hooksConfig.disabled kill list
+	// by this name, so it is read to skip a handler the same file has disabled.
+	Name    string `json:"name,omitempty"`
 	Command string `json:"command,omitempty"`
 	// Prompt is the injected context for a type:"prompt" hook — text Claude Code
 	// feeds into its own context when the hook event fires. Like an instruction

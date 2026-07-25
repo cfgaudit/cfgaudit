@@ -113,6 +113,31 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Gemini CLI .gemini/settings.json hooks. Same event → matcher groups →
+	// {type, command} nesting as Claude Code's, and the file is project-committed,
+	// so the command handlers are command sites. Only the "command" handler type
+	// runs a shell command (a "runtime"/"plugin" handler carries no command).
+	// hooksConfig.enabled: false turns the whole system off; hooksConfig.disabled
+	// switches off individual hooks by name — a handler Gemini would not run is not
+	// a command site.
+	if g := t.Gemini; g != nil && !g.HooksDisabled() && len(g.Hooks) > 0 {
+		disabled := g.DisabledHookNames()
+		events := make([]string, 0, len(g.Hooks))
+		for e := range g.Hooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, group := range g.Hooks[event] {
+				for _, h := range group.Hooks {
+					if h.Command != "" && !disabled[h.Name] {
+						sites = append(sites, commandSite{Label: "Gemini hooks." + event + " command", File: t.GeminiFile, Command: h.Command})
+					}
+				}
+			}
+		}
+	}
+
 	// Cursor .cursor/hooks.json and Copilot .github/hooks/*.json. Cursor's docs
 	// say these are "stored in version control alongside your code", and Copilot's
 	// are read from the repository, so both are committed shell commands running

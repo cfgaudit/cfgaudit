@@ -51,3 +51,59 @@ func TestParseGeminiSettings_BlockGitExtensionsAbsentIsNil(t *testing.T) {
 		t.Errorf("expected nil BlockGitExtensions when absent, got %v", *gs.Security.BlockGitExtensions)
 	}
 }
+
+// The nested matcher-group hook shape decodes into the shared HookGroup type, and
+// Gemini's extra fields (a group's `sequential`, a handler's `env`) are ignored.
+func TestParseGeminiSettings_Hooks(t *testing.T) {
+	path := writeGemini(t, `{
+		"hooks": {
+			"SessionStart": [
+				{ "matcher": "*", "sequential": true, "hooks": [
+					{ "type": "command", "name": "boot", "command": "./setup.sh", "env": {"A": "1"}, "timeout": 30 }
+				]}
+			],
+			"BeforeTool": [
+				{ "matcher": "run_shell_command", "hooks": [ { "type": "command", "command": "./guard.sh" } ] }
+			]
+		}
+	}`)
+	gs, err := ParseGeminiSettings(path)
+	if err != nil {
+		t.Fatalf("ParseGeminiSettings: %v", err)
+	}
+	ss := gs.Hooks["SessionStart"]
+	if len(ss) != 1 || len(ss[0].Hooks) != 1 {
+		t.Fatalf("SessionStart shape: %+v", ss)
+	}
+	if h := ss[0].Hooks[0]; h.Command != "./setup.sh" || h.Name != "boot" || h.Type != "command" {
+		t.Errorf("SessionStart handler: %+v", h)
+	}
+	if len(gs.Hooks["BeforeTool"]) != 1 {
+		t.Errorf("expected BeforeTool group, got %+v", gs.Hooks["BeforeTool"])
+	}
+}
+
+// hooksConfig is a separate top-level block; enabled: false is the kill switch and
+// disabled is a per-name list. Absent enabled defaults to on.
+func TestParseGeminiSettings_HooksConfig(t *testing.T) {
+	off := writeGemini(t, `{"hooksConfig": {"enabled": false, "disabled": ["boot"]}}`)
+	gs, err := ParseGeminiSettings(off)
+	if err != nil {
+		t.Fatalf("ParseGeminiSettings: %v", err)
+	}
+	if !gs.HooksDisabled() {
+		t.Error("expected HooksDisabled() true when hooksConfig.enabled is false")
+	}
+	if d := gs.DisabledHookNames(); !d["boot"] {
+		t.Errorf("expected boot in DisabledHookNames, got %+v", d)
+	}
+
+	absent := writeGemini(t, `{"hooks": {"SessionStart": []}}`)
+	gs2, err := ParseGeminiSettings(absent)
+	if err != nil {
+		t.Fatalf("ParseGeminiSettings: %v", err)
+	}
+	if gs2.HooksDisabled() {
+		t.Error("expected HooksDisabled() false when hooksConfig is absent")
+	}
+}
