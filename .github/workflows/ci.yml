@@ -21,6 +21,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # Check the restored module cache against go.sum before compiling, so a
+      # corrupted or tampered cache fails the build instead of building silently.
+      - run: go mod verify
       - run: go build ./...
 
   test:
@@ -34,11 +37,40 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - run: go mod verify
       - run: go test -race -coverprofile=coverage.out ./...
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage
           path: coverage.out
+
+  # cfgaudit ships macOS and Windows binaries but the required Test job above runs
+  # Linux only. This non-required leg exercises the OS-sensitive code (filepath /
+  # glob discovery, case-sensitivity, line endings) on the other two platforms.
+  # Kept separate rather than matrixing Test, so the branch-protection "Test"
+  # required check keeps its name; Linux is already covered above.
+  test-cross:
+    name: Cross-platform tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        # The Windows runner defaults to PowerShell; force bash so the go
+        # invocation is identical across platforms.
+        shell: bash
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod verify
+      - run: go test -race ./...
 
   lint:
     name: Lint
