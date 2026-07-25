@@ -722,6 +722,13 @@ var (
 		// .claude/rules/ is NOT listed here: Claude Code discovers it recursively
 		// (subdirectories allowed), which the single-level filepath.Glob above can't
 		// express, so it is collected by claudeRulesFiles instead (#325).
+		// xAI Grok CLI project rules and agent definitions — committable Markdown
+		// read as trusted context (#384). Grok discovers .grok/rules single-level
+		// (by *.md extension, no recursion) and .grok/agents/*.md, so a plain glob
+		// matches; the instruction-content rules apply to the body. Grok's agent
+		// frontmatter fields (permissionMode, tools) are a separate rule (#386).
+		filepath.Join(".grok", "rules", "*.md"),
+		filepath.Join(".grok", "agents", "*.md"),
 	}
 	// userInstructionGlobs are scanned only with --user (relative to $HOME): the
 	// user-global subagents, slash commands, and skills apply to every project.
@@ -995,6 +1002,33 @@ func loadCopilotSettingsOptional(path string) (*parser.CopilotSettings, error) {
 	return c, nil
 }
 
+// loadGrokConfigOptional parses .grok/config.toml, returning (nil, nil) when it
+// does not exist. A malformed file is an error, so a config that is silently not
+// being scanned is reported rather than treated as empty.
+func loadGrokConfigOptional(path string) (*parser.GrokConfig, error) {
+	c, err := parser.ParseGrokConfig(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return c, nil
+}
+
+// loadGrokHooksOptional parses a .grok/hooks/*.json file, returning (nil, nil)
+// when it does not exist. A malformed file is an error.
+func loadGrokHooksOptional(path string) (*parser.GrokHooks, error) {
+	h, err := parser.ParseGrokHooks(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return h, nil
+}
+
 // loadZedServersOptional parses .zed/settings.json and returns its
 // context_servers, or (nil, nil) when the file does not exist. A malformed file
 // is an error, so a Zed config that is silently not being scanned is reported
@@ -1125,6 +1159,47 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			ProjectMCP:     zedServers,
 			ProjectMCPFile: zedPath,
 		})
+	}
+
+	// xAI Grok CLI .grok/config.toml — committable per Grok's user guide. A
+	// project config contributes only [mcp_servers] (ride ProjectMCP so the MCP
+	// rules fire); the other sections load only from ~/.grok, so they are not
+	// read here. [permission] and [plugins] are left to their own rules (#385).
+	grokPath := filepath.Join(dir, ".grok", "config.toml")
+	grokCfg, err := loadGrokConfigOptional(grokPath)
+	if err != nil {
+		return nil, err
+	}
+	if grokCfg != nil {
+		if servers := grokCfg.MCPServerMap(); len(servers) > 0 {
+			targets = append(targets, &rules.Target{
+				Scope:          finding.ScopeProject,
+				ProjectMCP:     servers,
+				ProjectMCPFile: grokPath,
+			})
+		}
+	}
+
+	// Grok .grok/hooks/*.json — committable hook files whose command handlers run
+	// shell commands. Routed through commandSites so the command-content rules
+	// apply, one target per file, attributed to the file the command came from.
+	grokHookFiles, err := filepath.Glob(filepath.Join(dir, ".grok", "hooks", "*.json"))
+	if err != nil {
+		return nil, fmt.Errorf("glob grok hooks: %w", err)
+	}
+	sort.Strings(grokHookFiles)
+	for _, hp := range grokHookFiles {
+		gh, err := loadGrokHooksOptional(hp)
+		if err != nil {
+			return nil, err
+		}
+		if gh != nil && len(gh.Hooks) > 0 {
+			targets = append(targets, &rules.Target{
+				Scope:         finding.ScopeProject,
+				GrokHooks:     gh,
+				GrokHooksFile: hp,
+			})
+		}
 	}
 	if includeUser {
 		home, err := os.UserHomeDir()
