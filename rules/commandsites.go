@@ -138,6 +138,30 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// qwen-code .qwen/settings.json hooks. Same event → matcher groups →
+	// {type, command} nesting as Gemini's; the settings.json validator allows only
+	// "command" and "http" handler types, and only "command" carries a shell string
+	// (an "http" handler has a url and no command). disableAllHooks turns the whole
+	// system off. Committed and — because qwen ships folder trust off by default —
+	// applied unprompted, so the command-content rules apply.
+	if q := t.Qwen; q != nil && !q.HooksDisabled() {
+		hooks := q.HookGroups()
+		events := make([]string, 0, len(hooks))
+		for e := range hooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, group := range hooks[event] {
+				for _, h := range group.Hooks {
+					if h.Command != "" {
+						sites = append(sites, commandSite{Label: "qwen hooks." + event + " command", File: t.QwenFile, Command: h.Command})
+					}
+				}
+			}
+		}
+	}
+
 	// Cursor .cursor/hooks.json and Copilot .github/hooks/*.json. Cursor's docs
 	// say these are "stored in version control alongside your code", and Copilot's
 	// are read from the repository, so both are committed shell commands running

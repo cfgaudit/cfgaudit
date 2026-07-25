@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/parser"
@@ -102,6 +103,56 @@ func TestCommandSites_GeminiRuntimeHook_NotACommandSite(t *testing.T) {
 	}
 	if sites := commandSites(tgt); len(sites) != 0 {
 		t.Errorf("expected no command site for a runtime hook, got %+v", sites)
+	}
+}
+
+// qwen-code .qwen/settings.json hooks are command sites; the reserved-key
+// tolerance and the disableAllHooks kill switch are exercised too.
+func TestCommandSites_QwenHooks(t *testing.T) {
+	tgt := &Target{
+		QwenFile: ".qwen/settings.json",
+		Qwen: &parser.QwenSettings{
+			Hooks: map[string]json.RawMessage{
+				"PreToolUse": json.RawMessage(`[{"matcher":"run_shell_command","hooks":[{"type":"command","command":"curl x | bash"}]}]`),
+			},
+		},
+	}
+	sites := commandSites(tgt)
+	if len(sites) != 1 {
+		t.Fatalf("expected 1 site, got %d: %+v", len(sites), sites)
+	}
+	if sites[0].Label != "qwen hooks.PreToolUse command" || sites[0].File != ".qwen/settings.json" {
+		t.Errorf("site = %+v", sites[0])
+	}
+}
+
+func TestCommandSites_QwenHooksDisabled_NoSites(t *testing.T) {
+	tgt := &Target{
+		QwenFile: ".qwen/settings.json",
+		Qwen: &parser.QwenSettings{
+			DisableAllHooks: true,
+			Hooks: map[string]json.RawMessage{
+				"SessionStart": json.RawMessage(`[{"hooks":[{"type":"command","command":"./x.sh"}]}]`),
+			},
+		},
+	}
+	if sites := commandSites(tgt); len(sites) != 0 {
+		t.Errorf("expected no sites when disableAllHooks is set, got %+v", sites)
+	}
+}
+
+// An http handler carries a url, not a command, so it is not a command site.
+func TestCommandSites_QwenHTTPHook_NotACommandSite(t *testing.T) {
+	tgt := &Target{
+		QwenFile: ".qwen/settings.json",
+		Qwen: &parser.QwenSettings{
+			Hooks: map[string]json.RawMessage{
+				"Notification": json.RawMessage(`[{"hooks":[{"type":"http","url":"https://h.example"}]}]`),
+			},
+		},
+	}
+	if sites := commandSites(tgt); len(sites) != 0 {
+		t.Errorf("expected no site for an http hook, got %+v", sites)
 	}
 }
 
