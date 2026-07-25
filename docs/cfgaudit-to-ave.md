@@ -33,8 +33,8 @@ cfgaudit maps (covered + partial) to **36 of 44**. The 5 out-of-scope records ar
 | CFG | AVE |
 |---|---|
 | CFG024 hidden Unicode | AVE-2026-00029 homoglyph / Unicode obfuscation |
-| CFG026 override / persona / authority | AVE-2026-00007 goal hijack · AVE-2026-00009 jailbreak · AVE-2026-00014 false authority |
-| CFG029 bypass permission prompts | AVE-2026-00012 false permission grant · AVE-2026-00021 autonomous action without confirmation |
+| CFG026 override / persona / authority · CFG092 Kimi agent file `override: true` (replaces the whole system prompt) | AVE-2026-00007 goal hijack · AVE-2026-00009 jailbreak · AVE-2026-00014 false authority |
+| CFG029 bypass permission prompts · CFG091 qwen `approvalMode: yolo` (auto-approves every tool call) | AVE-2026-00012 false permission grant · AVE-2026-00021 autonomous action without confirmation |
 | CFG030 conceal behavior | AVE-2026-00010 covert instruction concealment |
 | CFG032 pseudo-system / role injection | AVE-2026-00025 conversation-history injection · AVE-2026-00030 false role claim |
 | CFG035 configure/trust MCP from instructions | AVE-2026-00011 dynamic tool call *(partial)* · AVE-2026-00034 dynamic skill import *(partial)* |
@@ -67,11 +67,11 @@ cfgaudit maps (covered + partial) to **36 of 44**. The 5 out-of-scope records ar
 
 ## Direction 2 — AVE gaps → cfgaudit rule candidates
 
-Three `static_detection` classes with no CFG rule today (CFG090 ships AVE-2026-00032; AVE-2026-00036 was implemented as CFG091 but reverted after a pre-release FP analysis — see below):
+Three `static_detection` classes with no CFG rule today (CFG090 ships AVE-2026-00032; AVE-2026-00036 was implemented as a rule that was reverted after a pre-release FP analysis, and its CFG091 id has since been reused for the qwen approval-mode rule — see below):
 
 | AVE | Status | Note |
 |---|---|---|
-| **AVE-2026-00036** lateral movement / agent pivot | deferred (was CFG091, reverted) | a pre-release FP analysis found the vocabulary ("lateral movement", "pivot to other systems") is intent-ambiguous — it appears overwhelmingly in security-tool self-description, defensive/detection contexts ("prevent/identify lateral movement"), and offensive-agent capability tables that a static linter cannot distinguish from a malicious directive. Not statically detectable with acceptable precision |
+| **AVE-2026-00036** lateral movement / agent pivot | deferred (the reverted rule; its CFG091 id is now the qwen approvalMode rule) | a pre-release FP analysis found the vocabulary ("lateral movement", "pivot to other systems") is intent-ambiguous — it appears overwhelmingly in security-tool self-description, defensive/detection contexts ("prevent/identify lateral movement"), and offensive-agent capability tables that a static linter cannot distinguish from a malicious directive. Not statically detectable with acceptable precision |
 | **AVE-2026-00015** system-prompt extraction | deferred | maps to OWASP LLM07, which cfgaudit treats as runtime — the *leak* is runtime, the *instruction* is static; decide the boundary before filing |
 | **AVE-2026-00059** fragmented cross-description injection (ShareLock-class) | deferred | structurally needs multi-source correlation cfgaudit can't do today (every rule checks one file in isolation; the attack's defining property is that no single description is flaggable) — the attack-chain-correlation idea would serve both |
 
@@ -112,4 +112,4 @@ AVE-2026-00052 / AVE-2026-00053 are server *implementation* flaws, a distinct la
 
 ---
 
-*Mappings are class-level behavioral equivalence, not asserted identity. Generated against AVE record set v1.1.0 and cfgaudit CFG001–CFG089; records AVE-2026-00052–AVE-2026-00059 were the most recent AVE additions at authoring and should be re-checked on the next AVE release. A machine-readable form in AVE's own crosswalk schema (`cfgaudit-to-ave.json`) exists for upstream contribution to their `crosswalks/` directory.*
+*Mappings are class-level behavioral equivalence, not asserted identity. Re-checked against the current AVE record set (up to **AVE-2026-00059** — AVE CHANGELOG **v1.3.0**; note the latest git tag lags at v1.1.0). Unchanged from authoring, so no new behavioral classes to incorporate — this pass only mapped cfgaudit's two new rules: CFG091 (qwen `approvalMode: yolo`) → AVE-2026-00021, CFG092 (Kimi agent `override: true`) → AVE-2026-00007. cfgaudit CFG001–CFG092. Re-check on the next AVE release. A machine-readable form in AVE's own crosswalk schema (`cfgaudit-to-ave.json`) exists for upstream contribution to their `crosswalks/` directory.*

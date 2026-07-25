@@ -45,7 +45,9 @@ var aveByRule = map[string]string{
 	// instruction / skill content
 	"CFG024": "AVE-2026-00029", // hidden Unicode → homoglyph/unicode obfuscation
 	"CFG026": "AVE-2026-00007", // override/persona → goal hijack
+	"CFG092": "AVE-2026-00007", // Kimi agent override: true replaces the whole system prompt → goal hijack
 	"CFG029": "AVE-2026-00021", // bypass prompts → autonomous action without confirmation
+	"CFG091": "AVE-2026-00021", // qwen approvalMode: yolo auto-approves every tool call → autonomous action without confirmation
 	"CFG030": "AVE-2026-00010", // conceal behavior → covert instruction concealment
 	"CFG031": "AVE-2026-00003", // sensitive path → credential exfil
 	"CFG032": "AVE-2026-00025", // pseudo-system/role injection → conversation-history injection
