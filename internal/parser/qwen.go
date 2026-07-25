@@ -24,7 +24,18 @@ import (
 // is applied with no trust prompt — the inverse of Cursor/Codex/Grok, which gate
 // project config on trust.
 type QwenSettings struct {
+	Tools      *QwenTools         `json:"tools,omitempty"`
 	MCPServers map[string]QwenMCP `json:"mcpServers,omitempty"`
+}
+
+// QwenTools carries qwen's tools.* approval surface. ApprovalMode is
+// tools.approvalMode (plan/default/auto-edit/auto/yolo); only "yolo" blanket
+// auto-approves every tool call including shell, so it is the value CFG091 flags.
+// tools.autoAccept is deliberately not modelled: it is vestigial in qwen (no
+// consumer in the approval path — verified against source), so reading it would
+// invite a finding for an effect that does not exist.
+type QwenTools struct {
+	ApprovalMode string `json:"approvalMode,omitempty"`
 }
 
 // QwenMCP is one mcpServers entry. qwen's MCPServerConfig carries the same core

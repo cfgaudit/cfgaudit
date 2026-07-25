@@ -649,6 +649,8 @@ func qwenTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		}
 		targets = append(targets, &rules.Target{
 			Scope:          scope,
+			Qwen:           qs,
+			QwenFile:       path,
 			ProjectMCP:     qs.MCPServerMap(),
 			ProjectMCPFile: path,
 		})
