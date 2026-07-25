@@ -37,12 +37,23 @@ var permissionModeWeakening = map[string]struct {
 // permission mode. CFG004 covers the same modes in settings.json; a subagent
 // file is the other door to the same place, and it is just as committable.
 //
-// Scoped to .claude/agents/*.md on purpose. The field is meaningless in a
-// CLAUDE.md or a skill, and Claude Code documents that it is *ignored* for
-// plugin subagents ("for security reasons"), so flagging it outside a real agent
-// file would be a false positive.
+// Scoped to real subagent files — Claude Code's .claude/agents/*.md and xAI
+// Grok's .grok/agents/*.md, which use the same camelCase permissionMode field.
+// The field is meaningless in a CLAUDE.md or a skill, and Claude Code documents
+// that it is ignored for plugin subagents, so flagging it elsewhere would be a
+// false positive.
+//
+// Per-agent value honoring: Claude Code applies every mode below, but Grok's
+// source documents that "only BypassPermissions is wired at spawn; others are
+// forward-compat", so for a Grok agent only bypassPermissions is flagged —
+// reporting a mode Grok currently ignores would be a false positive (the same
+// discipline as CFG087 and the Codex project-layer denylist).
 func (r *cfg085) Check(t *Target) []finding.Finding {
-	if t == nil || !isClaudeAgentFile(t.InstructionFile) || t.InstructionContent == "" {
+	if t == nil || t.InstructionContent == "" {
+		return nil
+	}
+	kind := agentFileKind(t.InstructionFile)
+	if kind == "" {
 		return nil
 	}
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
@@ -54,21 +65,39 @@ func (r *cfg085) Check(t *Target) []finding.Finding {
 	if !weakening {
 		return nil
 	}
+	if kind == "Grok" && mode != "bypassPermissions" {
+		return nil // Grok wires only bypassPermissions at spawn; the rest are inert
+	}
+
+	tail := " so this is the settings.json permission mode (CFG004) reached through a different file. Remove it and let the session's mode govern"
+	if kind == "Grok" {
+		tail = " and Grok wires this mode at spawn, so a cloned repo runs the subagent with it. Remove it and let the session's mode govern"
+	}
 	return []finding.Finding{{
 		RuleID:   "CFG085",
 		Severity: spec.sev,
 		File:     t.InstructionFile,
 		Message: t.instructionName() + " frontmatter sets permissionMode: \"" + mode + "\" — " + spec.what +
-			". A committed subagent definition applies to everyone who runs it, so this is the settings.json permission mode (CFG004) reached through a different file. Remove it and let the session's mode govern" + userScopeNote(t),
+			". A committed subagent definition applies to everyone who runs it," + tail + userScopeNote(t),
 	}}
 }
 
-// isClaudeAgentFile reports whether path is a Claude Code subagent definition,
-// i.e. a Markdown file directly under a .claude/agents directory.
-func isClaudeAgentFile(path string) bool {
+// agentFileKind reports which agent a Markdown file is a subagent definition for
+// ("Claude" for .claude/agents/*.md, "Grok" for .grok/agents/*.md), or "" when it
+// is not a subagent file. Both agents read the same camelCase permissionMode.
+func agentFileKind(path string) string {
 	if path == "" || !strings.EqualFold(filepath.Ext(path), ".md") {
-		return false
+		return ""
 	}
 	dir := filepath.Dir(path)
-	return filepath.Base(dir) == "agents" && filepath.Base(filepath.Dir(dir)) == ".claude"
+	if filepath.Base(dir) != "agents" {
+		return ""
+	}
+	switch filepath.Base(filepath.Dir(dir)) {
+	case ".claude":
+		return "Claude"
+	case ".grok":
+		return "Grok"
+	}
+	return ""
 }
