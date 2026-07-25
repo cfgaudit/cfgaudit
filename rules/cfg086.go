@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 type cfg086 struct{}
@@ -20,50 +21,99 @@ func (r *cfg086) ID() string { return "CFG086" }
 // fires "once when Cursor opens a workspace and again on every workspace folder
 // change"; the session events fire as soon as a session begins.
 //
-// Matched case-insensitively because Copilot accepts both a camelCase and a
-// PascalCase spelling of every event (sessionStart / SessionStart), and a rule
-// keyed to one would miss files written with the other.
+// Keys are the normalized event name (see normalizeHookEvent): matched with case,
+// separators, and spelling collapsed, because Copilot accepts camelCase and
+// PascalCase for every event and Grok additionally accepts snake_case
+// (session_start). A rule keyed to one spelling would miss files written another.
 var zeroClickHookEvents = map[string]string{
 	"workspaceopen": "opening the workspace — and again on every workspace folder change",
 	"sessionstart":  "starting a session",
 }
 
-// Check flags a committed Cursor or Copilot hook that runs on an event requiring
-// no user action. The content of the command is judged separately by the
+// normalizeHookEvent lower-cases an event name and strips the separators that
+// vary between agents' spellings, so SessionStart / sessionStart / session_start
+// all map to the same key.
+func normalizeHookEvent(e string) string {
+	e = strings.ToLower(strings.TrimSpace(e))
+	e = strings.ReplaceAll(e, "_", "")
+	e = strings.ReplaceAll(e, "-", "")
+	return e
+}
+
+// Check flags a committed hook that runs on an event requiring no user action, in
+// Cursor's .cursor/hooks.json, Copilot's .github/hooks/*.json, or xAI Grok's
+// .grok/hooks/*.json. The content of the command is judged separately by the
 // command-content rules; this rule is about the trigger, which is a finding even
 // when the command looks innocuous — the same reasoning as CFG047 for
 // .vscode/tasks.json runOn: folderOpen, and CFG067 for committed Claude hooks.
 func (r *cfg086) Check(t *Target) []finding.Finding {
-	ah := t.AgentHooks
-	if ah == nil || ah.DisableAllHooks || len(ah.Hooks) == 0 {
-		return nil
-	}
-	events := make([]string, 0, len(ah.Hooks))
-	for e := range ah.Hooks {
-		events = append(events, e)
-	}
-	sort.Strings(events)
-
 	var findings []finding.Finding
-	for _, event := range events {
-		when, zeroClick := zeroClickHookEvents[strings.ToLower(strings.TrimSpace(event))]
-		if !zeroClick {
-			continue
-		}
-		for _, h := range ah.Hooks[event] {
-			if h.ShellCommand() == "" {
-				continue // a prompt or http hook runs no command
+
+	// Cursor / Copilot (AgentHooks: a flat event → handlers map). Copilot's
+	// disableAllHooks turns the whole file off.
+	if ah := t.AgentHooks; ah != nil && !ah.DisableAllHooks && len(ah.Hooks) > 0 {
+		for _, event := range sortedKeys2(ah.Hooks) {
+			when, zeroClick := zeroClickHookEvents[normalizeHookEvent(event)]
+			if !zeroClick {
+				continue
 			}
-			findings = append(findings, finding.Finding{
-				RuleID:   "CFG086",
-				Severity: finding.Error,
-				Scope:    t.Scope,
-				File:     t.AgentHooksFile,
-				Message: t.AgentHooksKind + " hooks." + event + " runs a shell command on " + when +
-					" — committed to a repository, this executes on every teammate who opens it, before they have asked the agent to do anything. Move it to a hook that runs on an explicit action, or to machine-local configuration" + userScopeNote(t),
-			})
-			break // one finding per event; the command content is judged separately
+			for _, h := range ah.Hooks[event] {
+				if h.ShellCommand() == "" {
+					continue // a prompt or http hook runs no command
+				}
+				findings = append(findings, zeroClickFinding(t, t.AgentHooksKind, event, when, t.AgentHooksFile))
+				break // one finding per event; the command content is judged separately
+			}
+		}
+	}
+
+	// Grok (.grok/hooks/*.json: event → matcher groups → command handlers). Grok
+	// has SessionStart as its zero-click event and no disableAllHooks switch.
+	if gh := t.GrokHooks; gh != nil && len(gh.Hooks) > 0 {
+		for _, event := range sortedKeys2(gh.Hooks) {
+			when, zeroClick := zeroClickHookEvents[normalizeHookEvent(event)]
+			if !zeroClick {
+				continue
+			}
+			if grokEventHasCommand(gh.Hooks[event]) {
+				findings = append(findings, zeroClickFinding(t, "Grok", event, when, t.GrokHooksFile))
+			}
 		}
 	}
 	return findings
+}
+
+// zeroClickFinding builds the shared CFG086 finding for a zero-click hook.
+func zeroClickFinding(t *Target, kind, event, when, file string) finding.Finding {
+	return finding.Finding{
+		RuleID:   "CFG086",
+		Severity: finding.Error,
+		Scope:    t.Scope,
+		File:     file,
+		Message: kind + " hooks." + event + " runs a shell command on " + when +
+			" — committed to a repository, this executes on every teammate who opens it, before they have asked the agent to do anything. Move it to a hook that runs on an explicit action, or to machine-local configuration" + userScopeNote(t),
+	}
+}
+
+// grokEventHasCommand reports whether any handler in the matcher groups runs a
+// shell command (type "command"); an http handler carries a url and no command.
+func grokEventHasCommand(groups []parser.HookGroup) bool {
+	for _, g := range groups {
+		for _, h := range g.Hooks {
+			if h.Command != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sortedKeys2 returns the map keys in stable order for deterministic findings.
+func sortedKeys2[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

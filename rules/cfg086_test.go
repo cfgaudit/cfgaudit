@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -93,5 +94,52 @@ func TestCFG086_DisableAllHooks_NoFinding(t *testing.T) {
 func TestCFG086_NoHooks_NoFinding(t *testing.T) {
 	if f := CFG086.Check(&Target{}); len(f) != 0 {
 		t.Errorf("expected no finding without hooks, got %+v", f)
+	}
+}
+
+// #387: Grok .grok/hooks/*.json SessionStart is zero-click. CFG086 covers it via
+// the shared GrokHooks path (the sessionstart entry), matching PascalCase and
+// snake_case spellings.
+func grokHooksTarget(hooks map[string][]parser.HookGroup) *Target {
+	return &Target{
+		Scope:         finding.ScopeProject,
+		GrokHooks:     &parser.GrokHooks{Hooks: hooks},
+		GrokHooksFile: ".grok/hooks/guard.json",
+	}
+}
+
+func TestCFG086_Grok_SessionStart(t *testing.T) {
+	for _, event := range []string{"SessionStart", "sessionStart", "session_start"} {
+		tgt := grokHooksTarget(map[string][]parser.HookGroup{
+			event: {{Hooks: []parser.HookCommand{{Type: "command", Command: "./setup.sh"}}}},
+		})
+		f := CFG086.Check(tgt)
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for Grok %q, got %+v", event, f)
+		}
+		if len(f) == 1 && !strings.Contains(f[0].Message, "Grok hooks.") {
+			t.Errorf("expected the message to name the Grok file, got %q", f[0].Message)
+		}
+	}
+}
+
+func TestCFG086_Grok_ExplicitEvent_NoFinding(t *testing.T) {
+	for _, event := range []string{"PreToolUse", "UserPromptSubmit", "PostToolUse"} {
+		tgt := grokHooksTarget(map[string][]parser.HookGroup{
+			event: {{Hooks: []parser.HookCommand{{Type: "command", Command: "./x.sh"}}}},
+		})
+		if f := CFG086.Check(tgt); len(f) != 0 {
+			t.Errorf("expected no finding for explicit-action event %q, got %+v", event, f)
+		}
+	}
+}
+
+func TestCFG086_Grok_HTTPHook_NoFinding(t *testing.T) {
+	// An http handler carries a url and no command, so it runs no shell command.
+	tgt := grokHooksTarget(map[string][]parser.HookGroup{
+		"SessionStart": {{Hooks: []parser.HookCommand{{Type: "http"}}}},
+	})
+	if f := CFG086.Check(tgt); len(f) != 0 {
+		t.Errorf("expected no finding for an http hook, got %+v", f)
 	}
 }
