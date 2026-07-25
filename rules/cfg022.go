@@ -79,7 +79,103 @@ func (r *cfg022) Check(t *Target) []finding.Finding {
 	if sb.AllowAppleEvents && t.Scope == finding.ScopeUser {
 		add(finding.Warn, "sandbox.allowAppleEvents is true — sandboxed commands can launch other applications unsandboxed with no prompt and drive them via AppleScript, removing the sandbox's code-execution isolation (the macOS automation-consent prompt (TCC) still gates each target). Scope the specific tool with excludedCommands instead of this blanket opt-in")
 	}
+
+	// network.allowUnixSockets / allowAllUnixSockets — array/merge keys honored
+	// from every scope, so a committed value applies. A privileged socket
+	// (docker.sock and friends) grants host access and a full sandbox bypass.
+	if sb.Network != nil {
+		if sb.Network.AllowAllUnixSockets {
+			add(finding.Error, "sandbox.network.allowAllUnixSockets is true — every Unix domain socket is reachable from the sandbox; a socket such as /var/run/docker.sock grants access to the host system, a full sandbox bypass. List only the specific non-privileged sockets you need in allowUnixSockets")
+		}
+		for _, s := range sb.Network.AllowUnixSockets {
+			if privilegedUnixSocket(s) {
+				add(finding.Error, "sandbox.network.allowUnixSockets grants the sandbox access to \""+strings.TrimSpace(s)+"\" — a privileged daemon socket; reaching it (e.g. the Docker socket) grants control of the host system, a sandbox bypass")
+			}
+		}
+	}
+
+	// filesystem.allowWrite — merged across scopes. A path covering an executable
+	// search dir, a system dir, or a shell startup file lets a sandboxed command
+	// plant code that later runs unsandboxed (privilege escalation).
+	if sb.Filesystem != nil {
+		for _, p := range sb.Filesystem.AllowWrite {
+			if reason := dangerousSandboxWritePath(p); reason != "" {
+				add(finding.Error, "sandbox.filesystem.allowWrite grants sandboxed commands write access to \""+strings.TrimSpace(p)+"\" ("+reason+") — a command inside the sandbox can plant code there that later runs unsandboxed, escaping the boundary. Grant write access only to specific project paths")
+			}
+		}
+		// filesystem.disabled turns the whole filesystem-isolation layer off. It is
+		// honored ONLY from user/managed/CLI settings; a project value is ignored,
+		// so flag it only at user scope (the allowAppleEvents pattern).
+		if sb.Filesystem.Disabled && t.Scope == finding.ScopeUser {
+			add(finding.Error, "sandbox.filesystem.disabled is true — the sandbox's filesystem-isolation layer is off, so sandboxed commands get unrestricted read/write to the host filesystem (including shell-rc and $PATH) while still auto-allowed. Keep filesystem isolation on and scope specific paths with filesystem.allowWrite instead")
+		}
+	}
+
+	// enableWeakerNestedSandbox / enableWeakerNetworkIsolation — booleans honored
+	// from a project/user file absent a managed override. Both are documented
+	// legitimate escape valves (unprivileged Docker; macOS TLS via MITM proxy), so
+	// a committed one warrants review (warn) rather than an assertion of malice.
+	if sb.EnableWeakerNestedSandbox {
+		add(finding.Warn, "sandbox.enableWeakerNestedSandbox is true — this considerably weakens the Linux sandbox (it bind-mounts the container's existing /proc instead of a fresh one) and should only be set when an outer container already provides isolation. Remove it unless that condition holds")
+	}
+	if sb.EnableWeakerNetworkIsolation {
+		add(finding.Warn, "sandbox.enableWeakerNetworkIsolation is true — this opens the macOS system TLS trust service to the sandbox, which the docs note reduces security by opening a potential data-exfiltration channel. Remove it unless a MITM proxy with a custom CA genuinely requires it")
+	}
 	return findings
+}
+
+// privilegedUnixSocket reports whether a Unix-socket path is a privileged daemon
+// socket whose exposure to the sandbox grants host control (a sandbox bypass).
+// The Docker socket is the canonical example the Claude Code docs call out.
+func privilegedUnixSocket(p string) bool {
+	base := strings.ToLower(strings.TrimSpace(p))
+	if i := strings.LastIndexAny(base, "/\\"); i >= 0 {
+		base = base[i+1:]
+	}
+	switch base {
+	case "docker.sock", "dockershim.sock", "containerd.sock", "containerd.sock.ttrpc",
+		"crio.sock", "podman.sock", "libvirt-sock", "libvirt-sock-ro":
+		return true
+	}
+	// containerd/podman variants and the systemd private socket.
+	return strings.Contains(base, "docker") && strings.HasSuffix(base, ".sock") ||
+		strings.Contains(strings.ToLower(p), "/run/systemd/private")
+}
+
+// dangerousSandboxWritePath reports why a sandbox.filesystem.allowWrite path is a
+// privilege-escalation risk, or "" when it is a safe, specific path. Dangerous:
+// a broad filesystem root, an executable search directory, a system directory,
+// or a shell startup file — writing to any of these lets a sandboxed command
+// plant code that a later command or login runs unsandboxed.
+func dangerousSandboxWritePath(p string) string {
+	e := strings.TrimSpace(p)
+	if e == "" {
+		return ""
+	}
+	if isBroadSandboxPath(e) {
+		return "a broad filesystem root"
+	}
+	lower := strings.ToLower(strings.TrimRight(e, "/"))
+	// Executable search / system directories.
+	for _, d := range []string{
+		"/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/local/bin", "/usr/local/sbin",
+		"/etc", "/usr/lib", "/lib", "~/.local/bin", "$home/.local/bin",
+	} {
+		if lower == d || strings.HasPrefix(lower, d+"/") {
+			return "a system or executable-search directory"
+		}
+	}
+	// Shell startup files.
+	base := lower
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	switch base {
+	case ".bashrc", ".bash_profile", ".bash_login", ".profile",
+		".zshrc", ".zshenv", ".zprofile", ".zlogin", ".kshrc", ".cshrc", ".config":
+		return "a shell startup file"
+	}
+	return ""
 }
 
 // isBroadExclusion reports whether an excludedCommands entry hands arbitrary code
