@@ -117,3 +117,77 @@ func TestCFG022_EmptyExcluded_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding for empty excludedCommands, got %+v", f)
 	}
 }
+
+// --- #406: additional sandbox-weakening keys ---
+
+func TestCFG022_AllowAllUnixSockets_Error(t *testing.T) {
+	f := CFG022.Check(settingsTarget(t, `{"sandbox":{"network":{"allowAllUnixSockets":true}}}`))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 Error for allowAllUnixSockets, got %+v", f)
+	}
+}
+
+func TestCFG022_PrivilegedUnixSocket_Error(t *testing.T) {
+	for _, s := range []string{"/var/run/docker.sock", "/run/podman/podman.sock", "unix:///var/run/containerd.sock"} {
+		json := `{"sandbox":{"network":{"allowUnixSockets":["` + s + `"]}}}`
+		f := CFG022.Check(settingsTarget(t, json))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for privileged socket %q, got %+v", s, f)
+		}
+	}
+}
+
+func TestCFG022_NarrowUnixSocket_NoFinding(t *testing.T) {
+	f := CFG022.Check(settingsTarget(t, `{"sandbox":{"network":{"allowUnixSockets":["/tmp/app.sock","~/.ssh/agent.sock"]}}}`))
+	if len(f) != 0 {
+		t.Errorf("expected no finding for non-privileged sockets, got %+v", f)
+	}
+}
+
+func TestCFG022_DangerousAllowWrite_Error(t *testing.T) {
+	for _, p := range []string{"/", "~", "/usr/local/bin", "/etc", "~/.bashrc", "~/.zshrc", "~/.local/bin"} {
+		json := `{"sandbox":{"filesystem":{"allowWrite":["` + p + `"]}}}`
+		f := CFG022.Check(settingsTarget(t, json))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for allowWrite %q, got %+v", p, f)
+		}
+	}
+}
+
+func TestCFG022_NarrowAllowWrite_NoFinding(t *testing.T) {
+	f := CFG022.Check(settingsTarget(t, `{"sandbox":{"filesystem":{"allowWrite":["./build","~/.kube","/tmp/build"]}}}`))
+	if len(f) != 0 {
+		t.Errorf("expected no finding for narrow allowWrite paths, got %+v", f)
+	}
+}
+
+func TestCFG022_EnableWeakerSandbox_Warn(t *testing.T) {
+	for _, key := range []string{"enableWeakerNestedSandbox", "enableWeakerNetworkIsolation"} {
+		json := `{"sandbox":{"` + key + `":true}}`
+		f := CFG022.Check(settingsTarget(t, json))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("expected 1 Warn for %s, got %+v", key, f)
+		}
+	}
+}
+
+func TestCFG022_FilesystemDisabled_UserScope_Error(t *testing.T) {
+	tgt := settingsTarget(t, `{"sandbox":{"filesystem":{"disabled":true}}}`)
+	tgt.Scope = finding.ScopeUser
+	f := CFG022.Check(tgt)
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 Error for filesystem.disabled in user scope, got %+v", f)
+	}
+}
+
+func TestCFG022_FilesystemDisabled_ProjectScope_NoFinding(t *testing.T) {
+	// Honored only from user/managed/CLI settings; a project value is ignored, so a
+	// committed copy must not be flagged (the allowAppleEvents FP trap).
+	for _, sc := range []finding.Scope{finding.ScopeProject, finding.ScopeProjectLocal, ""} {
+		tgt := settingsTarget(t, `{"sandbox":{"filesystem":{"disabled":true}}}`)
+		tgt.Scope = sc
+		if f := CFG022.Check(tgt); len(f) != 0 {
+			t.Errorf("expected no finding for filesystem.disabled in scope %q, got %+v", sc, f)
+		}
+	}
+}

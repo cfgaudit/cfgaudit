@@ -64,11 +64,42 @@ func (s *Settings) CommandHelperField(key string) string {
 // honored only from managed settings. allowAppleEvents (macOS) lifts the Apple
 // Events block, which removes code-execution isolation; it is honored only from
 // user/managed/CLI settings (project settings cannot enable it).
+//
+// The remaining fields are additional sandbox-weakening keys (CFG022). Their
+// per-key settings-scope honoring, verified against the Claude Code sandbox docs,
+// is what decides whether a committed value is a real finding or inert:
+//   - network.allowUnixSockets / allowAllUnixSockets and filesystem.allowWrite are
+//     array/merge keys honored from every scope, so a project value applies.
+//   - enableWeakerNestedSandbox / enableWeakerNetworkIsolation are booleans; a
+//     managed value wins, but absent one a project/user value applies.
+//   - filesystem.disabled is honored ONLY from user/managed/CLI settings; a
+//     project value is ignored (like allowAppleEvents), so it must not be flagged
+//     from a project file.
 type SandboxConfig struct {
 	ExcludedCommands []string `json:"excludedCommands,omitempty"`
 	BwrapPath        string   `json:"bwrapPath,omitempty"`
 	SocatPath        string   `json:"socatPath,omitempty"`
 	AllowAppleEvents bool     `json:"allowAppleEvents,omitempty"`
+
+	EnableWeakerNestedSandbox    bool               `json:"enableWeakerNestedSandbox,omitempty"`
+	EnableWeakerNetworkIsolation bool               `json:"enableWeakerNetworkIsolation,omitempty"`
+	Filesystem                   *SandboxFilesystem `json:"filesystem,omitempty"`
+	Network                      *SandboxNetwork    `json:"network,omitempty"`
+}
+
+// SandboxFilesystem is the sandbox.filesystem object. allowWrite grants
+// subprocess write access outside the working directory (merged across scopes);
+// disabled turns the whole filesystem-isolation layer off (user/managed only).
+type SandboxFilesystem struct {
+	AllowWrite []string `json:"allowWrite,omitempty"`
+	Disabled   bool     `json:"disabled,omitempty"`
+}
+
+// SandboxNetwork is the sandbox.network object. allowUnixSockets lists specific
+// Unix-socket paths the sandbox may reach; allowAllUnixSockets opens all of them.
+type SandboxNetwork struct {
+	AllowUnixSockets    []string `json:"allowUnixSockets,omitempty"`
+	AllowAllUnixSockets bool     `json:"allowAllUnixSockets,omitempty"`
 }
 
 // Sandbox decodes the top-level sandbox object. Returns nil when absent or of the
