@@ -109,6 +109,15 @@ type Target struct {
 	CursorPermissions     *parser.CursorPermissions
 	CursorPermissionsFile string
 
+	// CursorSandbox holds a parsed Cursor .cursor/sandbox.json (Cursor 2.5+).
+	// Cursor merges the per-repo file over a teammate's own with "per-repo
+	// settings taking priority", so a committed file can disable the sandbox,
+	// invert the network posture or widen the writable filesystem for everyone
+	// who opens the repo (CFG095). Nil when absent; CursorSandboxFile is its
+	// path, used to attribute findings and to derive the workspace root.
+	CursorSandbox     *parser.CursorSandbox
+	CursorSandboxFile string
+
 	// SubagentHooks holds the nested `hooks:` block decoded from a Claude Code
 	// subagent definition's frontmatter (.claude/agents/*.md, #428) — the same
 	// event → matcher groups → {type, command} schema as settings.json hooks. The
