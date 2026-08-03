@@ -897,13 +897,67 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if content == "" {
 			continue
 		}
-		targets = append(targets, &rules.Target{
+		target := &rules.Target{
 			Scope:              p.scope,
 			InstructionFile:    p.path,
 			InstructionContent: content,
-		})
+		}
+		attachSubagentBlocks(target)
+		targets = append(targets, target)
 	}
 	return targets, nil
+}
+
+// attachSubagentBlocks decodes the nested `hooks:` and `mcpServers:` frontmatter
+// blocks of a Claude Code subagent definition and hangs them on the target so the
+// shared rule families reach them (#428): the hooks become command sites, and the
+// inline MCP servers ride ProjectMCP exactly like the ones from .mcp.json.
+//
+// Restricted to .claude/agents/*.md. Other agents' subagent files are a different
+// contract — Grok's frontmatter carries permissionMode but no hooks/mcpServers,
+// and qwen's has neither — so decoding these keys there would report fields the
+// agent never reads. Copilot's .github/agents/*.md does accept an inline MCP block
+// under the kebab-case key `mcp-servers`, which is #439.
+//
+// Plugin-loaded subagents are out of scope by construction: Claude Code ignores
+// hooks/mcpServers/permissionMode for them, and cfgaudit only builds instruction
+// targets from SKILL.md inside a plugin package, never from its agents/.
+func attachSubagentBlocks(t *rules.Target) {
+	if t == nil || !isClaudeSubagentFile(t.InstructionFile) {
+		return
+	}
+	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
+	if !ok {
+		return
+	}
+	blocks := parser.SubagentFrontmatterBlocks(fm)
+	if blocks == nil {
+		return
+	}
+	if len(blocks.Hooks) > 0 {
+		t.SubagentHooks = blocks.Hooks
+		t.SubagentHooksFile = t.InstructionFile
+	}
+	if len(blocks.MCPServers) > 0 {
+		t.ProjectMCP = blocks.MCPServers
+		t.ProjectMCPFile = t.InstructionFile
+	}
+	// A type:"prompt" hook in this frontmatter is deliberately NOT added as an
+	// instruction source the way settings.json prompt-hooks are. The whole agent
+	// file, frontmatter included, is already the target's InstructionContent, so
+	// the content rules scan that prompt text once and report it at its real line
+	// number; registering it again would double-report the same phrase.
+}
+
+// isClaudeSubagentFile reports whether path is a Markdown file directly inside a
+// .claude/agents directory, the only location whose frontmatter Claude Code reads
+// for the nested hooks/mcpServers blocks.
+func isClaudeSubagentFile(path string) bool {
+	if path == "" || !strings.EqualFold(filepath.Ext(path), ".md") {
+		return false
+	}
+	dir := filepath.Dir(path)
+	return filepath.Base(dir) == "agents" && filepath.Base(filepath.Dir(dir)) == ".claude"
 }
 
 // claudeRulesFiles returns every *.md file under <base>/.claude/rules, discovered

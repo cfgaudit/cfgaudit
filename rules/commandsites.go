@@ -91,6 +91,34 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Claude Code subagent frontmatter hooks (.claude/agents/*.md `hooks:`, #428).
+	// Same event → matcher groups → {type, command} nesting as settings.json, and
+	// the agent file is committed, so the command text runs on whoever uses the
+	// subagent. Labelled distinctly because the trigger is narrower than a
+	// settings.json hook: these fire when the agent is spawned through the Agent
+	// tool or an @-mention, or when it runs as the main session via --agent or the
+	// `agent` setting — not merely on opening the repo. Since 2.1.218 they
+	// additionally require the agent file's folder to have accepted workspace
+	// trust. Neither caveat changes the command content, which is what these rules
+	// judge; the trigger is why CFG067 and CFG086 are deliberately not extended
+	// here (see instructionSources and CFG086's doc).
+	if len(t.SubagentHooks) > 0 {
+		events := make([]string, 0, len(t.SubagentHooks))
+		for e := range t.SubagentHooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, group := range t.SubagentHooks[event] {
+				for _, h := range group.Hooks {
+					if h.Command != "" {
+						sites = append(sites, commandSite{Label: "subagent frontmatter hooks." + event + " command", File: t.SubagentHooksFile, Command: h.Command})
+					}
+				}
+			}
+		}
+	}
+
 	// xAI Grok CLI .grok/hooks/*.json. The hook file has the same event → matcher
 	// groups → {type, command} shape as Claude Code's, and Grok's user guide marks
 	// these committable, so the command handlers are command sites. Only the
