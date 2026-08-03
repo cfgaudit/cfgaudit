@@ -99,6 +99,16 @@ type Target struct {
 	AgentHooksFile string
 	AgentHooksKind string
 
+	// CursorPermissions holds a parsed Cursor .cursor/permissions.json (Cursor
+	// 2.5+). Cursor's docs tell you to commit the per-repo file, and it is
+	// concatenated with — not overridden by — a teammate's own file, so a
+	// committed allowlist entry removes the approval prompt for everyone
+	// (CFG093) and committed autoRun instructions steer the auto-approval
+	// classifier (CFG094). Nil when absent; CursorPermissionsFile is its path,
+	// used to attribute findings.
+	CursorPermissions     *parser.CursorPermissions
+	CursorPermissionsFile string
+
 	// SubagentHooks holds the nested `hooks:` block decoded from a Claude Code
 	// subagent definition's frontmatter (.claude/agents/*.md, #428) — the same
 	// event → matcher groups → {type, command} schema as settings.json hooks. The
