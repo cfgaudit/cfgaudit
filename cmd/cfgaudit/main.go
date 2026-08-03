@@ -1249,6 +1249,20 @@ func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, erro
 	return p, nil
 }
 
+// loadCursorSandboxOptional parses .cursor/sandbox.json, returning (nil, nil)
+// when it does not exist. A malformed file is an error, so a sandbox profile that
+// is silently not being scanned is reported rather than treated as empty.
+func loadCursorSandboxOptional(path string) (*parser.CursorSandbox, error) {
+	s, err := parser.ParseCursorSandbox(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return s, nil
+}
+
 // loadCopilotSettingsOptional parses .github/copilot/settings.json, returning
 // (nil, nil) when it does not exist. A malformed file is an error, so a settings
 // file that is silently not being scanned is reported rather than treated as
@@ -1394,6 +1408,22 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			Scope:                 finding.ScopeProject,
 			CursorPermissions:     cursorPerms,
 			CursorPermissionsFile: cursorPermsPath,
+		})
+	}
+
+	// Cursor .cursor/sandbox.json — the per-repo sandbox profile, merged over a
+	// teammate's own with per-repo taking priority. Project scope only, for the
+	// same reason as permissions.json.
+	cursorSandboxPath := filepath.Join(dir, ".cursor", "sandbox.json")
+	cursorSandbox, err := loadCursorSandboxOptional(cursorSandboxPath)
+	if err != nil {
+		return nil, err
+	}
+	if !cursorSandbox.Empty() {
+		targets = append(targets, &rules.Target{
+			Scope:             finding.ScopeProject,
+			CursorSandbox:     cursorSandbox,
+			CursorSandboxFile: cursorSandboxPath,
 		})
 	}
 
