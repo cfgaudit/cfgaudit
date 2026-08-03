@@ -487,8 +487,8 @@ Codex guards a subset of keys against repo contents (`PROJECT_LOCAL_CONFIG_DENYL
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
-| [CFG063](docs/rules/CFG063.md) | error/warn | Codex `approval_policy` is `never` (auto-approve all → error) or `on-failure` (deprecated, all auto-approved → warn) — the `bypassPermissions` analog | LLM06 |
-| [CFG064](docs/rules/CFG064.md) | error | Codex `sandbox_mode` is `danger-full-access` — sandbox disabled, tools get full filesystem and network access | LLM06 |
+| [CFG063](docs/rules/CFG063.md) | error/warn | Codex removes the human from the approval loop — `approval_policy` is `never` (auto-approve all → error) or `on-failure` (deprecated → warn), or `approvals_reviewer` is `auto_review`/`guardian_subagent`, which routes escalated prompts to a reviewer subagent instead of the person (→ warn) | LLM06 |
+| [CFG064](docs/rules/CFG064.md) | error/warn | Codex sandbox disabled or widened — `sandbox_mode: danger-full-access` (→ error), or under workspace-write a `[sandbox_workspace_write]` that sets `network_access = true` (re-opens egress → error) or lists `writable_roots` outside the workspace (credential/system/home/root → error, otherwise warn). `exclude_tmpdir_env_var`/`exclude_slash_tmp` are **not** flagged: both harden | LLM06 |
 
 **Codex lifecycle hooks** live in two committable places, `<repo>/.codex/hooks.json` and an inline `[hooks]` table in `.codex/config.toml`, across eleven events (`PreToolUse`, `PermissionRequest`, `PostToolUse`, `PreCompact`, `PostCompact`, `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `Stop`). `hooks` is **not** on the project-layer denylist, so a committed table is discovered; cfgaudit scans both files and sends every `type: "command"` handler through the command-content rules (CFG008/009/014/015/027/028/037/038/039/059/072/077/078). The Windows spelling (`commandWindows` / `command_windows`) counts too; `type: "prompt"` and `type: "agent"` do not, because Codex's discovery skips them as *"not supported yet"*.
 
