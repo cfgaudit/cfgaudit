@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -14,6 +15,16 @@ type CodexConfig struct {
 	ApprovalPolicy string              `toml:"approval_policy"`
 	SandboxMode    string              `toml:"sandbox_mode"`
 	MCPServers     map[string]CodexMCP `toml:"mcp_servers"`
+
+	// ApprovalsReviewer routes escalated approval requests. "user" (the default)
+	// asks the person; "auto_review" hands the decision to a subagent. Codex still
+	// accepts the legacy spelling "guardian_subagent" as an alias for the same
+	// value (codex-rs/protocol/src/config_types.rs), so both must be recognised.
+	ApprovalsReviewer string `toml:"approvals_reviewer"`
+
+	// SandboxWorkspaceWrite is the [sandbox_workspace_write] table, which Codex
+	// consults only when the effective sandbox mode is workspace-write.
+	SandboxWorkspaceWrite *CodexSandboxWorkspaceWrite `toml:"sandbox_workspace_write"`
 	// Notify is a program (argv) Codex spawns on events; a committed value runs
 	// attacker-controlled code, so it is scanned by the command-content rules.
 	Notify []string `toml:"notify"`
@@ -38,6 +49,65 @@ func (c *CodexConfig) HookEvents() *CodexHooks {
 		return nil
 	}
 	return c.Hooks.Hooks()
+}
+
+// CodexSandboxWorkspaceWrite is the [sandbox_workspace_write] table
+// (codex-rs/config/src/types.rs SandboxWorkspaceWrite).
+//
+// Only two of the four fields loosen anything:
+//
+//   - NetworkAccess re-enables outbound network from inside the sandbox, which
+//     otherwise runs with NetworkSandboxPolicy::Restricted.
+//   - WritableRoots adds directories the sandbox may write to on top of the
+//     workspace.
+//
+// ExcludeTmpdirEnvVar and ExcludeSlashTmp go the other way. Codex builds the
+// writable set as "workdir, then /tmp unless exclude_slash_tmp, then $TMPDIR
+// unless exclude_tmpdir_env_var" (utils/sandbox-summary), so setting either to
+// true REMOVES a writable location. They are decoded so the shape is documented
+// and deliberately never flagged; the issue that requested this parsing listed
+// them as looseners, which is the same trap Cursor's disableTmpWrite set in
+// CFG095.
+type CodexSandboxWorkspaceWrite struct {
+	WritableRoots       []string `toml:"writable_roots"`
+	NetworkAccess       bool     `toml:"network_access"`
+	ExcludeTmpdirEnvVar bool     `toml:"exclude_tmpdir_env_var"`
+	ExcludeSlashTmp     bool     `toml:"exclude_slash_tmp"`
+}
+
+// UsesAutoReviewer reports whether approvals are routed to the reviewer subagent
+// rather than the user, accepting both the current spelling and Codex's legacy
+// alias.
+func (c *CodexConfig) UsesAutoReviewer() bool {
+	if c == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(c.ApprovalsReviewer)) {
+	case "auto_review", "guardian_subagent":
+		return true
+	}
+	return false
+}
+
+// WorkspaceWriteTableApplies reports whether Codex would consult the
+// [sandbox_workspace_write] table given this file's sandbox_mode.
+//
+// The table is read only under workspace-write. An explicit "read-only" ignores
+// it, and "danger-full-access" disables the sandbox outright — that is CFG064's
+// own error, strictly worse than anything in the table, so reporting the table
+// there would add noise about settings Codex never reaches. An unset sandbox_mode
+// resolves to workspace-write for a directory that carries a trust decision
+// (codex-rs/config/src/config_toml.rs), which is the ordinary project case, so an
+// omitted mode counts as applying.
+func (c *CodexConfig) WorkspaceWriteTableApplies() bool {
+	if c == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(c.SandboxMode)) {
+	case "", "workspace-write":
+		return true
+	}
+	return false
 }
 
 // CodexProvider is a [model_providers.<name>] table.
