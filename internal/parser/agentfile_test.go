@@ -168,6 +168,106 @@ body
 	}
 }
 
+// Copilot's custom agents use the kebab-case key and a MAPPING of server name to
+// config, the mirror image of Claude Code's camelCase key and list.
+func TestCopilotAgentMCPServers(t *testing.T) {
+	fm, ok := InstructionFrontmatter(`---
+name: evil
+description: test
+tools: ["*"]
+mcp-servers:
+  pwn:
+    type: local
+    command: npx
+    args: ["-y", "evil-mcp@latest"]
+    env:
+      TOKEN: "secret"
+  remote:
+    type: sse
+    url: "http://mcp.example.test/sse"
+    headers:
+      Authorization: "Bearer token"
+---
+body
+`)
+	if !ok {
+		t.Fatal("frontmatter did not parse")
+	}
+	servers := CopilotAgentMCPServers(fm)
+	if len(servers) != 2 {
+		t.Fatalf("expected 2 servers, got %d: %v", len(servers), servers)
+	}
+	if got := servers["pwn"]; got.Command != "npx" || got.Type != "local" || got.Env["TOKEN"] != "secret" {
+		t.Errorf("local server decoded wrong: %+v", got)
+	}
+	if got := servers["remote"]; got.URL != "http://mcp.example.test/sse" || got.Headers["Authorization"] != "Bearer token" {
+		t.Errorf("remote server decoded wrong: %+v", got)
+	}
+}
+
+// The two agent formats must not bleed into each other: Copilot reads
+// `mcp-servers`, Claude Code reads `mcpServers`, and each decoder ignores the
+// other's key and shape.
+func TestAgentMCPKeysDoNotCrossOver(t *testing.T) {
+	claudeShape := `---
+name: x
+description: x
+mcpServers:
+  - pwn:
+      command: npx
+---
+body
+`
+	copilotShape := `---
+name: x
+description: x
+mcp-servers:
+  pwn:
+    command: npx
+---
+body
+`
+	fmClaude, ok := InstructionFrontmatter(claudeShape)
+	if !ok {
+		t.Fatal("claude frontmatter did not parse")
+	}
+	if got := CopilotAgentMCPServers(fmClaude); len(got) > 0 {
+		t.Errorf("the Copilot decoder must ignore camelCase mcpServers, got %v", got)
+	}
+
+	fmCopilot, ok := InstructionFrontmatter(copilotShape)
+	if !ok {
+		t.Fatal("copilot frontmatter did not parse")
+	}
+	if b := SubagentFrontmatterBlocks(fmCopilot); b != nil && len(b.MCPServers) > 0 {
+		t.Errorf("the Claude decoder must ignore kebab-case mcp-servers, got %v", b.MCPServers)
+	}
+}
+
+func TestCopilotAgentMCPServers_AbsentAndMalformed(t *testing.T) {
+	for name, content := range map[string]string{
+		"absent": "---\nname: x\ndescription: x\n---\nbody\n",
+		"empty":  "---\nname: x\ndescription: x\nmcp-servers: {}\n---\nbody\n",
+		"scalar": "---\nname: x\ndescription: x\nmcp-servers: \"github\"\n---\nbody\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fm, ok := InstructionFrontmatter(content)
+			if !ok {
+				t.Fatal("frontmatter did not parse")
+			}
+			if got := CopilotAgentMCPServers(fm); got != nil {
+				t.Errorf("expected nil, got %v", got)
+			}
+		})
+	}
+}
+
+func TestCopilotAgentMCPServers_NilFrontmatter(t *testing.T) {
+	if got := CopilotAgentMCPServers(nil); got != nil {
+		t.Errorf("expected nil for nil frontmatter, got %v", got)
+	}
+}
+
 func TestSubagentFrontmatterBlocks_NilFrontmatter(t *testing.T) {
 	if b := SubagentFrontmatterBlocks(nil); b != nil {
 		t.Errorf("expected nil for nil frontmatter, got %+v", b)

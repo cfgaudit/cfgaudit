@@ -72,6 +72,55 @@ func SubagentFrontmatterBlocks(fm *Frontmatter) *SubagentBlocks {
 	return out
 }
 
+// CopilotAgentMCPServers decodes the `mcp-servers:` block of a GitHub Copilot
+// custom agent file (.github/agents/*.md, #439), keyed by server name.
+//
+// Two shape differences from Claude Code's subagent frontmatter, which is why
+// this cannot share SubagentFrontmatterBlocks:
+//
+//   - the key is kebab-case `mcp-servers`, not camelCase `mcpServers`
+//   - the value is a MAPPING of server name to config, not a list of single-key
+//     mappings and string references
+//
+// The per-server config is the same one GitHub's repository-level MCP
+// configuration uses ("a YAML representation of the JSON configuration format
+// used to configure MCP servers for repositories on GitHub"): `type`
+// (`local`/`stdio`/`http`/`sse`), `command`/`args`/`env` for local servers,
+// `url`/`headers` for remote ones, and `tools`. Only `local` fields appear in the
+// custom-agent doc's own example, but the block is documented as that same
+// format, so the full shape is decoded and the remote-transport rules apply to a
+// `url`/`headers` server declared here.
+//
+// Unlike the Claude Code side, this shape has not been verified by running the
+// agent: the Copilot CLI is not part of this repo's toolchain. It rests on the
+// GitHub reference documentation plus the customization spec checked into the
+// microsoft/vscode tree, which agree on the mapping shape.
+func CopilotAgentMCPServers(fm *Frontmatter) map[string]MCPServer {
+	if fm == nil {
+		return nil
+	}
+	raw, ok := fm.Raw["mcp-servers"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	out := make(map[string]MCPServer)
+	for name, cfg := range raw {
+		b, err := json.Marshal(cfg)
+		if err != nil {
+			continue
+		}
+		var server MCPServer
+		if err := json.Unmarshal(b, &server); err != nil {
+			continue
+		}
+		out[name] = server
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // inlineSubagentMCPServers decodes the frontmatter `mcpServers:` value.
 //
 // The documented shape is a YAML *list* whose entries are either a single-key
