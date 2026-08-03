@@ -850,7 +850,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range projRules {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
-	projSkills, err := agentSkillsFiles(dir)
+	projSkills, err := agentSkillsFiles(dir, projectSkillsDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -879,7 +879,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		for _, m := range userRules {
 			paths = append(paths, scopedPath{m, finding.ScopeUser})
 		}
-		userSkills, err := agentSkillsFiles(home)
+		userSkills, err := agentSkillsFiles(home, userSkillsDirs)
 		if err != nil {
 			return nil, err
 		}
@@ -913,36 +913,76 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 // — and walks subdirectories to find them, so unlike the single-level globs this
 // needs a full walk (#325). A missing rules directory yields no files and no
 // error; results are sorted for deterministic ordering.
-// agentSkillsFiles returns every SKILL.md under <base>/.agents/skills, discovered
-// recursively. `.agents/skills/` is a cross-agent convention: it is read from the
-// scanned project (not just the vendor's own repo) by OpenHands, OpenAI Codex,
-// charmbracelet/crush, block/goose, and Moonshot's Kimi Code — each loading a
-// committed SKILL.md there as trusted skill context, verified against those five
-// codebases (#394). A skill is instruction text, so the content rules apply to it
+// projectSkillsDirs and userSkillsDirs are the skills directories walked
+// recursively by agentSkillsFiles, on top of the one-deep <agent>/skills globs in
+// agentInstructionGlobs.
+//
+//   - `.agents/skills/` is a cross-agent convention: it is read from the scanned
+//     project (not just the vendor's own repo) by OpenHands, OpenAI Codex,
+//     charmbracelet/crush, block/goose, and Moonshot's Kimi Code — each loading a
+//     committed SKILL.md there as trusted skill context, verified against those
+//     five codebases (#394).
+//   - `.github/skills/` is GitHub Copilot's project-skills directory (#438).
+//     GitHub documents `.github/skills`, `.claude/skills` and `.agents/skills` as
+//     the three interchangeable project locations, and the customization spec
+//     checked into the microsoft/vscode tree
+//     (src/vs/sessions/copilot-customizations-spec.md, compiled from
+//     github/copilot-agent-runtime) lists all three under one loader
+//     (`loader.ts` collectProjectDirs). A skill committed there is read by Copilot
+//     CLI, the cloud agent, the Copilot app, VS Code agent mode, and — GA since
+//     2026-07-29 — Copilot code review, which reviews pull requests.
+//
+// `.github/skills` is project-only: Copilot's personal-skills locations are
+// `~/.copilot/skills` and `~/.agents/skills`, not `~/.github/skills`, so it is
+// deliberately absent from userSkillsDirs rather than mirrored there.
+var (
+	projectSkillsDirs = []string{
+		filepath.Join(".agents", "skills"),
+		filepath.Join(".github", "skills"),
+	}
+	userSkillsDirs = []string{
+		filepath.Join(".agents", "skills"),
+	}
+)
+
+// agentSkillsFiles returns every SKILL.md under each of <base>/<dir>, discovered
+// recursively. A skill is instruction text, so the content rules apply to it
 // exactly as they do to .claude/skills/*/SKILL.md.
 //
 // Recursive walk (not filepath.Glob) because the agents discover subdirectories,
-// like .claude/rules (#325). Only SKILL.md is collected, matching how
-// .claude/skills is treated — OpenHands additionally loads plain *.md under this
-// dir, but scanning a skill's bundled helper markdown as instruction content
-// would be a false positive, so that superset is deliberately left out.
-func agentSkillsFiles(base string) ([]string, error) {
-	root := filepath.Join(base, ".agents", "skills")
+// like .claude/rules (#325). For .github/skills the documented layout is one deep
+// (.github/skills/<name>/SKILL.md) and the spec also allows a flat
+// .github/skills/SKILL.md; the walk is a superset of both, and costs no false
+// positives because only files named SKILL.md are collected. That exact-name
+// filter is also why .claude/skills is treated this way — OpenHands additionally
+// loads plain *.md under its skills dir, but scanning a skill's bundled helper
+// markdown as instruction content would be a false positive, so that superset is
+// deliberately left out.
+//
+// A missing directory yields no files and no error; results are deduplicated
+// (a path reachable through two configured dirs is reported once) and sorted for
+// deterministic ordering.
+func agentSkillsFiles(base string, dirs []string) ([]string, error) {
+	seen := make(map[string]bool)
 	var out []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return nil
+	for _, rel := range dirs {
+		root := filepath.Join(base, rel)
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
+				return err
 			}
-			return err
+			if !d.IsDir() && strings.EqualFold(filepath.Base(path), "SKILL.md") && !seen[path] {
+				seen[path] = true
+				out = append(out, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
-		if !d.IsDir() && strings.EqualFold(filepath.Base(path), "SKILL.md") {
-			out = append(out, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 	sort.Strings(out)
 	return out, nil
