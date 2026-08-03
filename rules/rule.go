@@ -109,6 +109,20 @@ type Target struct {
 	CursorPermissions     *parser.CursorPermissions
 	CursorPermissionsFile string
 
+	// CodexHooks holds the lifecycle hooks declared in a Codex .codex/hooks.json
+	// or the inline [hooks] table of a .codex/config.toml (#431). Their command
+	// handlers become command sites so the command-content family judges the
+	// shell they would run.
+	//
+	// The trigger is NOT modelled: Codex gates every non-managed hook behind a
+	// per-hook, content-hash-pinned trust decision that only the user layer can
+	// record, so a committed hook is discovered and listed for review but does
+	// not run until the user trusts that exact command. That is why CFG086
+	// (zero-click) and CFG087 (auto-approve) are deliberately not extended here.
+	// Nil when absent; CodexHooksFile is the file the hooks came from.
+	CodexHooks     *parser.CodexHooks
+	CodexHooksFile string
+
 	// CursorSandbox holds a parsed Cursor .cursor/sandbox.json (Cursor 2.5+).
 	// Cursor merges the per-repo file over a teammate's own with "per-repo
 	// settings taking priority", so a committed file can disable the sandbox,
