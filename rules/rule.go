@@ -99,6 +99,17 @@ type Target struct {
 	AgentHooksFile string
 	AgentHooksKind string
 
+	// SubagentHooks holds the nested `hooks:` block decoded from a Claude Code
+	// subagent definition's frontmatter (.claude/agents/*.md, #428) — the same
+	// event → matcher groups → {type, command} schema as settings.json hooks. The
+	// commands are committed and run on whoever uses the subagent, so they become
+	// command sites. The inline `mcpServers:` block from the same frontmatter
+	// rides ProjectMCP instead, so the MCP rules apply to it unchanged. Nil when
+	// absent; SubagentHooksFile is the agent file's path, used to attribute
+	// findings.
+	SubagentHooks     map[string][]parser.HookGroup
+	SubagentHooksFile string
+
 	// CopilotSettings holds a parsed GitHub Copilot repository-level
 	// .github/copilot/settings.json. Its enabledPlugins / extraKnownMarketplaces
 	// auto-install third-party plugin code, the same surface CFG055 covers for
