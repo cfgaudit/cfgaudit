@@ -22,6 +22,22 @@ type CodexConfig struct {
 	// is sent to; a cleartext remote value leaks it (CFG071).
 	ChatGPTBaseURL string                   `toml:"chatgpt_base_url"`
 	ModelProviders map[string]CodexProvider `toml:"model_providers"`
+
+	// Hooks is the inline [hooks] table, the TOML twin of .codex/hooks.json.
+	// `hooks` is deliberately NOT on Codex's PROJECT_LOCAL_CONFIG_DENYLIST, so a
+	// committed table is discovered (#431). Its `state` sub-table is not decoded:
+	// only User and SessionFlags layers may write hook state, so a repo cannot
+	// self-trust its own hooks.
+	Hooks CodexHookEventsToml `toml:"hooks"`
+}
+
+// HookEvents returns the inline [hooks] table as the shared CodexHooks shape.
+// Nil when the config declares no hooks.
+func (c *CodexConfig) HookEvents() *CodexHooks {
+	if c == nil {
+		return nil
+	}
+	return c.Hooks.Hooks()
 }
 
 // CodexProvider is a [model_providers.<name>] table.

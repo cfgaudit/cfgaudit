@@ -540,6 +540,26 @@ func codexTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			CodexFile:      projectPath,
 			ProjectMCP:     projectCfg.MCPServerMap(),
 			ProjectMCPFile: projectPath,
+			// Inline [hooks] rides the same target: `hooks` is not on the
+			// project-layer denylist, so a committed table is discovered (#431).
+			CodexHooks:     projectCfg.HookEvents(),
+			CodexHooksFile: projectPath,
+		})
+	}
+
+	// .codex/hooks.json is the file twin of the inline [hooks] table, loaded from
+	// the same project .codex folder and independent of config.toml, so it is
+	// scanned even when no config.toml is present.
+	hooksPath := filepath.Join(dir, ".codex", "hooks.json")
+	codexHooks, err := loadCodexHooksOptional(hooksPath)
+	if err != nil {
+		return nil, err
+	}
+	if !codexHooks.Empty() {
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			CodexHooks:     codexHooks,
+			CodexHooksFile: hooksPath,
 		})
 	}
 
@@ -1247,6 +1267,20 @@ func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, erro
 		return nil, err
 	}
 	return p, nil
+}
+
+// loadCodexHooksOptional parses .codex/hooks.json, returning (nil, nil) when it
+// does not exist. A malformed file is an error, so a hooks file that is silently
+// not being scanned is reported rather than treated as empty.
+func loadCodexHooksOptional(path string) (*parser.CodexHooks, error) {
+	h, err := parser.ParseCodexHooksJSON(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return h, nil
 }
 
 // loadCursorSandboxOptional parses .cursor/sandbox.json, returning (nil, nil)

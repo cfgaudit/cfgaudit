@@ -91,6 +91,35 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// OpenAI Codex CLI hooks: .codex/hooks.json, or the inline [hooks] table of
+	// .codex/config.toml. Same event → matcher groups → {type, command} nesting as
+	// Claude Code's, and `hooks` is deliberately absent from Codex's
+	// PROJECT_LOCAL_CONFIG_DENYLIST, so a committed table is discovered.
+	//
+	// Only the "command" handler carries a shell string: Codex's discovery skips
+	// "prompt" and "agent" handlers with the warning that they "are not supported
+	// yet", so neither is a command site. The Windows spelling (commandWindows /
+	// command_windows) is collected too, since a hook that sets only that still
+	// runs a command.
+	//
+	// These are command sites, not triggers. Codex runs a non-managed hook only
+	// when the user's own config layer records a trusted_hash equal to the hook's
+	// current content hash (codex-rs/hooks/src/engine/discovery.rs), and a project
+	// layer cannot write that state. So the command text is what is worth showing
+	// a reviewer, at exactly the moment Codex asks them to trust it, while the
+	// zero-click (CFG086) and auto-approve (CFG087) rules stay off Codex.
+	if ch := t.CodexHooks; ch != nil {
+		for _, event := range ch.EventNames() {
+			for _, group := range ch.Events[event] {
+				for _, h := range group.Hooks {
+					for _, cmd := range h.Commands() {
+						sites = append(sites, commandSite{Label: "Codex hooks." + event + " command", File: t.CodexHooksFile, Command: cmd})
+					}
+				}
+			}
+		}
+	}
+
 	// Claude Code subagent frontmatter hooks (.claude/agents/*.md `hooks:`, #428).
 	// Same event → matcher groups → {type, command} nesting as settings.json, and
 	// the agent file is committed, so the command text runs on whoever uses the
