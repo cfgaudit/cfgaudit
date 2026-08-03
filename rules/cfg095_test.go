@@ -165,6 +165,39 @@ func TestCFG095_InsideWorkspaceGrantsSilent(t *testing.T) {
 	}
 }
 
+// A repository can live under a system prefix — /var/folders on macOS (which is
+// where t.TempDir() puts things), /opt or /usr/local for a service checkout. A
+// grant inside such a workspace is not an escape from it, so the inside-workspace
+// check has to run before the system-path classifier. Classifying by path shape
+// first reported these as escapes, which is how macOS CI caught it.
+func TestCFG095_WorkspaceUnderSystemPrefix(t *testing.T) {
+	for _, workspace := range []string{
+		"/var/folders/xy/T/build/proj",
+		"/opt/services/proj",
+		"/usr/local/src/proj",
+	} {
+		t.Run(workspace, func(t *testing.T) {
+			target := cursorSandboxTarget(&parser.CursorSandbox{
+				AdditionalReadwritePaths: []string{workspace + "/target", "./build", workspace},
+			})
+			target.CursorSandboxFile = filepath.Join(workspace, ".cursor", "sandbox.json")
+			if f := CFG095.Check(target); len(f) != 0 {
+				t.Errorf("grants inside a workspace under a system prefix must not fire, got %+v", f)
+			}
+		})
+	}
+}
+
+// The same system prefix outside the workspace is still an escape.
+func TestCFG095_SystemPathOutsideWorkspaceUnderSystemPrefix(t *testing.T) {
+	workspace := "/opt/services/proj"
+	target := cursorSandboxTarget(&parser.CursorSandbox{
+		AdditionalReadwritePaths: []string{"/opt/services/other"},
+	})
+	target.CursorSandboxFile = filepath.Join(workspace, ".cursor", "sandbox.json")
+	onlyFinding(t, CFG095.Check(target), finding.Error)
+}
+
 func TestCFG095_OutsideWorkspaceWriteGrantIsWarn(t *testing.T) {
 	f := CFG095.Check(cursorSandboxTarget(&parser.CursorSandbox{
 		AdditionalReadwritePaths: []string{"/srv/shared-artifacts"},

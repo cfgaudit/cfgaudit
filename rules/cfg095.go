@@ -146,10 +146,20 @@ func sandboxWorkspaceDir(path string) string {
 // workspace are returned in none of the three: that is the sandbox's own scope.
 // includeSystem is false for read-only grants, where reading /usr or /bin is
 // unremarkable and flagging it would be noise.
+//
+// The inside-workspace check comes FIRST, before the credential and system
+// classifiers. A repository can legitimately live under one of the system
+// prefixes — /var on macOS (where the temp tree is /var/folders/…), /opt or
+// /usr/local for a service checkout — and a grant to a directory inside such a
+// workspace is not an escape from it. Classifying by path shape first reported
+// those as system-path escapes.
 func classifyGrants(paths []string, workspace string, includeSystem bool) (cred, system, outside []string) {
 	for _, raw := range paths {
 		p := strings.TrimSpace(raw)
 		if p == "" {
+			continue
+		}
+		if isInsideWorkspace(p, workspace) {
 			continue
 		}
 		switch {
@@ -211,26 +221,46 @@ func matchesSystemPath(p string) bool {
 	return false
 }
 
-// isOutsideWorkspace reports whether an absolute grant falls outside the
-// workspace root. A relative path is treated as inside: the sandbox resolves it
-// against the workspace, which is the case the rule deliberately stays quiet
-// about. With no known workspace, an absolute path cannot be placed, so it is not
-// reported as outside.
-func isOutsideWorkspace(p, workspace string) bool {
-	n := strings.ReplaceAll(strings.TrimSpace(p), "\\", "/")
-	if strings.HasPrefix(n, "~") || strings.HasPrefix(n, "$") || strings.HasPrefix(n, "%") {
-		return true
+// isInsideWorkspace reports whether a grant resolves within the workspace root.
+// A relative path always does: the sandbox resolves it against the workspace. An
+// absolute path does when it is the root itself or sits beneath it. A home- or
+// variable-anchored path (~, $HOME, %USERPROFILE%) never counts as inside, since
+// where it lands is not knowable from the file. With no derivable workspace root
+// nothing can be placed inside it.
+func isInsideWorkspace(p, workspace string) bool {
+	n := normalizeSlashes(p)
+	if n == "" || strings.HasPrefix(n, "~") || strings.HasPrefix(n, "$") || strings.HasPrefix(n, "%") {
+		return false
 	}
 	if !strings.HasPrefix(n, "/") {
-		return false
+		return true // relative: resolved against the workspace
 	}
 	if workspace == "" {
 		return false
 	}
-	root := strings.ReplaceAll(workspace, "\\", "/")
-	root = strings.TrimSuffix(root, "/")
+	root := strings.TrimSuffix(normalizeSlashes(workspace), "/")
 	clean := strings.TrimSuffix(n, "/")
-	return clean != root && !strings.HasPrefix(clean, root+"/")
+	return clean == root || strings.HasPrefix(clean, root+"/")
+}
+
+// isOutsideWorkspace reports whether an absolute grant falls outside the
+// workspace root. With no known workspace, an absolute path cannot be placed, so
+// it is not reported as outside.
+func isOutsideWorkspace(p, workspace string) bool {
+	n := normalizeSlashes(p)
+	if strings.HasPrefix(n, "~") || strings.HasPrefix(n, "$") || strings.HasPrefix(n, "%") {
+		return true
+	}
+	if !strings.HasPrefix(n, "/") || workspace == "" {
+		return false
+	}
+	return !isInsideWorkspace(p, workspace)
+}
+
+// normalizeSlashes folds a Windows path spelling onto forward slashes so the
+// workspace comparison behaves the same on every platform.
+func normalizeSlashes(p string) string {
+	return strings.ReplaceAll(strings.TrimSpace(p), "\\", "/")
 }
 
 // unboundedNetworkPatterns returns the allow entries that grant the whole
