@@ -777,6 +777,13 @@ var (
 		// .github/copilot-instructions.md, which is in agentInstructionFiles) —
 		// committed Markdown loaded as Copilot context, same prompt-injection surface.
 		filepath.Join(".github", "instructions", "*.instructions.md"),
+		// GitHub Copilot custom agents (#439). The body is the agent's system
+		// prompt, so the instruction-content rules apply, and the frontmatter can
+		// carry an inline mcp-servers block (see attachSubagentBlocks). Copilot
+		// recognises both *.md and *.agent.md here — the *.agent.md spelling wins
+		// when both exist for the same base name — and the plain *.md glob already
+		// matches both, so one pattern covers the directory.
+		filepath.Join(".github", "agents", "*.md"),
 		// Claude Code custom subagents, slash commands, and skills — Markdown with a
 		// YAML frontmatter (description trigger, allowed-tools) read as trusted
 		// context. Skills live one directory deep: .claude/skills/<name>/SKILL.md.
@@ -908,28 +915,45 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	return targets, nil
 }
 
-// attachSubagentBlocks decodes the nested `hooks:` and `mcpServers:` frontmatter
-// blocks of a Claude Code subagent definition and hangs them on the target so the
-// shared rule families reach them (#428): the hooks become command sites, and the
-// inline MCP servers ride ProjectMCP exactly like the ones from .mcp.json.
+// attachSubagentBlocks decodes the nested execution blocks an agent-definition
+// file can carry in its frontmatter and hangs them on the target so the shared
+// rule families reach them. Which blocks exist depends on whose agent file it is:
 //
-// Restricted to .claude/agents/*.md. Other agents' subagent files are a different
-// contract — Grok's frontmatter carries permissionMode but no hooks/mcpServers,
-// and qwen's has neither — so decoding these keys there would report fields the
-// agent never reads. Copilot's .github/agents/*.md does accept an inline MCP block
-// under the kebab-case key `mcp-servers`, which is #439.
+//   - Claude Code, .claude/agents/*.md (#428): `hooks:` become command sites, and
+//     the inline `mcpServers:` list rides ProjectMCP like the servers in .mcp.json.
+//   - GitHub Copilot, .github/agents/*.md (#439): the kebab-case `mcp-servers:`
+//     mapping rides ProjectMCP. Copilot's custom-agent frontmatter has no hooks
+//     block — its hooks come from config dirs and plugin manifests, not from an
+//     agent file — so none is decoded here.
 //
-// Plugin-loaded subagents are out of scope by construction: Claude Code ignores
+// Other agents' subagent files are a different contract again: Grok's frontmatter
+// carries permissionMode but no hooks/mcpServers, and qwen's has neither, so
+// decoding these keys there would report fields the agent never reads.
+//
+// Plugin-loaded agents are out of scope by construction: Claude Code ignores
 // hooks/mcpServers/permissionMode for them, and cfgaudit only builds instruction
 // targets from SKILL.md inside a plugin package, never from its agents/.
 func attachSubagentBlocks(t *rules.Target) {
-	if t == nil || !isClaudeSubagentFile(t.InstructionFile) {
+	if t == nil {
+		return
+	}
+	claude, copilot := isClaudeSubagentFile(t.InstructionFile), isCopilotAgentFile(t.InstructionFile)
+	if !claude && !copilot {
 		return
 	}
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
 	if !ok {
 		return
 	}
+
+	if copilot {
+		if servers := parser.CopilotAgentMCPServers(fm); len(servers) > 0 {
+			t.ProjectMCP = servers
+			t.ProjectMCPFile = t.InstructionFile
+		}
+		return
+	}
+
 	blocks := parser.SubagentFrontmatterBlocks(fm)
 	if blocks == nil {
 		return
@@ -953,11 +977,24 @@ func attachSubagentBlocks(t *rules.Target) {
 // .claude/agents directory, the only location whose frontmatter Claude Code reads
 // for the nested hooks/mcpServers blocks.
 func isClaudeSubagentFile(path string) bool {
+	return isAgentDefinitionFile(path, ".claude")
+}
+
+// isCopilotAgentFile reports whether path is a Markdown file directly inside a
+// .github/agents directory. Copilot accepts both the *.md and *.agent.md
+// spellings there; both end in .md, so no separate check is needed.
+func isCopilotAgentFile(path string) bool {
+	return isAgentDefinitionFile(path, ".github")
+}
+
+// isAgentDefinitionFile reports whether path is a Markdown file directly inside
+// <parent>/agents.
+func isAgentDefinitionFile(path, parent string) bool {
 	if path == "" || !strings.EqualFold(filepath.Ext(path), ".md") {
 		return false
 	}
 	dir := filepath.Dir(path)
-	return filepath.Base(dir) == "agents" && filepath.Base(filepath.Dir(dir)) == ".claude"
+	return filepath.Base(dir) == "agents" && filepath.Base(filepath.Dir(dir)) == parent
 }
 
 // claudeRulesFiles returns every *.md file under <base>/.claude/rules, discovered
