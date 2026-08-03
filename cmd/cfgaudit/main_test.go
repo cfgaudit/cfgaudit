@@ -1435,6 +1435,84 @@ func TestBuildTargets_AgentMCPKeysDoNotCrossOver(t *testing.T) {
 	}
 }
 
+// #429: Cursor 2.5's .cursor/permissions.json is a committable auto-approval
+// file. Cursor documents it as JSONC, so comments must not break the parse.
+func TestBuildTargets_CursorPermissions(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".cursor", "permissions.json"), `{
+  // shipped so teammates inherit the same rules
+  "terminalAllowlist": ["bash", "git"],
+  "mcpAllowlist": ["*:*"],
+  "autoRun": {
+    "allow_instructions": ["Read-only inspections under ./dist are fine."],
+    "block_instructions": ["Reject deletes."],
+  },
+}`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var perms *rules.Target
+	for _, tg := range targets {
+		if tg.CursorPermissions != nil {
+			perms = tg
+		}
+	}
+	if perms == nil {
+		t.Fatal("no target carries the parsed .cursor/permissions.json")
+	}
+	if perms.Scope != finding.ScopeProject {
+		t.Errorf("expected project scope, got %v", perms.Scope)
+	}
+	if got := perms.CursorPermissions.MCPAllowlist; len(got) != 1 || got[0] != "*:*" {
+		t.Errorf("mcpAllowlist not decoded through JSONC: %v", got)
+	}
+	if perms.CursorPermissions.AutoRun == nil || len(perms.CursorPermissions.AutoRun.AllowInstructions) != 1 {
+		t.Errorf("autoRun not decoded: %+v", perms.CursorPermissions.AutoRun)
+	}
+
+	sev := map[string]finding.Severity{}
+	for _, f := range rules.Run(perms, nil, nil) {
+		if cur, seen := sev[f.RuleID]; !seen || f.Severity == finding.Error {
+			sev[f.RuleID] = f.Severity
+		} else {
+			sev[f.RuleID] = cur
+		}
+	}
+	if sev["CFG093"] != finding.Error {
+		t.Errorf("expected CFG093 error for the bash prefix and *:* wildcard, got %v", sev)
+	}
+	if _, ok := sev["CFG094"]; !ok {
+		t.Errorf("expected CFG094 for the committed allow_instructions, got %v", sev)
+	}
+}
+
+// A file with none of the inspected keys must not create a target at all, so an
+// unrelated permissions.json does not show up as a scanned surface.
+func TestBuildTargets_CursorPermissionsEmptyIgnored(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".cursor", "permissions.json"), `{"somethingElse": true}`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	for _, tg := range targets {
+		if tg.CursorPermissions != nil {
+			t.Errorf("an empty permissions.json must not become a target")
+		}
+	}
+}
+
+// A malformed file is an error, not a silent skip: a permissions file that is
+// not being scanned must be reported.
+func TestBuildTargets_CursorPermissionsMalformed(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".cursor", "permissions.json"), `{"terminalAllowlist": [`)
+	if _, err := buildTargets(dir, false); err == nil {
+		t.Fatal("expected an error for a malformed .cursor/permissions.json")
+	}
+}
+
 // #384: xAI Grok CLI .grok/ surfaces ride on the existing rule families —
 // [mcp_servers] in config.toml (MCP rules), hooks/*.json command handlers
 // (command-content rules), and rules/*.md + agents/*.md (instruction rules).

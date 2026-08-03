@@ -1234,6 +1234,21 @@ func loadDevinConfigOptional(path string) (*parser.DevinConfig, error) {
 	return c, nil
 }
 
+// loadCursorPermissionsOptional parses .cursor/permissions.json, returning
+// (nil, nil) when it does not exist. A malformed file is an error, so a
+// permissions file that is silently not being scanned is reported rather than
+// treated as empty.
+func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, error) {
+	p, err := parser.ParseCursorPermissions(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return p, nil
+}
+
 // loadCopilotSettingsOptional parses .github/copilot/settings.json, returning
 // (nil, nil) when it does not exist. A malformed file is an error, so a settings
 // file that is silently not being scanned is reported rather than treated as
@@ -1364,6 +1379,23 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	targets = append(targets, hookTargets...)
+
+	// Cursor .cursor/permissions.json — the per-repo auto-approval file Cursor's
+	// docs tell you to commit. Project scope only: the per-user
+	// ~/.cursor/permissions.json is self-intentional, the same reason CFG067
+	// stays off user-global hooks.
+	cursorPermsPath := filepath.Join(dir, ".cursor", "permissions.json")
+	cursorPerms, err := loadCursorPermissionsOptional(cursorPermsPath)
+	if err != nil {
+		return nil, err
+	}
+	if !cursorPerms.Empty() {
+		targets = append(targets, &rules.Target{
+			Scope:                 finding.ScopeProject,
+			CursorPermissions:     cursorPerms,
+			CursorPermissionsFile: cursorPermsPath,
+		})
+	}
 
 	// Copilot .github/copilot/settings.json — repository-level plugin settings.
 	// enabledPlugins / extraKnownMarketplaces install third-party code, the same
