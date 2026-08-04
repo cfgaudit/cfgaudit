@@ -422,15 +422,19 @@ The frontmatter hooks have a **narrower trigger** than a `settings.json` hook: t
 
 ### Plugin & skill packages
 
-Installing a Claude Code plugin is a supply-chain trust decision. With `--plugins <dir>` (and auto-discovered when the scanned project bundles a `.claude-plugin/`, or `~/.claude/plugins/` under `--user`), cfgaudit looks **inside** the package and runs the existing rules against its bundled artifacts:
+Installing an agent plugin is a supply-chain trust decision. With `--plugins <dir>` (and auto-discovered when the scanned project bundles a `.claude-plugin/` or a `kimi.plugin.json`, or `~/.claude/plugins/` under `--user`), cfgaudit looks **inside** the package and runs the existing rules against its bundled artifacts:
 
 | Artifact | Rules applied |
 |----------|---------------|
 | `SKILL.md` | CLAUDE.md content rules — CFG024 (hidden Unicode), CFG026 (instruction-bypass) |
 | `hooks/hooks.json` | command-content rules — CFG008, CFG009, CFG014, CFG015, CFG027, CFG028; instruction-content rules over `type: "prompt"` / `type: "agent"` hook prompts — CFG024, CFG026, CFG029–CFG036, CFG057 |
 | `plugin.json` `mcpServers` | MCP rules — CFG010, CFG011, CFG017–CFG021 |
+| `kimi.plugin.json` `mcpServers` | MCP rules — the same set |
+| `kimi.plugin.json` `systemPrompt` / `systemPromptPath` | instruction-content rules — text a Kimi plugin contributes to the agent's system prompt, and the file it points at |
 
-Findings are attributed to the in-package file. Bundled binaries / arbitrary scripts are **not** content-scanned (that is general SAST, outside cfgaudit's config-audit scope).
+Findings are attributed to the in-package file.
+
+**This half is author-side, and deliberately so.** A Kimi Code plugin is loaded from the user's install store, never from a scanned repository, and there is no committed key that enables one — enablement lives in that store (`PluginManager` reads `readInstalled(kimiHomeDir)`), which a repo cannot write. So a `kimi.plugin.json` is scanned for the benefit of the author publishing the plugin and the reviewer reading it before installing, which is exactly what the `.claude-plugin/` handling already offers. It is not a vector against the scanned repo's own contributors, and cfgaudit does not claim otherwise. The manifest's `hooks` array is a distinct schema from the event-to-matcher-groups map every other agent uses and is not decoded. Bundled binaries / arbitrary scripts are **not** content-scanned (that is general SAST, outside cfgaudit's config-audit scope).
 
 ### Agent-skills lockfile — `skills-lock.json`
 

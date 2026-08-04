@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/parser"
 	"github.com/cfgaudit/cfgaudit/rules"
@@ -61,6 +63,12 @@ func pluginRoots(dir, explicit string, includeUser bool) ([]string, error) {
 	if dirExists(filepath.Join(dir, ".claude-plugin")) {
 		add(dir)
 	}
+	// A Kimi Code plugin marks itself with a kimi.plugin.json at its root
+	// (agent-core/src/plugin/manifest.ts `KIMI_PLUGIN_ROOT_PATH`), the same way a
+	// Claude plugin marks itself with .claude-plugin/ (#440).
+	if fileExists(filepath.Join(dir, kimiPluginManifest)) {
+		add(dir)
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -109,10 +117,74 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 			if t != nil {
 				targets = append(targets, t)
 			}
+		case kimiPluginManifest:
+			ts, err := kimiPluginTargets(path)
+			if err != nil {
+				return err
+			}
+			targets = append(targets, ts...)
 		}
 		return nil
 	})
 	return targets, err
+}
+
+// kimiPluginManifest is the file a Kimi Code plugin declares itself with, at its
+// root.
+const kimiPluginManifest = "kimi.plugin.json"
+
+// kimiPluginTargets turns a kimi.plugin.json into targets for the artifacts it
+// declares (#440):
+//
+//   - mcpServers        → the MCP rules, as for a Claude plugin.json
+//   - systemPrompt      → instruction content, the CFG092 class: text a committed
+//     manifest contributes to the agent's system prompt
+//   - systemPromptPath  → the same, read from the file it points at
+//
+// Bundled skills need nothing here: the walk already turns every SKILL.md in the
+// tree into an instruction target.
+//
+// The manifest's `hooks` array is deliberately not decoded. It is a distinct
+// schema (an array of HookDefConfig, not the event → matcher groups map every
+// other agent uses), and routing it would need a decoder this issue does not ask
+// for.
+//
+// Scope, stated plainly because it is unusual for this tool: a Kimi plugin is
+// loaded from the user's install store, never from a scanned repository, and
+// there is no committed key that enables one — plugin enablement lives in that
+// store (agent-core-v2/src/app/plugin/manager.ts reads `readInstalled(kimiHomeDir)`),
+// which a repo cannot write. So this is author-side coverage: it audits a repo
+// that *is* a plugin, for the author publishing it or a reviewer reading it
+// before installing. That is exactly what the .claude-plugin/ handling above
+// does, which is why it lives here rather than in buildTargets.
+func kimiPluginTargets(path string) ([]*rules.Target, error) {
+	manifest, err := parser.ParseKimiPluginManifest(path)
+	if err != nil {
+		return nil, err
+	}
+	var targets []*rules.Target
+	if len(manifest.MCPServers) > 0 {
+		targets = append(targets, &rules.Target{ProjectMCPFile: path, ProjectMCP: manifest.MCPServers})
+	}
+	if prompt := strings.TrimSpace(manifest.SystemPrompt); prompt != "" {
+		targets = append(targets, &rules.Target{InstructionFile: path, InstructionContent: manifest.SystemPrompt})
+	}
+	if rel := strings.TrimSpace(manifest.SystemPromptPath); rel != "" {
+		promptPath := filepath.Join(filepath.Dir(path), filepath.FromSlash(rel))
+		content, err := os.ReadFile(promptPath) // #nosec G304 -- path from the user-supplied plugin tree
+		switch {
+		case err == nil:
+			if strings.TrimSpace(string(content)) != "" {
+				targets = append(targets, &rules.Target{InstructionFile: promptPath, InstructionContent: string(content)})
+			}
+		case errors.Is(err, os.ErrNotExist):
+			// Kimi records a diagnostic and skips a missing file rather than
+			// failing the plugin, so a dangling path is not a scan error either.
+		default:
+			return nil, fmt.Errorf("read %s: %w", promptPath, err)
+		}
+	}
+	return targets, nil
 }
 
 // pluginHooksTarget parses a plugin hooks.json into a target carrying only its
@@ -149,4 +221,9 @@ func pluginMCPTarget(path string) (*rules.Target, error) {
 func dirExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && info.IsDir()
+}
+
+func fileExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
 }
