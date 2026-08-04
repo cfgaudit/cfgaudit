@@ -133,3 +133,32 @@ func TestCFG009_CmdPercentVar(t *testing.T) {
 		t.Errorf("expected message to name the cmd var, got: %s", f[0].Message)
 	}
 }
+
+// Each agent ships its own project-root variable and its hooks are written
+// against that one. The 2026-08-04 false-positive run found the Claude-only list
+// firing on Zed's and Codex's equivalents in real repositories.
+func TestCFG009_OtherAgentsProjectVarsAreSafe(t *testing.T) {
+	for _, cmd := range []string{
+		`cd "$ZED_WORKTREE_ROOT" && cargo test`,
+		`cd "$ZED_MAIN_GIT_WORKTREE" && gwm bootstrap "$ZED_WORKTREE_ROOT"`,
+		`bash ${PWD}/scripts/lint.sh`,
+		`cd "$PWD" && npm test`,
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			if f := CFG009.Check(hookTarget(t, cmd)); len(f) != 0 {
+				t.Errorf("expected no finding for %q, got %+v", cmd, f)
+			}
+		})
+	}
+}
+
+// A non-framework variable alongside a safe one is still reported, and only it.
+func TestCFG009_SafeVarDoesNotMaskOthers(t *testing.T) {
+	f := CFG009.Check(hookTarget(t, `cd "$ZED_WORKTREE_ROOT" && run "$USER_SUPPLIED"`))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "USER_SUPPLIED") || strings.Contains(f[0].Message, "ZED_WORKTREE_ROOT") {
+		t.Errorf("only the unsafe variable should be named, got %q", f[0].Message)
+	}
+}

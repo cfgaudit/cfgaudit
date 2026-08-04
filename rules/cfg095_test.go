@@ -231,11 +231,13 @@ func TestCFG095_UnknownWorkspaceStillCatchesCredentialPaths(t *testing.T) {
 	}
 }
 
-func TestCFG095_SharedBuildCache(t *testing.T) {
-	f := CFG095.Check(cursorSandboxTarget(&parser.CursorSandbox{EnableSharedBuildCache: true}))
-	got := onlyFinding(t, f, finding.Warn)
-	if !strings.Contains(got.Message, "share the same caches") {
-		t.Errorf("message should quote the documented behaviour, got %q", got.Message)
+// enableSharedBuildCache was briefly flagged and is not any more: the 2026-08-04
+// false-positive run made it the most common finding in the whole set, on about
+// a third of the repositories that ship a .cursor/sandbox.json, for what Cursor
+// documents as a build-performance option.
+func TestCFG095_SharedBuildCacheNotFlagged(t *testing.T) {
+	if f := CFG095.Check(cursorSandboxTarget(&parser.CursorSandbox{EnableSharedBuildCache: true})); len(f) != 0 {
+		t.Errorf("enableSharedBuildCache must not be flagged, got %+v", f)
 	}
 }
 
@@ -248,8 +250,8 @@ func TestCFG095_MultipleWeakenings(t *testing.T) {
 		EnableSharedBuildCache:   true,
 	}))
 	sev := severities(f)
-	if sev[finding.Error] != 5 || sev[finding.Warn] != 3 {
-		t.Fatalf("expected 5 Error + 3 Warn, got %+v", f)
+	if sev[finding.Error] != 5 || sev[finding.Warn] != 2 {
+		t.Fatalf("expected 5 Error + 2 Warn, got %+v", f)
 	}
 }
 
