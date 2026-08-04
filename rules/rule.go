@@ -109,6 +109,12 @@ type Target struct {
 	CursorPermissions     *parser.CursorPermissions
 	CursorPermissionsFile string
 
+	// GeminiRemote holds the remote-agent fields of a .gemini/agents/*.md
+	// frontmatter — agent_card_url, agent_card_json and auth (#453). Set on the
+	// instruction target for that file, so findings attribute to InstructionFile.
+	// Nil for an ordinary local agent.
+	GeminiRemote *parser.GeminiRemoteAgent
+
 	// ZedTasks holds a parsed Zed .zed/tasks.json (#435). A task carrying a
 	// `hooks` entry is spawned by Zed itself with no approval prompt, so its
 	// trigger is CFG047's class and its command text is a command site.

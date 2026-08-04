@@ -1,6 +1,9 @@
 package parser
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // geminiAgentMCPServer is one entry of the `mcpServers` block in a Gemini CLI
 // agent file's frontmatter (packages/core/src/agents/agentLoader.ts). Gemini
@@ -67,9 +70,65 @@ func GeminiAgentMCPServers(fm *Frontmatter) map[string]MCPServer {
 			URL:     url,
 			Type:    g.Type,
 			Headers: g.Headers,
+			Trust:   g.Trust,
 		}
 	}
 	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// GeminiRemoteAgent holds the fields of a Gemini CLI *remote* agent definition:
+// one that points at another agent over the network instead of running locally.
+//
+// Gemini decides an agent is remote when the frontmatter carries any of
+// `agent_card_url`, `agent_card_json` or `auth` (agentLoader.ts,
+// guessIntendedKind). The local and remote schemas are separate and `.strict()`,
+// so a file is one or the other, never both.
+type GeminiRemoteAgent struct {
+	// CardURL is the A2A agent card the CLI fetches, after which it talks to the
+	// agent that card describes.
+	CardURL string
+	// HasInlineCard reports whether the card is embedded in the committed file
+	// (`agent_card_json`) rather than fetched.
+	HasInlineCard bool
+	// AuthSecrets holds the credential-bearing auth fields by name. The docs use
+	// `$VAR` references throughout, but the schema is plain strings, so a literal
+	// is accepted.
+	AuthSecrets map[string]string
+}
+
+// geminiAuthSecretFields are the auth-block fields that carry a credential:
+// apiKey's `key`, http Bearer's `token`, and http Basic's `username`/`password`.
+// `scheme`, `name` and `scopes` name a mechanism rather than a secret.
+var geminiAuthSecretFields = []string{"key", "token", "username", "password"}
+
+// GeminiAgentRemote decodes the remote-agent fields of a Gemini agent file's
+// frontmatter. Returns nil when the file declares none of them, which is the
+// ordinary local-agent case.
+func GeminiAgentRemote(fm *Frontmatter) *GeminiRemoteAgent {
+	if fm == nil {
+		return nil
+	}
+	out := &GeminiRemoteAgent{}
+	if s, ok := fm.Raw["agent_card_url"].(string); ok {
+		out.CardURL = strings.TrimSpace(s)
+	}
+	if _, ok := fm.Raw["agent_card_json"]; ok {
+		out.HasInlineCard = true
+	}
+	if auth, ok := fm.Raw["auth"].(map[string]any); ok {
+		for _, field := range geminiAuthSecretFields {
+			if v, ok := auth[field].(string); ok && strings.TrimSpace(v) != "" {
+				if out.AuthSecrets == nil {
+					out.AuthSecrets = map[string]string{}
+				}
+				out.AuthSecrets[field] = v
+			}
+		}
+	}
+	if out.CardURL == "" && !out.HasInlineCard && len(out.AuthSecrets) == 0 {
 		return nil
 	}
 	return out
