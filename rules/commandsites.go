@@ -91,6 +91,24 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Zed .zed/tasks.json. Only a task carrying a `hooks` entry is a command site:
+	// Zed spawns those itself, so the command runs without the user invoking it.
+	// A plain task is one the user picks from the task list, which is no more a
+	// committed-execution surface than a Makefile target. The trigger is CFG047's;
+	// this is the command text behind it.
+	if zt := t.ZedTasks; zt != nil {
+		for _, task := range zt.Tasks {
+			if len(task.AutoRunHooks()) == 0 || task.Command == "" {
+				continue
+			}
+			cmd := task.Command
+			if len(task.Args) > 0 {
+				cmd += " " + strings.Join(task.Args, " ")
+			}
+			sites = append(sites, commandSite{Label: "Zed hook task \"" + task.Name() + "\" command", File: t.ZedTasksFile, Command: cmd})
+		}
+	}
+
 	// Continue CLI hooks (.continue/settings.json, .continue/settings.local.json).
 	// Same event → matcher groups → {type, command} nesting as Claude Code's, by
 	// design: Continue's loader reads "settings files in the same locations as
