@@ -891,6 +891,13 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range projKimi {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
+	projGemini, err := geminiAgentFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range projGemini {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -957,12 +964,22 @@ func attachSubagentBlocks(t *rules.Target) {
 	if t == nil {
 		return
 	}
-	claude, copilot := isClaudeSubagentFile(t.InstructionFile), isCopilotAgentFile(t.InstructionFile)
-	if !claude && !copilot {
+	claude := isClaudeSubagentFile(t.InstructionFile)
+	copilot := isCopilotAgentFile(t.InstructionFile)
+	gemini := isGeminiAgentFile(t.InstructionFile)
+	if !claude && !copilot && !gemini {
 		return
 	}
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
 	if !ok {
+		return
+	}
+
+	if gemini {
+		if servers := parser.GeminiAgentMCPServers(fm); len(servers) > 0 {
+			t.ProjectMCP = servers
+			t.ProjectMCPFile = t.InstructionFile
+		}
 		return
 	}
 
@@ -1007,6 +1024,13 @@ func isCopilotAgentFile(path string) bool {
 	return isAgentDefinitionFile(path, ".github")
 }
 
+// isGeminiAgentFile reports whether path is a Markdown file directly inside a
+// .gemini/agents directory. Gemini skips names starting with "_", but a file that
+// reached here already passed that filter in geminiAgentFiles.
+func isGeminiAgentFile(path string) bool {
+	return isAgentDefinitionFile(path, ".gemini")
+}
+
 // isAgentDefinitionFile reports whether path is a Markdown file directly inside
 // <parent>/agents.
 func isAgentDefinitionFile(path, parent string) bool {
@@ -1015,6 +1039,37 @@ func isAgentDefinitionFile(path, parent string) bool {
 	}
 	dir := filepath.Dir(path)
 	return filepath.Base(dir) == "agents" && filepath.Base(filepath.Dir(dir)) == parent
+}
+
+// geminiAgentFiles returns the Gemini CLI agent definitions in <base>/.gemini/agents.
+//
+// Not a plain glob, because Gemini's loader filters the directory itself
+// (packages/core/src/agents/agentLoader.ts, loadAgentsFromDirectory): a single
+// readdir with no recursion, files only, `.md` only, and **names starting with
+// "_" are skipped**. A `*.md` glob would report an `_draft.md` Gemini never
+// loads.
+//
+// The bodies are agent system prompts, so they are instruction content; the
+// frontmatter's mcpServers block is attached separately (see attachSubagentBlocks).
+func geminiAgentFiles(base string) ([]string, error) {
+	dir := filepath.Join(base, ".gemini", "agents")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", dir, err)
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || strings.HasPrefix(name, "_") || !strings.EqualFold(filepath.Ext(name), ".md") {
+			continue
+		}
+		out = append(out, filepath.Join(dir, name))
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // claudeRulesFiles returns every *.md file under <base>/.claude/rules, discovered
