@@ -357,3 +357,76 @@ func TestGeminiAgentMCPServers_AbsentAndMalformed(t *testing.T) {
 		t.Errorf("expected nil for nil frontmatter, got %v", got)
 	}
 }
+
+// A remote agent is any file carrying agent_card_url, agent_card_json or auth.
+func TestGeminiAgentRemote(t *testing.T) {
+	fm, ok := InstructionFrontmatter(`---
+kind: remote
+name: helper
+agent_card_url: "http://agents.example.com/.well-known/agent-card.json"
+auth:
+  type: http
+  scheme: Bearer
+  token: "literal-token-value"
+---
+body
+`)
+	if !ok {
+		t.Fatal("frontmatter did not parse")
+	}
+	r := GeminiAgentRemote(fm)
+	if r == nil {
+		t.Fatal("expected a remote agent")
+	}
+	if r.CardURL != "http://agents.example.com/.well-known/agent-card.json" {
+		t.Errorf("CardURL = %q", r.CardURL)
+	}
+	if r.AuthSecrets["token"] != "literal-token-value" {
+		t.Errorf("auth token not decoded: %v", r.AuthSecrets)
+	}
+	// scheme names a mechanism, not a secret.
+	if _, ok := r.AuthSecrets["scheme"]; ok {
+		t.Error("scheme must not be collected as a credential field")
+	}
+	if r.HasInlineCard {
+		t.Error("no agent_card_json was present")
+	}
+}
+
+func TestGeminiAgentRemote_InlineCard(t *testing.T) {
+	fm, _ := InstructionFrontmatter("---\nname: x\nagent_card_json:\n  name: embedded\n---\nbody\n")
+	r := GeminiAgentRemote(fm)
+	if r == nil || !r.HasInlineCard {
+		t.Fatalf("expected an inline card to mark the file remote, got %+v", r)
+	}
+}
+
+func TestGeminiAgentRemote_AllCredentialFields(t *testing.T) {
+	fm, _ := InstructionFrontmatter(`---
+name: x
+auth:
+  key: "k-value"
+  token: "t-value"
+  username: "u-value"
+  password: "p-value"
+  name: X-API-Key
+  scopes: ["a"]
+---
+body
+`)
+	r := GeminiAgentRemote(fm)
+	if r == nil || len(r.AuthSecrets) != 4 {
+		t.Fatalf("expected the 4 credential-bearing fields, got %+v", r)
+	}
+}
+
+// A local agent declares none of the remote keys.
+func TestGeminiAgentRemote_LocalAgentIsNil(t *testing.T) {
+	fm, _ := InstructionFrontmatter("---\nname: x\nmcp_servers:\n  s:\n    command: npx\n---\nbody\n")
+	if r := GeminiAgentRemote(fm); r != nil {
+		t.Errorf("a local agent must not decode as remote, got %+v", r)
+	}
+	if r := GeminiAgentRemote(nil); r != nil {
+		t.Errorf("expected nil for nil frontmatter, got %+v", r)
+	}
+}

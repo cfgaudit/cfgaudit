@@ -173,6 +173,14 @@ type MCPServer struct {
 	Transport string            `json:"transport,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
 
+	// Trust marks a server whose tool calls skip the confirmation prompt. Gemini
+	// CLI's key: DiscoveredMCPTool returns false from its confirmation path when
+	// `isTrustedFolder() && this.trust`, so it removes the prompt for every tool
+	// of that server once the folder is trusted. Only Gemini surfaces declare it,
+	// so CFG096 gates on the file the server came from rather than firing wherever
+	// the field happens to decode.
+	Trust bool `json:"trust,omitempty"`
+
 	// HeadersHelper is a command executed to generate auth headers for a remote
 	// MCP server (the per-server analogue of settings.json otelHeadersHelper). It
 	// is a shell command, so a repo-controlled value is an RCE surface scanned by

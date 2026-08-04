@@ -980,6 +980,10 @@ func attachSubagentBlocks(t *rules.Target) {
 			t.ProjectMCP = servers
 			t.ProjectMCPFile = t.InstructionFile
 		}
+		// A file is either a local agent (mcp_servers) or a remote one
+		// (agent_card_url / agent_card_json / auth); the two schemas are separate
+		// and strict, so both are decoded and at most one will be present.
+		t.GeminiRemote = parser.GeminiAgentRemote(fm)
 		return
 	}
 
