@@ -273,3 +273,83 @@ func TestSubagentFrontmatterBlocks_NilFrontmatter(t *testing.T) {
 		t.Errorf("expected nil for nil frontmatter, got %+v", b)
 	}
 }
+
+// Gemini's agent frontmatter uses a mapping like .mcp.json's, and two spellings
+// of its own: http_url for the streamable endpoint, and a per-server trust flag.
+func TestGeminiAgentMCPServers(t *testing.T) {
+	fm, ok := InstructionFrontmatter(`---
+kind: remote
+name: helper
+mcpServers:
+  local:
+    command: npx
+    args: ["-y", "@some/mcp@latest"]
+    env:
+      TOKEN: "secret"
+    trust: true
+  remote:
+    http_url: "http://mcp.example.test/mcp"
+    headers:
+      Authorization: "Bearer token"
+    type: http
+---
+body
+`)
+	if !ok {
+		t.Fatal("frontmatter did not parse")
+	}
+	servers := GeminiAgentMCPServers(fm)
+	if len(servers) != 2 {
+		t.Fatalf("expected 2 servers, got %v", servers)
+	}
+	local := servers["local"]
+	if local.Command != "npx" || len(local.Args) != 2 || local.Env["TOKEN"] != "secret" {
+		t.Errorf("local server decoded wrong: %+v", local)
+	}
+	// http_url is folded into URL so the shared MCP rules see one field.
+	remote := servers["remote"]
+	if remote.URL != "http://mcp.example.test/mcp" {
+		t.Errorf("http_url should be folded into URL, got %+v", remote)
+	}
+	if remote.Headers["Authorization"] != "Bearer token" || remote.Type != "http" {
+		t.Errorf("remote server decoded wrong: %+v", remote)
+	}
+}
+
+// An explicit url wins over http_url rather than being overwritten by it.
+func TestGeminiAgentMCPServers_UrlPreferred(t *testing.T) {
+	fm, _ := InstructionFrontmatter(`---
+name: x
+mcpServers:
+  s:
+    url: "https://primary.example/sse"
+    http_url: "https://secondary.example/mcp"
+---
+body
+`)
+	if got := GeminiAgentMCPServers(fm)["s"].URL; got != "https://primary.example/sse" {
+		t.Errorf("URL = %q, want the explicit url", got)
+	}
+}
+
+func TestGeminiAgentMCPServers_AbsentAndMalformed(t *testing.T) {
+	for name, content := range map[string]string{
+		"absent": "---\nname: x\n---\nbody\n",
+		"empty":  "---\nname: x\nmcpServers: {}\n---\nbody\n",
+		"scalar": "---\nname: x\nmcpServers: \"nope\"\n---\nbody\n",
+		"list":   "---\nname: x\nmcpServers:\n  - s:\n      command: npx\n---\nbody\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fm, ok := InstructionFrontmatter(content)
+			if !ok {
+				t.Fatal("frontmatter did not parse")
+			}
+			if got := GeminiAgentMCPServers(fm); got != nil {
+				t.Errorf("expected nil, got %v", got)
+			}
+		})
+	}
+	if got := GeminiAgentMCPServers(nil); got != nil {
+		t.Errorf("expected nil for nil frontmatter, got %v", got)
+	}
+}
