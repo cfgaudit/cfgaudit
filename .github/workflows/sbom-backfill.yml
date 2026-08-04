@@ -1,0 +1,72 @@
+name: SBOM backfill
+
+# Repair tool, not part of the release path. It attaches an SBOM attestation to
+# an image digest that is ALREADY published, for the case where the release run
+# published and signed the image but its SBOM step failed.
+#
+# It deliberately does not rebuild. A rebuild would produce a new digest, and the
+# published tags (1.11.0, latest) would then either move to an artifact nobody
+# has verified or diverge from the one that is already signed and attested.
+# Repairing metadata must not change the artifact.
+#
+# Written for v1.11.0, whose SBOM step failed on a GitHub Release upload the job
+# had no permission for (fixed in docker.yml in the same change). Kept because
+# the same failure can recur for any reason that takes down one step after the
+# push has succeeded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: 'Image digest to attest, including the sha256: prefix'
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cfgaudit/cfgaudit
+
+jobs:
+  attest-sbom:
+    name: Attest SBOM for an existing digest
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write # read the published image, push the attestation to ghcr
+      id-token: write # keyless signing via Sigstore
+      attestations: write # write the SBOM attestation to the GitHub attestations API
+    steps:
+      - name: Validate the digest
+        env:
+          DIGEST: ${{ inputs.digest }}
+        run: |
+          case "$DIGEST" in
+            sha256:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *)
+              echo "::error::digest must be sha256: followed by 64 hex characters, got '$DIGEST'"
+              exit 1
+              ;;
+          esac
+
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOM from the published image
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ inputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-release-assets: false
+
+      - name: Attest image SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ inputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true
