@@ -1269,6 +1269,20 @@ func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, erro
 	return p, nil
 }
 
+// loadZedTasksOptional parses .zed/tasks.json, returning (nil, nil) when it does
+// not exist. A malformed file is an error, so a task file that is silently not
+// being scanned is reported rather than treated as empty.
+func loadZedTasksOptional(path string) (*parser.ZedTasks, error) {
+	z, err := parser.ParseZedTasks(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return z, nil
+}
+
 // loadContinueHooksOptional parses a Continue settings file, returning
 // (nil, nil) when it does not exist. A malformed file is an error, so a settings
 // file that is silently not being scanned is reported rather than treated as
@@ -1564,6 +1578,22 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			Scope:          finding.ScopeProject,
 			ProjectMCP:     zedServers,
 			ProjectMCPFile: zedPath,
+		})
+	}
+
+	// Zed .zed/tasks.json — the worktree-local task list. A task carrying a
+	// `hooks` entry is spawned by Zed itself (#435). Unlike the settings file
+	// above, this one is not worktree-trust gated.
+	zedTasksPath := filepath.Join(dir, ".zed", "tasks.json")
+	zedTasks, err := loadZedTasksOptional(zedTasksPath)
+	if err != nil {
+		return nil, err
+	}
+	if !zedTasks.Empty() {
+		targets = append(targets, &rules.Target{
+			Scope:        finding.ScopeProject,
+			ZedTasks:     zedTasks,
+			ZedTasksFile: zedTasksPath,
 		})
 	}
 

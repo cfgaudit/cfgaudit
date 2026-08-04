@@ -109,6 +109,18 @@ type Target struct {
 	CursorPermissions     *parser.CursorPermissions
 	CursorPermissionsFile string
 
+	// ZedTasks holds a parsed Zed .zed/tasks.json (#435). A task carrying a
+	// `hooks` entry is spawned by Zed itself with no approval prompt, so its
+	// trigger is CFG047's class and its command text is a command site.
+	//
+	// Notably this file is NOT worktree-trust gated the way .zed/settings.json
+	// is: SettingsObserver applies the Settings arm only when `can_trust_worktree`
+	// holds, while the Tasks arm calls update_user_tasks unconditionally
+	// (crates/project/src/project_settings.rs). Nil when absent; ZedTasksFile is
+	// its path.
+	ZedTasks     *parser.ZedTasks
+	ZedTasksFile string
+
 	// ContinueHooks holds the hooks block of a Continue CLI settings file
 	// (.continue/settings.json or .continue/settings.local.json, #433) — a
 	// different file from the .continue/config.yaml carried by Continue below.
