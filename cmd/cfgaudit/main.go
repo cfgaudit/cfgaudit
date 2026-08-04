@@ -1269,6 +1269,21 @@ func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, erro
 	return p, nil
 }
 
+// loadContinueHooksOptional parses a Continue settings file, returning
+// (nil, nil) when it does not exist. A malformed file is an error, so a settings
+// file that is silently not being scanned is reported rather than treated as
+// empty.
+func loadContinueHooksOptional(path string) (*parser.ContinueHooks, error) {
+	h, err := parser.ParseContinueHooks(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return h, nil
+}
+
 // loadCodexHooksOptional parses .codex/hooks.json, returning (nil, nil) when it
 // does not exist. A malformed file is an error, so a hooks file that is silently
 // not being scanned is reported rather than treated as empty.
@@ -1427,6 +1442,53 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	targets = append(targets, hookTargets...)
+
+	// Continue CLI settings files. These carry a Claude-Code-shaped hooks block
+	// and are a different file from the .continue/config.yaml scanned elsewhere.
+	// settings.json is the committed one; settings.local.json is described by the
+	// loader as project-local and gitignored, so it gets the project-local scope
+	// cfgaudit already uses for .claude/settings.local.json.
+	//
+	// disableAllHooks is a GLOBAL switch, not a per-file one: Continue's loader
+	// walks every settings file and sets one `disabled` flag if any of them
+	// carries it, after which no hook from any file runs. So the two files are
+	// read together and both are dropped when either disables hooks, rather than
+	// reporting one file's hooks while a sibling has switched the system off.
+	// (cfgaudit cannot see the user-global files, so a flag set there is outside
+	// what this can honour.)
+	continueSettings := []struct {
+		rel   string
+		scope finding.Scope
+	}{
+		{filepath.Join(".continue", "settings.json"), finding.ScopeProject},
+		{filepath.Join(".continue", "settings.local.json"), finding.ScopeProjectLocal},
+	}
+	var continueTargets []*rules.Target
+	continueDisabled := false
+	for _, cs := range continueSettings {
+		path := filepath.Join(dir, cs.rel)
+		hooks, err := loadContinueHooksOptional(path)
+		if err != nil {
+			return nil, err
+		}
+		if hooks == nil {
+			continue
+		}
+		if hooks.DisableAllHooks {
+			continueDisabled = true
+		}
+		if hooks.Empty() {
+			continue
+		}
+		continueTargets = append(continueTargets, &rules.Target{
+			Scope:             cs.scope,
+			ContinueHooks:     hooks,
+			ContinueHooksFile: path,
+		})
+	}
+	if !continueDisabled {
+		targets = append(targets, continueTargets...)
+	}
 
 	// Cursor .cursor/permissions.json — the per-repo auto-approval file Cursor's
 	// docs tell you to commit. Project scope only: the per-user
