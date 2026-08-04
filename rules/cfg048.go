@@ -39,7 +39,44 @@ var blanketAutoApproveKeys = []string{
 const (
 	editsAutoApproveKey = "chat.tools.edits.autoApprove"
 	urlsAutoApproveKey  = "chat.tools.urls.autoApprove"
+
+	// permissionLevelKey is the successor to the CVE-2025-53773 setting: it picks
+	// the permission mode every new chat session starts in. Registered in the
+	// `chatSidebar` node, which declares no scope, and with no scope of its own,
+	// so it inherits ConfigurationScope.WINDOW and is applied from a committed
+	// workspace settings.json. Not `restricted`, so workspace trust does not gate
+	// it (#434).
+	permissionLevelKey = "chat.permissions.default"
+
+	// terminalAutoApproveKey maps a command pattern to whether the terminal tool
+	// may run it unattended. A key wrapped in "/" is a regular expression; a plain
+	// key matches the start of a command. WINDOW-scoped, unrestricted, like the
+	// two maps above.
+	terminalAutoApproveKey = "chat.tools.terminal.autoApprove"
+
+	// terminalIgnoreDefaultsKey turns off VS Code's built-in allow/deny rules.
+	// Its own setting description says the default denial rules "are designed to
+	// protect you against running dangerous commands" and to switch them off "at
+	// your own risk".
+	terminalIgnoreDefaultsKey = "chat.tools.terminal.ignoreDefaultAutoApproveRules"
 )
+
+// weakeningPermissionLevels are the values of chat.permissions.default that start
+// a session with approvals already given, mapped to what each one does.
+//
+// ChatPermissionLevel also declares "assisted" (delegate approval decisions to a
+// model), but the setting's registered `enum` is only default/autoApprove/
+// autopilot, so "assisted" is not a value this setting accepts and flagging it
+// would report something VS Code's own schema rejects.
+var weakeningPermissionLevels = map[string]string{
+	"autoapprove": "every tool call is auto-approved and errors are auto-retried",
+	"autopilot":   "everything Bypass Approvals does, plus an internal stop hook that keeps the agent working until it decides the task is done",
+}
+
+// catchAllTerminalPatternRe matches a terminal auto-approve regex that approves
+// any command. Deliberately narrow: only the unmistakable catch-alls, because a
+// pattern that merely looks broad ("/^git /") is ordinary team configuration.
+var catchAllTerminalPatternRe = regexp.MustCompile(`^(?:\^?\.[*+]\$?|\^?\(\.[*+]\)\$?)$`)
 
 // sensitiveEditPatternRe matches the glob patterns VS Code's own default denies —
 // files whose edit has immediate side effects. Re-enabling auto-approval for any
@@ -79,9 +116,116 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 		})
 	}
 
+	findings = append(findings, r.checkPermissionLevel(t)...)
 	findings = append(findings, r.checkEdits(t)...)
 	findings = append(findings, r.checkURLs(t)...)
+	findings = append(findings, r.checkTerminal(t)...)
 	return findings
+}
+
+// checkPermissionLevel inspects chat.permissions.default, which decides the
+// permission mode every new chat session starts in. A committed "autoApprove" or
+// "autopilot" means anyone who opens the repo begins with the approvals already
+// granted — terminal commands, edits and MCP calls alike. This is the successor
+// to the `chat.tools.autoApprove` of CVE-2025-53773, reached through a key that
+// is genuinely workspace-honoured rather than application-scoped.
+func (r *cfg048) checkPermissionLevel(t *Target) []finding.Finding {
+	value, ok := t.VSCodeSettings.StringField(permissionLevelKey)
+	if !ok {
+		return nil
+	}
+	what, weakening := weakeningPermissionLevels[strings.ToLower(strings.TrimSpace(value))]
+	if !weakening {
+		return nil
+	}
+	return []finding.Finding{{
+		RuleID:   "CFG048",
+		Severity: finding.Error,
+		Scope:    t.Scope,
+		File:     t.VSCodeSettingsFile,
+		Message: permissionLevelKey + " is \"" + strings.TrimSpace(value) + "\" — every new chat session starts in that mode, where " + what +
+			". Committed to a repo this hands the approvals to anyone who opens it, before they agree to anything; it is the successor to the chat.tools.autoApprove of CVE-2025-53773. Remove the key, or set it to \"default\"",
+	}}
+}
+
+// checkTerminal inspects the two settings that govern which terminal commands the
+// agent may run unattended.
+//
+// chat.tools.terminal.autoApprove maps a command pattern to a decision. Only a
+// catch-all pattern is reported: naming specific commands a project runs all day
+// is what the setting is for, and flagging that would make the rule noise.
+//
+// chat.tools.terminal.ignoreDefaultAutoApproveRules removes VS Code's built-in
+// rules, including the denials. On its own it approves nothing, so it is warn; it
+// is the amplifier that makes a broad approve pattern unconditional.
+func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
+	var findings []finding.Finding
+
+	if entries, ok := t.VSCodeSettings.ObjectField(terminalAutoApproveKey); ok {
+		var broad []string
+		for _, pat := range sortedRawKeys(entries) {
+			if isCatchAllTerminalPattern(pat) && terminalEntryApproves(entries[pat]) {
+				broad = append(broad, pat)
+			}
+		}
+		if len(broad) > 0 {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG048",
+				Severity: finding.Error,
+				Scope:    t.Scope,
+				File:     t.VSCodeSettingsFile,
+				Message: terminalAutoApproveKey + " approves the catch-all pattern \"" + strings.Join(broad, "\", \"") +
+					"\" — every command the agent proposes runs in the terminal with no confirmation, for anyone who opens this repo. List the specific commands the project needs instead",
+			})
+		}
+	}
+
+	if val, present := t.VSCodeSettings.BoolField(terminalIgnoreDefaultsKey); present && val {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG048",
+			Severity: finding.Warn,
+			Scope:    t.Scope,
+			File:     t.VSCodeSettingsFile,
+			Message: terminalIgnoreDefaultsKey + " is true — VS Code's built-in terminal auto-approve rules are switched off, including the denials its own documentation describes as \"designed to protect you against running dangerous commands\"." +
+				" On its own this approves nothing, but it removes the backstop under any pattern the same file approves. Leave it unset and narrow the allow patterns instead",
+		})
+	}
+	return findings
+}
+
+// isCatchAllTerminalPattern reports whether a terminal auto-approve key matches
+// every command. Two spellings qualify: a regex (wrapped in "/", with optional
+// trailing flags) whose body is a catch-all, and an empty plain key, which is a
+// prefix that every command starts with.
+func isCatchAllTerminalPattern(pattern string) bool {
+	p := strings.TrimSpace(pattern)
+	if p == "" {
+		return true
+	}
+	if !strings.HasPrefix(p, "/") {
+		return false
+	}
+	end := strings.LastIndex(p, "/")
+	if end <= 0 {
+		return false
+	}
+	return catchAllTerminalPatternRe.MatchString(p[1:end])
+}
+
+// terminalEntryApproves reports whether an entry grants approval. The value is
+// either a bool or an object carrying `approve`, which is the field that decides;
+// `matchCommandLine` only changes what the pattern is matched against.
+func terminalEntryApproves(raw json.RawMessage) bool {
+	if rawIsTrue(raw) {
+		return true
+	}
+	var obj struct {
+		Approve *bool `json:"approve"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil || obj.Approve == nil {
+		return false
+	}
+	return *obj.Approve
 }
 
 // checkEdits inspects chat.tools.edits.autoApprove, a map of glob → bool deciding

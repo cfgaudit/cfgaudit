@@ -127,3 +127,109 @@ func TestCFG048_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when no settings.json, got %+v", f)
 	}
 }
+
+// #434: chat.permissions.default picks the mode every new chat session starts
+// in. It is the successor to the CVE-2025-53773 setting and, unlike
+// chat.tools.global.autoApprove, is genuinely workspace-honoured (WINDOW scope,
+// not restricted).
+func TestCFG048_PermissionLevelWeakening(t *testing.T) {
+	for _, v := range []string{"autoApprove", "autopilot", "AUTOPILOT"} {
+		t.Run(v, func(t *testing.T) {
+			f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.permissions.default": "`+v+`"}`))
+			if len(f) != 1 || f[0].Severity != finding.Error {
+				t.Fatalf("expected 1 Error for %q, got %+v", v, f)
+			}
+			if !strings.Contains(f[0].Message, "chat.permissions.default") {
+				t.Errorf("message should name the key, got %q", f[0].Message)
+			}
+		})
+	}
+}
+
+// "assisted" exists on the ChatPermissionLevel enum but is not among the values
+// this setting registers, so flagging it would report something VS Code's own
+// schema rejects.
+func TestCFG048_PermissionLevelNonWeakeningValues(t *testing.T) {
+	for _, v := range []string{"default", "assisted", "", "nonsense"} {
+		t.Run("value="+v, func(t *testing.T) {
+			if f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.permissions.default": "`+v+`"}`)); len(f) != 0 {
+				t.Errorf("expected no findings for %q, got %+v", v, f)
+			}
+		})
+	}
+}
+
+func TestCFG048_TerminalCatchAllPattern(t *testing.T) {
+	for _, pat := range []string{`/.*/`, `/.*/i`, `/^.*$/`, `/.+/`, `/(.*)/ `, ``} {
+		t.Run("pattern="+pat, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{pat: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.tools.terminal.autoApprove": `+string(body)+`}`))
+			if len(f) != 1 || f[0].Severity != finding.Error {
+				t.Fatalf("expected 1 Error for %q, got %+v", pat, f)
+			}
+		})
+	}
+}
+
+// Naming the commands a project runs is what the setting is for; flagging that
+// would make the rule noise.
+func TestCFG048_TerminalSpecificPatternsSilent(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.tools.terminal.autoApprove": {
+      "npm run test": true,
+      "/^git (status|diff)/": true,
+      "cargo build": {"approve": true, "matchCommandLine": true},
+      "rm": false
+    }}`))
+	if len(f) != 0 {
+		t.Errorf("specific patterns must not be flagged, got %+v", f)
+	}
+}
+
+// A catch-all set to false, or to an object that denies, is a denial and must
+// not be reported as an approval.
+func TestCFG048_TerminalCatchAllDenialSilent(t *testing.T) {
+	for _, val := range []string{`false`, `{"approve": false}`, `{"matchCommandLine": true}`} {
+		t.Run(val, func(t *testing.T) {
+			f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.tools.terminal.autoApprove": {"/.*/": `+val+`}}`))
+			if len(f) != 0 {
+				t.Errorf("expected no findings for a catch-all set to %s, got %+v", val, f)
+			}
+		})
+	}
+}
+
+// The object form approves through its `approve` field; matchCommandLine only
+// changes what the pattern matches against.
+func TestCFG048_TerminalCatchAllObjectApproves(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t,
+		`{"chat.tools.terminal.autoApprove": {"/.*/": {"approve": true, "matchCommandLine": true}}}`))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 Error, got %+v", f)
+	}
+}
+
+func TestCFG048_TerminalIgnoreDefaultRules(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.tools.terminal.ignoreDefaultAutoApproveRules": true}`))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 Warn, got %+v", f)
+	}
+	if f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.tools.terminal.ignoreDefaultAutoApproveRules": false}`)); len(f) != 0 {
+		t.Errorf("false is the default and must not be flagged, got %+v", f)
+	}
+}
+
+// All three #434 keys in one file, each reported once and on its own merits.
+func TestCFG048_AllNewKeysTogether(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t, `{
+      "chat.permissions.default": "autopilot",
+      "chat.tools.terminal.autoApprove": {"/.*/": true, "npm test": true},
+      "chat.tools.terminal.ignoreDefaultAutoApproveRules": true
+    }`))
+	sev := severities(f)
+	if sev[finding.Error] != 2 || sev[finding.Warn] != 1 {
+		t.Fatalf("expected 2 Error + 1 Warn, got %+v", f)
+	}
+}
