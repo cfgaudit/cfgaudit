@@ -107,12 +107,24 @@ jobs:
           IMAGE_DIGEST: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
         run: cosign sign --yes "$IMAGE_DIGEST"
 
+      # upload-release-assets is off deliberately. The action defaults it to true
+      # and then attaches the SBOM to the GitHub Release, which needs
+      # contents: write — a permission this job has no other use for, and which
+      # the workflow's default-deny stance exists to avoid handing out.
+      #
+      # It went unnoticed until v1.11.0 because the upload only happens when a
+      # Release object already exists. Through v1.10.0 the Release workflow was
+      # still running when this step fired, so the action skipped it silently;
+      # at v1.11.0 the Release published seven seconds earlier and the step
+      # failed, taking the SBOM attestation below down with it. The SBOM lives
+      # on as an attestation bound to the digest, which is the durable form.
       - name: Generate image SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output-file: sbom.spdx.json
+          upload-release-assets: false
 
       - name: Attest image SBOM
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
