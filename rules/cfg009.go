@@ -22,13 +22,29 @@ var hookVarRe = regexp.MustCompile(`\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_]
 // cmdVarRe matches a Windows cmd.exe variable reference: %NAME%.
 var cmdVarRe = regexp.MustCompile(`%([A-Za-z_][A-Za-z0-9_]*)%`)
 
-// safeShellVars are framework-provided Claude Code variables holding trusted,
+// safeShellVars are framework-provided variables holding trusted,
 // non-attacker-influenced paths (a plugin/hook locating its own files). A command
 // interpolating only these is not flagged; mixing them with other variables still
 // flags the others.
+//
+// The list is per agent, and it has to grow with every hook surface cfgaudit
+// reaches: each agent ships its own project-root variable and its hooks are
+// written against that one. A false-positive run over 432 real repositories
+// (2026-08-04, pre-v1.11.0) found the Claude-only list firing on Zed's and
+// Codex's equivalents, which is what added the entries below the Claude pair.
+//
+// PWD is here for the same reason. It is the shell's own working directory, set
+// by the shell rather than by any agent or remote input, and a hook that has no
+// framework variable to reach for uses it instead.
 var safeShellVars = map[string]bool{
+	// Claude Code
 	"CLAUDE_PLUGIN_ROOT": true,
 	"CLAUDE_PROJECT_DIR": true,
+	// Zed task variables (crates/task/src/task_template.rs VariableName)
+	"ZED_WORKTREE_ROOT":     true,
+	"ZED_MAIN_GIT_WORKTREE": true,
+	// the shell's own cwd
+	"PWD": true,
 }
 
 func (r *cfg009) Check(t *Target) []finding.Finding {

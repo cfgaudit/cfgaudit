@@ -54,9 +54,15 @@ var systemGrantPaths = []string{
 //     the workspace (warn).
 //   - a read grant to a credential directory, home or root (error) — reading is
 //     enough to exfiltrate.
-//   - `enableSharedBuildCache: true` (warn) — documented as redirecting build
-//     caches "so sandboxed and unsandboxed commands share the same caches",
-//     which is a channel across the boundary by construction.
+//
+// `enableSharedBuildCache` is NOT flagged. It was, briefly. A false-positive run
+// over 432 real repositories (2026-08-04, pre-v1.11.0) made it the single most
+// common finding in the whole set, on roughly a third of the repositories that
+// ship a .cursor/sandbox.json. Cursor documents it as a build-performance
+// feature and makes no isolation claim either way, so a finding on that rate was
+// reporting ordinary use of a documented option. The cache is still a channel
+// across the boundary by construction; that is an argument for Cursor to
+// document, not for this rule to warn on every build that uses it.
 //
 // Deliberately NOT flagged, because both make the sandbox *stricter*:
 // `type: "workspace_readonly"`, and `disableTmpWrite: true`, which "removes
@@ -116,10 +122,6 @@ func (r *cfg095) Check(t *Target) []finding.Finding {
 	if len(roCred) > 0 {
 		add(finding.Error, "committed .cursor/sandbox.json additionalReadonlyPaths grants the agent read access to "+quoteList(roCred)+
 			" — read access is all an exfiltration path needs, and these hold credentials or are the home directory / filesystem root. Remove them")
-	}
-
-	if s.EnableSharedBuildCache {
-		add(finding.Warn, "committed .cursor/sandbox.json sets enableSharedBuildCache — Cursor documents this as redirecting build-tool caches so \"sandboxed and unsandboxed commands share the same caches\", which is a writable channel across the sandbox boundary: what a sandboxed agent command puts in the cache is what a later unsandboxed command reads. Leave it off unless the build genuinely needs it")
 	}
 
 	return findings

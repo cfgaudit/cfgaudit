@@ -2,6 +2,7 @@ package rules
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -26,6 +27,40 @@ var cmdSubstBacktickRe = regexp.MustCompile("`([^`]*)`")
 // inside a substitution.
 var hookNetworkCmdRe = regexp.MustCompile(`\b(?:curl|wget|nc|ncat|ssh|scp|rsync|ftp|telnet|nslookup|dig|host)\b`)
 
+// benignSubstRe matches a substitution whose command is fixed, local, and takes
+// no input: a query for the repository root. The rule is about output that is
+// spliced into a shell line, and this output is a path the shell already had
+// access to, produced by a command with no argument an attacker could reach.
+//
+// This exists because of what the newly scanned hook surfaces actually contain.
+// A false-positive run over 432 real repositories (2026-08-04, pre-v1.11.0)
+// found CFG015 firing on 19 of the 59 with a .codex/hooks.json, and 43 of those
+// 46 findings were the identical expression: `$(git rev-parse --show-toplevel)`.
+// Claude Code hooks never showed this because Claude provides
+// $CLAUDE_PROJECT_DIR; Codex has no equivalent, so its hooks ask git.
+//
+// Deliberately narrow. Only `git rev-parse` with the flags that print a path,
+// and only when nothing else rides along in the same substitution: any pipe,
+// redirect, semicolon or command separator makes it a compound expression again
+// and it is flagged as before.
+var benignSubstRe = regexp.MustCompile(`^\s*git\s+rev-parse\s+--(?:show-toplevel|git-dir|git-common-dir|absolute-git-dir)\s*$`)
+
+// isBenignSubstitution reports whether a substituted command is one of the fixed
+// path queries above. The input carries its delimiters, as extractHookSubstitutions
+// returns them, so they are stripped before matching.
+func isBenignSubstitution(s string) bool {
+	inner := strings.TrimSpace(s)
+	switch {
+	case strings.HasPrefix(inner, "$(") && strings.HasSuffix(inner, ")"):
+		inner = inner[2 : len(inner)-1]
+	case strings.HasPrefix(inner, "`") && strings.HasSuffix(inner, "`") && len(inner) >= 2:
+		inner = inner[1 : len(inner)-1]
+	default:
+		return false
+	}
+	return benignSubstRe.MatchString(inner)
+}
+
 func (r *cfg015) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -34,6 +69,7 @@ func (r *cfg015) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, site := range commandSites(t) {
 		substs := extractHookSubstitutions(site.Command)
+		substs = slices.DeleteFunc(substs, isBenignSubstitution)
 		if len(substs) == 0 {
 			continue
 		}
