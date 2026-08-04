@@ -11,7 +11,7 @@ import (
 // The mapping is rule-level, so the ids are resolved by RuleID at serialization
 // time rather than stored on finding.Finding — the core finding type stays
 // unchanged and the text/table output is untouched. Both fields are omitempty:
-// every rule has an OWASP id, but only the ~34 rules in aveByRule carry an AVE
+// every rule has an OWASP id, but only the ~53 rules in aveByRule carry an AVE
 // id, and a new rule for a threat AVE has not catalogued carries none.
 type jsonFinding struct {
 	finding.Finding
@@ -33,7 +33,7 @@ func withTaxonomy(findings []finding.Finding) []jsonFinding {
 // deliberately a single file rather than a per-rule doc-header line: AVE is early
 // and single-vendor, and the whole mapping is meant to be removable (see
 // docs/cfgaudit-to-ave.md) — deleting one file reverses it, where scattering the
-// id across 34 doc headers would not. The primary ids here are sourced from the
+// id across 53 doc headers would not. The primary ids here are sourced from the
 // mappings in docs/cfgaudit-to-ave.md; a rule may cover more than one AVE class,
 // but only the canonical one is emitted so the output field stays singular
 // (matching AVE's own one-ruleId-per-class SARIF model).
@@ -47,7 +47,6 @@ var aveByRule = map[string]string{
 	"CFG026": "AVE-2026-00007", // override/persona → goal hijack
 	"CFG092": "AVE-2026-00007", // Kimi agent override: true replaces the whole system prompt → goal hijack
 	"CFG029": "AVE-2026-00021", // bypass prompts → autonomous action without confirmation
-	"CFG091": "AVE-2026-00021", // qwen approvalMode: yolo auto-approves every tool call → autonomous action without confirmation
 	"CFG030": "AVE-2026-00010", // conceal behavior → covert instruction concealment
 	"CFG031": "AVE-2026-00003", // sensitive path → credential exfil
 	"CFG032": "AVE-2026-00025", // pseudo-system/role injection → conversation-history injection
@@ -82,6 +81,44 @@ var aveByRule = map[string]string{
 	"CFG019": "AVE-2026-00055", // MCP inline script → untrusted launch config command exec
 	"CFG020": "AVE-2026-00055", // MCP env code injection → untrusted launch config command exec
 	"CFG070": "AVE-2026-00055", // MCP repo-relative command → untrusted launch config command exec
+
+	// Approval gate bypassed by declarative configuration (AVE-2026-00063).
+	// The record is explicit that it is "distinct from AVE-2026-00048" and
+	// "independent of any instruction text": a config flag that removes a
+	// human-approval step, not an instruction that talks the agent out of one.
+	// That line is why CFG091 sits here rather than under 00021 (which reads "a
+	// component that explicitly INSTRUCTS the agent to bypass this confirmation
+	// step") — approvalMode: yolo is a setting, not an instruction.
+	"CFG003": "AVE-2026-00063", // enableAllProjectMcpServers → every repo MCP server auto-approved
+	"CFG004": "AVE-2026-00063", // defaultMode bypassPermissions/auto
+	"CFG048": "AVE-2026-00063", // VS Code chat.permissions.default autoApprove/autopilot, terminal autoApprove
+	"CFG053": "AVE-2026-00063", // blanket MCP-trust keys (allowAllClaudeAiMcps, enabledMcpjsonServers "*")
+	"CFG063": "AVE-2026-00063", // Codex approval_policy never / approvals_reviewer auto_review
+	"CFG079": "AVE-2026-00063", // autoMode classifier weakened by config
+	"CFG087": "AVE-2026-00063", // committed hook answers a permission gate with the allowing value
+	"CFG091": "AVE-2026-00063", // qwen tools.approvalMode: yolo
+	"CFG093": "AVE-2026-00063", // committed .cursor/permissions.json allowlist
+	"CFG096": "AVE-2026-00063", // Gemini MCP server trust: true
+
+	// Zero-click auto-run on project load (AVE-2026-00064).
+	"CFG047": "AVE-2026-00064", // .vscode/tasks.json folderOpen, Zed create_worktree hook task
+	"CFG086": "AVE-2026-00064", // committed hook on a zero-click event (workspaceOpen / SessionStart)
+	"CFG067": "AVE-2026-00064", // committed project-scoped hooks. Imperfect fit: the record is specific
+	//                             to project *load*, CFG067 flags committed hooks on any event.
+
+	// Unpinned dependency, supply-chain substitution (AVE-2026-00062).
+	"CFG010": "AVE-2026-00062", // MCP server unpinned @latest/:latest
+	"CFG074": "AVE-2026-00062", // skills-lock.json entry with no integrity pin
+	"CFG055": "AVE-2026-00062", // Imperfect fit: only the unpinned extraKnownMarketplaces source is
+	"CFG089": "AVE-2026-00062", // this class; the enabledPlugins half is supply chain more broadly.
+
+	// TLS verification disabled in component configuration (AVE-2026-00061).
+	"CFG075": "AVE-2026-00061", // MCP env/args TLS-verify killswitch
+
+	// Hardcoded credentials (AVE-2026-00047), continued.
+	"CFG097": "AVE-2026-00047", // Gemini remote-agent auth literal. Only that half maps: the rule's
+	//                             cleartext agent_card_url has no AVE class (00061 is TLS-verify
+	//                             disabled, which is a different failure from no TLS at all).
 }
 
 // ruleAVE returns the primary AVE id for a rule, or "" if none is mapped.
