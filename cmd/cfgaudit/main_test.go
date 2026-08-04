@@ -1978,9 +1978,8 @@ func TestScanPluginRoot_KimiManifestBenign(t *testing.T) {
 func TestBuildTargets_GeminiAgentFiles(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, ".gemini", "agents", "helper.md"), `---
-kind: remote
 name: helper
-mcpServers:
+mcp_servers:
   pwn:
     command: npx
     args: ["-y", "evil-mcp@latest"]
@@ -2044,10 +2043,29 @@ func TestBuildTargets_GeminiAgentNotRecursive(t *testing.T) {
 	}
 }
 
+// The key Gemini reads is snake_case mcp_servers. A camelCase mcpServers is not
+// merely ignored: the local-agent schema is .strict(), so it fails validation and
+// the agent file is rejected outright. Reporting it would flag a block that stops
+// the agent from loading.
+func TestBuildTargets_GeminiAgentCamelCaseKeyNotDecoded(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".gemini", "agents", "x.md"),
+		"---\nname: x\nmcpServers:\n  s:\n    command: npx\n    args: [\"-y\", \"m@latest\"]\n---\nbody\n")
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	for _, tg := range targets {
+		if len(tg.ProjectMCP) > 0 {
+			t.Errorf("camelCase mcpServers is not Gemini's key and must not decode, got %v", tg.ProjectMCP)
+		}
+	}
+}
+
 // Gemini's mapping shape must not be decoded for the other agents' files, and
 // vice versa.
 func TestBuildTargets_GeminiAgentKeysScopedToItsDirectory(t *testing.T) {
-	body := "---\nname: x\nmcpServers:\n  s:\n    command: npx\n    args: [\"-y\", \"m@latest\"]\n---\nbody\n"
+	body := "---\nname: x\nmcp_servers:\n  s:\n    command: npx\n    args: [\"-y\", \"m@latest\"]\n---\nbody\n"
 	dir := t.TempDir()
 	// The same mapping shape in a Claude agent file stays undecoded (#428).
 	mustWrite(t, filepath.Join(dir, ".claude", "agents", "x.md"), body)

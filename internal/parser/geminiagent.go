@@ -23,9 +23,17 @@ type geminiAgentMCPServer struct {
 	Describe string            `json:"description,omitempty"`
 }
 
-// GeminiAgentMCPServers decodes the `mcpServers:` block of a Gemini CLI agent
+// GeminiAgentMCPServers decodes the `mcp_servers:` block of a Gemini CLI agent
 // file's frontmatter into the shared MCPServer shape, so the MCP rules apply
 // unchanged.
+//
+// The key is **snake_case `mcp_servers`**, which is what the zod schema declares
+// and what the loader reads (`markdown.mcp_servers`); `mcpServers` is only the
+// camelCase name the internal MCPServerConfig map takes after conversion. The
+// distinction matters twice over, because the local-agent schema is `.strict()`:
+// a camelCase `mcpServers` key is not merely ignored, it fails validation and
+// the whole agent file is rejected. Reading the wrong key would both miss every
+// real block and report one that stops the agent from loading at all.
 //
 // The value is a mapping of server name to config, like `.mcp.json`'s — not the
 // list Claude Code's subagent frontmatter uses. Returns nil when the frontmatter
@@ -34,7 +42,7 @@ func GeminiAgentMCPServers(fm *Frontmatter) map[string]MCPServer {
 	if fm == nil {
 		return nil
 	}
-	raw, ok := fm.Raw["mcpServers"].(map[string]any)
+	raw, ok := fm.Raw["mcp_servers"].(map[string]any)
 	if !ok {
 		return nil
 	}

@@ -274,13 +274,14 @@ func TestSubagentFrontmatterBlocks_NilFrontmatter(t *testing.T) {
 	}
 }
 
-// Gemini's agent frontmatter uses a mapping like .mcp.json's, and two spellings
-// of its own: http_url for the streamable endpoint, and a per-server trust flag.
+// Gemini's agent frontmatter uses a mapping like .mcp.json's under the
+// snake_case key mcp_servers, and two spellings of its own: http_url for the
+// streamable endpoint, and a per-server trust flag.
 func TestGeminiAgentMCPServers(t *testing.T) {
 	fm, ok := InstructionFrontmatter(`---
 kind: remote
 name: helper
-mcpServers:
+mcp_servers:
   local:
     command: npx
     args: ["-y", "@some/mcp@latest"]
@@ -320,7 +321,7 @@ body
 func TestGeminiAgentMCPServers_UrlPreferred(t *testing.T) {
 	fm, _ := InstructionFrontmatter(`---
 name: x
-mcpServers:
+mcp_servers:
   s:
     url: "https://primary.example/sse"
     http_url: "https://secondary.example/mcp"
@@ -335,9 +336,12 @@ body
 func TestGeminiAgentMCPServers_AbsentAndMalformed(t *testing.T) {
 	for name, content := range map[string]string{
 		"absent": "---\nname: x\n---\nbody\n",
-		"empty":  "---\nname: x\nmcpServers: {}\n---\nbody\n",
-		"scalar": "---\nname: x\nmcpServers: \"nope\"\n---\nbody\n",
-		"list":   "---\nname: x\nmcpServers:\n  - s:\n      command: npx\n---\nbody\n",
+		"empty":  "---\nname: x\nmcp_servers: {}\n---\nbody\n",
+		"scalar": "---\nname: x\nmcp_servers: \"nope\"\n---\nbody\n",
+		"list":   "---\nname: x\nmcp_servers:\n  - s:\n      command: npx\n---\nbody\n",
+		// camelCase is not Gemini's key: the .strict() local-agent schema rejects
+		// the whole file over it, so decoding it would be doubly wrong.
+		"camelCase key": "---\nname: x\nmcpServers:\n  s:\n    command: npx\n---\nbody\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			fm, ok := InstructionFrontmatter(content)
