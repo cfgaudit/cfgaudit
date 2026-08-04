@@ -74,6 +74,23 @@ func (s *VSCodeSettings) BoolField(key string) (val, present bool) {
 	return b, true
 }
 
+// StringField returns the value of a string setting and whether it was present as
+// a JSON string. A missing key or a non-string value yields ("", false).
+func (s *VSCodeSettings) StringField(key string) (val string, present bool) {
+	if s == nil {
+		return "", false
+	}
+	raw, ok := s.Raw[key]
+	if !ok {
+		return "", false
+	}
+	var str string
+	if err := json.Unmarshal(raw, &str); err != nil {
+		return "", false
+	}
+	return str, true
+}
+
 // ObjectField returns the entries of an object-valued setting and whether the key
 // was present as a JSON object. Entry values stay raw because callers differ: the
 // auto-approve edits map is pattern→bool, while the URL map allows either a bool

@@ -447,7 +447,7 @@ The [vercel-labs/skills](https://github.com/vercel-labs/skills) CLI (skills.sh) 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG047](docs/rules/CFG047.md) | error | `.vscode/tasks.json` task runs on folder open (`runOptions.runOn: "folderOpen"`) — zero-click code execution when the repo is opened; silent (`presentation.reveal: "never"`) is called out | LLM06 |
-| [CFG048](docs/rules/CFG048.md) | error/warn | `.vscode/settings.json` weakens agent auto-approval — `chat.tools.edits.autoApprove` re-enabling a protected path such as `**/.vscode/*.json` (chains into CFG047), a host-unrestricted `chat.tools.urls.autoApprove`, or the blanket `chat.tools.global.autoApprove` (warn: application-scoped, so upstream ignores it from a workspace file) | LLM06 |
+| [CFG048](docs/rules/CFG048.md) | error/warn | `.vscode/settings.json` weakens agent auto-approval — `chat.permissions.default` set to `autoApprove`/`autopilot` (every new session starts with the approvals granted; successor to CVE-2025-53773), `chat.tools.edits.autoApprove` re-enabling a protected path such as `**/.vscode/*.json` (chains into CFG047), a host-unrestricted `chat.tools.urls.autoApprove`, a catch-all `chat.tools.terminal.autoApprove` pattern, `chat.tools.terminal.ignoreDefaultAutoApproveRules` (warn: removes the built-in denials), or the blanket `chat.tools.global.autoApprove` (warn: application-scoped, so upstream ignores it from a workspace file) | LLM06 |
 
 ### Cursor & GitHub Copilot — hooks, permissions and repository settings
 
