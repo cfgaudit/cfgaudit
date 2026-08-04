@@ -18,12 +18,12 @@ Even within the 44, the boundary is real: cfgaudit does not connect to servers, 
 
 | Bucket | Count |
 |---|--:|
-| Covered — ≥1 CFG rule maps cleanly | 25 |
+| Covered — ≥1 CFG rule maps cleanly | 29 |
 | Partial — committable slice or adjacent shape only | 11 |
-| Gap — committable, no CFG rule (rule candidate) | 3 |
-| Out of scope — labelled static by AVE, beyond static-config auditing | 5 |
+| Gap — committable, no CFG rule (rule candidate) | 4 |
+| Out of scope — labelled static by AVE, beyond static-config auditing | 7 |
 
-cfgaudit maps (covered + partial) to **36 of 44**. The 5 out-of-scope records are a note back to AVE — see the last section.
+cfgaudit maps (covered + partial) to **40 of 51**. Counts refreshed 2026-08-04 for the records added since (AVE-2026-00060 through AVE-2026-00070); the four config records among them are all now mapped, AVE-2026-00065 (A2A agent card poisoning) is a new gap, and AVE-2026-00060 (STDIO shell injection) and AVE-2026-00069 (image-hidden instructions in a skill package) join the out-of-scope list as server-source and binary-content analysis respectively. The 5 out-of-scope records are a note back to AVE — see the last section.
 
 ---
 
@@ -63,6 +63,22 @@ cfgaudit maps (covered + partial) to **36 of 44**. The 5 out-of-scope records ar
 
 **Partial, worth flagging** — AVE-2026-00002 (tool-description injection), AVE-2026-00041 (server-card injection) and AVE-2026-00046 (tool-hook hijack) describe reading a **live** tool manifest or intercepting a running registry. cfgaudit does not connect to servers, so it covers these **only** when the tool description or hook ships in a committed `--plugins` package. For live servers they are behavioral-scanner (SkillSpector / clawscan) territory.
 
+### Config-declared approval, auto-run, pinning and TLS
+
+Added in the 2026-08-04 refresh, against the records AVE shipped from [aveproject/ave#68](https://github.com/aveproject/ave/issues/68), which came out of this crosswalk's own gap list.
+
+| CFG | AVE |
+|---|---|
+| CFG003 `enableAllProjectMcpServers` · CFG004 `defaultMode` · CFG048 VS Code `chat.permissions.default` · CFG053 blanket MCP-trust keys · CFG063 Codex `approval_policy` / `approvals_reviewer` · CFG079 `autoMode` classifier · CFG087 hook answers a permission gate · CFG091 qwen `approvalMode: yolo` · CFG093 `.cursor/permissions.json` allowlist · CFG096 Gemini MCP `trust` | AVE-2026-00063 approval gate bypassed via declarative configuration |
+| CFG047 `.vscode/tasks.json` `folderOpen` + Zed `create_worktree` · CFG086 zero-click hook event · CFG067 committed project hooks | AVE-2026-00064 zero-click code execution via project-load auto-run configuration |
+| CFG010 unpinned `@latest`/`:latest` · CFG074 `skills-lock.json` with no integrity pin · CFG055 / CFG089 unpinned marketplace source | AVE-2026-00062 unpinned dependency, supply-chain substitution |
+| CFG075 MCP `env`/`args` TLS-verify killswitch | AVE-2026-00061 TLS certificate verification disabled in component configuration |
+| CFG097 Gemini remote-agent `auth` literal | AVE-2026-00047 hardcoded credentials in component |
+
+**CFG091 moved.** It was mapped to AVE-2026-00021, whose text reads *"a component that explicitly **instructs** the agent to bypass this confirmation step"*. `tools.approvalMode: "yolo"` is a setting, not an instruction, and AVE-2026-00063 is explicit that it covers the declarative case *"independent of any instruction text"*. AVE-2026-00021 keeps the instruction-driven rules (CFG029).
+
+**Three imperfect fits, stated rather than smoothed over.** CFG067 flags committed hooks on any event, where AVE-2026-00064 is specific to project *load*. CFG055 and CFG089 have two halves each and only the unpinned marketplace source is AVE-2026-00062; the `enabledPlugins` auto-enable half is supply chain more broadly. CFG097 likewise maps on its credential half only: its cleartext `agent_card_url` has **no** AVE class, since AVE-2026-00061 is TLS verification *disabled*, a different failure from no TLS at all.
+
 ---
 
 ## Direction 2 — AVE gaps → cfgaudit rule candidates
@@ -81,16 +97,22 @@ Three `static_detection` classes with no CFG rule today (CFG090 ships AVE-2026-0
 
 AVE's taxonomy is skill/MCP-behavioral and barely models the **agent/IDE configuration surface**. cfgaudit rules cluster into classes AVE does not have:
 
-| Proposed class | cfgaudit rules |
-|---|---|
-| Zero-click IDE / workspace auto-run | CFG047 (`.vscode/tasks.json` folderOpen), CFG067 (committed `.claude` hooks), CFG086 (Cursor/Copilot zero-click hooks) |
-| Committed hook auto-approves tool calls | CFG087, CFG088 |
-| Telemetry / context redirect via config | CFG046 (OTEL), CFG005 / CFG071 (base URL) |
-| TLS verification disabled in config | CFG075 |
-| Sandbox weakened / disabled in config | CFG022, CFG061, CFG064, CFG079 |
-| Container / daemon posture | CFG082, CFG083, CFG084 |
-| MCP network posture | CFG018 (bind-all), CFG066 (wildcard CORS), CFG058 (deprecated SSE), CFG021 (proxy), CFG069 (log redaction) |
-| Supply-chain pinning / auto-install | CFG010, CFG055, CFG089, CFG062, CFG074 |
+Status as of 2026-08-04: **four of these eight have shipped** as AVE records, tracked in [aveproject/ave#68](https://github.com/aveproject/ave/issues/68).
+
+| Proposed class | cfgaudit rules | Status |
+|---|---|---|
+| Zero-click IDE / workspace auto-run | CFG047 (`.vscode/tasks.json` folderOpen), CFG067 (committed `.claude` hooks), CFG086 (Cursor/Copilot zero-click hooks) | **shipped** → AVE-2026-00064 |
+| TLS verification disabled in config | CFG075 | **shipped** → AVE-2026-00061 |
+| Supply-chain pinning / auto-install | CFG010, CFG055, CFG089, CFG062, CFG074 | **shipped** → AVE-2026-00062 |
+| Committed hook auto-approves tool calls | CFG087, CFG088 | **shipped** → AVE-2026-00063 (as the wider "approval gate bypassed by config") |
+| Telemetry / context redirect via config | CFG046 (OTEL), CFG005 / CFG071 (base URL) | open — needs distinguishing from AVE-2026-00002's injected-instruction mechanism. Nothing is injected into the model's context here: a committed key/value changes where the process sends data, and detection is a value comparison rather than content analysis |
+| Sandbox weakened / disabled in config | CFG022, CFG061, CFG064, CFG079, CFG095 | open |
+| Container / daemon posture | CFG082 (`DOCKER_HOST` off-host), CFG084 (`DOCKER_CONTENT_TRUST=0`), CFG083 (Chromium launcher switch) | open — **three** mechanisms with no shared detection logic, not one class |
+| MCP network posture | CFG018 (bind-all), CFG066 (wildcard CORS), CFG058 (deprecated SSE), CFG021 (proxy), CFG069 (log redaction) | open — **five** mechanisms, likewise a surface rather than a class |
+
+Two shapes with no class in either direction: a **cleartext** endpoint, distinct from TLS-verification-disabled (CFG049, CFG071, and CFG097's `agent_card_url` half), and **natural-language steering of an approval classifier** (CFG094), which falls between AVE-2026-00063 (excludes instruction text) and AVE-2026-00021 (instructions to the agent, not to a gatekeeper).
+
+Going the other way, **AVE-2026-00065** (A2A agent card poisoning via embedded adversarial instructions) is a class cfgaudit does *not* cover: an inline `agent_card_json` in a `.gemini/agents/*.md` is recognised but its contents are not audited.
 
 The pattern: **AVE models what a malicious skill/server *does*; cfgaudit models what a repository's *config* silently permits.** The two are complementary; the classes above are the clearest contribution direction if AVE wants coverage beyond skill/MCP content.
 
