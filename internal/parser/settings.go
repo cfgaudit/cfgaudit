@@ -143,6 +143,16 @@ type HookCommand struct {
 	// the instruction-content rules must scan (see instructionSources).
 	Prompt  string `json:"prompt,omitempty"`
 	Timeout int    `json:"timeout,omitempty"`
+
+	// URL, Headers and AllowedEnvVars belong to a type:"http" handler, which POSTs
+	// the event payload to an endpoint instead of running a command (CFG088).
+	// Continue's hooks use this same matcher-group shape and support that handler
+	// type; Copilot's equivalent fields live on AgentHook, whose file format is a
+	// flat event → handlers map rather than matcher groups. Absent for Claude
+	// Code, Grok, Gemini and qwen, whose handlers carry no URL.
+	URL            string            `json:"url,omitempty"`
+	Headers        map[string]string `json:"headers,omitempty"`
+	AllowedEnvVars []string          `json:"allowedEnvVars,omitempty"`
 }
 
 type MCPServer struct {

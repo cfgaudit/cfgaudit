@@ -91,6 +91,24 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Continue CLI hooks (.continue/settings.json, .continue/settings.local.json).
+	// Same event → matcher groups → {type, command} nesting as Claude Code's, by
+	// design: Continue's loader reads "settings files in the same locations as
+	// Claude Code". Only the "command" handler runs a shell command — "http"
+	// carries a url (CFG088) and "prompt"/"agent" carry prompt text (instruction
+	// sources). disableAllHooks turns the file off.
+	if ch := t.ContinueHooks; ch != nil && !ch.DisableAllHooks && len(ch.Hooks) > 0 {
+		for _, event := range sortedKeys2(ch.Hooks) {
+			for _, group := range ch.Hooks[event] {
+				for _, h := range group.Hooks {
+					if h.Command != "" {
+						sites = append(sites, commandSite{Label: "Continue hooks." + event + " command", File: t.ContinueHooksFile, Command: h.Command})
+					}
+				}
+			}
+		}
+	}
+
 	// OpenAI Codex CLI hooks: .codex/hooks.json, or the inline [hooks] table of
 	// .codex/config.toml. Same event → matcher groups → {type, command} nesting as
 	// Claude Code's, and `hooks` is deliberately absent from Codex's

@@ -44,6 +44,34 @@ func (t *Target) instructionSources() []instructionSource {
 	}
 	srcs = append(srcs, t.promptHookSources()...)
 	srcs = append(srcs, t.continueRuleSources()...)
+	srcs = append(srcs, t.continueHookPromptSources()...)
+	return srcs
+}
+
+// continueHookPromptSources returns one instructionSource per prompt-bearing
+// handler in a Continue settings file's hooks block. Continue's "prompt" and
+// "agent" handler types both carry a `prompt` field that is sent to a model when
+// the event fires, so a committed one is trusted text the content rules must
+// scan — the same reasoning as promptHookSources for settings.json.
+func (t *Target) continueHookPromptSources() []instructionSource {
+	ch := t.ContinueHooks
+	if ch == nil || ch.DisableAllHooks || len(ch.Hooks) == 0 {
+		return nil
+	}
+	var srcs []instructionSource
+	for _, event := range sortedKeys2(ch.Hooks) {
+		for _, group := range ch.Hooks[event] {
+			for _, h := range group.Hooks {
+				if (h.Type == "prompt" || h.Type == "agent") && h.Prompt != "" {
+					label := "Continue hooks." + event + " prompt"
+					if h.Type == "agent" {
+						label = "Continue hooks." + event + " agent prompt"
+					}
+					srcs = append(srcs, instructionSource{File: t.ContinueHooksFile, Name: label, Content: h.Prompt})
+				}
+			}
+		}
+	}
 	return srcs
 }
 

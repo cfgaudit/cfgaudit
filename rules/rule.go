@@ -109,6 +109,18 @@ type Target struct {
 	CursorPermissions     *parser.CursorPermissions
 	CursorPermissionsFile string
 
+	// ContinueHooks holds the hooks block of a Continue CLI settings file
+	// (.continue/settings.json or .continue/settings.local.json, #433) — a
+	// different file from the .continue/config.yaml carried by Continue below.
+	// Same event → matcher groups → handlers shape as Claude Code's, with no
+	// trust gate in Continue's hook path, so a committed SessionStart command
+	// hook is zero-click (CFG086), the command text is a command site, an http
+	// handler is a declared outbound channel (CFG088), and a prompt/agent
+	// handler's text is trusted instruction content. Nil when absent;
+	// ContinueHooksFile is its path.
+	ContinueHooks     *parser.ContinueHooks
+	ContinueHooksFile string
+
 	// CodexHooks holds the lifecycle hooks declared in a Codex .codex/hooks.json
 	// or the inline [hooks] table of a .codex/config.toml (#431). Their command
 	// handlers become command sites so the command-content family judges the

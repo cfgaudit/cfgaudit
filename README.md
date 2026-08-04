@@ -494,7 +494,7 @@ Codex guards a subset of keys against repo contents (`PROJECT_LOCAL_CONFIG_DENYL
 
 **The trigger is deliberately not modelled, and CFG086/CFG087 stay off Codex.** Codex runs a non-managed hook only when the user's own config layer records a `trusted_hash` equal to the hook's current content hash (`codex-rs/hooks/src/engine/discovery.rs`), and hook state is readable only from the User and SessionFlags layers, so a repository cannot self-trust its own hooks — a committed `SessionStart` hook is *listed for review*, not run. That makes it neither zero-click (CFG086) nor an auto-approval declaration (CFG087); a `PermissionRequest` hook's `allow`/`deny` decision comes from the hook process's stdout, not from anything in the committed file. What cfgaudit adds is the command text, in front of the reviewer at the moment Codex asks them to trust it. Editing a trusted hook's command invalidates the hash, and `--dangerously-bypass-hook-trust` is a CLI flag no repo can set.
 
-### Continue — `.continue/config.yaml`
+### Continue — `.continue/config.yaml` & `.continue/settings.json`
 
 [Continue](https://github.com/continuedev/continue) configures MCP servers and model providers in `config.yaml`. cfgaudit discovers `.continue/config.yaml` (project) and `~/.continue/config.yaml` (`--user`). Its `mcpServers` **list** rides the shared MCP rules (CFG010–CFG021, CFG049–CFG059) — a remote `type: "sse"` server trips CFG058, a non-loopback `url` trips CFG049, and so on; its `rules` and `prompts` (trusted instruction context) are scanned by the instruction-content rules (CFG024–CFG036, CFG057). Continue-specific rules:
 
@@ -502,6 +502,10 @@ Codex guards a subset of keys against repo contents (`PROJECT_LOCAL_CONFIG_DENYL
 |----|----------|-------------|-------|
 | [CFG065](docs/rules/CFG065.md) | error | Continue config has a hardcoded inline `apiKey` literal on a `models[]` or remote `mcpServers[]` entry — a committed credential (`${{ secrets.* }}` references and placeholders are not flagged) | LLM02 |
 | [CFG071](docs/rules/CFG071.md) | error | model/provider base URL over cleartext `http://` to a remote host — Continue `models[].apiBase` or Codex `chatgpt_base_url`/`[model_providers].base_url`; the API key is sent in plaintext (multi-provider analogue of CFG005) | LLM02 |
+
+**Continue's CLI also reads a Claude-Code-shaped `hooks` block from a *different* file**: `.continue/settings.json` (committed) and `.continue/settings.local.json` (project-local). The loader's own header says it reads "hooks from settings files in the same locations as Claude Code", and it additionally reads this project's `.claude/settings.json` and `.claude/settings.local.json` for cross-compatibility — so the hook findings cfgaudit already produces for those Claude files protect Continue users too. Every handler type lands on an existing rule: `command` goes to the command-content family, `http` to [CFG088](docs/rules/CFG088.md) (identical `url`/`headers`/`allowedEnvVars` fields to Copilot's), and `prompt`/`agent` carry text sent to a model, so it is scanned as instruction content.
+
+A committed `SessionStart` command hook is flagged by [CFG086](docs/rules/CFG086.md), and this is the strongest case in that rule: **Continue's hook path has no trust gate**. `HookService` loads the config and fires the event, with `disableAllHooks` as the only switch. That switch is **global** rather than per-file — Continue sets one flag if any settings file carries it, after which no hook from any file runs — so cfgaudit drops both `.continue` files when either disables hooks. Event names are matched by exact spelling, because Continue resolves them by lookup against its declared list.
 
 ### xAI Grok CLI — `.grok/`
 

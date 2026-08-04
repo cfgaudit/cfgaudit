@@ -67,6 +67,22 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 		}
 	}
 
+	// Continue (.continue/settings.json: event → matcher groups → handlers).
+	// SessionStart is the zero-click event; Continue matches event names by exact
+	// lookup against its declared list, so the literal spelling is what fires.
+	//
+	// This is the strongest case in the rule: Continue's hook path has no trust
+	// gate at all — HookService loads the config and fires the event, with
+	// disableAllHooks as the only switch — so a committed SessionStart command
+	// hook runs on whoever opens the repo, unprompted. (Codex's hooks look
+	// identical in shape but are content-hash trust-gated, which is why they are
+	// deliberately absent from this rule.)
+	if ch := t.ContinueHooks; ch != nil && !ch.DisableAllHooks && len(ch.Hooks) > 0 {
+		if groups, ok := ch.Hooks[continueZeroClickEvent]; ok && grokEventHasCommand(groups, nil) {
+			findings = append(findings, zeroClickFinding(t, "Continue", continueZeroClickEvent, zeroClickHookEvents["sessionstart"], t.ContinueHooksFile))
+		}
+	}
+
 	// Grok (.grok/hooks/*.json: event → matcher groups → command handlers). Grok
 	// has SessionStart as its zero-click event and no disableAllHooks switch.
 	if gh := t.GrokHooks; gh != nil && len(gh.Hooks) > 0 {
@@ -114,6 +130,11 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 	}
 	return findings
 }
+
+// continueZeroClickEvent is the Continue hook event that fires before the user
+// asks the agent for anything. Continue resolves events by exact name against its
+// declared list, so the literal spelling is used rather than a normalized key.
+const continueZeroClickEvent = "SessionStart"
 
 // geminiZeroClickEvent is the single Gemini hook event that fires before the user
 // asks the agent for anything (on startup and resume). Gemini matches event names

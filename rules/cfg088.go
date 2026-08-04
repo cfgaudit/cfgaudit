@@ -32,6 +32,31 @@ func (r *cfg088) ID() string { return "CFG088" }
 // channel. Hooks with no URL, and non-http hook types, are not this rule's
 // business.
 func (r *cfg088) Check(t *Target) []finding.Finding {
+	findings := r.checkAgentHooks(t)
+	return append(findings, r.checkContinueHooks(t)...)
+}
+
+// checkContinueHooks applies the same rule to a Continue settings file's hooks.
+// Continue's "http" handler carries the identical url / headers / allowedEnvVars
+// fields, so the channel it declares is the same one; only the nesting differs
+// (matcher groups rather than a flat handler list).
+func (r *cfg088) checkContinueHooks(t *Target) []finding.Finding {
+	ch := t.ContinueHooks
+	if ch == nil || ch.DisableAllHooks || len(ch.Hooks) == 0 {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, event := range sortedKeys2(ch.Hooks) {
+		for _, group := range ch.Hooks[event] {
+			for _, h := range group.Hooks {
+				findings = append(findings, httpHookFindings(t, "Continue hooks."+event, t.ContinueHooksFile, h.Type, h.URL, h.AllowedEnvVars)...)
+			}
+		}
+	}
+	return findings
+}
+
+func (r *cfg088) checkAgentHooks(t *Target) []finding.Finding {
 	ah := t.AgentHooks
 	if ah == nil || ah.DisableAllHooks || len(ah.Hooks) == 0 {
 		return nil
@@ -45,37 +70,43 @@ func (r *cfg088) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, event := range events {
 		for _, h := range ah.Hooks[event] {
-			if !strings.EqualFold(strings.TrimSpace(h.Type), "http") {
-				continue
-			}
-			url := strings.TrimSpace(h.URL)
-			if url == "" || proxyTargetsLoopback(url) {
-				continue
-			}
-			loc := t.AgentHooksKind + " hooks." + event
-
-			if vars := nonEmptyEnvVars(h.AllowedEnvVars); len(vars) > 0 {
-				findings = append(findings, finding.Finding{
-					RuleID:   "CFG088",
-					Severity: finding.Error,
-					Scope:    t.Scope,
-					File:     t.AgentHooksFile,
-					Message: loc + " is an http hook to \"" + url + "\" whose allowedEnvVars permits " + strings.Join(vars, ", ") +
-						" to be expanded into its request headers — a committed file that forwards named environment variables to a remote endpoint is an exfiltration channel declared in configuration. Remove the variables, or point the hook at a loopback address" + userScopeNote(t),
-				})
-				continue
-			}
-			findings = append(findings, finding.Finding{
-				RuleID:   "CFG088",
-				Severity: finding.Warn,
-				Scope:    t.Scope,
-				File:     t.AgentHooksFile,
-				Message: loc + " is an http hook to \"" + url +
-					"\" — the event payload (prompt text, tool names and arguments) is sent to a non-loopback endpoint for everyone who opens the repository. Verify the endpoint is trusted, or point the hook at a loopback address" + userScopeNote(t),
-			})
+			findings = append(findings, httpHookFindings(t, t.AgentHooksKind+" hooks."+event, t.AgentHooksFile, h.Type, h.URL, h.AllowedEnvVars)...)
 		}
 	}
 	return findings
+}
+
+// httpHookFindings builds the rule's findings for one handler, shared by the
+// Copilot/Cursor and Continue paths because both declare the same channel with
+// the same field names. A non-http handler, a handler with no URL, and a loopback
+// URL all yield nothing: a hook talking to a local daemon is not an outbound
+// channel.
+func httpHookFindings(t *Target, loc, file, handlerType, rawURL string, allowedEnvVars []string) []finding.Finding {
+	if !strings.EqualFold(strings.TrimSpace(handlerType), "http") {
+		return nil
+	}
+	url := strings.TrimSpace(rawURL)
+	if url == "" || proxyTargetsLoopback(url) {
+		return nil
+	}
+	if vars := nonEmptyEnvVars(allowedEnvVars); len(vars) > 0 {
+		return []finding.Finding{{
+			RuleID:   "CFG088",
+			Severity: finding.Error,
+			Scope:    t.Scope,
+			File:     file,
+			Message: loc + " is an http hook to \"" + url + "\" whose allowedEnvVars permits " + strings.Join(vars, ", ") +
+				" to be expanded into its request headers — a committed file that forwards named environment variables to a remote endpoint is an exfiltration channel declared in configuration. Remove the variables, or point the hook at a loopback address" + userScopeNote(t),
+		}}
+	}
+	return []finding.Finding{{
+		RuleID:   "CFG088",
+		Severity: finding.Warn,
+		Scope:    t.Scope,
+		File:     file,
+		Message: loc + " is an http hook to \"" + url +
+			"\" — the event payload (prompt text, tool names and arguments) is sent to a non-loopback endpoint for everyone who opens the repository. Verify the endpoint is trusted, or point the hook at a loopback address" + userScopeNote(t),
+	}}
 }
 
 // nonEmptyEnvVars returns the trimmed, non-empty entries of an allowedEnvVars
