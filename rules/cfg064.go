@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 type cfg064 struct{}
@@ -129,11 +130,21 @@ func (r *cfg064) checkPermissionProfiles(t *Target, networkRedundant bool) []fin
 		})
 	}
 
+	// The user-global file has no workspace to be outside of, matching how the
+	// [sandbox_workspace_write] grants are classified below.
+	workspace := ""
+	if t.Scope != finding.ScopeUser {
+		workspace = codexWorkspaceDir(t.CodexFile)
+	}
+
 	for _, sel := range t.Codex.SelectedPermissionProfiles() {
 		where := "Codex permission profile \"" + sel.Name + "\""
 		if sel.Name != strings.TrimSpace(t.Codex.DefaultPermissions) {
 			where += " (inherited by \"" + strings.TrimSpace(t.Codex.DefaultPermissions) + "\" through extends)"
 		}
+
+		findings = append(findings, r.checkProfileFilesystem(t, sel, where, workspace)...)
+
 		net := sel.Profile.Network
 		if net == nil {
 			continue
@@ -192,6 +203,80 @@ func (r *cfg064) checkPermissionProfiles(t *Target, networkRedundant bool) []fin
 		}
 	}
 	return findings
+}
+
+// checkProfileFilesystem inspects a selected profile's filesystem block, the most
+// used part of the permission mechanism (39 of 69 real configs carry one).
+//
+// The block is a map of scope key or path to a decision. Only the granting
+// decisions matter: real-world use is overwhelmingly hardening, with `.env`,
+// `*.pem` and `~/.ssh` denials far outnumbering grants, so reporting the block's
+// presence would flag people for locking things down.
+//
+// Path grants are classified exactly like [sandbox_workspace_write] writable_roots
+// and Cursor's grants in CFG095, so `.` and `.git` stay silent while `~/.ssh`
+// does not.
+func (r *cfg064) checkProfileFilesystem(t *Target, sel parser.NamedCodexProfile, where, workspace string) []finding.Finding {
+	rootScopes, allPaths, writePaths := sel.Profile.FilesystemGrants()
+	if len(rootScopes) == 0 && len(allPaths) == 0 {
+		return nil
+	}
+	var findings []finding.Finding
+	add := func(sev finding.Severity, msg string) {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG064",
+			Severity: sev,
+			Scope:    t.Scope,
+			File:     t.CodexFile,
+			Message:  msg + userScopeNote(t),
+		})
+	}
+
+	if len(rootScopes) > 0 {
+		add(finding.Error, where+" grants filesystem access over the whole machine: "+quoteList(rootScopes)+
+			". The \":root\" scope is every path the process can reach, so this undoes the bound the profile exists to set. Grant the specific directories the project needs instead")
+	}
+
+	// A read of a credential path is already an exfiltration channel, so both
+	// grant kinds count here. Public keys are excluded: an id_*.pub is meant to be
+	// handed out, and the corpus contains a profile granting exactly that.
+	cred, _, _ := classifyGrants(dropPublicKeys(allPaths), workspace, false)
+	if len(cred) > 0 {
+		add(finding.Error, where+" grants filesystem access to "+quoteList(cred)+
+			" — these hold credentials or are the home directory / filesystem root, and a read is enough to exfiltrate them. A profile that reaches them is not bounded by the workspace at all. Remove the entries")
+	}
+
+	// System paths are judged on writes alone. Every system-path grant in the
+	// corpus is a read of /bin, /usr/bin or the command line tools, which is how
+	// the agent reaches its own toolchain rather than a weakening.
+	_, system, _ := classifyGrants(writePaths, workspace, true)
+	if len(system) > 0 {
+		add(finding.Error, where+" grants filesystem write access to the system path "+quoteList(system)+
+			" — writing there changes machine state outside the workspace (binaries on PATH, service definitions, package roots). Scope the grant to a directory inside the workspace")
+	}
+
+	// The plain "outside the workspace" class is deliberately NOT reported for
+	// this block. It is what people name their build caches with: in the corpus it
+	// fires on ~/.cargo, ~/.rustup, ~/.cache/go-build, go/pkg/mod, ~/Library/Caches
+	// and an application's own support directory, 9 of the 10 files it would flag.
+	// #459 removed CFG095's build-cache warn for the same reason, at a comparable
+	// rate. writable_roots keeps its outside-warn because a sandbox writable root
+	// is a narrower thing than a profile's read map.
+	return findings
+}
+
+// dropPublicKeys removes .pub entries from a grant list. A public key is meant to
+// be published, so reporting a read of one as credential exposure is a false
+// positive; the corpus contains a profile granting read to ~/.ssh/id_ed25519.pub.
+func dropPublicKeys(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if strings.HasSuffix(strings.ToLower(strings.TrimSpace(p)), ".pub") {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // catchAllsIn returns the catch-all entries of an allowlist, so the finding can
