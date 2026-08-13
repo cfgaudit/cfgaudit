@@ -39,6 +39,14 @@ type Target struct {
 	ProjectMCP     map[string]parser.MCPServer
 	ProjectMCPFile string
 
+	// Marketplace holds a parsed .claude-plugin/marketplace.json, the manifest
+	// declaring where each published plugin's code is fetched from. Author-side
+	// coverage, like the plugin manifests it sits next to: the file is committed
+	// and describes what gets installed on other people's machines. Nil when
+	// absent; MarketplaceFile is its path.
+	Marketplace     *parser.Marketplace
+	MarketplaceFile string
+
 	// Instruction* carry the raw text and path of an agent instruction file loaded
 	// for this scope — Claude Code's CLAUDE.md, or another agent's equivalent
 	// (.cursorrules, .windsurfrules, AGENTS.md, .github/copilot-instructions.md).

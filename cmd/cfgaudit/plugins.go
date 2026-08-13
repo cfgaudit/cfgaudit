@@ -60,7 +60,7 @@ func pluginRoots(dir, explicit string, includeUser bool) ([]string, error) {
 	}
 
 	add(explicit)
-	if dirExists(filepath.Join(dir, ".claude-plugin")) {
+	if dirExists(filepath.Join(dir, claudePluginDir)) {
 		add(dir)
 	}
 	// A Kimi Code plugin marks itself with a kimi.plugin.json at its root
@@ -117,6 +117,20 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 			if t != nil {
 				targets = append(targets, t)
 			}
+		case "marketplace.json":
+			// Only the manifest in .claude-plugin/ is the marketplace document.
+			// Matching the bare filename anywhere in the tree would decode an
+			// unrelated file as one.
+			if filepath.Base(filepath.Dir(path)) != claudePluginDir {
+				return nil
+			}
+			t, err := marketplaceTarget(path)
+			if err != nil {
+				return err
+			}
+			if t != nil {
+				targets = append(targets, t)
+			}
 		case kimiPluginManifest:
 			ts, err := kimiPluginTargets(path)
 			if err != nil {
@@ -132,6 +146,24 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 // kimiPluginManifest is the file a Kimi Code plugin declares itself with, at its
 // root.
 const kimiPluginManifest = "kimi.plugin.json"
+
+// claudePluginDir is the directory a Claude Code plugin declares itself with, and
+// the only place a marketplace.json is the marketplace manifest.
+const claudePluginDir = ".claude-plugin"
+
+// marketplaceTarget parses a .claude-plugin/marketplace.json into a target for
+// CFG098. Returns nil when the manifest lists no plugins, so an empty or
+// placeholder manifest produces no target rather than an empty one.
+func marketplaceTarget(path string) (*rules.Target, error) {
+	m, err := parser.ParseMarketplace(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(m.Plugins) == 0 {
+		return nil, nil
+	}
+	return &rules.Target{MarketplaceFile: path, Marketplace: m}, nil
+}
 
 // kimiPluginTargets turns a kimi.plugin.json into targets for the artifacts it
 // declares (#440):

@@ -359,6 +359,7 @@ The root **`.mcp.json` is not Claude-Code-only**: Kimi Code CLI reads the same r
 | [CFG003](docs/rules/CFG003.md) | error | `enableAllProjectMcpServers: true` — auto-approves all repo MCP servers (CVE-2025-59536) | LLM06 |
 | [CFG053](docs/rules/CFG053.md) | error/warn | blanket MCP-trust settings — `allowAllClaudeAiMcps: true`, `enabledMcpjsonServers` with `*`/huge list, or a wildcard `allowedMcpServers` `serverUrl` | LLM06 |
 | [CFG055](docs/rules/CFG055.md) | error/warn | committed settings `enabledPlugins` auto-enables a plugin (loads its hooks/MCP) or `extraKnownMarketplaces` registers a third-party marketplace | LLM03 |
+| [CFG098](docs/rules/CFG098.md) | error/warn | committed `.claude-plugin/marketplace.json` publishes a plugin nothing pins — an `archive` source with no `sha256` (→ error: no git object model behind it, so the plugin is whatever the server serves at install time; verified in the binary, the hash is compared only when the entry declares one), or an `npm` source resolving from a non-default `registry` (→ warn). Unpinned `github`/`url`/`git-subdir` sources are **not** flagged: under 9% of real marketplaces carry any `sha` and upstream documents the omission as the normal case | LLM03 |
 | [CFG010](docs/rules/CFG010.md) | warn | MCP server uses unpinned package or image version (`@latest`, `:latest`, no `@version`; npx/pnpm/yarn/bunx + uvx/pipx `==` pins) | LLM03 |
 | [CFG011](docs/rules/CFG011.md) | warn | MCP server `alwaysAllow` is too broad (wildcard, state-mutating tools, or 10+ entries) | LLM06 |
 | [CFG017](docs/rules/CFG017.md) | error | MCP server sets `dangerouslyAllowBrowser: true` — browser-originated requests enable DNS-rebinding to RCE (CVE-2025-49596) | LLM06 |
@@ -594,7 +595,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092 |
 | LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088, CFG099 |
-| LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089 |
+| LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089, CFG098 |
 | LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091, CFG099 |
 
 **Not covered**
