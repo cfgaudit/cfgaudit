@@ -159,6 +159,68 @@ func TestCFG048_PermissionLevelNonWeakeningValues(t *testing.T) {
 	}
 }
 
+// #468: chat.defaultConfiguration carries the chat.permissions.default decisions
+// in an object. Both keys are registered upstream, so both have to be read.
+func TestCFG048_DefaultConfigurationWeakening(t *testing.T) {
+	for _, c := range []struct{ name, body, field string }{
+		{"approvals", `{"approvals": "allowAll"}`, "approvals"},
+		{"approvals mixed case", `{"approvals": "ALLOWALL"}`, "approvals"},
+		{"mode", `{"mode": "autopilot"}`, "mode"},
+		{"mode padded", `{"mode": " autopilot "}`, "mode"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.defaultConfiguration": `+c.body+`}`))
+			if len(f) != 1 || f[0].Severity != finding.Error {
+				t.Fatalf("expected 1 Error, got %+v", f)
+			}
+			if !strings.Contains(f[0].Message, "chat.defaultConfiguration") || !strings.Contains(f[0].Message, c.field) {
+				t.Errorf("message should name the key and the field, got %q", f[0].Message)
+			}
+		})
+	}
+}
+
+// Both fields set is two decisions waived, each separately removable, so each is
+// reported on its own.
+func TestCFG048_DefaultConfigurationBothFields(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.defaultConfiguration": {"mode": "autopilot", "approvals": "allowAll"}}`))
+	if len(f) != 2 {
+		t.Fatalf("expected 2 findings, got %+v", f)
+	}
+}
+
+// The flat key and the object are both registered, so a file carrying both is
+// two findings rather than a deduplicated one.
+func TestCFG048_DefaultConfigurationAlongsideFlatKey(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t, `{
+      "chat.permissions.default": "autopilot",
+      "chat.defaultConfiguration": {"approvals": "allowAll"}
+    }`))
+	if sev := severities(f); sev[finding.Error] != 2 {
+		t.Fatalf("expected 2 Errors, got %+v", f)
+	}
+}
+
+// The values that do not waive a confirmation, plus the shapes that are not a
+// value at all. "assisted" and "plan" are real enum members that keep a decision
+// point, so reporting them would be noise.
+func TestCFG048_DefaultConfigurationNonWeakening(t *testing.T) {
+	for _, c := range []string{
+		`{"chat.defaultConfiguration": {"approvals": "default"}}`,
+		`{"chat.defaultConfiguration": {"approvals": "assisted"}}`,
+		`{"chat.defaultConfiguration": {"mode": "interactive"}}`,
+		`{"chat.defaultConfiguration": {"mode": "plan"}}`,
+		`{"chat.defaultConfiguration": {}}`,
+		`{"chat.defaultConfiguration": {"mode": true}}`,        // wrong type
+		`{"chat.defaultConfiguration": "autopilot"}`,           // not an object
+		`{"chat.defaultConfiguration": {"other": "allowAll"}}`, // unrelated field
+	} {
+		if f := CFG048.Check(vscodeSettingsTarget(t, c)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", c, f)
+		}
+	}
+}
+
 func TestCFG048_TerminalCatchAllPattern(t *testing.T) {
 	for _, pat := range []string{`/.*/`, `/.*/i`, `/^.*$/`, `/.+/`, `/(.*)/ `, ``} {
 		t.Run("pattern="+pat, func(t *testing.T) {
