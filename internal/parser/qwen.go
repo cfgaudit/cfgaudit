@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // QwenSettings is the subset of qwen-code's .qwen/settings.json that cfgaudit
@@ -26,6 +27,18 @@ import (
 type QwenSettings struct {
 	Tools      *QwenTools         `json:"tools,omitempty"`
 	MCPServers map[string]QwenMCP `json:"mcpServers,omitempty"`
+
+	// Proxy is the top-level proxy URL: "Proxy URL for CLI HTTP requests. Takes
+	// precedence over proxy environment variables when --proxy is not provided."
+	//
+	// Measured against qwen 0.21.11: a committed workspace .qwen/settings.json
+	// carrying proxy = "http://127.0.0.1:<port>" made the CLI issue
+	// "CONNECT api.openai.com:443" to that listener, so this key routes the
+	// agent's model traffic, credential header included.
+	Proxy string `json:"proxy,omitempty"`
+
+	// Memory carries the auto-skill confirmation pair.
+	Memory *QwenMemory `json:"memory,omitempty"`
 
 	// Hooks is qwen's hooks block: an event name → matcher groups (the shared
 	// Claude/Gemini shape). It is decoded lazily via HookGroups() rather than as
@@ -79,10 +92,75 @@ func (s *QwenSettings) HooksDisabled() bool {
 // tools.approvalMode (plan/default/auto-edit/auto/yolo); only "yolo" blanket
 // auto-approves every tool call including shell, so it is the value CFG091 flags.
 // tools.autoAccept is deliberately not modelled: it is vestigial in qwen (no
-// consumer in the approval path — verified against source), so reading it would
-// invite a finding for an effect that does not exist.
+// consumer in the approval path), so reading it would invite a finding for an
+// effect that does not exist. Re-verified against the shipped qwen 0.21.11
+// bundle when #472 re-proposed it: the string occurs exactly four times, and all
+// four are declarations rather than consumers — twice in V1_TO_V2_MIGRATION_MAP
+// ("autoAccept" → "tools.autoAccept"), once in V1_INDICATOR_KEYS, and once in
+// the settings schema itself. Nothing reads the value.
 type QwenTools struct {
 	ApprovalMode string `json:"approvalMode,omitempty"`
+
+	// SandboxImage is the container image the agent's sandbox runs from:
+	// "Sandbox image URI used by Docker/Podman when --sandbox-image and
+	// QWEN_SANDBOX_IMAGE are not set."
+	//
+	// The resolution order in the shipped bundle is
+	// argv.sandboxImage ?? QWEN_SANDBOX_IMAGE ?? settings.tools?.sandboxImage
+	// ?? packageJson.config.sandboxImageUri, and loadSandboxConfig only returns
+	// an image at all when a sandbox command was resolved. So a committed image
+	// is latent: it decides the container only once someone turns the sandbox on.
+	SandboxImage string `json:"sandboxImage,omitempty"`
+
+	// Sandbox is tools.sandbox (bool or a command string), kept only as the gate
+	// telling whether SandboxImage can take effect from settings alone. It is
+	// deliberately not a finding of its own: enabling a sandbox hardens.
+	Sandbox *json.RawMessage `json:"sandbox,omitempty"`
+}
+
+// QwenMemory is the memory block. Only the auto-skill pair is decoded.
+//
+// Both are pointers because both defaults matter and neither is the zero value:
+// EnableAutoSkill defaults to false, AutoSkillConfirm defaults to TRUE. So the
+// weakening value here is `false`, the inverse of the disable* keys where `true`
+// is. Confirmed in the shipped bundle: DEFAULT_QWEN_MEMORY_SETTINGS carries
+// { enableAutoSkill: false, autoSkillConfirm: true }, and the config resolves
+// `settings.memory?.autoSkillConfirm ?? true`.
+type QwenMemory struct {
+	EnableAutoSkill  *bool `json:"enableAutoSkill,omitempty"`
+	AutoSkillConfirm *bool `json:"autoSkillConfirm,omitempty"`
+}
+
+// SandboxEnabledInSettings reports whether tools.sandbox turns a sandbox on from
+// the settings file itself. An absent key, an explicit false, and a non-scalar
+// value all count as "not from settings": the sandbox may still be switched on by
+// --sandbox or QWEN_SANDBOX, which is why the image is reported as latent rather
+// than dropped.
+func (s *QwenSettings) SandboxEnabledInSettings() bool {
+	if s == nil || s.Tools == nil || s.Tools.Sandbox == nil {
+		return false
+	}
+	var b bool
+	if err := json.Unmarshal(*s.Tools.Sandbox, &b); err == nil {
+		return b
+	}
+	var str string
+	if err := json.Unmarshal(*s.Tools.Sandbox, &str); err == nil {
+		return strings.TrimSpace(str) != "" && !strings.EqualFold(strings.TrimSpace(str), "false")
+	}
+	return false
+}
+
+// AutoSkillsSavedUnconfirmed reports whether auto-generated skills land in the
+// skill library with no confirmation, which needs BOTH keys: the feature on and
+// the confirmation off.
+func (s *QwenSettings) AutoSkillsSavedUnconfirmed() bool {
+	if s == nil || s.Memory == nil {
+		return false
+	}
+	enabled := s.Memory.EnableAutoSkill != nil && *s.Memory.EnableAutoSkill
+	confirmOff := s.Memory.AutoSkillConfirm != nil && !*s.Memory.AutoSkillConfirm
+	return enabled && confirmOff
 }
 
 // QwenMCP is one mcpServers entry. qwen's MCPServerConfig carries the same core
