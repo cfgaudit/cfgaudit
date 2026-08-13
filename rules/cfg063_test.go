@@ -418,3 +418,89 @@ func TestCFG064_ProfileExtendsCycleTerminates(t *testing.T) {
 		t.Fatalf("expected the one reachable finding, got %+v", f)
 	}
 }
+
+// #483: how far an opened network reaches is decided by the [.network.domains]
+// allowlist, so it decides the severity. Measured across 69 real configs: of the
+// 22 profiles that open the network, 3 have no allowlist, 2 have one containing a
+// catch-all, and 17 name their hosts.
+
+func networkProfileTarget(net *parser.CodexPermissionNetwork) *Target {
+	return codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "p",
+		Permissions:        map[string]parser.CodexPermissionProfile{"p": {Network: net}},
+	})
+}
+
+// No allowlist: egress is open, and the exfiltration framing is earned.
+func TestCFG064_NetworkOpenWithoutAllowlist(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(networkProfileTarget(
+		&parser.CodexPermissionNetwork{Enabled: boolp(true)})), finding.Error)
+	if !strings.Contains(got.Message, "no [.network.domains] allowlist") {
+		t.Errorf("expected the missing allowlist to be named, got %q", got.Message)
+	}
+}
+
+// A named-host allowlist bounds the egress, so it is for review rather than
+// removal. This is the 17-of-22 case that used to report as open egress.
+func TestCFG064_NetworkScopedByAllowlist(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(networkProfileTarget(&parser.CodexPermissionNetwork{
+		Enabled: boolp(true),
+		Domains: map[string]string{"github.com": "allow", "*.githubusercontent.com": "allow"},
+	})), finding.Warn)
+	for _, want := range []string{"github.com", "*.githubusercontent.com", "scoped"} {
+		if !strings.Contains(got.Message, want) {
+			t.Errorf("message should contain %q, got %q", want, got.Message)
+		}
+	}
+	if strings.Contains(got.Message, "anything the agent can read") {
+		t.Errorf("the open-egress framing must not survive a scoped allowlist: %q", got.Message)
+	}
+}
+
+// An allowlist containing a bare wildcard scopes nothing, so it stays an error.
+func TestCFG064_NetworkAllowlistWithCatchAll(t *testing.T) {
+	for _, pattern := range []string{"*", "**"} {
+		t.Run("pattern="+pattern, func(t *testing.T) {
+			got := onlyFinding(t, CFG064.Check(networkProfileTarget(&parser.CodexPermissionNetwork{
+				Enabled: boolp(true),
+				Domains: map[string]string{"github.com": "allow", pattern: "allow"},
+			})), finding.Error)
+			if !strings.Contains(got.Message, "scopes nothing") {
+				t.Errorf("expected the catch-all to be called out, got %q", got.Message)
+			}
+		})
+	}
+}
+
+// A suffix pattern names a real domain and is ordinary scoping, not a catch-all.
+func TestCFG064_SuffixPatternsAreNotCatchAlls(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(networkProfileTarget(&parser.CodexPermissionNetwork{
+		Enabled: boolp(true),
+		Domains: map[string]string{"*.github.com": "allow", "**.githubusercontent.com": "allow"},
+	})), finding.Warn)
+	if strings.Contains(got.Message, "scopes nothing") {
+		t.Errorf("a suffix pattern is not a catch-all, got %q", got.Message)
+	}
+}
+
+// A deny entry narrows an allowlist rather than granting, so it must not count as
+// scoping on its own: a table of nothing but denials leaves the egress open.
+func TestCFG064_DenyOnlyDomainsIsNotScoping(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(networkProfileTarget(&parser.CodexPermissionNetwork{
+		Enabled: boolp(true),
+		Domains: map[string]string{"evil.example": "deny"},
+	})), finding.Error)
+	if !strings.Contains(got.Message, "no [.network.domains] allowlist") {
+		t.Errorf("expected deny-only to read as unscoped, got %q", got.Message)
+	}
+}
+
+// The allowlist has no bearing on a profile that never opened the network.
+func TestCFG064_DomainsWithoutEnabledIsSilent(t *testing.T) {
+	f := CFG064.Check(networkProfileTarget(&parser.CodexPermissionNetwork{
+		Domains: map[string]string{"github.com": "allow"},
+	}))
+	if len(f) != 0 {
+		t.Errorf("an allowlist alone opens nothing, got %+v", f)
+	}
+}

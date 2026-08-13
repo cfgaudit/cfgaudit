@@ -170,11 +170,40 @@ func (r *cfg064) checkPermissionProfiles(t *Target, networkRedundant bool) []fin
 			if mode == "" {
 				mode = "unset"
 			}
-			add(finding.Error, where+" sets network.enabled = true (mode: "+mode+"), and default_permissions selects that profile."+
-				" Measured against codex-cli 0.147.0, that flips the effective sandbox from \"restricted network\" to \"enabled network\" for anyone who trusts this directory, which re-opens an egress path for anything the agent can read. Leave it unset and allow the specific network step another way")
+			opened := where + " sets network.enabled = true (mode: " + mode + "), and default_permissions selects that profile." +
+				" Measured against codex-cli 0.147.0, that flips the effective sandbox from \"restricted network\" to \"enabled network\" for anyone who trusts this directory"
+
+			// How far the opened network reaches is decided by the [.network.domains]
+			// allowlist, so it decides the severity too. Reporting a profile that
+			// names its hosts as if it opened everything is the overreach CFG048
+			// avoids when a terminal auto-approve map names specific commands.
+			hosts, catchAll := net.EgressAllowlist()
+			switch {
+			case len(hosts) == 0:
+				add(finding.Error, opened+", with no [.network.domains] allowlist to scope it."+
+					" That is an egress path for anything the agent can read. Leave it unset and allow the specific network step another way")
+			case catchAll:
+				add(finding.Error, opened+". The [.network.domains] allowlist looks like a restriction but allows the catch-all "+quoteList(catchAllsIn(hosts))+
+					", so it scopes nothing and the egress is open. Name the hosts the project actually needs")
+			default:
+				add(finding.Warn, opened+", scoped by a [.network.domains] allowlist to "+quoteList(hosts)+
+					". Egress is bounded rather than open, so this is for review rather than removal: confirm every host is one the project needs, since a committed entry applies to everyone who opens the repo")
+			}
 		}
 	}
 	return findings
+}
+
+// catchAllsIn returns the catch-all entries of an allowlist, so the finding can
+// quote the ones that make it meaningless rather than the whole list.
+func catchAllsIn(hosts []string) []string {
+	var out []string
+	for _, h := range hosts {
+		if h == "*" || h == "**" {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // codexWorkspaceDir derives the workspace root from the path of the config file
