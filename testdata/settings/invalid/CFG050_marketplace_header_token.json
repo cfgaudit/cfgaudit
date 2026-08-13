@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "deny": ["Read(**/.env)"]
+  },
+  "extraKnownMarketplaces": {
+    "acme-internal": {
+      "source": {
+        "source": "url",
+        "url": "https://marketplace.acme.example/index.json",
+        "headers": {
+          "Authorization": "Bearer sk-live-9f2c8d1a4b6e7c3f5a2d"
+        }
+      }
+    }
+  }
+}
