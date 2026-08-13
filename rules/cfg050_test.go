@@ -7,6 +7,7 @@ import (
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
+	"gopkg.in/yaml.v3"
 )
 
 func TestCFG050_EnvSecret(t *testing.T) {
@@ -171,4 +172,111 @@ func TestCFG050_MarketplaceMultipleEntries(t *testing.T) {
 	if !strings.Contains(f[0].Message, "alpha") {
 		t.Errorf("expected a stable alphabetical order, got %q first", f[0].Message)
 	}
+}
+
+// #470: Continue's requestOptions block hangs off models, mcpServers and data
+// alike, and it is where the credentials are: 44 occurrences across 108 real
+// configs against 1 for the whole data block.
+func continueTargetFor(t *testing.T, body string) *Target {
+	t.Helper()
+	var c parser.ContinueConfig
+	if err := yaml.Unmarshal([]byte(body), &c); err != nil {
+		t.Fatalf("bad test YAML: %v", err)
+	}
+	return &Target{Scope: finding.ScopeProject, Continue: &c, ContinueFile: ".continue/config.yaml"}
+}
+
+func TestCFG050_ContinueRequestOptionsHeaders(t *testing.T) {
+	got := onlyFinding(t, CFG050.Check(continueTargetFor(t, `
+models:
+  - name: leaky
+    requestOptions:
+      headers:
+        X-API-Key: sm_live_8f2a7c1b9e4d5a3f6b0c2d8e1a4f7c9b3d0e6a2f
+`)), finding.Error)
+	if !strings.Contains(got.Message, `Continue models["leaky"].requestOptions.headers.X-API-Key`) {
+		t.Errorf("expected the entry named, got %q", got.Message)
+	}
+}
+
+func TestCFG050_ContinueDataAPIKey(t *testing.T) {
+	got := onlyFinding(t, CFG050.Check(continueTargetFor(t, `
+data:
+  - name: sink
+    destination: https://collector.example.net/ingest
+    schema: 0.2.0
+    apiKey: sk-live-9f2c8d1a4b6e7c3f
+`)), finding.Error)
+	if !strings.Contains(got.Message, `Continue data["sink"].apiKey`) {
+		t.Errorf("expected the data entry named, got %q", got.Message)
+	}
+}
+
+// The two exemptions the false-positive run earned, both from real values.
+
+// ${{ secrets.NAME }} is CI expression syntax and was 7 of the 15 real header
+// values. shellRefRe rejects it because of the second brace.
+func TestCFG050_TemplateExpressionIsAReference(t *testing.T) {
+	f := CFG050.Check(continueTargetFor(t, `
+models:
+  - name: ci
+    requestOptions:
+      headers:
+        X-API-Key: ${{ secrets.OLLAMA_API_KEY }}
+`))
+	if len(f) != 0 {
+		t.Errorf("a CI expression is a reference, not a literal, got %+v", f)
+	}
+}
+
+// An all-caps token naming a credential is an unfilled template. Real value:
+// "Bearer TU_API_KEY_AQUI".
+func TestCFG050_ScreamingPlaceholder(t *testing.T) {
+	for _, v := range []string{"Bearer TU_API_KEY_AQUI", "MY_TOKEN_HERE", "API_KEY", "Bearer YOUR_SECRET"} {
+		body, err := yaml.Marshal(map[string]any{"models": []any{map[string]any{
+			"name": "m", "requestOptions": map[string]any{"headers": map[string]any{"Authorization": v}}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f := CFG050.Check(continueTargetFor(t, string(body))); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", v, f)
+		}
+	}
+	// A real key that happens to be long must still be reported.
+	got := onlyFinding(t, CFG050.Check(continueTargetFor(t, `
+models:
+  - name: m
+    requestOptions:
+      headers:
+        X-Auth-Token: mdPIpHNt7waLLtDaqVBlFAbP870fSItWYLRBzZjU2lelLvkI1ePh
+`)), finding.Error)
+	if !strings.Contains(got.Message, "X-Auth-Token") {
+		t.Errorf("unexpected message %q", got.Message)
+	}
+}
+
+// A value that is nothing but an auth scheme word holds no secret, including the
+// doubly-quoted spelling a YAML file produces. Real value: 'Basic'.
+func TestCFG050_BareSchemeWordIsNotACredential(t *testing.T) {
+	for _, v := range []string{"Basic", "'Basic'", "\"Bearer\"", "Token"} {
+		body, err := yaml.Marshal(map[string]any{"models": []any{map[string]any{
+			"name": "m", "requestOptions": map[string]any{"headers": map[string]any{"Authorization": v}}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f := CFG050.Check(continueTargetFor(t, string(body))); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", v, f)
+		}
+	}
+}
+
+// A quoted credential is still a credential.
+func TestCFG050_QuotedCredentialStillReported(t *testing.T) {
+	onlyFinding(t, CFG050.Check(continueTargetFor(t, `
+models:
+  - name: m
+    requestOptions:
+      headers:
+        X-Api-Key: "'sm_live_8f2a7c1b9e4d5a3f6b0c2d8e1a4f7c9b3d0e6a2f'"
+`)), finding.Error)
 }
