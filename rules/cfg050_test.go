@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -96,5 +97,78 @@ func TestCFG050_AgentHookHeaderEnvRefSilent(t *testing.T) {
 	}, false)
 	if f := CFG050.Check(tgt); len(f) != 0 {
 		t.Errorf("expected no finding, got %+v", f)
+	}
+}
+
+// #463: extraKnownMarketplaces entries carry a headers block too, and Claude Code
+// really sends it. Upstream: those headers ride archive downloads whose URL
+// shares the marketplace URL's origin, and 2.1.231 carries the matching guard
+// "Fetch of … redirected to a different origin; dropped inherited marketplace
+// headers". CFG050 covered MCP servers and agent hooks but not this third source.
+func TestCFG050_MarketplaceHeaderCredential(t *testing.T) {
+	got := onlyFinding(t, CFG050.Check(settingsTarget(t, `{
+      "extraKnownMarketplaces": {
+        "acme": {"source": {"source": "url", "url": "https://acme.example/mk.json",
+                 "headers": {"Authorization": "Bearer sk-live-9f2c8d1a4b6e"}}}
+      }}`)), finding.Error)
+	for _, want := range []string{"extraKnownMarketplaces.acme.source.headers.Authorization", "hardcoded"} {
+		if !strings.Contains(got.Message, want) {
+			t.Errorf("message should contain %q, got %q", want, got.Message)
+		}
+	}
+}
+
+// The same exemptions the MCP and hook headers get: an environment reference is
+// the fix the message asks for, and a placeholder is not a secret.
+func TestCFG050_MarketplaceHeaderExemptions(t *testing.T) {
+	for _, v := range []string{"Bearer ${MARKETPLACE_TOKEN}", "${TOKEN}", "Bearer <your-token>", "Bearer changeme", ""} {
+		body, err := json.Marshal(map[string]any{"extraKnownMarketplaces": map[string]any{
+			"acme": map[string]any{"source": map[string]any{"headers": map[string]any{"Authorization": v}}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f := CFG050.Check(settingsTarget(t, string(body))); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", v, f)
+		}
+	}
+}
+
+// A non-auth header is ordinary metadata unless its value looks like a token.
+func TestCFG050_MarketplaceNonAuthHeader(t *testing.T) {
+	f := CFG050.Check(settingsTarget(t, `{
+      "extraKnownMarketplaces": {"acme": {"source": {"headers": {"User-Agent": "acme/1.0"}}}}}`))
+	if len(f) != 0 {
+		t.Errorf("a plain header must not be flagged, got %+v", f)
+	}
+}
+
+// Entries with no headers, and shapes this version does not model, stay silent
+// rather than breaking the scan.
+func TestCFG050_MarketplaceShapesTolerated(t *testing.T) {
+	for _, body := range []string{
+		`{"extraKnownMarketplaces": {"acme": {"source": {"source": "github", "repo": "acme/mk"}}}}`,
+		`{"extraKnownMarketplaces": {"acme": {}}}`,
+		`{"extraKnownMarketplaces": {}}`,
+		`{"extraKnownMarketplaces": []}`,
+		`{"extraKnownMarketplaces": "nonsense"}`,
+	} {
+		if f := CFG050.Check(settingsTarget(t, body)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", body, f)
+		}
+	}
+}
+
+// Several marketplaces are reported in a stable order, one finding per header.
+func TestCFG050_MarketplaceMultipleEntries(t *testing.T) {
+	f := CFG050.Check(settingsTarget(t, `{
+      "extraKnownMarketplaces": {
+        "zeta": {"source": {"headers": {"X-Api-Key": "9f2c8d1a4b6e7c3f"}}},
+        "alpha": {"source": {"headers": {"Authorization": "Bearer sk-live-1234abcd"}}}
+      }}`))
+	if len(f) != 2 {
+		t.Fatalf("expected 2 findings, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "alpha") {
+		t.Errorf("expected a stable alphabetical order, got %q first", f[0].Message)
 	}
 }

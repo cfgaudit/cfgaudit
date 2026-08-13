@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"regexp"
 	"sort"
 	"strings"
@@ -46,6 +47,7 @@ var placeholderRe = regexp.MustCompile(`(?i)^(<.*>|x{3,}|changeme|your[-_ ].*|to
 // for values and key names.
 func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings := r.checkAgentHookHeaders(t)
+	findings = append(findings, r.checkMarketplaceHeaders(t)...)
 	for _, ref := range t.mcpServerRefs() {
 		base := "mcpServers." + ref.Name
 
@@ -93,6 +95,54 @@ func (r *cfg050) checkAgentHookHeaders(t *Target) []finding.Finding {
 			base := t.AgentHooksKind + " hooks." + event
 			findings = append(findings, headerSecrets(base, h.Headers, t.AgentHooksFile, t)...)
 		}
+	}
+	return findings
+}
+
+// checkMarketplaceHeaders reports hardcoded credentials in the request headers of
+// an extraKnownMarketplaces entry. CFG055 already reports the registration
+// itself; a literal secret in its headers is CFG050's problem, at a third
+// committed source after MCP servers and agent hooks.
+//
+// Those headers are really sent. Upstream: "If you register the marketplace from
+// a URL source with headers, such as an extraKnownMarketplaces entry, Claude Code
+// sends those headers with archive downloads whose URL shares the marketplace
+// URL's origin." Claude Code 2.1.231 carries the matching guard string, "Fetch of
+// … redirected to a different origin; dropped inherited marketplace headers", so
+// the inheritance is real and bounded to same-origin fetches.
+//
+// Unlike CFG055 this is not scoped to project settings. A secret written into a
+// user's own settings.json is still a secret in a plaintext file, which is how
+// CFG050 already treats an MCP server's headers.
+func (r *cfg050) checkMarketplaceHeaders(t *Target) []finding.Finding {
+	if t == nil || t.Settings == nil {
+		return nil
+	}
+	raw, ok := t.Settings.Raw["extraKnownMarketplaces"]
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	var entries map[string]struct {
+		Source struct {
+			Headers map[string]string `json:"headers"`
+		} `json:"source"`
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil // a shape this version does not model
+	}
+	names := make([]string, 0, len(entries))
+	for name := range entries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var findings []finding.Finding
+	for _, name := range names {
+		headers := entries[name].Source.Headers
+		if len(headers) == 0 {
+			continue
+		}
+		findings = append(findings, headerSecrets("extraKnownMarketplaces."+name+".source", headers, t.SettingsFile, t)...)
 	}
 	return findings
 }
