@@ -39,6 +39,6 @@ func (r *cfg044) Check(t *Target) []finding.Finding {
 		RuleID:   "CFG044",
 		Severity: finding.Error,
 		File:     t.SettingsFile,
-		Message:  "permissions.deny does not restrict SSH private keys — Claude can read keys (id_rsa, id_ed25519, …) that grant access to remote systems; add \"Read(**/.ssh/**)\" to permissions.deny" + userScopeNote(t),
+		Message:  "permissions.deny does not restrict SSH private keys — Claude can read keys (id_rsa, id_ed25519, …) that grant access to remote systems; add \"Read(//**/.ssh/**)\" to permissions.deny (the // prefix anchors at the filesystem root; a bare **/ pattern is anchored at the working directory and would not reach ~/.ssh)" + userScopeNote(t),
 	}}
 }
