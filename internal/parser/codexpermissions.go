@@ -1,6 +1,9 @@
 package parser
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Codex named permission profiles: the [permissions] table and the
 // default_permissions key that selects one of its entries.
@@ -58,6 +61,49 @@ type CodexPermissionNetwork struct {
 	// The two fields upstream itself names "dangerously".
 	DangerouslyAllowNonLoopbackProxy bool `toml:"dangerously_allow_non_loopback_proxy"`
 	DangerouslyAllowAllUnixSockets   bool `toml:"dangerously_allow_all_unix_sockets"`
+
+	// Domains is the egress allowlist, written as a TOML table of host pattern to
+	// decision rather than an array:
+	//
+	//	[permissions.p.network.domains]
+	//	"github.com" = "allow"
+	//	"*.githubusercontent.com" = "allow"
+	//
+	// It decides how far an opened network reaches, so it is what separates
+	// scoped egress from open egress. Measured across 69 real .codex/config.toml
+	// files: 20 carry the table, and of the 22 that open the network, 17 scope it
+	// this way (#483).
+	Domains map[string]string `toml:"domains"`
+}
+
+// catchAllDomainPatterns are the allowlist keys that match every host, so an
+// allowlist containing one restricts nothing. Deliberately only the bare
+// wildcards: "*.github.com" and "**.github.com" name a real suffix and are
+// ordinary scoping.
+var catchAllDomainPatterns = map[string]bool{"*": true, "**": true}
+
+// EgressAllowlist returns the host patterns the network block allows, sorted, and
+// whether any of them is a catch-all that makes the allowlist meaningless.
+//
+// Only "allow" decisions count. A "deny" entry narrows an allowlist that some
+// other entry opened, so counting it as scoping would read a restriction as a
+// grant.
+func (n *CodexPermissionNetwork) EgressAllowlist() (hosts []string, catchAll bool) {
+	if n == nil {
+		return nil, false
+	}
+	for pattern, decision := range n.Domains {
+		if !strings.EqualFold(strings.TrimSpace(decision), "allow") {
+			continue
+		}
+		p := strings.TrimSpace(pattern)
+		if catchAllDomainPatterns[p] {
+			catchAll = true
+		}
+		hosts = append(hosts, p)
+	}
+	sort.Strings(hosts)
+	return hosts, catchAll
 }
 
 // NamedCodexProfile is a permission profile together with the name it is defined
