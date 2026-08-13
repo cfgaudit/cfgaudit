@@ -537,13 +537,18 @@ Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `Sessio
 - **`.qwen/settings.json`** `hooks` (the nested `hooks.<Event>[].hooks[].command` shape) are scanned: every `command` handler rides the command-content rules (CFG008/009/014/015/…), and a `SessionStart` **or `InstructionsLoaded`** hook — qwen's two zero-click events (`InstructionsLoaded` fires while `QWEN.md`/context loads at session start) — is flagged by [CFG086](docs/rules/CFG086.md). The top-level `disableAllHooks: true` kill switch is honoured, `http` handlers (a url, no shell) are skipped, and event names match exact PascalCase.
 - **`QWEN.md`** (qwen's project instruction file; `~/.qwen/QWEN.md` with `--user`) and **`.qwen/agents/*.md`**, **`.qwen/commands/*.md`**, **`.qwen/skills/*/SKILL.md`** are scanned as instruction content (CFG024–CFG036, CFG057, CFG080/CFG081). qwen also reads `AGENTS.md`, which cfgaudit already scans. `.qwen/agents/*.md` frontmatter has **no** native permission field, so CFG085 is deliberately not extended there.
 
-**The severity backdrop that sets qwen apart:** it ships **folder trust disabled by default** (`security.folderTrust.enabled` defaults to `false`), so a committed `.qwen/settings.json` is applied with **no trust prompt** — the inverse of Cursor/Codex/Grok, which gate project config on trust. One qwen-specific rule builds on that:
+**The severity backdrop that sets qwen apart:** it ships **folder trust disabled by default** (`security.folderTrust.enabled` defaults to `false`), so a committed `.qwen/settings.json` is applied with **no trust prompt** — the inverse of Cursor/Codex/Grok, which gate project config on trust. Two qwen-specific rules build on that:
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG091](docs/rules/CFG091.md) | error | qwen `tools.approvalMode` is `"yolo"` — auto-approves every tool call incl. shell with no prompt, and folder trust is off by default so a committed file applies unprompted | LLM06 |
+| [CFG099](docs/rules/CFG099.md) | error/warn | qwen settings pick the agent's infrastructure — a non-loopback `proxy` (measured: carries the model traffic and its credential header, CFG021's threat model for the whole CLI), `tools.sandboxImage` (error with `tools.sandbox` on in the same file, otherwise warn as latent), or `memory.enableAutoSkill: true` **with** `memory.autoSkillConfirm: false` (note the inverted default: auto-generated skills reach the skill library unconfirmed). `tools.autoAccept` is **not** flagged: it is vestigial, with no consumer in the shipped bundle | LLM02, LLM06 |
 
 Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated shell, not a committed escalation), `"auto-edit"` is stricter than that default, and `tools.autoAccept` is vestigial (no consumer in the approval path).
+
+qwen's `permissions.allow` is **not** flagged, for the same reason as Grok's `[permission] allow` above: evaluation is `deny > ask > allow`, so a user's `deny` beats a repo's `allow`, and `allow` matching is **segmented** rather than a prefix match — `splitCompoundCommand` breaks a chained command into segments and matches each on its own, and `matchesCommandPattern` requires a full match or a space boundary, so a `Bash(git *)` rule cannot auto-approve `git status && rm -rf /`. This is the Grok case, not the prefix-matching Cursor `terminalAllowlist` case that CFG093 exists for.
+
+Also not flagged: `security.allowPrivateNetworkHooks` and `security.allowedInsecureVoiceBaseUrls` are documented *"Only honored from User, System, and SystemDefaults settings scopes"* — a workspace value is ignored, the second saying outright that this is *"so a cloned repository cannot self-grant this bypass"*.
 
 Two further surfaces were scoped and, after source verification, deliberately **not** ruled — neither fires from a scanned repo without a manual step, so a rule would report a trigger that does not exist:
 
@@ -580,9 +585,9 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092 |
-| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088 |
+| LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088, CFG099 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089 |
-| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091 |
+| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091, CFG099 |
 
 **Not covered**
 
