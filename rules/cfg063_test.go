@@ -504,3 +504,145 @@ func TestCFG064_DomainsWithoutEnabledIsSilent(t *testing.T) {
 		t.Errorf("an allowlist alone opens nothing, got %+v", f)
 	}
 }
+
+// #484: the filesystem block of a selected profile, the most used part of the
+// mechanism (39 of 69 real configs). Real-world use is overwhelmingly hardening,
+// so only the granting direction on a sensitive target is a finding.
+
+func fsProfileTarget(fs map[string]any) *Target {
+	return codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "p",
+		Permissions:        map[string]parser.CodexPermissionProfile{"p": {Filesystem: fs}},
+	})
+}
+
+func TestCFG064_FilesystemRootScopeGranted(t *testing.T) {
+	for _, decision := range []string{"read", "write"} {
+		t.Run(decision, func(t *testing.T) {
+			got := onlyFinding(t, CFG064.Check(fsProfileTarget(
+				map[string]any{":root": decision})), finding.Error)
+			if !strings.Contains(got.Message, ":root") {
+				t.Errorf("expected the scope key in the message, got %q", got.Message)
+			}
+		})
+	}
+}
+
+// The corpus shape: hardening. None of this may be reported.
+func TestCFG064_FilesystemHardeningIsSilent(t *testing.T) {
+	f := CFG064.Check(fsProfileTarget(map[string]any{
+		":root":               "deny",
+		"~/.ssh":              "deny",
+		"~/.aws":              "deny",
+		"**/*.pem":            "deny",
+		"**/.env":             "deny",
+		"glob_scan_max_depth": int64(3),
+	}))
+	if len(f) != 0 {
+		t.Errorf("a hardening block must not be flagged, got %+v", f)
+	}
+}
+
+// The most common grant in the corpus is the workspace itself, plus the bounded
+// built-in scopes. Neither widens anything.
+func TestCFG064_FilesystemWorkspaceGrantsAreSilent(t *testing.T) {
+	f := CFG064.Check(fsProfileTarget(map[string]any{
+		".":          "write",
+		".git":       "write",
+		":minimal":   "read",
+		":tmpdir":    "write",
+		":slash_tmp": "write",
+	}))
+	if len(f) != 0 {
+		t.Errorf("workspace and bounded scopes must stay silent, got %+v", f)
+	}
+}
+
+func TestCFG064_FilesystemCredentialGrant(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(fsProfileTarget(
+		map[string]any{"~/.ssh": "read"})), finding.Error)
+	if !strings.Contains(got.Message, ".ssh") {
+		t.Errorf("expected the credential path in the message, got %q", got.Message)
+	}
+}
+
+// System paths are judged on writes alone: every system-path grant in the corpus
+// is a read of /bin or /usr/bin, which is how the agent reaches its toolchain.
+func TestCFG064_FilesystemSystemWriteVersusRead(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(fsProfileTarget(
+		map[string]any{"/etc": "write"})), finding.Error)
+	if !strings.Contains(got.Message, "write access to the system path") {
+		t.Errorf("unexpected message %q", got.Message)
+	}
+	if f := CFG064.Check(fsProfileTarget(map[string]any{
+		"/bin": "read", "/usr/bin": "read", "/usr/local/bin": "read",
+	})); len(f) != 0 {
+		t.Errorf("reading the toolchain must stay silent, got %+v", f)
+	}
+}
+
+// The plain outside-the-workspace class is not reported for this block: in the
+// corpus it is how build caches are named, on 9 of the 10 files it would flag.
+func TestCFG064_FilesystemOutsideWorkspaceNotReported(t *testing.T) {
+	f := CFG064.Check(fsProfileTarget(map[string]any{
+		"~/.cargo":          "write",
+		"~/.rustup":         "write",
+		"~/.cache/go-build": "write",
+		"~/Library/Caches":  "write",
+		"/srv/artifacts":    "write",
+	}))
+	if len(f) != 0 {
+		t.Errorf("build-cache style grants must stay silent (#459 precedent), got %+v", f)
+	}
+}
+
+// A public key is meant to be handed out; the corpus contains a profile granting
+// read to ~/.ssh/id_ed25519.pub.
+func TestCFG064_FilesystemPublicKeyNotCredentialExposure(t *testing.T) {
+	if f := CFG064.Check(fsProfileTarget(map[string]any{"~/.ssh/id_ed25519.pub": "read"})); len(f) != 0 {
+		t.Errorf("a .pub grant must not be reported, got %+v", f)
+	}
+	got := onlyFinding(t, CFG064.Check(fsProfileTarget(
+		map[string]any{"~/.ssh/id_ed25519": "read"})), finding.Error)
+	if !strings.Contains(got.Message, "id_ed25519") {
+		t.Errorf("the private key must still be reported, got %q", got.Message)
+	}
+}
+
+// A bounded scope's nested table resolves inside the workspace, so a granting
+// glob there is not a widening. Only :root's nested table is walked.
+func TestCFG064_FilesystemNestedScopeTables(t *testing.T) {
+	bounded := CFG064.Check(fsProfileTarget(map[string]any{
+		":workspace_roots": map[string]any{".": "write", "**/.env": "deny"},
+	}))
+	if len(bounded) != 0 {
+		t.Errorf("a bounded nested scope must stay silent, got %+v", bounded)
+	}
+	got := onlyFinding(t, CFG064.Check(fsProfileTarget(map[string]any{
+		":root": map[string]any{"~/.aws": "read"},
+	})), finding.Error)
+	if !strings.Contains(got.Message, ".aws") {
+		t.Errorf("expected the nested root grant reported, got %q", got.Message)
+	}
+}
+
+// An unrecognised decision is not reported: naming an effect whose meaning is
+// unknown would be a guess.
+func TestCFG064_FilesystemUnknownDecisionIsSilent(t *testing.T) {
+	f := CFG064.Check(fsProfileTarget(map[string]any{"~/.ssh": "keyring", ":root": "cached"}))
+	if len(f) != 0 {
+		t.Errorf("an unknown decision must not be flagged, got %+v", f)
+	}
+}
+
+// A dormant profile's filesystem block is not reached, same as its network block.
+func TestCFG064_FilesystemDormantProfileSilent(t *testing.T) {
+	f := CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"loose": {Filesystem: map[string]any{":root": "write"}},
+		},
+	}))
+	if len(f) != 0 {
+		t.Errorf("an unselected profile must not be flagged, got %+v", f)
+	}
+}

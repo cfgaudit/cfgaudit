@@ -35,8 +35,100 @@ type CodexPermissionProfile struct {
 	// profile cannot be judged from its own table alone.
 	Extends string `toml:"extends"`
 
-	Network        *CodexPermissionNetwork `toml:"network"`
-	WorkspaceRoots []string                `toml:"workspace_roots"`
+	Network *CodexPermissionNetwork `toml:"network"`
+
+	// WorkspaceRoots is the profile-level array the Codex schema documents. It is
+	// kept because the schema carries it, but it is not what people write: across
+	// 69 real .codex/config.toml files it appears zero times, while the nested
+	// [<profile>.filesystem.":workspace_roots"] table appears 37 times. Do not
+	// mistake a count of the string "workspace_roots" for a count of this field.
+	WorkspaceRoots []string `toml:"workspace_roots"`
+
+	// Filesystem is the profile's filesystem block, the most used part of the
+	// whole mechanism: 39 of those same 69 files carry one.
+	//
+	// It is decoded loosely because it mixes three value kinds under one table:
+	//
+	//	[permissions.p.filesystem]
+	//	glob_scan_max_depth = 3          # a scalar knob
+	//	":root" = "deny"                 # a scope key  -> decision
+	//	"~/.ssh" = "deny"                # a path       -> decision
+	//
+	//	[permissions.p.filesystem.":workspace_roots"]
+	//	"**/*.env" = "deny"              # a nested scope table of glob -> decision
+	//
+	// Decisions observed across the corpus: deny (176), allow (134), write (72),
+	// read (53), none (51).
+	Filesystem map[string]any `toml:"filesystem"`
+}
+
+// grantingFilesystemDecisions are the filesystem decisions that hand out access,
+// mapped to whether the grant is a write. Measured across the corpus, a
+// filesystem block uses exactly four values: deny (177), write (72), read (53)
+// and none (51). "deny" and "none" withhold, and an unrecognised value is treated
+// as not granting: reporting a decision whose meaning is unknown would be a guess.
+//
+// Read and write are kept apart because they matter in opposite places. A read
+// grant to a credential path is already an exfiltration channel, which is why
+// CFG095 reports a read of one. A read grant to a system path is how the agent
+// reaches its own toolchain: every system-path grant in the corpus is a read of
+// /bin, /usr/bin or the command line tools.
+var grantingFilesystemDecisions = map[string]bool{"read": false, "write": true}
+
+// rootScopeKey is the one built-in scope covering the whole filesystem. The other
+// keys seen in the wild bound themselves: ":minimal", ":project_roots",
+// ":workspace_roots", ":tmpdir" and ":slash_tmp" all name a subset, so granting
+// over them is ordinary configuration rather than a finding.
+const rootScopeKey = ":root"
+
+// FilesystemGrants splits a profile's filesystem block into the entries that hand
+// out access: rootScopes carries a granting decision on ":root", and allPaths /
+// writePaths carry the granting path and glob keys, for the caller to classify by
+// sensitivity the same way writable_roots is classified. writePaths is a subset
+// of allPaths.
+//
+// Nested scope tables are walked only under ":root". The bounded scopes resolve
+// against the workspace, so a granting glob inside one of them stays inside the
+// project and is not a widening.
+func (p CodexPermissionProfile) FilesystemGrants() (rootScopes, allPaths, writePaths []string) {
+	record := func(key string, isWrite bool) {
+		allPaths = append(allPaths, key)
+		if isWrite {
+			writePaths = append(writePaths, key)
+		}
+	}
+	for key, val := range p.Filesystem {
+		k := strings.TrimSpace(key)
+		switch v := val.(type) {
+		case string:
+			isWrite, granting := grantingFilesystemDecisions[strings.ToLower(strings.TrimSpace(v))]
+			if !granting {
+				continue
+			}
+			if k == rootScopeKey {
+				rootScopes = append(rootScopes, k+" = \""+strings.TrimSpace(v)+"\"")
+			} else if !strings.HasPrefix(k, ":") {
+				record(k, isWrite)
+			}
+		case map[string]any:
+			if k != rootScopeKey {
+				continue // a bounded scope: its globs resolve inside the workspace
+			}
+			for glob, decision := range v {
+				s, ok := decision.(string)
+				if !ok {
+					continue
+				}
+				if isWrite, granting := grantingFilesystemDecisions[strings.ToLower(strings.TrimSpace(s))]; granting {
+					record(strings.TrimSpace(glob), isWrite)
+				}
+			}
+		}
+	}
+	sort.Strings(rootScopes)
+	sort.Strings(allPaths)
+	sort.Strings(writePaths)
+	return rootScopes, allPaths, writePaths
 }
 
 // CodexPermissionNetwork is a profile's [.network] block.
