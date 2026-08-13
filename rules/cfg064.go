@@ -60,7 +60,10 @@ func (r *cfg064) Check(t *Target) []finding.Finding {
 		})
 	}
 
-	if strings.EqualFold(strings.TrimSpace(t.Codex.SandboxMode), "danger-full-access") {
+	fullAccess := strings.EqualFold(strings.TrimSpace(t.Codex.SandboxMode), "danger-full-access")
+	findings = append(findings, r.checkPermissionProfiles(t, fullAccess)...)
+
+	if fullAccess {
 		add(finding.Error, "Codex sandbox_mode is \"danger-full-access\" — tools run with no sandbox (full filesystem and network access), analogous to weakening Claude Code's sandbox (CFG022). Use \"read-only\" or \"workspace-write\"")
 		// Everything below describes the workspace-write sandbox, which this mode
 		// bypasses entirely; reporting it would add noise about settings Codex
@@ -97,6 +100,79 @@ func (r *cfg064) Check(t *Target) []finding.Finding {
 	if len(outside) > 0 {
 		add(finding.Warn, "Codex [sandbox_workspace_write] writable_roots grants sandbox write access outside the workspace: "+quoteList(outside)+
 			" — confirm each path is one the project genuinely needs, since a committed entry widens the sandbox for everyone who opens the repo")
+	}
+	return findings
+}
+
+// checkPermissionProfiles inspects Codex's named permission profiles, the second
+// permission mechanism next to sandbox_mode and [sandbox_workspace_write].
+//
+// Only a profile the file actually reaches is reported: the one
+// default_permissions selects, plus whatever it inherits through extends. A
+// dormant profile definition is not a finding, the same restraint that keeps the
+// workspace-write table inert under an explicit read-only mode.
+//
+// networkRedundant carries the danger-full-access case. Where the sandbox is off
+// entirely, a profile that opens the network adds nothing to report, so that one
+// finding is suppressed as redundant. The proxy and unix-socket findings are not:
+// they say where traffic goes and what it can reach, which an absent sandbox does
+// not already state.
+func (r *cfg064) checkPermissionProfiles(t *Target, networkRedundant bool) []finding.Finding {
+	var findings []finding.Finding
+	add := func(sev finding.Severity, msg string) {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG064",
+			Severity: sev,
+			Scope:    t.Scope,
+			File:     t.CodexFile,
+			Message:  msg + userScopeNote(t),
+		})
+	}
+
+	for _, sel := range t.Codex.SelectedPermissionProfiles() {
+		where := "Codex permission profile \"" + sel.Name + "\""
+		if sel.Name != strings.TrimSpace(t.Codex.DefaultPermissions) {
+			where += " (inherited by \"" + strings.TrimSpace(t.Codex.DefaultPermissions) + "\" through extends)"
+		}
+		net := sel.Profile.Network
+		if net == nil {
+			continue
+		}
+
+		for _, p := range []struct{ field, value string }{
+			{"proxy_url", net.ProxyURL},
+			{"socks_url", net.SocksURL},
+		} {
+			if strings.TrimSpace(p.value) == "" {
+				continue
+			}
+			add(finding.Error, where+" routes the agent's network through network."+p.field+" = \""+strings.TrimSpace(p.value)+
+				"\", and default_permissions selects that profile. Every request the agent makes, and every credential header on it, goes through a host this repository picked. Codex's own project-layer denylist exists so a repo cannot \"choose where a user's credentials are sent\", and this key is not on it. Remove the proxy, or set it from your user config instead")
+		}
+
+		if net.DangerouslyAllowAllUnixSockets {
+			add(finding.Error, where+" sets network.dangerously_allow_all_unix_sockets = true, which upstream names dangerous itself."+
+				" It hands the agent every unix socket on the machine, including the container and service sockets that are equivalent to a root shell. Remove it")
+		}
+
+		if net.DangerouslyAllowNonLoopbackProxy {
+			if strings.TrimSpace(net.ProxyURL) != "" || strings.TrimSpace(net.SocksURL) != "" {
+				add(finding.Error, where+" sets network.dangerously_allow_non_loopback_proxy = true alongside a proxy URL, which upstream names dangerous itself."+
+					" It is what makes the remote proxy in the same profile usable rather than rejected. Remove both")
+			} else {
+				add(finding.Warn, where+" sets network.dangerously_allow_non_loopback_proxy = true, which upstream names dangerous itself."+
+					" On its own it proxies nothing, but it lifts the loopback restriction under any proxy URL another layer supplies. Leave it unset")
+			}
+		}
+
+		if sel.Profile.NetworkOpened() && !networkRedundant {
+			mode := strings.TrimSpace(net.Mode)
+			if mode == "" {
+				mode = "unset"
+			}
+			add(finding.Error, where+" sets network.enabled = true (mode: "+mode+"), and default_permissions selects that profile."+
+				" Measured against codex-cli 0.147.0, that flips the effective sandbox from \"restricted network\" to \"enabled network\" for anyone who trusts this directory, which re-opens an egress path for anything the agent can read. Leave it unset and allow the specific network step another way")
+		}
 	}
 	return findings
 }

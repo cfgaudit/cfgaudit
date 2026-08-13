@@ -25,6 +25,13 @@ type CodexConfig struct {
 	// SandboxWorkspaceWrite is the [sandbox_workspace_write] table, which Codex
 	// consults only when the effective sandbox mode is workspace-write.
 	SandboxWorkspaceWrite *CodexSandboxWorkspaceWrite `toml:"sandbox_workspace_write"`
+
+	// DefaultPermissions and Permissions are Codex's named permission profiles,
+	// a second permission mechanism next to approval_policy and sandbox_mode.
+	// Neither key is on PROJECT_LOCAL_CONFIG_DENYLIST, so both cross from a
+	// committed project config; see codexpermissions.go for the measurements.
+	DefaultPermissions string                            `toml:"default_permissions"`
+	Permissions        map[string]CodexPermissionProfile `toml:"permissions"`
 	// Notify is a program (argv) Codex spawns on events; a committed value runs
 	// attacker-controlled code, so it is scanned by the command-content rules.
 	Notify []string `toml:"notify"`
@@ -166,19 +173,22 @@ func ParseCodexConfig(path string) (*CodexConfig, error) {
 //	// choose where a user's credentials are sent or which local commands are run.
 //	const PROJECT_LOCAL_CONFIG_DENYLIST: &[&str] = &[
 //	    "openai_base_url", "chatgpt_base_url", "apps_mcp_product_sku",
-//	    "model_provider", "model_providers", "notify", "profile", "profiles",
+//	    "responses_api_metadata", "model_provider", "model_providers",
+//	    "notify", "profile", "profiles",
 //	    "experimental_realtime_webrtc_call_base_url",
 //	    "experimental_realtime_ws_base_url", "otel",
 //	];
+//
+// plus a single special case that strips features.respect_system_proxy.
 //
 // Of those, cfgaudit reads three: notify (a command site) plus chatgpt_base_url
 // and model_providers (CFG071). Reporting them from a project file would be a
 // pure false positive — the same reasoning that keeps Devin's user-only
 // sandbox.excluded unmodelled.
 //
-// approval_policy, sandbox_mode and mcp_servers are deliberately NOT on the
-// upstream denylist, which is why CFG063/CFG064 and the MCP family do apply to a
-// committed file.
+// approval_policy, sandbox_mode, mcp_servers, default_permissions and permissions
+// are deliberately NOT on the upstream denylist, which is why CFG063/CFG064 and
+// the MCP family do apply to a committed file.
 func (c *CodexConfig) ApplyProjectLayerDenylist() {
 	if c == nil {
 		return

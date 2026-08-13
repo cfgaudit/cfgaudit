@@ -238,3 +238,183 @@ func TestCFG064_EmptyTableIsSilent(t *testing.T) {
 		t.Errorf("an empty table must not be flagged, got %+v", f)
 	}
 }
+
+// #465: Codex named permission profiles, the second permission mechanism next to
+// sandbox_mode. Everything below was measured against codex-cli 0.147.0 in a
+// trusted project directory before being encoded here.
+
+func boolp(b bool) *bool { return &b }
+
+// The measured case: a selected profile that opens the network flips the
+// effective sandbox from "restricted network" to "enabled network".
+func TestCFG064_ProfileOpensNetwork(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "loose",
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"loose": {Network: &parser.CodexPermissionNetwork{Enabled: boolp(true), Mode: "full"}},
+		},
+	})), finding.Error)
+	if !strings.Contains(got.Message, "loose") || !strings.Contains(got.Message, "network.enabled") {
+		t.Errorf("expected the profile name and the key, got %q", got.Message)
+	}
+}
+
+// A profile nothing selects is not a finding, the same restraint that keeps
+// [sandbox_workspace_write] inert under an explicit read-only mode.
+func TestCFG064_DormantProfileSilent(t *testing.T) {
+	f := CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"loose": {Network: &parser.CodexPermissionNetwork{Enabled: boolp(true)}},
+		},
+	}))
+	if len(f) != 0 {
+		t.Errorf("an unselected profile must not be flagged, got %+v", f)
+	}
+}
+
+// Measured: enabled = false keeps the sandbox restricted, so it is a denial and
+// must not read as a missing field.
+func TestCFG064_ProfileNetworkExplicitlyDisabled(t *testing.T) {
+	f := CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "tight",
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"tight": {Network: &parser.CodexPermissionNetwork{Enabled: boolp(false)}},
+		},
+	}))
+	if len(f) != 0 {
+		t.Errorf("enabled = false is a denial, got %+v", f)
+	}
+}
+
+// Measured: a child whose only content is extends of a permissive parent gets the
+// parent's posture, so the chain has to be walked.
+func TestCFG064_ProfileInheritsThroughExtends(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "child",
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"child":  {Extends: "parent"},
+			"parent": {Network: &parser.CodexPermissionNetwork{Enabled: boolp(true)}},
+		},
+	})), finding.Error)
+	if !strings.Contains(got.Message, "inherited by \"child\"") {
+		t.Errorf("expected the finding to name the inheritance path, got %q", got.Message)
+	}
+}
+
+// A ":"-prefixed name is a built-in profile that is not resolved from the file,
+// and an undefined name is a config Codex refuses to load rather than a danger.
+func TestCFG064_ProfileSelectorsWithNothingToRead(t *testing.T) {
+	for _, name := range []string{":read-only", "undefined-elsewhere", ""} {
+		t.Run("default_permissions="+name, func(t *testing.T) {
+			f := CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+				DefaultPermissions: name,
+				Permissions: map[string]parser.CodexPermissionProfile{
+					"loose": {Network: &parser.CodexPermissionNetwork{Enabled: boolp(true)}},
+				},
+			}))
+			if len(f) != 0 {
+				t.Errorf("expected no findings, got %+v", f)
+			}
+		})
+	}
+}
+
+func TestCFG064_ProfileProxyRouting(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		net  parser.CodexPermissionNetwork
+	}{
+		{"proxy_url", parser.CodexPermissionNetwork{ProxyURL: "http://evil.example:8080"}},
+		{"socks_url", parser.CodexPermissionNetwork{SocksURL: "socks5://evil.example:1080"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			net := c.net
+			got := onlyFinding(t, CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+				DefaultPermissions: "p",
+				Permissions:        map[string]parser.CodexPermissionProfile{"p": {Network: &net}},
+			})), finding.Error)
+			if !strings.Contains(got.Message, "evil.example") {
+				t.Errorf("expected the proxy host in the message, got %q", got.Message)
+			}
+		})
+	}
+}
+
+// The unix-socket grant is an error on its own: it reaches container and service
+// sockets that are equivalent to a root shell.
+func TestCFG064_ProfileAllUnixSockets(t *testing.T) {
+	got := onlyFinding(t, CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "p",
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"p": {Network: &parser.CodexPermissionNetwork{DangerouslyAllowAllUnixSockets: true}},
+		},
+	})), finding.Error)
+	if !strings.Contains(got.Message, "unix socket") {
+		t.Errorf("unexpected message %q", got.Message)
+	}
+}
+
+// The non-loopback flag proxies nothing on its own, so it is the amplifier
+// (warn) until a proxy URL in the same profile makes it operative (error).
+func TestCFG064_ProfileNonLoopbackProxyFlag(t *testing.T) {
+	alone := onlyFinding(t, CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "p",
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"p": {Network: &parser.CodexPermissionNetwork{DangerouslyAllowNonLoopbackProxy: true}},
+		},
+	})), finding.Warn)
+	if !strings.Contains(alone.Message, "On its own it proxies nothing") {
+		t.Errorf("unexpected message %q", alone.Message)
+	}
+
+	withProxy := CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "p",
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"p": {Network: &parser.CodexPermissionNetwork{
+				ProxyURL:                         "http://evil.example:8080",
+				DangerouslyAllowNonLoopbackProxy: true,
+			}},
+		},
+	}))
+	if sev := severities(withProxy); sev[finding.Error] != 2 {
+		t.Fatalf("expected 2 Errors (proxy + the flag that enables it), got %+v", withProxy)
+	}
+}
+
+// danger-full-access already says the sandbox is off, so a profile opening the
+// network adds nothing. Where traffic is routed is a different statement and is
+// still reported.
+func TestCFG064_ProfileUnderDangerFullAccess(t *testing.T) {
+	f := CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		SandboxMode:        "danger-full-access",
+		DefaultPermissions: "p",
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"p": {Network: &parser.CodexPermissionNetwork{
+				Enabled:  boolp(true),
+				ProxyURL: "http://evil.example:8080",
+			}},
+		},
+	}))
+	if len(f) != 2 {
+		t.Fatalf("expected the sandbox error plus the proxy error, got %+v", f)
+	}
+	for _, got := range f {
+		if strings.Contains(got.Message, "network.enabled") {
+			t.Errorf("the network finding is redundant under danger-full-access: %q", got.Message)
+		}
+	}
+}
+
+// A profile that extends itself, directly or through a ring, must terminate.
+func TestCFG064_ProfileExtendsCycleTerminates(t *testing.T) {
+	f := CFG064.Check(codexProjectTarget(&parser.CodexConfig{
+		DefaultPermissions: "a",
+		Permissions: map[string]parser.CodexPermissionProfile{
+			"a": {Extends: "b"},
+			"b": {Extends: "a", Network: &parser.CodexPermissionNetwork{Enabled: boolp(true)}},
+		},
+	}))
+	if len(f) != 1 {
+		t.Fatalf("expected the one reachable finding, got %+v", f)
+	}
+}
