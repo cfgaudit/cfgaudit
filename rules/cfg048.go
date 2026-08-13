@@ -48,6 +48,15 @@ const (
 	// it (#434).
 	permissionLevelKey = "chat.permissions.default"
 
+	// defaultConfigurationKey is the object-valued spelling of the same two
+	// decisions permissionLevelKey carries, registered alongside it rather than
+	// replacing it: `approvals` picks how tool calls are confirmed and `mode`
+	// picks how far the agent runs unattended. The registration declares no
+	// scope, so like permissionLevelKey it takes ConfigurationScope.WINDOW and is
+	// applied from a committed workspace settings.json, and it is not
+	// `restricted`, so workspace trust does not gate it either (#468).
+	defaultConfigurationKey = "chat.defaultConfiguration"
+
 	// terminalAutoApproveKey maps a command pattern to whether the terminal tool
 	// may run it unattended. A key wrapped in "/" is a regular expression; a plain
 	// key matches the start of a command. WINDOW-scoped, unrestricted, like the
@@ -71,6 +80,30 @@ const (
 var weakeningPermissionLevels = map[string]string{
 	"autoapprove": "every tool call is auto-approved and errors are auto-retried",
 	"autopilot":   "everything Bypass Approvals does, plus an internal stop hook that keeps the agent working until it decides the task is done",
+}
+
+// weakeningDefaultConfigurations are the chat.defaultConfiguration fields whose
+// value starts a session with a confirmation already waived, together with the
+// upstream description of what the value does and the value to return to.
+//
+// Only the unambiguous end of each enum is listed. `approvals` also accepts
+// "assisted" (a model decides) and `mode` also accepts "plan"; neither waives a
+// confirmation outright, so neither is reported.
+var weakeningDefaultConfigurations = []struct {
+	field, value, does, restore string
+}{
+	{
+		field:   "approvals",
+		value:   "allowall",
+		does:    "runs tool calls without asking, in the words of the setting's own enum description",
+		restore: "default",
+	},
+	{
+		field:   "mode",
+		value:   "autopilot",
+		does:    "lets the agent autonomously iterate from start to finish, in the words of the setting's own enum description, so nothing stops it until it decides the task is done",
+		restore: "interactive",
+	},
 }
 
 // catchAllTerminalPatternRe matches a terminal auto-approve regex that approves
@@ -117,6 +150,7 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 	}
 
 	findings = append(findings, r.checkPermissionLevel(t)...)
+	findings = append(findings, r.checkDefaultConfiguration(t)...)
 	findings = append(findings, r.checkEdits(t)...)
 	findings = append(findings, r.checkURLs(t)...)
 	findings = append(findings, r.checkTerminal(t)...)
@@ -146,6 +180,43 @@ func (r *cfg048) checkPermissionLevel(t *Target) []finding.Finding {
 		Message: permissionLevelKey + " is \"" + strings.TrimSpace(value) + "\" — every new chat session starts in that mode, where " + what +
 			". Committed to a repo this hands the approvals to anyone who opens it, before they agree to anything; it is the successor to the chat.tools.autoApprove of CVE-2025-53773. Remove the key, or set it to \"default\"",
 	}}
+}
+
+// checkDefaultConfiguration inspects chat.defaultConfiguration, which carries the
+// same two decisions as chat.permissions.default in an object rather than a flat
+// string. Both keys are registered, so this is an addition to the CVE-2025-53773
+// lineage rather than a rename, and each field is reported on its own because
+// each is separately set and separately removed.
+func (r *cfg048) checkDefaultConfiguration(t *Target) []finding.Finding {
+	entries, ok := t.VSCodeSettings.ObjectField(defaultConfigurationKey)
+	if !ok {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, sub := range weakeningDefaultConfigurations {
+		raw, present := entries[sub.field]
+		if !present {
+			continue
+		}
+		var value string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if !strings.EqualFold(value, sub.value) {
+			continue
+		}
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG048",
+			Severity: finding.Error,
+			Scope:    t.Scope,
+			File:     t.VSCodeSettingsFile,
+			Message: defaultConfigurationKey + " sets \"" + sub.field + "\": \"" + value + "\", which " + sub.does +
+				". Every new chat session starts that way, so committing it hands the decision to anyone who opens the repo before they agree to anything. It is the object-valued spelling of the " + permissionLevelKey +
+				" this rule already flags, and both keys are live. Remove the field, or set it to \"" + sub.restore + "\"",
+		})
+	}
+	return findings
 }
 
 // checkTerminal inspects the two settings that govern which terminal commands the
