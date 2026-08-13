@@ -143,6 +143,14 @@ cfgaudit policy apply               # write the missing deny entries
 
 **`init` subcommand** — scaffolds `.claude/settings.json` with a hardened baseline `permissions.deny` (credential/key/cloud/SSH read-denies plus destructive/network/privilege command classes) so a fresh project starts safe-by-default and passes the policy rules (CFG006/CFG041–CFG044) immediately. Aborts if the file exists (use `--force`, or `cfgaudit policy apply` to merge); `--dry-run` prints the JSON; `--interactive` adds project-specific entries.
 
+**What a deny list can and cannot do.** The two halves are not equally strong, and it is worth saying so rather than presenting the file as a boundary:
+
+- **Path rules hold.** `Read`/`Edit` patterns are matched against the resolved path, symlinks included. Their one trap is the anchor: a bare `**/` pattern is anchored at the working directory, so `Read(**/.ssh/**)` in a project file leaves `~/.ssh` readable. The baseline uses the `//` filesystem-root anchor for every location-named entry for exactly this reason ([CFG044](docs/rules/CFG044.md#anchor-the-pattern-at-the-filesystem-root) carries the measurement).
+- **Removing a whole tool holds.** A bare `"Bash"` deny entry takes the tool out of the model's context entirely.
+- **Argument-constrained Bash rules are guidance.** Matching is a literal prefix, so a reordered or inserted flag walks past a rule that names specific flags. That is why the baseline denies `rm` by name rather than `rm -rf`, and why the force-push entries carry four spellings and still are not airtight. Upstream calls these patterns "fragile" and points at OS-level sandboxing and `PreToolUse` hooks for the part a pattern cannot enforce.
+
+Compound commands are **not** a bypass, contrary to a claim that circulates: with `Bash(touch *)` denied, `touch f && echo ok && ls` was blocked in full on 2.1.231. A rule must match each subcommand independently, and a deny on any one of them blocks the call.
+
 **`policy` subcommand** — keeps `permissions.deny` (enforced by Claude Code) and `policy.require-deny` (audited by cfgaudit / CFG025) in sync. `generate` freezes the current runtime deny list as an auditable policy, preserving the rest of your `.cfgaudit.yml` (comments included). `apply` rolls a policy out to a project's settings; both merge **additively** (nothing is removed) and are idempotent. `apply` rewrites `settings.json` as 2-space-indented JSON with alphabetically-ordered top-level keys — run `--dry-run` first to preview.
 
 **Scope-aware findings**

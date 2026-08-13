@@ -12,7 +12,9 @@ func TestCFG044_DenyMissingSSH(t *testing.T) {
 	if len(f) != 1 || f[0].Severity != finding.Error {
 		t.Fatalf("expected 1 Error, got %+v", f)
 	}
-	if !strings.Contains(f[0].Message, "Read(**/.ssh/**)") {
+	// The suggestion carries the // filesystem-root anchor: a bare **/ pattern is
+	// anchored at the working directory and would leave ~/.ssh readable (#480).
+	if !strings.Contains(f[0].Message, "Read(//**/.ssh/**)") {
 		t.Errorf("expected suggested pattern in message, got: %s", f[0].Message)
 	}
 }

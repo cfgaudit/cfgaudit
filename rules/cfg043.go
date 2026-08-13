@@ -23,11 +23,11 @@ var cloudProviders = []struct {
 	suggest []string
 }{
 	{"AWS", regexp.MustCompile(`(?i)\.aws(/|\*|$)`),
-		[]string{"Read(**/.aws/credentials)", "Read(**/.aws/config)"}},
+		[]string{"Read(//**/.aws/credentials)", "Read(//**/.aws/config)"}},
 	{"GCP", regexp.MustCompile(`(?i)gcloud|application_default_credentials`),
-		[]string{"Read(**/.config/gcloud/**)", "Read(**/application_default_credentials.json)"}},
+		[]string{"Read(//**/.config/gcloud/**)", "Read(//**/application_default_credentials.json)"}},
 	{"Azure", regexp.MustCompile(`(?i)\.azure(/|\*|$)`),
-		[]string{"Read(**/.azure/**)"}},
+		[]string{"Read(//**/.azure/**)"}},
 }
 
 // Check flags a permissions.deny block that exists but does not cover cloud

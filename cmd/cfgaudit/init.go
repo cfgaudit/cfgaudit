@@ -15,6 +15,24 @@ import (
 // satisfies cfgaudit's own deny-coverage rules (CFG041–CFG044) with zero
 // findings; the Bash entries restrict the destructive/network/privilege command
 // classes cfgaudit's command rules flag.
+//
+// Two anchoring rules drive the shapes here, both measured against Claude Code
+// 2.1.231 rather than read off the documentation (#480):
+//
+//   - A bare `**/` pattern is anchored at the current directory. A project file
+//     denying Read(**/.ssh/**) blocks a .ssh directory inside the repository and
+//     leaves ~/.ssh readable, which is the file the entry exists for. The `//`
+//     prefix anchors at the filesystem root and does cover it. Verified with a
+//     marker file in and outside the project: the bare form blocked only the
+//     inner path, the `//` form blocked both.
+//   - Bash deny matching is a literal prefix. With Bash(echo -n *) denied,
+//     `echo -n x` was blocked while `echo -e -n x` and `echo x -n` ran. So a
+//     rule naming specific flags is evaded by reordering them, and the command
+//     name alone is the only shape that holds.
+//
+// The location-named entries therefore use `//**/`. The extension-named ones
+// (*.pem and friends) stay project-anchored: they name a file kind rather than a
+// location, and a repository's own certificates are the case they are about.
 var baselineDeny = []string{
 	// Credential & key material (CFG041, CFG042, CFG044).
 	"Read(**/.env)",
@@ -24,17 +42,26 @@ var baselineDeny = []string{
 	"Read(**/*.p12)",
 	"Read(**/*.pfx)",
 	"Read(**/*.jks)",
-	"Read(**/.ssh/**)",
+	"Read(//**/.ssh/**)",
 	// Cloud credentials (CFG043: AWS, GCP, Azure).
-	"Read(**/.aws/**)",
-	"Read(**/.config/gcloud/**)",
-	"Read(**/.azure/**)",
-	// Destructive / network / privilege command classes.
-	"Bash(rm -rf *)",
+	"Read(//**/.aws/**)",
+	"Read(//**/.config/gcloud/**)",
+	"Read(//**/.azure/**)",
+	// Destructive / network / privilege command classes. `rm` is denied by name
+	// rather than by flag, so `rm -fr x` and `rm --recursive --force x` are
+	// covered too.
+	"Bash(rm *)",
 	"Bash(sudo *)",
 	"Bash(curl:*)",
 	"Bash(wget:*)",
+	// Force-push needs four spellings because the flag can sit directly after
+	// `push` or at the end of the command, in long or short form. Even these do
+	// not make it airtight; per upstream, an argument-constrained Bash rule is
+	// guidance. Branch protection is the boundary.
 	"Bash(git push --force*)",
+	"Bash(git push -f*)",
+	"Bash(git push * --force*)",
+	"Bash(git push * -f*)",
 }
 
 // initOutput implements `cfgaudit init`: scaffold .claude/settings.json with a
