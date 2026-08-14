@@ -239,15 +239,24 @@ func pluginHooksTarget(path string) (*rules.Target, error) {
 
 // pluginMCPTarget extracts mcpServers from a plugin.json into a target so the MCP
 // rules apply. Returns nil when the manifest declares no servers.
+//
+// mcpServers has two spellings and both are honoured by Claude Code: an inline
+// object, and a string path to an external config resolved against the plugin
+// root. The finding is attributed to whichever file really declares the servers,
+// so a reader is sent to the file they have to edit (#505).
 func pluginMCPTarget(path string) (*rules.Target, error) {
-	cfg, err := parser.ParseMCPConfig(path)
+	m, err := parser.ParsePluginManifest(path)
 	if err != nil {
 		return nil, err
 	}
-	if len(cfg.MCPServers) == 0 {
+	servers, file, err := m.MCPServerRef(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(servers) == 0 {
 		return nil, nil
 	}
-	return &rules.Target{ProjectMCPFile: path, ProjectMCP: cfg.MCPServers}, nil
+	return &rules.Target{ProjectMCPFile: file, ProjectMCP: servers}, nil
 }
 
 func dirExists(p string) bool {
