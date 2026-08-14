@@ -131,7 +131,9 @@ cfgaudit list --owasp MCP05
 cfgaudit list --format json
 
 # Scaffold a hardened .claude/settings.json for a new project
-cfgaudit init                       # write a safe-default deny list
+cfgaudit init                       # write a safe-default deny list (profile: standard)
+cfgaudit init --profile minimal     # credential reads only
+cfgaudit init --profile paranoid    # + environment runners, shell interpreters, PowerShell
 cfgaudit init --dry-run             # print the JSON without writing
 cfgaudit init --interactive         # add project-specific deny entries
 
@@ -141,7 +143,17 @@ cfgaudit policy apply --dry-run     # preview: .cfgaudit.yml require-deny -> set
 cfgaudit policy apply               # write the missing deny entries
 ```
 
-**`init` subcommand** — scaffolds `.claude/settings.json` with a hardened baseline `permissions.deny` (credential/key/cloud/SSH read-denies plus destructive/network/privilege command classes) so a fresh project starts safe-by-default and passes the policy rules (CFG006/CFG041–CFG044) immediately. Aborts if the file exists (use `--force`, or `cfgaudit policy apply` to merge); `--dry-run` prints the JSON; `--interactive` adds project-specific entries.
+**`init` subcommand** — scaffolds `.claude/settings.json` with a hardened `permissions.deny` so a fresh project starts safe-by-default and passes the policy rules (CFG006/CFG041–CFG044) immediately. Aborts if the file exists (use `--force`, or `cfgaudit policy apply` to merge); `--dry-run` prints the JSON; `--interactive` adds project-specific entries.
+
+`--profile` picks how much it writes. Each profile is a superset of the one before it, and every one of them produces a file that scans clean across **all** rules:
+
+| Profile | Entries | What it adds |
+|---|---|---|
+| `minimal` | 11 | credential reads only: the smallest list that still satisfies CFG006 and CFG041–CFG044 |
+| `standard` *(default)* | 32 | + destructive/network/privilege commands, the token stores the coverage rules do not name (`.netrc`, `.npmrc`, `.kube/config`, `.gnupg`, …), `Edit` protection on the same credential paths, and `Edit(**/.claude/**)` so the agent cannot rewrite the list constraining it |
+| `paranoid` | 52 | + environment runners (`npx`, `docker exec`, `devbox run`, …), shell interpreters, publish/infra commands, and the PowerShell equivalents |
+
+The runners are in `paranoid` rather than `standard` because they get in the way, not because they matter less. Claude Code strips a fixed set of wrappers before matching a Bash rule but **not** these, and upstream states the consequence: *"a rule like `Bash(devbox run *)` matches whatever comes after `run`, including `devbox run rm -rf .`"*. So every command-class entry in `standard` has a documented bypass through them. PowerShell is likewise a separate tool with its own rules, so nothing in the Bash entries applies to it on Windows.
 
 **What a deny list can and cannot do.** The two halves are not equally strong, and it is worth saying so rather than presenting the file as a boundary:
 
