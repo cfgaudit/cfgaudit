@@ -111,6 +111,8 @@ var aveByRule = map[string]string{
 	"CFG074": "AVE-2026-00062", // skills-lock.json entry with no integrity pin
 	"CFG055": "AVE-2026-00062", // Imperfect fit: only the unpinned extraKnownMarketplaces source is
 	"CFG089": "AVE-2026-00062", // this class; the enabledPlugins half is supply chain more broadly.
+	"CFG098": "AVE-2026-00062", // marketplace.json archive source with no sha256, npm source at a
+	//                             non-default registry: nothing pins what the entry installs.
 
 	// TLS verification disabled in component configuration (AVE-2026-00061).
 	"CFG075": "AVE-2026-00061", // MCP env/args TLS-verify killswitch
@@ -119,6 +121,42 @@ var aveByRule = map[string]string{
 	"CFG097": "AVE-2026-00047", // Gemini remote-agent auth literal. Only that half maps: the rule's
 	//                             cleartext agent_card_url has no AVE class (00061 is TLS-verify
 	//                             disabled, which is a different failure from no TLS at all).
+
+	// Endpoint redirect via a static configuration value (AVE-2026-00073). The
+	// record names OTEL_EXPORTER_OTLP_ENDPOINT among its manifestations and is
+	// explicit that nothing is injected into the model's context: a committed
+	// value changes where the process sends data, so detection is a value
+	// comparison rather than content analysis. It shipped for the "telemetry /
+	// context redirect via config" class this crosswalk had proposed.
+	"CFG005": "AVE-2026-00073", // ANTHROPIC_BASE_URL pointing at a non-Anthropic endpoint
+	"CFG046": "AVE-2026-00073", // OTEL exporter endpoint redirecting telemetry off-host
+	"CFG099": "AVE-2026-00073", // qwen proxy. Maps on that half only: the rule's sandboxImage half
+	//                             has no class, and its unconfirmed auto-skill half is 00063.
+
+	// Container daemon redirected off-host (AVE-2026-00071).
+	"CFG082": "AVE-2026-00071", // DOCKER_HOST in an env block, or docker -H in a command site
+
+	// MCP server bound to every interface with no authentication step (AVE-2026-00072).
+	"CFG018": "AVE-2026-00072", // bind-all, which the record also calls NeighborJack
+
+	// Natural-language steering of an approval classifier subagent (AVE-2026-00076).
+	// The record places itself explicitly between AVE-2026-00021 (instructions to
+	// the agent) and AVE-2026-00063 (a setting, no instruction text), which is the
+	// gap this crosswalk had recorded for CFG094.
+	"CFG094": "AVE-2026-00076", // .cursor/permissions.json autoRun.allow_instructions
+
+	// Deliberately unmapped, so the decision is not re-made every release:
+	// CFG100 (Grok [plugins] enabled/paths) would need AVE-2026-00064, which
+	// requires that Grok's loader runs plugin code at project load with no
+	// prompt. That is unverified, and the enabled half is the same wider supply
+	// chain shape CFG055/CFG089 already sit outside the map for.
+	// CFG101 (a deny rule walked past by flag reordering) is an ineffective
+	// guardrail rather than an attacker behaviour. AVE-2026-00063 is a flag that
+	// removes a gate and AVE-2026-00068 is composition through shell state;
+	// neither is "the denylist misses an equivalent spelling".
+	// CFG102 (two committed skills claiming one name) is name shadowing, but
+	// AVE-2026-00017 is explicitly MCP server identity and AVE-2026-00066 is
+	// registry squatting on hallucinated names. Reported as a gap instead.
 }
 
 // ruleAVE returns the primary AVE id for a rule, or "" if none is mapped.
