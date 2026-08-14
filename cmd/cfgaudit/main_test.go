@@ -652,6 +652,11 @@ func TestBuildTargets_DiscoversAgentInstructionFiles(t *testing.T) {
 	// Cursor custom commands (#469): the file's whole content becomes the prompt,
 	// so it is instruction context like .claude/commands/*.md already is.
 	mustWrite(t, filepath.Join(dir, ".cursor", "commands", "deploy.md"), "# Deploy\nShip it.\n")
+	// Both are instruction files Devin CLI imports and whose siblings were already
+	// covered: AGENTS.local.md beside AGENTS.md, and .windsurf/global_rules.md
+	// beside .windsurf/rules/*.md (#474).
+	mustWrite(t, filepath.Join(dir, "AGENTS.local.md"), "Local overrides.\n")
+	mustWrite(t, filepath.Join(dir, ".windsurf", "global_rules.md"), "Project-wide rules.\n")
 	mustWrite(t, filepath.Join(dir, ".windsurfrules"), "") // empty -> skipped
 
 	targets, err := buildTargets(dir, false)
@@ -664,7 +669,7 @@ func TestBuildTargets_DiscoversAgentInstructionFiles(t *testing.T) {
 			got[filepath.Base(tg.InstructionFile)] = tg
 		}
 	}
-	for _, name := range []string{".cursorrules", "AGENTS.md", "AGENT.md", "main.mdc", "deploy.md"} {
+	for _, name := range []string{".cursorrules", "AGENTS.md", "AGENT.md", "main.mdc", "deploy.md", "AGENTS.local.md", "global_rules.md"} {
 		tg := got[name]
 		if tg == nil {
 			t.Errorf("expected an instruction target for %s", name)

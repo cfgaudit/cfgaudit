@@ -777,10 +777,17 @@ var (
 		".cursorrules",
 		".windsurfrules",
 		"AGENTS.md",
+		// The local sibling of AGENTS.md. Devin CLI's configuration-import
+		// reference lists it among the "standard project rules" it reads
+		// alongside AGENTS.md, AGENT.md and .windsurfrules (#474).
+		"AGENTS.local.md",
 		"AGENT.md",  // singular — Amp's convention, also loaded by xAI's Grok CLI
 		"GEMINI.md", // Gemini CLI project instruction file (analog to CLAUDE.md)
 		"QWEN.md",   // qwen-code project instruction file (verified: DEFAULT_CONTEXT_FILENAME)
 		filepath.Join(".github", "copilot-instructions.md"),
+		// Windsurf's project-wide rules file, the sibling of .windsurf/rules/*.md
+		// in agentInstructionGlobs below. Devin CLI imports both (#474).
+		filepath.Join(".windsurf", "global_rules.md"),
 	}
 	// Matching is case-sensitive (exact filename). Some agents also load
 	// mixed-case spellings such as `Agents.md` / `Claude.md`; those are
