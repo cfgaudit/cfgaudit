@@ -41,8 +41,8 @@ var dangerousAllowGroups = []struct {
 		[]string{"certutil", "bitsadmin", "mshta", "regsvr32", "rundll32"}},
 	{allowCat{finding.Warn, "a language interpreter — open-ended args can execute arbitrary code"},
 		[]string{"python", "python3", "perl", "ruby", "node", "deno"}},
-	{allowCat{finding.Warn, "exec-capable through its flags (e.g. find -exec, sed e///, awk system(), env/xargs, tar --checkpoint-action, git -c)"},
-		[]string{"find", "sed", "awk", "gawk", "xargs", "env", "tar", "git"}},
+	{allowCat{finding.Warn, "exec-capable through its flags (e.g. find -exec, sed e///, awk system(), env/xargs, tar --checkpoint-action)"},
+		[]string{"find", "sed", "awk", "gawk", "xargs", "env", "tar"}},
 	{allowCat{finding.Warn, "a remote-execution and lateral-movement tool"},
 		[]string{"ssh", "scp", "rsync"}},
 }
@@ -59,27 +59,65 @@ var dangerousAllowLookup = func() map[string]allowCat {
 
 var bashAllowRe = regexp.MustCompile(`^Bash\((.*)\)$`)
 
-// gitReadOnlySubcmds are git subcommands that only inspect the repository. When an
-// allow entry pins one of these (e.g. Bash(git status:*)), the git arbitrary-exec
-// vector — which needs a flag before the subcommand, like `git -c alias=!sh` — is
-// not reachable, so the entry is not flagged. Unscoped Bash(git *) / Bash(git:*)
-// and state-changing subcommands (push, commit, config, remote, …) still are.
-var gitReadOnlySubcmds = map[string]bool{
-	"status": true, "diff": true, "log": true, "show": true, "rev-parse": true,
-	"describe": true, "blame": true, "ls-files": true, "ls-remote": true,
-	"shortlog": true, "reflog": true, "for-each-ref": true, "name-rev": true,
-	"symbolic-ref": true, "cat-file": true, "whatchanged": true, "grep": true,
+// gitExecSubcmds maps a git subcommand to the way it runs an arbitrary command
+// through its own arguments. git's headline exec vector sits in the flags that
+// come *before* the subcommand (`git -c core.pager=<cmd> log`), so an allow entry
+// that pins a subcommand only carries risk when that subcommand brings a vector of
+// its own: Bash(git rebase:*) does, Bash(git add:*) does not (#507).
+//
+// Every vector below was reproduced against git 2.43, except send-email, which
+// ships in a separate package and is taken from git's documentation. Two vectors
+// that look plausible are deliberately absent because they do not hold: `git
+// mergetool` has no --extcmd (only difftool does), and an `ext::<cmd>` remote URL
+// is refused by default ("transport 'ext' not allowed"), which is what would
+// otherwise make every remote-taking subcommand exec-capable.
+var gitExecSubcmds = map[string]string{
+	"rebase":        "git rebase -x <cmd> runs a command per commit",
+	"bisect":        "git bisect run <cmd> runs a command per revision",
+	"submodule":     "git submodule foreach <cmd> runs a command per submodule",
+	"filter-branch": "git filter-branch --tree-filter <cmd> runs a command per commit",
+	"difftool":      "git difftool --extcmd=<cmd> runs a command per changed file",
+	"grep":          "git grep -O<cmd> runs a command over the matching files",
+	"clone":         "git clone --upload-pack=<cmd> runs a command, and --template=<dir> installs hooks that run during the clone",
+	"fetch":         "git fetch --upload-pack=<cmd> runs a command",
+	"pull":          "git pull --upload-pack=<cmd> runs a command",
+	"ls-remote":     "git ls-remote --upload-pack=<cmd> runs a command",
+	"push":          "git push --receive-pack=<cmd> runs a command",
+	"archive":       "git archive --remote=<repo> --exec=<cmd> runs a command",
+	"config":        "git config writes alias.x=!<cmd> or core.pager=<cmd>, which a later git run executes",
+	"daemon":        "git daemon --access-hook=<cmd> runs a command per request",
+	"instaweb":      "git instaweb --httpd=<cmd> runs a command",
+	"send-email":    "git send-email --sendmail-cmd=<cmd> runs a command",
 }
 
 // gitFirstSubcmd returns the lowercased first token after "git" in an allow
-// pattern's inner text (e.g. "git status:*" → "status"). A leading flag ("-c")
-// or empty (unscoped "git *"/"git:*") yields "" — never read-only.
+// pattern's inner text (e.g. "git status:*" → "status"). An unscoped entry
+// ("git *", "git:*") yields ""; an entry that starts with a flag ("git -c …")
+// yields that flag.
 func gitFirstSubcmd(inner string) string {
 	rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(inner), "git"))
 	if i := strings.IndexAny(rest, " \t:*"); i >= 0 {
 		rest = rest[:i]
 	}
 	return strings.ToLower(rest)
+}
+
+// gitAllowEntry classifies a Bash(git …*) allow entry. An entry that leaves the
+// pre-subcommand flag position open — unscoped (Bash(git *), Bash(git:*)) or
+// already spelling a flag (Bash(git -c …:*)) — reaches git's exec-capable flags
+// and is always reported. An entry that pins a subcommand is reported only when
+// that subcommand carries a vector of its own.
+func gitAllowEntry(inner string) (string, allowCat, bool) {
+	sub := gitFirstSubcmd(inner)
+	if sub == "" || strings.HasPrefix(sub, "-") {
+		return "git", allowCat{finding.Warn,
+			"exec-capable through the flags it takes before a subcommand (git -c core.pager=<cmd>, git -c alias.x=!<cmd>)"}, true
+	}
+	vector, ok := gitExecSubcmds[sub]
+	if !ok {
+		return "", allowCat{}, false
+	}
+	return "git " + sub, allowCat{finding.Warn, "exec-capable through its own arguments (" + vector + ")"}, true
 }
 
 // Check flags permissions.allow entries that grant a command which — when allowed
@@ -128,12 +166,12 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 		tok = tok[i+1:]
 	}
 	tok = strings.ToLower(strings.TrimSpace(tok))
+	// git is judged per subcommand rather than per binary: the pin decides which
+	// of git's exec vectors the entry can still reach.
+	if tok == "git" {
+		return gitAllowEntry(inner)
+	}
 	if cat, ok := dangerousAllowLookup[tok]; ok {
-		// A git allow entry pinned to a read-only subcommand can't reach the
-		// arbitrary-exec-via-flags vector, so it is not flagged.
-		if tok == "git" && gitReadOnlySubcmds[gitFirstSubcmd(inner)] {
-			return "", allowCat{}, false
-		}
 		return tok, cat, true
 	}
 	return "", allowCat{}, false
