@@ -126,3 +126,30 @@ func TestParseQwenSettings_HooksDisabled(t *testing.T) {
 		t.Error("expected nil HookGroups when the only event array is empty")
 	}
 }
+
+// A .qwen/settings.json may carry comments: qwen-code reads it as
+// JSON.parse(stripJsonComments(content)), so a commented file is valid input to
+// the agent. Before this was handled, such a file failed the parse and took the
+// whole project scan down with it, hiding the approvalMode "yolo" that CFG091
+// reports. The shape below is the one found in the wild during a pre-release run.
+func TestParseQwenSettings_JSONCComments(t *testing.T) {
+	path := writeQwen(t, `{
+		"tools": {
+			"approvalMode": "yolo"
+			// "sandbox": "docker"
+		},
+		/* block comment */
+		"privacy": { "usageStatisticsEnabled": false }
+	}`)
+	qs, err := ParseQwenSettings(path)
+	if err != nil {
+		t.Fatalf("parse commented settings: %v", err)
+	}
+	if qs.Tools == nil || qs.Tools.ApprovalMode != "yolo" {
+		t.Fatalf("expected approvalMode yolo through the comments, got %+v", qs.Tools)
+	}
+	// The commented-out key must stay invisible rather than be read as set.
+	if qs.Tools.Sandbox != nil {
+		t.Errorf("commented-out sandbox key must not parse as present, got %s", string(*qs.Tools.Sandbox))
+	}
+}

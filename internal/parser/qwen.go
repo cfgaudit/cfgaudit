@@ -203,13 +203,19 @@ func (s *QwenSettings) MCPServerMap() map[string]MCPServer {
 // ParseQwenSettings reads and decodes a qwen-code settings.json file. A malformed
 // file is an error, so a config that is silently not being scanned is reported
 // rather than mistaken for empty.
+//
+// The file is JSONC: qwen-code reads it as JSON.parse(stripJsonComments(content))
+// in packages/cli/src/config/settings.ts, so a comment is valid input to the
+// agent and must not fail the scan here. Found in the wild on a real
+// .qwen/settings.json carrying tools.approvalMode "yolo", where the parse error
+// took the whole project scan down with it and hid a CFG091 error.
 func ParseQwenSettings(path string) (*QwenSettings, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	var s QwenSettings
-	if err := json.Unmarshal(data, &s); err != nil {
+	if err := json.Unmarshal(stripJSONC(data), &s); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &s, nil

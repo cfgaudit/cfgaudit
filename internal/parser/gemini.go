@@ -111,13 +111,18 @@ type GeminiExperimental struct {
 const DefaultGeminiExtensionRegistry = "https://geminicli.com/extensions.json"
 
 // ParseGeminiSettings reads and decodes a Gemini CLI settings.json file.
+//
+// The file is JSONC, for the same reason qwen's is: gemini-cli reads it as
+// JSON.parse(stripJsonComments(content)) in packages/cli/src/config/settings.ts,
+// which is the code qwen-code forked. A commented settings.json is valid input to
+// the agent, so it must not fail the scan here.
 func ParseGeminiSettings(path string) (*GeminiSettings, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	var s GeminiSettings
-	if err := json.Unmarshal(data, &s); err != nil {
+	if err := json.Unmarshal(stripJSONC(data), &s); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &s, nil
