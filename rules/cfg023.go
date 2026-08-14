@@ -29,11 +29,11 @@ var dangerousAllowGroups = []struct {
 	cat   allowCat
 	names []string
 }{
-	{allowCat{finding.Error, "unrestricted outbound network — can exfiltrate data or fetch and run remote payloads"},
+	{allowCat{finding.Error, "an unrestricted outbound network channel — it can exfiltrate data or fetch and run remote payloads"},
 		[]string{"curl", "wget"}},
 	{allowCat{finding.Error, "privilege escalation"},
 		[]string{"sudo", "doas"}},
-	{allowCat{finding.Error, "runs arbitrary remote packages"},
+	{allowCat{finding.Error, "a runner for arbitrary remote packages"},
 		[]string{"npx", "bunx"}},
 	{allowCat{finding.Error, "a shell interpreter — open-ended args grant arbitrary command execution"},
 		[]string{"bash", "sh", "dash", "zsh", "ksh", "csh", "tcsh", "fish", "powershell", "pwsh", "cmd"}},
@@ -41,9 +41,9 @@ var dangerousAllowGroups = []struct {
 		[]string{"certutil", "bitsadmin", "mshta", "regsvr32", "rundll32"}},
 	{allowCat{finding.Warn, "a language interpreter — open-ended args can execute arbitrary code"},
 		[]string{"python", "python3", "perl", "ruby", "node", "deno"}},
-	{allowCat{finding.Warn, "executes arbitrary commands through flags (e.g. find -exec, sed e///, awk system(), env/xargs, tar --checkpoint-action, git -c)"},
+	{allowCat{finding.Warn, "exec-capable through its flags (e.g. find -exec, sed e///, awk system(), env/xargs, tar --checkpoint-action, git -c)"},
 		[]string{"find", "sed", "awk", "gawk", "xargs", "env", "tar", "git"}},
-	{allowCat{finding.Warn, "enables remote command execution / lateral movement"},
+	{allowCat{finding.Warn, "a remote-execution and lateral-movement tool"},
 		[]string{"ssh", "scp", "rsync"}},
 }
 
