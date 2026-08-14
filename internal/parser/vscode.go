@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -128,6 +129,11 @@ func ParseVSCodeSettings(path string) (*VSCodeSettings, error) {
 // from JSON-with-comments (the format VS Code uses for tasks.json / settings.json)
 // so the result decodes with encoding/json. String literals are left untouched.
 func stripJSONC(b []byte) []byte {
+	// A UTF-8 BOM is not part of the document and json.Unmarshal rejects it. A
+	// real committed .claude-plugin/marketplace.json carries one, and decoding it
+	// strictly turned that file into a scan error rather than an audit (found by
+	// the 504-repo pre-release run).
+	b = bytes.TrimPrefix(b, []byte{0xEF, 0xBB, 0xBF})
 	out := make([]byte, 0, len(b))
 	inString, escaped := false, false
 	for i := 0; i < len(b); i++ {

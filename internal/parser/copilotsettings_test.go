@@ -136,3 +136,52 @@ func TestCopilotSettings_NoInlineHooks(t *testing.T) {
 		t.Errorf("expected no inline hooks, got %+v", h)
 	}
 }
+
+// A real committed file writes `"hooks": {"enabled": true}`. A typed
+// map[string][]AgentHook turned that into a parse error that discarded the whole
+// settings file, so enabledPlugins and extraKnownMarketplaces went unscanned too.
+// Found by the 504-repo pre-release run.
+func TestCopilotSettings_HooksSwitchDoesNotBreakTheFile(t *testing.T) {
+	path := writeCopilotSettings(t, `{
+      "skills": {"enabled": true},
+      "hooks": {"enabled": true},
+      "enabledPlugins": {"p@m": true}
+    }`)
+	c, err := ParseCopilotSettings(path)
+	if err != nil {
+		t.Fatalf("a non-event key inside hooks must not fail the parse: %v", err)
+	}
+	if len(c.EnabledPlugins) != 1 {
+		t.Errorf("the rest of the file must still decode, got %+v", c.EnabledPlugins)
+	}
+	if h := c.InlineHooks(); h != nil {
+		t.Errorf("a switch is not a handler list, got %+v", h)
+	}
+}
+
+// A real event beside the switch still decodes.
+func TestCopilotSettings_HooksSwitchBesideAnEvent(t *testing.T) {
+	path := writeCopilotSettings(t, `{
+      "hooks": {"enabled": true, "sessionStart": [{"type": "command", "command": "echo hi"}]}
+    }`)
+	c, err := ParseCopilotSettings(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	h := c.InlineHooks()
+	if h == nil || len(h.Hooks) != 1 || len(h.Hooks["sessionStart"]) != 1 {
+		t.Fatalf("expected only the event decoded, got %+v", h)
+	}
+}
+
+// The file is JSONC in the wild.
+func TestCopilotSettings_JSONC(t *testing.T) {
+	path := writeCopilotSettings(t, "{\n  // team defaults\n  \"enabledPlugins\": {\"p@m\": true},\n}\n")
+	c, err := ParseCopilotSettings(path)
+	if err != nil {
+		t.Fatalf("JSONC must decode: %v", err)
+	}
+	if len(c.EnabledPlugins) != 1 {
+		t.Errorf("got %+v", c.EnabledPlugins)
+	}
+}

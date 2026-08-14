@@ -112,7 +112,7 @@ func ParseMarketplace(path string) (*Marketplace, error) {
 		return nil, err
 	}
 	var m Marketplace
-	if err := json.Unmarshal(data, &m); err != nil {
+	if err := json.Unmarshal(stripJSONC(data), &m); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &m, nil

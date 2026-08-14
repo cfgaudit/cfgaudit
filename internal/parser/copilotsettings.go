@@ -37,7 +37,14 @@ type CopilotSettings struct {
 	// Same schema means the shared AgentHooks shape decodes it, so the whole hook
 	// family applies without a second decoder. This is the Codex #431 situation:
 	// a file form and an inline form of one surface, both of which have to be read.
-	Hooks map[string][]AgentHook `json:"hooks,omitempty"`
+	//
+	// Decoded lazily, because the object also carries non-event keys: a real
+	// committed file writes `"hooks": {"enabled": true}`, and a typed
+	// map[string][]AgentHook turns that into a parse error that discards the whole
+	// settings file. qwen's parser already avoids exactly this trap with its
+	// reserved-key list; Copilot needed the same treatment (found by the 504-repo
+	// pre-release run).
+	Hooks map[string]json.RawMessage `json:"hooks,omitempty"`
 
 	// DisableAllHooks is global rather than per-file. The same help text:
 	//
@@ -51,13 +58,34 @@ type CopilotSettings struct {
 	DisableAllHooks bool `json:"disableAllHooks,omitempty"`
 }
 
+// copilotReservedHookKeys are the keys that appear inside the hooks object but
+// are not event names. A committed file carries `"hooks": {"enabled": true}`,
+// which is a switch rather than a handler list.
+var copilotReservedHookKeys = map[string]bool{"enabled": true, "disabled": true}
+
 // InlineHooks returns the inline hook table as the shared AgentHooks shape, with
-// the effective disable flag applied, or nil when the file declares no hooks.
+// the effective disable flag applied, or nil when the file declares no event
+// hooks. Entries that are not a handler array are skipped rather than failing
+// the parse, so one unmodelled key never costs the whole file its coverage.
 func (c *CopilotSettings) InlineHooks() *AgentHooks {
 	if c == nil || len(c.Hooks) == 0 {
 		return nil
 	}
-	return &AgentHooks{DisableAllHooks: c.DisableAllHooks, Hooks: c.Hooks}
+	out := make(map[string][]AgentHook, len(c.Hooks))
+	for event, raw := range c.Hooks {
+		if copilotReservedHookKeys[event] {
+			continue
+		}
+		var handlers []AgentHook
+		if err := json.Unmarshal(raw, &handlers); err != nil || len(handlers) == 0 {
+			continue
+		}
+		out[event] = handlers
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return &AgentHooks{DisableAllHooks: c.DisableAllHooks, Hooks: out}
 }
 
 // HooksDisabled reports whether this file switches every Copilot hook off, its
@@ -125,7 +153,7 @@ func ParseCopilotSettings(path string) (*CopilotSettings, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	var c CopilotSettings
-	if err := json.Unmarshal(data, &c); err != nil {
+	if err := json.Unmarshal(stripJSONC(data), &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &c, nil
