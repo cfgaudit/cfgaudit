@@ -1701,9 +1701,9 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 
 	// xAI Grok CLI .grok/config.toml — committable per Grok's user guide. A
-	// project config contributes only [mcp_servers] (ride ProjectMCP so the MCP
-	// rules fire); the other sections load only from ~/.grok, so they are not
-	// read here. [permission] and [plugins] are left to their own rules (#385).
+	// project config contributes [mcp_servers] (ride ProjectMCP so the MCP rules
+	// fire) and [plugins] (CFG100); the other sections load only from ~/.grok, so
+	// they are not read here. [permission] is declined (#385).
 	grokPath := filepath.Join(dir, ".grok", "config.toml")
 	grokCfg, err := loadGrokConfigOptional(grokPath)
 	if err != nil {
@@ -1715,6 +1715,13 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				Scope:          finding.ScopeProject,
 				ProjectMCP:     servers,
 				ProjectMCPFile: grokPath,
+			})
+		}
+		if grokCfg.Plugins != nil {
+			targets = append(targets, &rules.Target{
+				Scope:    finding.ScopeProject,
+				Grok:     grokCfg,
+				GrokFile: grokPath,
 			})
 		}
 	}
