@@ -12,7 +12,13 @@ import (
 //
 // Only four keys are honoured in a *project* config — permissions, mcpServers,
 // read_config_from and hooks — and only the security-relevant three are modelled
-// here. Keys such as `sandbox` are deliberately absent: Devin documents them as
+// here. read_config_from is deliberately not one of them: its eight keys all
+// default to true when absent, so the only thing a committed value can do is
+// NARROW which other tools' files are imported. It grants a repository no
+// capability it could not get by writing this file directly. What it does affect
+// is documented in the README's Devin section, because it means a repository
+// with no .devin/ directory can still reach a Devin session through the Claude,
+// Cursor, Windsurf, Copilot, VS Code and Zed files cfgaudit already scans (#474). Keys such as `sandbox` are deliberately absent: Devin documents them as
 // user-only, so reading them from a project file would invent a finding on
 // configuration the CLI ignores.
 type DevinConfig struct {

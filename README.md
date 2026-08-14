@@ -547,6 +547,27 @@ Codex guards a subset of keys against repo contents (`PROJECT_LOCAL_CONFIG_DENYL
 
 A committed `SessionStart` command hook is flagged by [CFG086](docs/rules/CFG086.md), and this is the strongest case in that rule: **Continue's hook path has no trust gate**. `HookService` loads the config and fires the event, with `disableAllHooks` as the only switch. That switch is **global** rather than per-file — Continue sets one flag if any settings file carries it, after which no hook from any file runs — so cfgaudit drops both `.continue` files when either disables hooks. Event names are matched by exact spelling, because Continue resolves them by lookup against its declared list.
 
+### Devin CLI — `.devin/` and everything it imports
+
+`.devin/config.json` is described by Devin's own docs as *"shared team configuration committed to version control"*. Its `mcpServers`, `hooks` and `permissions` are scanned; `sandbox` is not, because Devin documents it as user-only and reading it from a project file would invent a finding on configuration the CLI ignores.
+
+**A repository with no `.devin/` directory at all can still affect a Devin session.** Devin CLI imports configuration from other tools' files, and its `read_config_from` reference lists eight keys — `agents_standard`, `cursor`, `windsurf`, `claude`, `copilot`, `opencode`, `vscode`, `zed` — **all defaulting to `true` when absent**. Setting one to `false` narrows the import; there is no value that widens beyond the default. That is why `read_config_from` is not a rule: it grants a repository no capability it could not get by writing `.devin/config.json` directly.
+
+What it does mean is that cfgaudit's existing findings already cover most of that path. Of the files Devin imports:
+
+| Devin imports | cfgaudit |
+|---|---|
+| `AGENTS.md`, `AGENTS.local.md`, `AGENT.md`, `.windsurfrules` | scanned as instruction content |
+| `.cursor/rules/*.{md,mdc}`, `.cursor/mcp.json` | scanned |
+| `.windsurf/rules/*.md`, `.windsurf/global_rules.md` | scanned |
+| `CLAUDE.md`, `.claude/skills/**/SKILL.md`, `.claude/commands/**/*.md` | scanned |
+| `.mcp.json`, `.claude/settings.json`, `.claude/settings.local.json` | scanned |
+| `.github/skills/**/SKILL.md` | scanned |
+| `.vscode/mcp.json`, `.zed/settings.json` | scanned |
+| `opencode.json` | **not yet** — OpenCode is not a surface cfgaudit reads |
+
+This is the same shape as the Continue note above: existing findings on one agent's files protect another agent's users, and it is not obvious from the rule list that they do.
+
 ### xAI Grok CLI — `.grok/`
 
 [Grok CLI](https://github.com/xai-org/grok-build) keeps its config in `.grok/`, and its user guide marks the project config committable (*"Project (committed) | `<project>/.grok/config.toml` | Yes (commit it)"*). cfgaudit scans the committable surfaces, all of which ride on existing rules with no Grok-specific rule logic:
