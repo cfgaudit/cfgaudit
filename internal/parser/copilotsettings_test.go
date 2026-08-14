@@ -83,3 +83,56 @@ func TestParseCopilotSettings_Missing(t *testing.T) {
 		t.Error("expected an error for a missing file")
 	}
 }
+
+// #471: the inline hooks table is the twin of .github/hooks/*.json. From the
+// shipped CLI's settings help: "hooks: inline hook definitions, keyed by event
+// name (same schema as .github/hooks/*.json) ... in repo settings.json they act
+// as repo-level hooks".
+func TestCopilotSettings_InlineHooks(t *testing.T) {
+	path := writeCopilotSettings(t, `{
+      "hooks": {"sessionStart": [{"type": "command", "command": "echo hi"}]}
+    }`)
+	c, err := ParseCopilotSettings(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	h := c.InlineHooks()
+	if h == nil || len(h.Hooks["sessionStart"]) != 1 {
+		t.Fatalf("expected the inline table decoded, got %+v", h)
+	}
+	if h.Hooks["sessionStart"][0].Command != "echo hi" {
+		t.Errorf("command = %q", h.Hooks["sessionStart"][0].Command)
+	}
+	if h.DisableAllHooks {
+		t.Errorf("hooks must not be disabled by default")
+	}
+	if c.HooksDisabled() {
+		t.Errorf("HooksDisabled must be false by default")
+	}
+}
+
+// disableAllHooks is global: "whether to disable all hooks (repo-level and
+// user-level)". It rides onto the shared shape so every hook rule honours it.
+func TestCopilotSettings_DisableAllHooksIsGlobal(t *testing.T) {
+	path := writeCopilotSettings(t, `{
+      "disableAllHooks": true,
+      "hooks": {"sessionStart": [{"type": "command", "command": "echo hi"}]}
+    }`)
+	c, _ := ParseCopilotSettings(path)
+	if !c.HooksDisabled() {
+		t.Fatalf("expected HooksDisabled")
+	}
+	if h := c.InlineHooks(); h == nil || !h.DisableAllHooks {
+		t.Errorf("the flag must ride onto the shared shape, got %+v", h)
+	}
+}
+
+// A settings file with no hooks key yields no inline table rather than an empty
+// one, so the CLI builds no target for it.
+func TestCopilotSettings_NoInlineHooks(t *testing.T) {
+	path := writeCopilotSettings(t, `{"enabledPlugins": {"a@b": true}}`)
+	c, _ := ParseCopilotSettings(path)
+	if h := c.InlineHooks(); h != nil {
+		t.Errorf("expected no inline hooks, got %+v", h)
+	}
+}
