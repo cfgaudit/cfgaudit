@@ -154,18 +154,21 @@ func initOutput(args []string, stdin io.Reader) (string, int) {
 	dir := "."
 	dryRun, force, interactive := false, false, false
 	profile := defaultProfile
-	for i := 0; i < len(args); i++ {
-		a := args[i]
+	// Consumed as a queue rather than indexed, so --profile can take its value
+	// off the front without index arithmetic the bounds analysis cannot follow.
+	for rest := args; len(rest) > 0; {
+		a := rest[0]
+		rest = rest[1:]
 		if name, ok := strings.CutPrefix(a, "--profile="); ok {
 			profile = name
 			continue
 		}
 		if a == "--profile" {
-			if i+1 >= len(args) {
+			if len(rest) == 0 {
 				return "init: --profile needs a value\n" + initUsage(), 2
 			}
-			i++
-			profile = args[i]
+			profile = rest[0]
+			rest = rest[1:]
 			continue
 		}
 		switch a {
