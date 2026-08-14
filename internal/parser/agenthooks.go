@@ -43,10 +43,43 @@ func (h AgentHook) ShellCommand() string {
 // AgentHooks is the shared shape of both files: a version marker and a map from
 // event name to the hooks that fire on it. Copilot additionally supports
 // disableAllHooks, which turns the whole file off.
+//
+// Hooks is decoded lazily. Copilot's own SDK declares the settings-level field as
+// `hooks?: Record<string, unknown>`, pinning no value shape, and a real committed
+// .github/hooks/hooks.json writes the table keyed by hook NAME with an object
+// value rather than by event with an array. A typed map turned that file into a
+// scan error, which costs the whole file its coverage over one entry cfgaudit
+// cannot read (#506).
 type AgentHooks struct {
-	Version         int                    `json:"version,omitempty"`
-	DisableAllHooks bool                   `json:"disableAllHooks,omitempty"`
-	Hooks           map[string][]AgentHook `json:"hooks,omitempty"`
+	Version         int                        `json:"version,omitempty"`
+	DisableAllHooks bool                       `json:"disableAllHooks,omitempty"`
+	RawHooks        map[string]json.RawMessage `json:"hooks,omitempty"`
+
+	// Hooks holds the entries that decode as the modelled event → handlers shape.
+	// Populated by ParseAgentHooks; entries of any other shape are left out rather
+	// than guessed at.
+	Hooks map[string][]AgentHook `json:"-"`
+}
+
+// decodeHooks fills Hooks from RawHooks, keeping only the entries that are a
+// handler array. Anything else is skipped: modelling a shape without knowing
+// whether the CLI honours it would invent findings on configuration nothing
+// reads, which is the opposite error from missing coverage.
+func (h *AgentHooks) decodeHooks() {
+	if len(h.RawHooks) == 0 {
+		return
+	}
+	out := make(map[string][]AgentHook, len(h.RawHooks))
+	for event, raw := range h.RawHooks {
+		var handlers []AgentHook
+		if err := json.Unmarshal(raw, &handlers); err != nil || len(handlers) == 0 {
+			continue
+		}
+		out[event] = handlers
+	}
+	if len(out) > 0 {
+		h.Hooks = out
+	}
 }
 
 // ParseAgentHooks reads a Cursor or Copilot hooks file. Both are plain JSON with
@@ -58,8 +91,9 @@ func ParseAgentHooks(path string) (*AgentHooks, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	var h AgentHooks
-	if err := json.Unmarshal(data, &h); err != nil {
+	if err := json.Unmarshal(stripJSONC(data), &h); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	h.decodeHooks()
 	return &h, nil
 }
