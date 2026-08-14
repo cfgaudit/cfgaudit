@@ -26,11 +26,39 @@ var (
 	// skills legitimately run their own .claude/ scripts and mention "credentials"
 	// in prose — only real secret files belong here (credentials.json is anchored).
 	cmdSubstSensitiveRe = regexp.MustCompile("(?i)(?:\\$\\(|`)[^)`]*\\s[^)`]*(?:~/\\.ssh|~/\\.aws|~/\\.gcp|~/\\.config/gcloud|/etc/passwd|/etc/shadow|\\.env\\b|id_rsa|id_ed25519|credentials\\.json)")
-	// Auto-execution directive (Patterns B and C).
+	// Auto-execution directive (Patterns B and C; Part C narrows it further, see
+	// partCDirective).
 	autoExecRe = regexp.MustCompile(`(?i)(?:before\s+(?:each|every|any)\s+(?:task|session|request|command|run|step)|always\s+(?:run|execute|do)|at\s+(?:startup|session\s+start|the\s+start)|automatically\s+(?:run|execute))`)
 	// Network exfiltration command (Pattern B).
 	netExfilRe = regexp.MustCompile(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
+
+	// Part C only: which "at …" phrases are an order to the agent rather than
+	// prose about something else starting. Measured over 390 real CLAUDE.md files
+	// sampled from GitHub (#508): all 26 "at startup" matches described the
+	// *program's* startup ("config is read at startup", "modules are discovered at
+	// startup") and none ordered the agent to run anything, so the phrase carries no
+	// Part C warning on its own. "at the start" turns on what starts: the matches
+	// naming a session or conversation were directives ("At the start of every
+	// session, run:"), while the five naming a cycle, a drag, an analysis or a
+	// reconciliation were descriptions. Part B is unaffected: paired with a network
+	// command on a nearby line, every one of these phrases still reports at error.
+	atStartupPhraseRe  = regexp.MustCompile(`(?i)^at\s+startup$`)
+	atTheStartPhraseRe = regexp.MustCompile(`(?i)^at\s+the\s+start$`)
+	// The noun that follows "at the start", within the same sentence.
+	sessionScopeRe = regexp.MustCompile(`(?i)^[^.;]{0,40}?\b(?:session|conversation|chat)\b`)
 )
+
+// partCDirective reports whether a directive match warrants a Part C warning on
+// its own. loc is autoExecRe's match on line.
+func partCDirective(line string, loc []int) bool {
+	switch phrase := line[loc[0]:loc[1]]; {
+	case atStartupPhraseRe.MatchString(phrase):
+		return false
+	case atTheStartPhraseRe.MatchString(phrase):
+		return sessionScopeRe.MatchString(line[loc[1]:])
+	}
+	return true
+}
 
 // Check flags CLAUDE.md text that makes Claude run shell commands on the
 // attacker's behalf. A: command substitution reading a credential path (error,
@@ -91,6 +119,9 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 				continue
 			}
 			loc := directive[i]
+			if !partCDirective(lines[i], loc) {
+				continue
+			}
 			if strings.Contains(lines[i][loc[0]:], ":") {
 				add(i, loc[0], finding.Warn, "contains an auto-execution directive (Part C) — \""+strings.TrimSpace(lines[i][loc[0]:loc[1]])+"\"; instruction files should describe tasks, not command the agent to auto-run things. Review it")
 			}
