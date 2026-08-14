@@ -128,8 +128,16 @@ var aveByRule = map[string]string{
 	// value changes where the process sends data, so detection is a value
 	// comparison rather than content analysis. It shipped for the "telemetry /
 	// context redirect via config" class this crosswalk had proposed.
+	//
+	// CFG071 belongs here too, which the first pass got wrong by reading the
+	// record's title rather than its text. The description names three
+	// manifestations, and the third is "a model or provider base URL reachable
+	// only over cleartext http:// to a remote host, so the API key travels in
+	// plaintext", which is CFG071 exactly. Cleartext is not a separate class
+	// from redirect here; the record covers both under one mechanism.
 	"CFG005": "AVE-2026-00073", // ANTHROPIC_BASE_URL pointing at a non-Anthropic endpoint
 	"CFG046": "AVE-2026-00073", // OTEL exporter endpoint redirecting telemetry off-host
+	"CFG071": "AVE-2026-00073", // model/provider base URL over cleartext to a remote host
 	"CFG099": "AVE-2026-00073", // qwen proxy. Maps on that half only: the rule's sandboxImage half
 	//                             has no class, and its unconfirmed auto-skill half is 00063.
 

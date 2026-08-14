@@ -83,7 +83,7 @@ Added in the 2026-08-14 refresh, against AVE-2026-00071 through AVE-2026-00077. 
 
 | CFG | AVE |
 |---|---|
-| CFG005 `ANTHROPIC_BASE_URL` · CFG046 OTEL exporter endpoint · CFG099 qwen `proxy` | AVE-2026-00073 telemetry or API endpoint redirect via static configuration value |
+| CFG005 `ANTHROPIC_BASE_URL` · CFG046 OTEL exporter endpoint · CFG071 model/provider base URL over cleartext · CFG099 qwen `proxy` | AVE-2026-00073 telemetry or API endpoint redirect via static configuration value |
 | CFG082 `DOCKER_HOST` / `docker -H` | AVE-2026-00071 container daemon redirect, operations land on attacker infrastructure |
 | CFG018 MCP server binds to all interfaces | AVE-2026-00072 bind-all with no authentication step (NeighborJack) |
 | CFG094 `.cursor/permissions.json` `autoRun.allow_instructions` | AVE-2026-00076 natural-language steering of an approval classifier subagent |
@@ -127,18 +127,18 @@ Status as of 2026-08-14: **seven of these eight have shipped** as AVE records, t
 | TLS verification disabled in config | CFG075 | **shipped** → AVE-2026-00061 |
 | Supply-chain pinning / auto-install | CFG010, CFG055, CFG089, CFG062, CFG074 | **shipped** → AVE-2026-00062 |
 | Committed hook auto-approves tool calls | CFG087, CFG088 | **shipped** → AVE-2026-00063 (as the wider "approval gate bypassed by config") |
-| Telemetry / context redirect via config | CFG046 (OTEL), CFG005 (base URL), CFG099 (qwen `proxy`) | **shipped** → AVE-2026-00073, which names `OTEL_EXPORTER_OTLP_ENDPOINT` itself and states the distinction this row asked for: nothing is injected into the model's context, so detection is a value comparison rather than content analysis. CFG071 is not in it, being cleartext rather than redirect |
+| Telemetry / context redirect via config | CFG046 (OTEL), CFG005 (base URL), CFG071 (cleartext base URL), CFG099 (qwen `proxy`) | **shipped** → AVE-2026-00073, which names `OTEL_EXPORTER_OTLP_ENDPOINT` itself and states the distinction this row asked for: nothing is injected into the model's context, so detection is a value comparison rather than content analysis. CFG071 is in it too: the record's third named manifestation is "a model or provider base URL reachable only over cleartext `http://` to a remote host, so the API key travels in plaintext" |
 | Sandbox weakened / disabled in config | CFG022, CFG061, CFG064, CFG079, CFG095 | open |
 | Container / daemon posture | CFG082 (`DOCKER_HOST` off-host), CFG084 (`DOCKER_CONTENT_TRUST=0`), CFG083 (Chromium launcher switch) | **partially shipped** → AVE-2026-00071 took the `DOCKER_HOST` mechanism (CFG082) alone. The other two remain open, which was the point of the row: **three** mechanisms with no shared detection logic, not one class |
 | MCP network posture | CFG018 (bind-all), CFG066 (wildcard CORS), CFG058 (deprecated SSE), CFG021 (proxy), CFG069 (log redaction) | **partially shipped** → AVE-2026-00072 took bind-all (CFG018) alone, under this crosswalk's own NeighborJack name. The other four remain open, likewise a surface rather than a class |
 
 **Natural-language steering of an approval classifier** was the second of two shapes listed here with no class in either direction. It has since shipped as AVE-2026-00076, whose own title places it "distinct from AVE-2026-00021 and AVE-2026-00063", the same two records this crosswalk said CFG094 fell between.
 
-Three shapes still have no class in either direction:
+Three shapes still have no class in either direction, the first of them only partly:
 
 | Shape | cfgaudit rules | Note |
 |---|---|---|
-| A **cleartext** endpoint, distinct from TLS-verification-disabled | CFG049, CFG071, CFG097's `agent_card_url` half | AVE-2026-00061 is verification *disabled*, which is a different failure from no TLS at all |
+| A **cleartext** endpoint on a field AVE-2026-00073 does not name | CFG049 (remote MCP server URL), CFG097's `agent_card_url` half | Partly resolved, and narrower than this row used to claim. AVE-2026-00073 names a cleartext model or provider base URL outright, which is why CFG071 now maps to it; the two fields left here are covered only by that record's catch-all "an equivalent traffic-destination value". Whether to name them explicitly is an open question in [aveproject/ave#123](https://github.com/aveproject/ave/pull/123), where the maintainer offered the scope clarification rather than making it unilaterally. AVE-2026-00061 remains a different failure: verification *disabled*, not no TLS at all |
 | A **deny rule that does not cover what it names**, walked past by an equivalent spelling of the same flags | CFG101 | AVE models what an attacker does; this is a guardrail that does not hold. The nearest records are a flag that removes a gate (00063) and composition through shell state (00068) |
 | A **local name collision** where load order silently picks the winner and the loser is never reported | CFG102 | AVE-2026-00017 is MCP server identity and AVE-2026-00066 is squatting on hallucinated names in a public registry. Neither covers two committed skills in one repository claiming one name |
 
@@ -164,4 +164,4 @@ AVE-2026-00052 / AVE-2026-00053 are server *implementation* flaws, a distinct la
 
 ---
 
-*Mappings are class-level behavioral equivalence, not asserted identity. Re-checked 2026-08-14 against the current AVE record set, which now runs to **AVE-2026-00077**; the git tag still reads v1.1.0 and the CHANGELOG's released sections stop at v1.3.0, so the records past 00070 are only visible in `records/`, not in a release. This pass mapped one of cfgaudit's five new rules (CFG098 → AVE-2026-00062) and, because seven new records landed, four rules that had no class before: CFG005, CFG046 and CFG099 → AVE-2026-00073; CFG082 → AVE-2026-00071; CFG018 → AVE-2026-00072; CFG094 → AVE-2026-00076. CFG100, CFG101 and CFG102 are deliberately unmapped, with reasons in Direction 1, and the last two are reported back as gaps. cfgaudit CFG001–CFG102. Re-check on the next AVE release. A machine-readable form in AVE's own crosswalk schema (`cfgaudit-to-ave.json`) exists for upstream contribution to their `crosswalks/` directory.*
+*Mappings are class-level behavioral equivalence, not asserted identity. Re-checked 2026-08-14 against the current AVE record set, which now runs to **AVE-2026-00077**; the git tag still reads v1.1.0 and the CHANGELOG's released sections stop at v1.3.0, so the records past 00070 are only visible in `records/`, not in a release. This pass mapped one of cfgaudit's five new rules (CFG098 → AVE-2026-00062) and, because seven new records landed, five rules that had no class before: CFG005, CFG046, CFG071 and CFG099 → AVE-2026-00073; CFG082 → AVE-2026-00071; CFG018 → AVE-2026-00072; CFG094 → AVE-2026-00076. CFG071 was missed on the first pass, which read AVE-2026-00073's title rather than its description; the description names a cleartext model or provider base URL as one of the three manifestations it covers. CFG100, CFG101 and CFG102 are deliberately unmapped, with reasons in Direction 1, and the last two are reported back as gaps. cfgaudit CFG001–CFG102. Re-check on the next AVE release. A machine-readable form in AVE's own crosswalk schema (`cfgaudit-to-ave.json`) exists for upstream contribution to their `crosswalks/` directory.*
