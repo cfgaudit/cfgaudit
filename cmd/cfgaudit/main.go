@@ -1441,6 +1441,20 @@ func loadCopilotSettingsOptional(path string) (*parser.CopilotSettings, error) {
 	return c, nil
 }
 
+// loadOpenCodeConfigOptional parses opencode.json, returning (nil, nil) when the
+// file does not exist. A malformed file is an error, so a config that is
+// silently not being scanned is reported rather than mistaken for empty.
+func loadOpenCodeConfigOptional(path string) (*parser.OpenCodeConfig, error) {
+	c, err := parser.ParseOpenCodeConfig(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return c, nil
+}
+
 // loadGrokConfigOptional parses .grok/config.toml, returning (nil, nil) when it
 // does not exist. A malformed file is an error, so a config that is silently not
 // being scanned is reported rather than treated as empty.
@@ -1731,6 +1745,24 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				GrokFile: grokPath,
 			})
 		}
+	}
+
+	// OpenCode opencode.json — the project config, which its own docs call "safe
+	// to be checked into Git" and which OUTRANKS the user's global config in the
+	// documented precedence order. Its mcp block rides ProjectMCP so the shared
+	// MCP rules apply; the command array and the `environment` key are folded onto
+	// the common shape by MCPServerMap (#497).
+	openCodePath := filepath.Join(dir, "opencode.json")
+	openCodeCfg, err := loadOpenCodeConfigOptional(openCodePath)
+	if err != nil {
+		return nil, err
+	}
+	if servers := openCodeCfg.MCPServerMap(); len(servers) > 0 {
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			ProjectMCP:     servers,
+			ProjectMCPFile: openCodePath,
+		})
 	}
 
 	// Grok .grok/hooks/*.json — committable hook files whose command handlers run
