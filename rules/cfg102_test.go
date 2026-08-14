@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,11 +12,11 @@ import (
 func collisionTarget(name string, dirs ...string) *Target {
 	var entries []parser.SkillFileEntry
 	for _, d := range dirs {
-		entries = append(entries, parser.SkillFileEntry{Dir: d, Name: name, Path: d + "/SKILL.md"})
+		entries = append(entries, parser.SkillFileEntry{Dir: d, Name: name, Path: filepath.Join(d, "SKILL.md")})
 	}
 	return &Target{
 		Scope:              finding.ScopeProject,
-		SkillCollisionRoot: ".github/skills",
+		SkillCollisionRoot: filepath.Join(".github", "skills"),
 		SkillCollisions:    map[string][]parser.SkillFileEntry{name: entries},
 	}
 }
@@ -29,9 +30,12 @@ func TestCFG102_ReportsTheDroppedCopy(t *testing.T) {
 			t.Errorf("message should contain %q, got %q", want, got.Message)
 		}
 	}
-	// The finding is attributed to the copy that actually loads.
-	if got.File != ".github/skills/aaa-shadow/SKILL.md" {
-		t.Errorf("file = %q, want the winning copy", got.File)
+	// The finding is attributed to the copy that actually loads. Built with
+	// filepath.Join so the expectation matches the OS-native separator the
+	// scanner reports everywhere else, rather than assuming forward slashes.
+	want := filepath.Join(".github", "skills", "aaa-shadow", "SKILL.md")
+	if got.File != want {
+		t.Errorf("file = %q, want %q (the winning copy)", got.File, want)
 	}
 }
 
