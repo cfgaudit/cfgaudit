@@ -17,6 +17,46 @@ type ContinueConfig struct {
 	Models     []ContinueModel  `yaml:"models"`
 	Rules      []ContinueRule   `yaml:"rules"`
 	Prompts    []ContinuePrompt `yaml:"prompts"`
+
+	// Data is the configured data-export channel: each entry names a
+	// destination, a schema version, and how much of a session is sent.
+	Data []ContinueData `yaml:"data"`
+}
+
+// ContinueData is one entry of the data list (packages/config-yaml/src/schemas/
+// data/index.ts dataSchema). It decides where session content goes.
+//
+// Level is "all" or "noCode"; the schema keeps them as distinct literals because
+// they differ in whether code is included. An absent level is not assumed to be
+// either, so only an explicit "all" is treated as the wider one.
+//
+// Destination is a plain string, and it is not always remote: the one real data
+// block in a 108-config sample points at a file:// path on the author's own
+// machine, so a finding that reads any destination as exfiltration would have
+// been wrong on the only occurrence there is.
+type ContinueData struct {
+	Name           string                  `yaml:"name"`
+	Destination    string                  `yaml:"destination"`
+	Schema         string                  `yaml:"schema"`
+	Level          string                  `yaml:"level"`
+	Events         []string                `yaml:"events"`
+	APIKey         string                  `yaml:"apiKey"`
+	RequestOptions *ContinueRequestOptions `yaml:"requestOptions"`
+}
+
+// ContinueRequestOptions is the shared requestOptions block
+// (packages/config-yaml/src/schemas/models.ts requestOptionsSchema). It hangs off
+// models, mcpServers and data entries alike, and it is where the credentials
+// actually are: across 108 real configs it appears 44 times, against 1 for the
+// whole data block.
+//
+// Only the fields cfgaudit acts on are decoded. Proxy and VerifySsl are kept
+// because the shape is worth documenting even though neither is reported yet:
+// every proxy value in that sample is loopback, and VerifySsl never appears.
+type ContinueRequestOptions struct {
+	Headers   map[string]string `yaml:"headers"`
+	Proxy     string            `yaml:"proxy"`
+	VerifySsl *bool             `yaml:"verifySsl"`
 }
 
 // ContinueRule is an entry of the rules list: either a bare string (the rule
@@ -55,23 +95,25 @@ type ContinuePrompt struct {
 // command/args/env; sse/streamable-http servers use url/type and may carry an
 // inline apiKey.
 type ContinueMCP struct {
-	Name    string            `yaml:"name"`
-	Command string            `yaml:"command"`
-	Args    []string          `yaml:"args"`
-	Env     map[string]string `yaml:"env"`
-	URL     string            `yaml:"url"`
-	Type    string            `yaml:"type"`
-	APIKey  string            `yaml:"apiKey"`
+	Name           string                  `yaml:"name"`
+	Command        string                  `yaml:"command"`
+	Args           []string                `yaml:"args"`
+	Env            map[string]string       `yaml:"env"`
+	URL            string                  `yaml:"url"`
+	Type           string                  `yaml:"type"`
+	APIKey         string                  `yaml:"apiKey"`
+	RequestOptions *ContinueRequestOptions `yaml:"requestOptions"`
 }
 
 // ContinueModel is one entry of the models list. A literal apiKey is a hardcoded
 // credential; the continue-proxy provider instead uses apiKeyLocation (a
 // reference), which is the safe pattern.
 type ContinueModel struct {
-	Name     string `yaml:"name"`
-	Provider string `yaml:"provider"`
-	APIKey   string `yaml:"apiKey"`
-	APIBase  string `yaml:"apiBase"`
+	Name           string                  `yaml:"name"`
+	Provider       string                  `yaml:"provider"`
+	APIKey         string                  `yaml:"apiKey"`
+	APIBase        string                  `yaml:"apiBase"`
+	RequestOptions *ContinueRequestOptions `yaml:"requestOptions"`
 }
 
 // MCPServerMap converts the mcpServers list to the shared MCPServer shape so the

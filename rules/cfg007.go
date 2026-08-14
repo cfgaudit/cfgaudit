@@ -43,9 +43,24 @@ var secretSuffixes = []string{
 var shellRefRe = regexp.MustCompile(`^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$`)
 
 // templateRefRe matches a value that is entirely a single template/interpolation
-// placeholder ({{X}}, %{X}, <% X %>, __X__) — resolved to a value at runtime, not
-// a committed literal secret. ${X} is already covered by shellRefRe.
-var templateRefRe = regexp.MustCompile(`^(?:\{\{.+?\}\}|%\{[^}]+\}|<%.+?%>|__[A-Z][A-Z0-9_]+__)$`)
+// placeholder ({{X}}, ${{X}}, %{X}, <% X %>, __X__) — resolved to a value at
+// runtime, not a committed literal secret. Bare ${X} is covered by shellRefRe.
+//
+// The ${{...}} form is the GitHub Actions / CI expression syntax and is the most
+// common header value in real configs: 7 of the 15 request headers in a 108-file
+// Continue sample are ${{ secrets.NAME }}. shellRefRe rejects it because of the
+// second brace, so without this branch every one of them reads as a committed
+// literal.
+var templateRefRe = regexp.MustCompile(`^(?:\$?\{\{.+?\}\}|%\{[^}]+\}|<%.+?%>|__[A-Z][A-Z0-9_]+__)$`)
+
+// screamingPlaceholderRe matches an all-caps token that names a credential rather
+// than being one: TU_API_KEY_AQUI, MY_TOKEN_HERE, API_KEY. A real key has mixed
+// case or digits somewhere; a value that is nothing but capitals, underscores and
+// a credential word is a template someone forgot to fill in.
+//
+// Deliberately narrow. It requires the credential word, so an all-caps value that
+// is not obviously a placeholder is still reported.
+var screamingPlaceholderRe = regexp.MustCompile(`^[A-Z][A-Z_]*(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|PASS)[A-Z_]*$`)
 
 // isSecretReference reports whether v is a reference/placeholder that resolves to
 // a secret at runtime — a shell variable or a template placeholder — rather than

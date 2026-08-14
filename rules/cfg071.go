@@ -47,6 +47,28 @@ func (r *cfg071) Check(t *Target) []finding.Finding {
 				add(t.ContinueFile, label+" apiBase", m.APIBase)
 			}
 		}
+		// A data entry's destination is where session content is sent, so the same
+		// cleartext test applies: what travels is the session rather than the API
+		// key, which is worse rather than better.
+		//
+		// Only cleartext-to-remote is reported, for the reason the rest of this
+		// rule gives and one more from measurement: the single real data block in a
+		// 108-config sample points at a file:// path on the author's own machine.
+		// A finding on any non-default destination would have been wrong on the
+		// only occurrence there is.
+		for _, d := range t.Continue.Data {
+			if !urlCleartextNonLoopback(d.Destination) {
+				continue
+			}
+			label := "Continue data"
+			if n := strings.TrimSpace(d.Name); n != "" {
+				label = "Continue data \"" + n + "\""
+			}
+			if strings.EqualFold(strings.TrimSpace(d.Level), "all") {
+				label += " (level: all, so the session content includes code)"
+			}
+			add(t.ContinueFile, label+" destination", d.Destination)
+		}
 	}
 
 	if t.Codex != nil {
