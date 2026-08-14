@@ -792,6 +792,12 @@ var (
 	agentInstructionGlobs = []string{
 		filepath.Join(".cursor", "rules", "*.md"),
 		filepath.Join(".cursor", "rules", "*.mdc"),
+		// Cursor custom commands (Cursor 1.6+). The filename becomes the slash
+		// command and the file's entire content becomes the prompt, so a committed
+		// file is instruction context on the same footing as .claude/commands/*.md,
+		// which this list already covers for Claude Code. User-invoked rather than
+		// auto-loaded, like every command directory here.
+		filepath.Join(".cursor", "commands", "*.md"),
 		filepath.Join(".windsurf", "rules", "*.md"),
 		// GitHub Copilot path-specific instructions (newer than the repo-wide
 		// .github/copilot-instructions.md, which is in agentInstructionFiles) —
