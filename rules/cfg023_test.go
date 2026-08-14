@@ -28,7 +28,7 @@ func TestCFG023_ColonWildcardSyntax(t *testing.T) {
 }
 
 func TestCFG023_ExecViaFlags_Warn(t *testing.T) {
-	for _, entry := range []string{"Bash(find *)", "Bash(sed *)", "Bash(awk *)", "Bash(tar *)", "Bash(git *)", "Bash(env *)"} {
+	for _, entry := range []string{"Bash(find *)", "Bash(sed *)", "Bash(awk *)", "Bash(tar *)", "Bash(env *)"} {
 		json := `{"permissions":{"allow":["` + entry + `"]}}`
 		f := CFG023.Check(settingsTarget(t, json))
 		if len(f) != 1 || f[0].Severity != finding.Warn {
@@ -37,30 +37,58 @@ func TestCFG023_ExecViaFlags_Warn(t *testing.T) {
 	}
 }
 
-// A git allow entry pinned to a read-only subcommand is exempt (#224), but the
-// unscoped/flag-injection/state-changing forms still warn.
-func TestCFG023_GitReadOnlySubcmd_NoFinding(t *testing.T) {
+// A git allow entry that pins a subcommand without an exec vector of its own is
+// exempt: git's flag vector needs the position before the subcommand, which the
+// pin puts out of reach (#224, #507). State-changing subcommands count too — the
+// question is exec capability, not whether the repository is written to.
+func TestCFG023_GitNonExecSubcmd_NoFinding(t *testing.T) {
 	for _, entry := range []string{
 		"Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
 		"Bash(git rev-parse:*)", "Bash(git show *)", "Bash(git blame:*)",
+		"Bash(git add:*)", "Bash(git commit:*)", "Bash(git branch:*)",
+		"Bash(git checkout:*)", "Bash(git tag:*)", "Bash(git stash:*)",
+		"Bash(git restore:*)", "Bash(git merge:*)", "Bash(git worktree *)",
 	} {
 		json := `{"permissions":{"allow":["` + entry + `"]}}`
 		if f := CFG023.Check(settingsTarget(t, json)); len(f) != 0 {
-			t.Errorf("expected no finding for read-only git %s, got %+v", entry, f)
+			t.Errorf("expected no finding for non-exec git %s, got %+v", entry, f)
 		}
 	}
 }
 
+// Every entry here reaches arbitrary command execution: the first three leave the
+// pre-subcommand flag position open, the rest pin a subcommand that carries a
+// vector in its own arguments.
 func TestCFG023_GitDangerousForms_Warn(t *testing.T) {
 	for _, entry := range []string{
 		"Bash(git *)", "Bash(git:*)", "Bash(git -c core.pager=x status:*)",
-		"Bash(git config:*)", "Bash(git push:*)",
+		"Bash(git config:*)", "Bash(git push:*)", "Bash(git rebase:*)",
+		"Bash(git bisect:*)", "Bash(git submodule *)", "Bash(git clone:*)",
+		"Bash(git difftool:*)", "Bash(git grep:*)", "Bash(git ls-remote:*)",
+		"Bash(git filter-branch:*)", "Bash(git archive:*)", "Bash(git fetch:*)",
 	} {
 		json := `{"permissions":{"allow":["` + entry + `"]}}`
 		f := CFG023.Check(settingsTarget(t, json))
 		if len(f) != 1 || f[0].Severity != finding.Warn {
 			t.Errorf("expected 1 Warn for %s, got %+v", entry, f)
 		}
+	}
+}
+
+// A pinned subcommand is named as such in the message, and the reason states the
+// vector that subcommand actually has rather than git's generic flag vector.
+func TestCFG023_GitPinnedSubcmdMessageNamesVector(t *testing.T) {
+	f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(git rebase:*)"]}}`))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for Bash(git rebase:*), got %+v", f)
+	}
+	for _, want := range []string{`"git rebase"`, "git rebase -x"} {
+		if !strings.Contains(f[0].Message, want) {
+			t.Errorf("expected message to contain %q, got: %s", want, f[0].Message)
+		}
+	}
+	if strings.Contains(f[0].Message, "core.pager") {
+		t.Errorf("pinned subcommand must not be reported with git's pre-subcommand flag vector: %s", f[0].Message)
 	}
 }
 
