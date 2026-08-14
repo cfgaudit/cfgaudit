@@ -202,6 +202,13 @@ type Target struct {
 	CopilotSettings     *parser.CopilotSettings
 	CopilotSettingsFile string
 
+	// Grok holds a parsed xAI Grok CLI .grok/config.toml. Only the two tables a
+	// project config may contribute and that carry a supply chain are modelled:
+	// [mcp_servers] rides ProjectMCP on a separate target, and [plugins] is read
+	// here for CFG100. Nil when absent; GrokFile is its path.
+	Grok     *parser.GrokConfig
+	GrokFile string
+
 	// GrokHooks holds a parsed xAI Grok CLI .grok/hooks/*.json file. Grok's hook
 	// files are committable and run shell commands, so their command handlers
 	// become command sites (the command-content family). The zero-click trigger
