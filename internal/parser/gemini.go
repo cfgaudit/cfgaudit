@@ -16,6 +16,11 @@ type GeminiSettings struct {
 	Security   *GeminiSecurity      `json:"security,omitempty"`
 	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
 
+	// Experimental carries keys the schema marks as experimental, so they can
+	// move or vanish. Read presence-based rather than behind a version assertion,
+	// per the version-gate convention.
+	Experimental *GeminiExperimental `json:"experimental,omitempty"`
+
 	// Hooks maps a hook event to matcher groups, each carrying a list of handlers
 	// — the nested Claude-Code shape (verified against gemini-cli
 	// packages/core/src/hooks/types.ts HookDefinition), so the shared HookGroup /
@@ -79,6 +84,31 @@ type GeminiSecurity struct {
 	BlockGitExtensions *bool    `json:"blockGitExtensions,omitempty"`
 	AllowedExtensions  []string `json:"allowedExtensions,omitempty"`
 }
+
+// GeminiExperimental is the experimental settings block.
+//
+// ExtensionRegistryURI is "the URI (web URL or local file path) of the extension
+// registry", defaulting to https://geminicli.com/extensions.json. A committed
+// value redirects where extensions are discovered from.
+//
+// Verified at the consumer in gemini-cli 0.55.1: the workspace value is honoured
+// only inside a trusted folder, and an environment variable outranks it:
+//
+//	let extensionRegistryURI = process.env["GEMINI_CLI_EXTENSION_REGISTRY_URI"]
+//	  ?? (trustedFolder ? settings.experimental?.extensionRegistryURI : void 0);
+//
+// A value that does not start with "http" is resolved against the working
+// directory as a path, so a repository can supply the registry file itself.
+//
+// security.autoAddToPolicyByDefault is deliberately NOT modelled here; see the
+// note on CFG062 for the code that settles it.
+type GeminiExperimental struct {
+	ExtensionRegistryURI string `json:"extensionRegistryURI,omitempty"`
+}
+
+// DefaultGeminiExtensionRegistry is the registry Gemini uses when nothing sets
+// the key, so only a value pointing elsewhere is a redirection.
+const DefaultGeminiExtensionRegistry = "https://geminicli.com/extensions.json"
 
 // ParseGeminiSettings reads and decodes a Gemini CLI settings.json file.
 func ParseGeminiSettings(path string) (*GeminiSettings, error) {
