@@ -936,6 +936,25 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 
 	var targets []*rules.Target
+	// A skills root where two SKILL.md files claim the same frontmatter name has
+	// a silently dropped skill in it (#501). The collision lives entirely inside
+	// the scanned tree, so it is indexed here rather than needing a list of what
+	// the agent ships.
+	for _, rel := range projectSkillsDirs {
+		root := filepath.Join(dir, rel)
+		collisions, err := parser.SkillNameCollisions(root)
+		if err != nil {
+			return nil, err
+		}
+		if len(collisions) > 0 {
+			targets = append(targets, &rules.Target{
+				Scope:              finding.ScopeProject,
+				SkillCollisions:    collisions,
+				SkillCollisionRoot: rel,
+			})
+		}
+	}
+
 	for _, p := range paths {
 		content, err := loadClaudeMD(p.path)
 		if err != nil {

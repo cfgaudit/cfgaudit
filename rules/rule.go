@@ -39,6 +39,16 @@ type Target struct {
 	ProjectMCP     map[string]parser.MCPServer
 	ProjectMCPFile string
 
+	// SkillCollisions groups the SKILL.md files under one skills root by a name
+	// more than one of them claims, and SkillCollisionRoot is that root.
+	//
+	// Measured against Copilot CLI 1.0.80: two .github/skills/<dir>/SKILL.md
+	// declaring the same frontmatter name produce exactly one listed skill. The
+	// alphabetically first directory wins; the other is dropped with no warning
+	// and no listing. Read by CFG102.
+	SkillCollisions    map[string][]parser.SkillFileEntry
+	SkillCollisionRoot string
+
 	// Marketplace holds a parsed .claude-plugin/marketplace.json, the manifest
 	// declaring where each published plugin's code is fetched from. Author-side
 	// coverage, like the plugin manifests it sits next to: the file is committed
