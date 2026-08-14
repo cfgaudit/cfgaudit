@@ -8,7 +8,7 @@
       "Read(./tests/**)"
     ],
     "deny": [
-      "Bash(rm -rf *)",
+      "Bash(rm *)",
       "Bash(curl *)",
       "Bash(wget *)",
       "Bash(ssh *)",

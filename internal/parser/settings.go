@@ -119,6 +119,11 @@ func (s *Settings) Sandbox() *SandboxConfig {
 type Permissions struct {
 	Allow []string `json:"allow,omitempty"`
 	Deny  []string `json:"deny,omitempty"`
+	// Ask forces a confirmation prompt even where an allow rule would match. It
+	// is read by CFG101, which judges an ask rule by the same evasion the deny
+	// rules are judged by: a rule that does not match is a prompt that does not
+	// happen.
+	Ask []string `json:"ask,omitempty"`
 	// DefaultMode is the permission mode, nested under permissions in the schema
 	// (permissions.defaultMode) — NOT a top-level settings key. Read by CFG004.
 	DefaultMode string `json:"defaultMode,omitempty"`
