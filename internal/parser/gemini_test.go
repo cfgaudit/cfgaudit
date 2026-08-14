@@ -107,3 +107,22 @@ func TestParseGeminiSettings_HooksConfig(t *testing.T) {
 		t.Error("expected HooksDisabled() false when hooksConfig is absent")
 	}
 }
+
+// gemini-cli reads settings.json as JSON.parse(stripJsonComments(content)), the
+// code qwen-code forked, so a commented file is valid input to the agent and must
+// not fail the scan.
+func TestParseGeminiSettings_JSONCComments(t *testing.T) {
+	path := writeGemini(t, `{
+		// which approval mode this project runs in
+		"general": {"defaultApprovalMode": "auto_edit"},
+		/* block comment */
+		"ui": {"theme": "dark"}
+	}`)
+	gs, err := ParseGeminiSettings(path)
+	if err != nil {
+		t.Fatalf("parse commented settings: %v", err)
+	}
+	if gs.General == nil || gs.General.DefaultApprovalMode != "auto_edit" {
+		t.Fatalf("expected defaultApprovalMode through the comments, got %+v", gs.General)
+	}
+}
