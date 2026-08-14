@@ -3,6 +3,7 @@ package rules
 import (
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -114,35 +115,107 @@ func (r *cfg101) Check(t *Target) []finding.Finding {
 		kind    string
 		entries []string
 	}{{"deny", p.Deny}, {"ask", p.Ask}} {
+		var entries, flags, commands []string
 		for _, entry := range list.entries {
-			tool, pattern, ok := bashRulePattern(entry)
+			// The tool is discarded: bashRulePattern rejects PowerShell, so every
+			// entry that reaches here is a Bash rule.
+			_, pattern, ok := bashRulePattern(entry)
 			if !ok {
 				continue
 			}
-			flags := bundledFlagsIn(pattern)
-			if len(flags) == 0 {
+			entryFlags := bundledFlagsIn(pattern)
+			if len(entryFlags) == 0 {
 				continue
 			}
 			command := commandWordOf(pattern)
 			if command != "" && covered[command] {
 				continue
 			}
-			suggestion := ""
+			entries = append(entries, strings.TrimSpace(entry))
+			flags = appendNew(flags, entryFlags...)
 			if command != "" {
-				suggestion = " Deny the command by name instead, as \"" + tool + "(" + command + " *)\"."
+				commands = appendNew(commands, command)
 			}
-			findings = append(findings, finding.Finding{
-				RuleID:   "CFG101",
-				Severity: finding.Warn,
-				Scope:    t.Scope,
-				File:     t.SettingsFile,
-				Message: "permissions." + list.kind + " entry \"" + strings.TrimSpace(entry) + "\" constrains bundled short flags " + quoteList(flags) +
-					", and " + tool + " patterns are matched as a literal prefix. Writing the same flags in another order walks past the rule" + permutationHint(flags) +
-					"." + suggestion + " Upstream calls argument-constrained patterns fragile; this one is evaded without any thought at all" + userScopeNote(t),
-			})
 		}
+		if len(entries) == 0 {
+			continue
+		}
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG101",
+			Severity: finding.Warn,
+			Scope:    t.Scope,
+			File:     t.SettingsFile,
+			Message:  cfg101Message(list.kind, entries, flags, commands) + userScopeNote(t),
+		})
 	}
 	return findings
+}
+
+// cfg101Message renders one finding for every offending entry in one list of one
+// file, rather than one finding per entry (#517). The volume measured before that
+// change was 68 findings over 38 files, all of them genuine: collapsing loses no
+// distinct problem, because the reader has to fix them in the same file anyway,
+// and the remedy is the same sentence repeated. The single-entry wording is kept
+// exactly as it was, since that is what almost every file produces.
+func cfg101Message(kind string, entries, flags, commands []string) string {
+	const tool = "Bash"
+	tail := " Upstream calls argument-constrained patterns fragile; "
+	if len(entries) == 1 {
+		suggestion := ""
+		if len(commands) == 1 {
+			suggestion = " Deny the command by name instead, as \"" + tool + "(" + commands[0] + " *)\"."
+		}
+		return "permissions." + kind + " entry \"" + entries[0] + "\" constrains bundled short flags " + quoteList(flags) +
+			", and " + tool + " patterns are matched as a literal prefix. Writing the same flags in another order walks past the rule" +
+			permutationHint(flags) + "." + suggestion + tail + "this one is evaded without any thought at all"
+	}
+	suggestion := ""
+	if len(commands) > 0 {
+		var as []string
+		for _, c := range capList(commands, 3) {
+			as = append(as, tool+"("+c+" *)")
+		}
+		suggestion = " Deny each command by name instead, as " + quoteList(as) + "."
+	}
+	return "permissions." + kind + " has " + strconv.Itoa(len(entries)) + " entries that constrain bundled short flags: " +
+		quoteList(capList(entries, 4)) + andMore(len(entries), 4) + ". " + tool +
+		" patterns are matched as a literal prefix, so writing the same flags in another order walks past them" +
+		permutationHint(flags) + "." + suggestion + tail + "these are evaded without any thought at all"
+}
+
+// capList returns at most n elements, so a file with a long deny list does not
+// produce an unreadable finding.
+func capList(in []string, n int) []string {
+	if len(in) <= n {
+		return in
+	}
+	return in[:n]
+}
+
+// andMore names what capList dropped, so the count in the message and the list in
+// it never disagree silently.
+func andMore(total, shown int) string {
+	if total <= shown {
+		return ""
+	}
+	return " and " + strconv.Itoa(total-shown) + " more"
+}
+
+// appendNew appends the values not already present, preserving first-seen order.
+func appendNew(dst []string, values ...string) []string {
+	for _, v := range values {
+		found := false
+		for _, existing := range dst {
+			if existing == v {
+				found = true
+				break
+			}
+		}
+		if !found {
+			dst = append(dst, v)
+		}
+	}
+	return dst
 }
 
 // permutationHint renders a concrete evading spelling for the first reported
