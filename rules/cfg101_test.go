@@ -82,6 +82,56 @@ func TestCFG101_MultipleFlags(t *testing.T) {
 	}
 }
 
+// One finding per file rather than per entry (#517). The rule reported on 44% of
+// deny-carrying configs in the pre-release measurement, all of it genuine, and a
+// file's entries are read and fixed together.
+func TestCFG101_OneFindingPerList(t *testing.T) {
+	f := CFG101.Check(settingsTarget(t, `{"permissions":{"deny":[
+		"Bash(rm -rf *)","Bash(rm -rf /)","Bash(git clean -fdx:*)"]}}`))
+	if len(f) != 1 {
+		t.Fatalf("expected the three entries collapsed into one finding, got %d: %+v", len(f), f)
+	}
+	for _, want := range []string{"has 3 entries", `"Bash(rm -rf *)"`, `"Bash(git clean -fdx:*)"`, `"Bash(rm *)"`, `"Bash(git *)"`} {
+		if !strings.Contains(f[0].Message, want) {
+			t.Errorf("message should contain %q, got %q", want, f[0].Message)
+		}
+	}
+}
+
+// deny and ask are separate guarantees, so they stay separate findings even
+// though both are collapsed within themselves.
+func TestCFG101_DenyAndAskStaySeparate(t *testing.T) {
+	f := CFG101.Check(settingsTarget(t, `{"permissions":{
+		"deny":["Bash(rm -rf *)","Bash(rm -rf /)"],
+		"ask":["Bash(tar -xzf *)"]}}`))
+	if len(f) != 2 {
+		t.Fatalf("expected one finding per list, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "permissions.deny has 2 entries") {
+		t.Errorf("expected the deny list collapsed, got %q", f[0].Message)
+	}
+	if !strings.Contains(f[1].Message, "permissions.ask entry") {
+		t.Errorf("expected the single ask entry in singular form, got %q", f[1].Message)
+	}
+}
+
+// A long deny list must not produce an unreadable finding: the entries are capped
+// and what was dropped is named, so the count and the list never disagree.
+func TestCFG101_LongListCapped(t *testing.T) {
+	got := onlyFinding(t, CFG101.Check(settingsTarget(t, `{"permissions":{"deny":[
+		"Bash(rm -rf *)","Bash(git clean -fdx:*)","Bash(tar -xzf *)",
+		"Bash(docker system prune -af:*)","Bash(curl -sk *)","Bash(unzip -qq *)"]}}`)), finding.Warn)
+	if !strings.Contains(got.Message, "has 6 entries") {
+		t.Errorf("expected the full count, got %q", got.Message)
+	}
+	if !strings.Contains(got.Message, "and 2 more") {
+		t.Errorf("expected the dropped entries named, got %q", got.Message)
+	}
+	if strings.Contains(got.Message, "Bash(unzip -qq *)") {
+		t.Errorf("expected the list capped at four entries, got %q", got.Message)
+	}
+}
+
 func TestCFG101_NoPermissions(t *testing.T) {
 	if f := CFG101.Check(settingsTarget(t, `{}`)); len(f) != 0 {
 		t.Errorf("expected no findings, got %+v", f)
