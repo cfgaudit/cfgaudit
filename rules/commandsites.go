@@ -109,6 +109,31 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Zed .zed/settings.json: terminal.shell, lsp.<name>.binary and dap.<name>.
+	// Each names an executable Zed launches with its argv, so the command-content
+	// family applies exactly as it does to a hook.
+	//
+	// Unlike tasks.json above, this file IS worktree-trust gated: the same
+	// SettingsObserver match gates LocalSettingsKind::Settings on
+	// can_trust_worktree while LocalSettingsKind::Tasks is ungated. So these are
+	// not zero-click, and the label says "on trust" rather than implying they run
+	// on open. Reported anyway on the footing cfgaudit already applies to
+	// context_servers in this same file: trust is one prompt covering the whole
+	// worktree, granted for any Zed functionality at all, not consent to a
+	// specific binary.
+	if zs := t.ZedSettings; zs != nil {
+		for _, site := range zs.CommandSites() {
+			if site.Command == "" {
+				continue
+			}
+			sites = append(sites, commandSite{
+				Label:   "Zed " + site.Label + " command (runs on worktree trust)",
+				File:    t.ZedSettingsFile,
+				Command: site.Command,
+			})
+		}
+	}
+
 	// Continue CLI hooks (.continue/settings.json, .continue/settings.local.json).
 	// Same event → matcher groups → {type, command} nesting as Claude Code's, by
 	// design: Continue's loader reads "settings files in the same locations as

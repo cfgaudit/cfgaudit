@@ -135,6 +135,19 @@ type Target struct {
 	ZedTasks     *parser.ZedTasks
 	ZedTasksFile string
 
+	// ZedSettings holds the command-bearing half of a parsed .zed/settings.json
+	// (#467): terminal.shell, lsp.<name>.binary and dap.<name>, each naming an
+	// executable with its argv and environment. Its context_servers ride
+	// ProjectMCP on a separate target.
+	//
+	// Unlike .zed/tasks.json this file IS worktree-trust gated, so these sites are
+	// not zero-click and the findings must not imply otherwise. It is reported
+	// anyway on the same footing as context_servers, which cfgaudit already reads
+	// from this file: trust is one prompt covering the whole worktree, granted for
+	// any Zed functionality at all, not consent to a specific binary.
+	ZedSettings     *parser.ZedSettings
+	ZedSettingsFile string
+
 	// ContinueHooks holds the hooks block of a Continue CLI settings file
 	// (.continue/settings.json or .continue/settings.local.json, #433) — a
 	// different file from the .continue/config.yaml carried by Continue below.

@@ -1427,19 +1427,18 @@ func loadGrokHooksOptional(path string) (*parser.GrokHooks, error) {
 	return h, nil
 }
 
-// loadZedServersOptional parses .zed/settings.json and returns its
-// context_servers, or (nil, nil) when the file does not exist. A malformed file
-// is an error, so a Zed config that is silently not being scanned is reported
-// rather than mistaken for "no servers".
-func loadZedServersOptional(path string) (map[string]parser.MCPServer, error) {
-	servers, err := parser.ParseZedSettings(path)
+// loadZedSettingsOptional parses .zed/settings.json, or (nil, nil) when the file
+// does not exist. A malformed file is an error, so a Zed config that is silently
+// not being scanned is reported rather than mistaken for empty.
+func loadZedSettingsOptional(path string) (*parser.ZedSettings, error) {
+	z, err := parser.ParseZedSettings(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return servers, nil
+	return z, nil
 }
 
 // loadMCPConfigOptional parses an MCP config file, returning (nil, nil) when it
@@ -1628,15 +1627,26 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 
 	zedPath := filepath.Join(dir, ".zed", "settings.json")
-	zedServers, err := loadZedServersOptional(zedPath)
+	zedSettings, err := loadZedSettingsOptional(zedPath)
 	if err != nil {
 		return nil, err
 	}
-	if len(zedServers) > 0 {
+	if zedSettings != nil && len(zedSettings.ContextServers) > 0 {
 		targets = append(targets, &rules.Target{
 			Scope:          finding.ScopeProject,
-			ProjectMCP:     zedServers,
+			ProjectMCP:     zedSettings.ContextServers,
 			ProjectMCPFile: zedPath,
+		})
+	}
+	// terminal.shell, lsp.<name>.binary and dap.<name> name an executable, its
+	// argv and its environment, so they ride the command-content family the same
+	// way .zed/tasks.json does (#467). Kept as its own target so the MCP target
+	// above stays exactly what it was.
+	if zedSettings.HasCommandSites() {
+		targets = append(targets, &rules.Target{
+			Scope:           finding.ScopeProject,
+			ZedSettings:     zedSettings,
+			ZedSettingsFile: zedPath,
 		})
 	}
 

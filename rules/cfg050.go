@@ -61,6 +61,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings := r.checkAgentHookHeaders(t)
 	findings = append(findings, r.checkMarketplaceHeaders(t)...)
 	findings = append(findings, r.checkContinueRequestOptions(t)...)
+	findings = append(findings, r.checkZedEnv(t)...)
 	for _, ref := range t.mcpServerRefs() {
 		base := "mcpServers." + ref.Name
 
@@ -216,6 +217,35 @@ func continueLabel(i int, name string) string {
 		return "\"" + n + "\""
 	}
 	return strconv.Itoa(i)
+}
+
+// checkZedEnv reports hardcoded credentials in the environment blocks a Zed
+// .zed/settings.json attaches to the programs it launches: terminal.env,
+// lsp.<name>.binary.env and dap.<name>.env. Same shape and same detectors as an
+// MCP server's env, which CFG050 has always read.
+//
+// One real config in a 307-file sample carries SURREALDB_PASSWORD in
+// terminal.env, so this is not a hypothetical block.
+func (r *cfg050) checkZedEnv(t *Target) []finding.Finding {
+	if t == nil || t.ZedSettings == nil {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, site := range t.ZedSettings.CommandSites() {
+		for _, k := range sortedKeys(site.Env) {
+			v := unquoteValue(strings.TrimSpace(site.Env[k]))
+			if v == "" || isSecretReference(v) {
+				continue
+			}
+			loc := "Zed " + site.Label + ".env." + k
+			if label, ok := matchSecretPattern(v); ok {
+				findings = append(findings, secretFinding(loc, "a hardcoded "+label, t.ZedSettingsFile, t))
+			} else if hasSecretSuffix(k) && !screamingPlaceholderRe.MatchString(v) {
+				findings = append(findings, secretFinding(loc, "a secret-like name with a literal value", t.ZedSettingsFile, t))
+			}
+		}
+	}
+	return findings
 }
 
 // headerSecrets reports hardcoded credentials in a request-header block, by
