@@ -7,7 +7,7 @@
       "Read(README.md)"
     ],
     "deny": [
-      "Bash(rm -rf *)",
+      "Bash(rm *)",
       "Bash(git push --force*)",
       "Bash(curl *)",
       "Bash(wget *)",
