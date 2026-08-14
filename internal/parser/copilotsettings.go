@@ -10,10 +10,13 @@ import (
 // `.github/copilot/settings.json` that cfgaudit reads: the two keys that cause
 // third-party code to be installed and enabled without the user choosing it.
 //
-// Committability is *inferred*, not stated. Copilot's docs call this a
-// repository-level file read by both the CLI and the cloud agent, but never say
-// "commit this" the way Cursor's hook docs do — which is why the rule built on
-// it (CFG089) stays at warn rather than matching CFG055's escalation.
+// Committability is stated, not inferred. The CLI configuration reference says
+// repository settings "are committed to the repository and shared with
+// collaborators", and its repository-level table gives the merge behaviour as
+// "Merged — repository overrides user for same key" for enabledPlugins,
+// extraKnownMarketplaces and hooks, with "Repository takes precedence" for
+// disableAllHooks. So a committed entry does not merely add to a teammate's
+// configuration, it wins over their own value for the same key.
 type CopilotSettings struct {
 	// EnabledPlugins auto-installs plugins declaratively. Keys are plugin specs
 	// of the form PLUGIN-NAME@MARKETPLACE-NAME; the value enables or disables.
@@ -22,6 +25,45 @@ type CopilotSettings struct {
 	// ExtraKnownMarketplaces registers marketplaces plugins may be installed
 	// from, keyed by marketplace name.
 	ExtraKnownMarketplaces map[string]CopilotMarketplace `json:"extraKnownMarketplaces,omitempty"`
+
+	// Hooks is the inline hook table, the twin of .github/hooks/*.json. From the
+	// shipped CLI's own settings help (1.0.80):
+	//
+	//	`hooks`: inline hook definitions, keyed by event name (same schema as
+	//	.github/hooks/*.json).
+	//	  - In global config.json these act as user-level hooks; in repo
+	//	    settings.json they act as repo-level hooks
+	//
+	// Same schema means the shared AgentHooks shape decodes it, so the whole hook
+	// family applies without a second decoder. This is the Codex #431 situation:
+	// a file form and an inline form of one surface, both of which have to be read.
+	Hooks map[string][]AgentHook `json:"hooks,omitempty"`
+
+	// DisableAllHooks is global rather than per-file. The same help text:
+	//
+	//	`disableAllHooks`: whether to disable all hooks (repo-level and
+	//	user-level); defaults to `false`.
+	//
+	// So a repository setting it true silences the inline table above AND every
+	// .github/hooks/*.json in the same repo, and the docs give it "Repository
+	// takes precedence" over the user's value. Reporting hooks past it would be
+	// the false positive #433 found in Continue's equivalent.
+	DisableAllHooks bool `json:"disableAllHooks,omitempty"`
+}
+
+// InlineHooks returns the inline hook table as the shared AgentHooks shape, with
+// the effective disable flag applied, or nil when the file declares no hooks.
+func (c *CopilotSettings) InlineHooks() *AgentHooks {
+	if c == nil || len(c.Hooks) == 0 {
+		return nil
+	}
+	return &AgentHooks{DisableAllHooks: c.DisableAllHooks, Hooks: c.Hooks}
+}
+
+// HooksDisabled reports whether this file switches every Copilot hook off, its
+// own inline table and the .github/hooks/*.json files alike.
+func (c *CopilotSettings) HooksDisabled() bool {
+	return c != nil && c.DisableAllHooks
 }
 
 // CopilotMarketplace wraps the doubled nesting Copilot's schema really uses:

@@ -23,11 +23,24 @@ func (r *cfg089) ID() string { return "CFG089" }
 // is CFG055's threat model reached through Copilot's file instead of Claude's,
 // and the key names are identical.
 //
-// **Severity is warn throughout**, one step below CFG055's escalation. Copilot's
-// docs describe this file as repository-level and read by both the CLI and the
-// cloud agent, but never say it is meant to be committed the way Cursor's hook
-// docs do — the committability is inferred, and an inferred surface does not
-// carry an error.
+// Committability is no longer inferred. The CLI configuration reference states
+// it: repository settings "are committed to the repository and shared with
+// collaborators", and its repository-level table gives both keys as
+// "Merged — repository overrides user for same key". So a committed entry does
+// not merely add to a teammate's configuration, it wins over their own value for
+// the same key.
+//
+// **Severity stays warn throughout** even so, and the reason has changed from an
+// inference to a measurement. #471 asked whether the enabledPlugins-from-a-
+// self-registered-marketplace case should now escalate to error the way CFG055
+// does, since the old justification for warn was the inference. It should not:
+// across 97 real .github/copilot/settings.json files, 33 (34%) carry that exact
+// pairing, and they include dotnet/runtime, dotnet/roslyn, dotnet/aspnetcore and
+// microsoft/testfx registering their own marketplace and enabling their own
+// plugins. Registering the marketplace you publish is how a repository ships a
+// first-party plugin, not a footgun, and an error on a third of the population
+// would teach people to skip the rule. CFG055's escalation rests on a population
+// this one does not share.
 //
 // A marketplace source is reported as **unpinned** when it names a remote origin
 // with no immutable pin. Deliberately not phrased as "defaults to the default
@@ -71,7 +84,7 @@ func (r *cfg089) Check(t *Target) []finding.Finding {
 		if i := strings.LastIndex(spec, "@"); i >= 0 {
 			mkt = spec[i+1:]
 		}
-		detail := " — a repository-level file installs and loads a third-party plugin's hooks, commands and MCP servers on session start for everyone who opens the repo; let users enable plugins themselves"
+		detail := " — a repository-level file installs and loads a third-party plugin's hooks, commands and MCP servers on session start for everyone who opens the repo, and the documented merge behaviour is \"repository overrides user for same key\", so it wins over a contributor's own setting rather than adding to it; let users enable plugins themselves"
 		if mkt != "" && registered[mkt] {
 			detail = " from a marketplace this same file registers (extraKnownMarketplaces)" + detail
 		}

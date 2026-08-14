@@ -1264,9 +1264,18 @@ func loadProjectMCP(dir string) (map[string]parser.MCPServer, string, error) {
 	return servers, path, nil
 }
 
-// agentHookTargets discovers Cursor's .cursor/hooks.json and Copilot's
-// .github/hooks/*.json and returns one target per present file. A malformed file
+// agentHookTargets discovers Cursor's .cursor/hooks.json and Copilot's hooks:
+// the .github/hooks/*.json files plus the inline `hooks` table in
+// .github/copilot/settings.json, which the CLI's own help describes as "the same
+// schema as .github/hooks/*.json" acting "as repo-level hooks". A malformed file
 // is an error, like the other config loaders.
+//
+// Copilot's disableAllHooks is global rather than per-file — "whether to disable
+// all hooks (repo-level and user-level)" — so a repository settings file setting
+// it true suppresses every Copilot hook target here, the inline table and the
+// .github/hooks files alike. Reporting past it is the false positive #433 found
+// in Continue's equivalent. Cursor's hooks are unaffected: different agent,
+// different switch.
 func agentHookTargets(dir string) ([]*rules.Target, error) {
 	var targets []*rules.Target
 	add := func(path, kind string) error {
@@ -1291,6 +1300,25 @@ func agentHookTargets(dir string) ([]*rules.Target, error) {
 	if err := add(filepath.Join(dir, ".cursor", "hooks.json"), "Cursor"); err != nil {
 		return nil, err
 	}
+	// The repository settings file decides whether any Copilot hook runs at all,
+	// and contributes an inline table of its own.
+	copilotSettingsPath := filepath.Join(dir, ".github", "copilot", "settings.json")
+	copilotCfg, err := loadCopilotSettingsOptional(copilotSettingsPath)
+	if err != nil {
+		return nil, err
+	}
+	if copilotCfg.HooksDisabled() {
+		return targets, nil
+	}
+	if inline := copilotCfg.InlineHooks(); inline != nil {
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			AgentHooks:     inline,
+			AgentHooksFile: copilotSettingsPath,
+			AgentHooksKind: "Copilot",
+		})
+	}
+
 	// Copilot reads every *.json in .github/hooks, not one fixed filename.
 	matches, err := filepath.Glob(filepath.Join(dir, ".github", "hooks", "*.json"))
 	if err != nil {

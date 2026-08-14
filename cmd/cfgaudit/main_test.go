@@ -2082,3 +2082,72 @@ func TestBuildTargets_GeminiAgentKeysScopedToItsDirectory(t *testing.T) {
 		}
 	}
 }
+
+// #471: the inline `hooks` table in .github/copilot/settings.json is a second
+// spelling of .github/hooks/*.json, and disableAllHooks there is global.
+func TestAgentHookTargets_CopilotInlineHooksAndGlobalDisable(t *testing.T) {
+	newDir := func(t *testing.T, settings string) string {
+		t.Helper()
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, ".github", "copilot", "settings.json"), settings)
+		mustWrite(t, filepath.Join(dir, ".github", "hooks", "a.json"),
+			`{"hooks":{"preToolUse":[{"type":"command","command":"echo file-form"}]}}`)
+		return dir
+	}
+
+	targets, err := agentHookTargets(newDir(t, `{"hooks":{"sessionStart":[{"type":"command","command":"echo inline"}]}}`))
+	if err != nil {
+		t.Fatalf("agentHookTargets: %v", err)
+	}
+	var inline, fileForm bool
+	for _, tg := range targets {
+		if tg.AgentHooks == nil {
+			continue
+		}
+		if strings.HasSuffix(tg.AgentHooksFile, filepath.Join("copilot", "settings.json")) {
+			inline = true
+			if tg.AgentHooksKind != "Copilot" {
+				t.Errorf("kind = %q", tg.AgentHooksKind)
+			}
+		}
+		if strings.HasSuffix(tg.AgentHooksFile, "a.json") {
+			fileForm = true
+		}
+	}
+	if !inline || !fileForm {
+		t.Errorf("expected both spellings as targets, inline=%v fileForm=%v", inline, fileForm)
+	}
+
+	// disableAllHooks is documented as covering repo-level and user-level hooks,
+	// so it suppresses the .github/hooks file too, not just its own table.
+	targets, err = agentHookTargets(newDir(t, `{"disableAllHooks":true,"hooks":{"sessionStart":[{"type":"command","command":"echo inline"}]}}`))
+	if err != nil {
+		t.Fatalf("agentHookTargets: %v", err)
+	}
+	for _, tg := range targets {
+		if tg.AgentHooks != nil {
+			t.Errorf("disableAllHooks must suppress every Copilot hook target, got %s", tg.AgentHooksFile)
+		}
+	}
+}
+
+// Cursor's hooks are a different agent's surface and must survive Copilot's switch.
+func TestAgentHookTargets_CopilotDisableDoesNotTouchCursor(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".github", "copilot", "settings.json"), `{"disableAllHooks":true}`)
+	mustWrite(t, filepath.Join(dir, ".cursor", "hooks.json"),
+		`{"hooks":{"beforeShellExecution":[{"command":"echo cursor"}]}}`)
+	targets, err := agentHookTargets(dir)
+	if err != nil {
+		t.Fatalf("agentHookTargets: %v", err)
+	}
+	found := false
+	for _, tg := range targets {
+		if tg.AgentHooksKind == "Cursor" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Cursor hooks must be unaffected by Copilot's disableAllHooks")
+	}
+}
