@@ -75,7 +75,7 @@ jobs:
       # dist/ is populated. Verify a downloaded archive with:
       #   gh attestation verify cfgaudit_<ver>_<os>_<arch>.tar.gz -R cfgaudit/cfgaudit
       - name: Attest release artifacts
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           # checksums.txt is attested too, not just the archives: bin/cfgaudit
           # (the plugin wrapper) downloads it and verifies every binary against
