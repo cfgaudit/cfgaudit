@@ -318,3 +318,63 @@ func TestCommandSites_OpenCodeBooleanBlocks_NoSites(t *testing.T) {
 		t.Errorf("expected no sites for boolean blocks, got %+v", sites)
 	}
 }
+
+// #527: .zed/debug.json's `build` runs "before the debugger starts", so pressing
+// Debug on a scenario runs a command its label does not describe. `program` and
+// `args` name the binary the user asked to debug and are not sites, the same
+// line tasks.json draws between a hook task and one picked from the task list.
+func TestCommandSites_ZedDebugBuild(t *testing.T) {
+	zd := &parser.ZedDebug{Scenarios: []parser.ZedDebugScenario{
+		{Label: "Debug server", Adapter: "CodeLLDB", Build: json.RawMessage(`{"command":"make","args":["-j8"]}`)},
+		{Label: "Plain", Adapter: "CodeLLDB"},
+	}}
+	sites := commandSites(&Target{ZedDebug: zd, ZedDebugFile: ".zed/debug.json"})
+	if len(sites) != 1 {
+		t.Fatalf("expected 1 site, got %+v", sites)
+	}
+	if sites[0].Label != `Zed debug scenario "Debug server" build command` || sites[0].Command != "make -j8" {
+		t.Errorf("site = %+v", sites[0])
+	}
+	if sites[0].File != ".zed/debug.json" {
+		t.Errorf("file = %q", sites[0].File)
+	}
+}
+
+// A build naming an existing task by label makes that task's command run when
+// the user starts the debugger, so it is resolved against .zed/tasks.json and
+// attributed to the file the command actually lives in.
+func TestCommandSites_ZedDebugBuildTaskReference(t *testing.T) {
+	tgt := &Target{
+		ZedDebug:     &parser.ZedDebug{Scenarios: []parser.ZedDebugScenario{{Label: "Debug tests", Build: json.RawMessage(`"prepare env"`)}}},
+		ZedDebugFile: ".zed/debug.json",
+		ZedTasks: &parser.ZedTasks{Tasks: []parser.ZedTask{
+			{Label: "prepare env", Command: "./prepare.sh", Args: []string{"--ci"}},
+			{Label: "unrelated", Command: "./other.sh"},
+		}},
+		ZedTasksFile: ".zed/tasks.json",
+	}
+	sites := commandSites(tgt)
+	if len(sites) != 1 {
+		t.Fatalf("expected 1 site, got %+v", sites)
+	}
+	if sites[0].Command != "./prepare.sh --ci" || sites[0].File != ".zed/tasks.json" {
+		t.Errorf("site = %+v", sites[0])
+	}
+	if !strings.Contains(sites[0].Label, `build task "prepare env"`) {
+		t.Errorf("label should name the referenced task, got %q", sites[0].Label)
+	}
+}
+
+// A reference that matches no task, and a plain task with no reference, produce
+// nothing: a task the user picks himself is not a committed-execution surface.
+func TestCommandSites_ZedDebugUnresolvedReference_NoSite(t *testing.T) {
+	tgt := &Target{
+		ZedDebug:     &parser.ZedDebug{Scenarios: []parser.ZedDebugScenario{{Label: "Debug", Build: json.RawMessage(`"missing task"`)}}},
+		ZedDebugFile: ".zed/debug.json",
+		ZedTasks:     &parser.ZedTasks{Tasks: []parser.ZedTask{{Label: "prepare env", Command: "./prepare.sh"}}},
+		ZedTasksFile: ".zed/tasks.json",
+	}
+	if sites := commandSites(tgt); len(sites) != 0 {
+		t.Errorf("expected no site for an unresolved reference, got %+v", sites)
+	}
+}

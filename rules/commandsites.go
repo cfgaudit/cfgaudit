@@ -177,6 +177,45 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Zed .zed/debug.json. Only the `build` field is a site, and the reason is the
+	// line tasks.json already draws: `program`/`args` name the binary the user
+	// asked to debug, which is the thing they picked, while `build` runs "any
+	// necessary setup steps before the debugger starts" under a label that
+	// describes the debug session rather than the command. A `build` naming an
+	// existing task by label makes that task's command run the same way, so it is
+	// resolved against .zed/tasks.json when that file is present — the one case
+	// where a plain task, not a hook task, does reach the command rules.
+	if zd := t.ZedDebug; zd != nil {
+		for _, sc := range zd.Scenarios {
+			if task := sc.BuildTask(); task != nil {
+				sites = append(sites, commandSite{
+					Label:   "Zed debug scenario \"" + sc.Name() + "\" build command",
+					File:    t.ZedDebugFile,
+					Command: task.CommandLine(),
+				})
+				continue
+			}
+			ref := sc.BuildTaskRef()
+			if ref == "" || t.ZedTasks == nil {
+				continue
+			}
+			for _, task := range t.ZedTasks.Tasks {
+				if task.Label != ref || task.Command == "" {
+					continue
+				}
+				cmd := task.Command
+				if len(task.Args) > 0 {
+					cmd += " " + strings.Join(task.Args, " ")
+				}
+				sites = append(sites, commandSite{
+					Label:   "Zed debug scenario \"" + sc.Name() + "\" build task \"" + ref + "\" command",
+					File:    t.ZedTasksFile,
+					Command: cmd,
+				})
+			}
+		}
+	}
+
 	// Zed .zed/settings.json: terminal.shell, lsp.<name>.binary and dap.<name>.
 	// Each names an executable Zed launches with its argv, so the command-content
 	// family applies exactly as it does to a hook.

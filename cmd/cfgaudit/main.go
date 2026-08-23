@@ -1388,6 +1388,20 @@ func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, erro
 	return p, nil
 }
 
+// loadZedDebugOptional parses .zed/debug.json, returning (nil, nil) when it does
+// not exist. A malformed file is an error, so a debug file that is silently not
+// being scanned is reported rather than treated as empty.
+func loadZedDebugOptional(path string) (*parser.ZedDebug, error) {
+	z, err := parser.ParseZedDebug(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return z, nil
+}
+
 // loadZedTasksOptional parses .zed/tasks.json, returning (nil, nil) when it does
 // not exist. A malformed file is an error, so a task file that is silently not
 // being scanned is reported rather than treated as empty.
@@ -1780,12 +1794,25 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !zedTasks.Empty() {
-		targets = append(targets, &rules.Target{
-			Scope:        finding.ScopeProject,
-			ZedTasks:     zedTasks,
-			ZedTasksFile: zedTasksPath,
-		})
+	// .zed/debug.json is the third committed project file. Its scenarios ride the
+	// same target as the tasks, so a `build` that names an existing task by label
+	// resolves against .zed/tasks.json (#527).
+	zedDebugPath := filepath.Join(dir, ".zed", "debug.json")
+	zedDebug, err := loadZedDebugOptional(zedDebugPath)
+	if err != nil {
+		return nil, err
+	}
+	if !zedTasks.Empty() || !zedDebug.Empty() {
+		tgt := &rules.Target{Scope: finding.ScopeProject}
+		if !zedTasks.Empty() {
+			tgt.ZedTasks = zedTasks
+			tgt.ZedTasksFile = zedTasksPath
+		}
+		if !zedDebug.Empty() {
+			tgt.ZedDebug = zedDebug
+			tgt.ZedDebugFile = zedDebugPath
+		}
+		targets = append(targets, tgt)
 	}
 
 	// xAI Grok CLI .grok/config.toml — committable per Grok's user guide. A
