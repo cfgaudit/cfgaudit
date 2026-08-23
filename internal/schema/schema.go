@@ -36,15 +36,20 @@ type PropertySpec struct {
 //   - defaultMode: documented in the schema only at permissions.defaultMode,
 //     but accepted at the top level by older Claude Code versions and still
 //     widespread in shared configs.
+//   - additionalMarketplaces: the alias Claude Code 2.1.232 added for
+//     extraKnownMarketplaces, "read exactly as if it were spelled" the canonical
+//     key. cfgaudit resolves it and reports on it (CFG050, CFG055), so calling it
+//     an unknown key would contradict its own output.
 //   - subagentStatusLine: executed by Claude Code (its own diagnostics name it,
 //     "Skipping subagentStatusLine execution - workspace trust not accepted")
 //     and present in 106 committed settings files, but absent from the schema
 //     and from the published settings reference. cfgaudit reads it as a command
 //     site, so reporting it as an unknown key would contradict its own output.
 var KnownButUnschemaed = map[string]bool{
-	"mcpServers":         true,
-	"defaultMode":        true,
-	"subagentStatusLine": true,
+	"mcpServers":             true,
+	"defaultMode":            true,
+	"subagentStatusLine":     true,
+	"additionalMarketplaces": true,
 }
 
 var (

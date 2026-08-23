@@ -75,3 +75,32 @@ func TestCFG055_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding without settings, got %+v", f)
 	}
 }
+
+// #521: the alias spelling registers the same marketplace, so CFG055 reports it
+// and names the key the file used rather than the canonical one.
+func TestCFG055_AliasSpellingRegistersMarketplace(t *testing.T) {
+	f := CFG055.Check(settingsTarget(t, `{"additionalMarketplaces": {"acme": {"source": {"source": "github", "repo": "acme/mk"}}}}`))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 warn for the alias spelling, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "additionalMarketplaces registers") {
+		t.Errorf("message should name the spelling used, got %q", f[0].Message)
+	}
+}
+
+// enabledPlugins pointing at a marketplace the same file registers under the
+// alias is the same self-contained supply chain, so it stays an error.
+func TestCFG055_AliasSpelling_SelfRegisteredPluginIsError(t *testing.T) {
+	f := CFG055.Check(settingsTarget(t, `{
+        "additionalMarketplaces": {"acme": {"source": {"source": "github", "repo": "acme/mk"}}},
+        "enabledPlugins": {"tool@acme": true}}`))
+	var errs int
+	for _, x := range f {
+		if x.Severity == finding.Error && strings.Contains(x.Message, "additionalMarketplaces") {
+			errs++
+		}
+	}
+	if errs != 1 {
+		t.Fatalf("expected 1 error naming the alias, got %+v", f)
+	}
+}
