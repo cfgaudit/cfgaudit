@@ -106,6 +106,51 @@ var weakeningDefaultConfigurations = []struct {
 	},
 }
 
+// useClaudeHooksKey switches on execution of Claude-format hooks. Its default is
+// false and only true loosens, and DEFAULT_HOOK_FILE_PATHS already includes the
+// repository's own .claude/settings.json, so a committed true is a repository
+// enabling execution of hooks the same repository ships.
+const useClaudeHooksKey = "chat.useClaudeHooks"
+
+// hookLocationsKey registers where hook files are read from: "Specify paths to
+// hook configuration files that define custom shell commands to execute at
+// strategic points in an agent's workflow ... Relative paths are resolved from
+// the root folder(s) of your workspace." The value maps a path to whether it is
+// enabled.
+const hookLocationsKey = "chat.hookFilesLocations"
+
+// defaultHookFilePaths is DEFAULT_HOOK_FILE_PATHS from promptFileLocations.ts.
+// A committed file enabling one of these registers nothing new, so only a path
+// outside this set is reported; disabling one is the narrowing direction.
+var defaultHookFilePaths = map[string]bool{
+	".github/hooks":               true,
+	".claude/settings.local.json": true,
+	".claude/settings.json":       true,
+	"~/.copilot/hooks":            true,
+	"~/.claude/settings.json":     true,
+}
+
+// terminalTrustNote states the mitigation that applies to the terminal
+// auto-approve family and to nothing else in this rule. Upstream marked
+// chat.tools.terminal.enableAutoApprove, .autoApprove,
+// .ignoreDefaultAutoApproveRules, .autoApproveWorkspaceNpmScripts and
+// .blockDetectedFileWrites `restricted: true` on 2026-08-05, and the
+// configuration registry defines that as: "When restricted, value of this
+// configuration will be read only from trusted sources. For eg., If the
+// workspace is not trusted, then the value of this configuration is not read
+// from workspace settings file."
+//
+// So "for anyone who opens this repo" is no longer true for these keys, and the
+// rule says so rather than dropping the finding: trust is granted once, usually
+// on the first prompt, and thereafter every clone is covered. The keys that are
+// NOT restricted keep the stronger wording, verified in the same registration
+// file: chat.permissions.default and chat.defaultConfiguration declare neither a
+// scope nor `restricted`, so they take WINDOW and apply from a committed file
+// with no trust gate at all.
+const vscodeRestrictedNote = " The key is `restricted`, so the value is ignored until the workspace is trusted; trust is a single prompt, granted once, after which every clone is covered."
+
+const terminalTrustNote = " These terminal keys are `restricted`, so the value is ignored until the workspace is trusted; trust is a single prompt, granted once, after which every clone is covered."
+
 // catchAllTerminalPatternRe matches a terminal auto-approve regex that approves
 // any command. Deliberately narrow: only the unmistakable catch-alls, because a
 // pattern that merely looks broad ("/^git /") is ordinary team configuration.
@@ -246,7 +291,43 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 				Scope:    t.Scope,
 				File:     t.VSCodeSettingsFile,
 				Message: terminalAutoApproveKey + " approves the catch-all pattern \"" + strings.Join(broad, "\", \"") +
-					"\" — every command the agent proposes runs in the terminal with no confirmation, for anyone who opens this repo. List the specific commands the project needs instead",
+					"\" — every command the agent proposes runs in the terminal with no confirmation." + terminalTrustNote +
+					" List the specific commands the project needs instead",
+			})
+		}
+	}
+
+	if val, present := t.VSCodeSettings.BoolField(useClaudeHooksKey); present && val {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG048",
+			Severity: finding.Error,
+			Scope:    t.Scope,
+			File:     t.VSCodeSettingsFile,
+			Message: useClaudeHooksKey + " is true — it switches on execution of Claude-format hooks, which VS Code leaves off by default, and the default hook locations already include this repository's own .claude/settings.json." +
+				" A committed file therefore turns on execution of hook commands the same repository ships." + vscodeRestrictedNote +
+				" Remove the key and let each user decide",
+		})
+	}
+
+	if entries, ok := t.VSCodeSettings.ObjectField(hookLocationsKey); ok {
+		var added []string
+		for _, path := range sortedRawKeys(entries) {
+			if defaultHookFilePaths[path] {
+				continue
+			}
+			if rawIsTrue(entries[path]) {
+				added = append(added, path)
+			}
+		}
+		if len(added) > 0 {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG048",
+				Severity: finding.Warn,
+				Scope:    t.Scope,
+				File:     t.VSCodeSettingsFile,
+				Message: hookLocationsKey + " registers the hook location \"" + strings.Join(added, "\", \"") +
+					"\" — hook files declare \"custom shell commands to execute at strategic points in an agent's workflow\", and a relative path is resolved from the workspace root, so a committed value points the editor at command files this repository chose." +
+					" cfgaudit reads the standard hook paths and does not follow a registered one, so whatever those files contain is unreviewed by this scan." + vscodeRestrictedNote,
 			})
 		}
 	}
@@ -258,7 +339,8 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 			Scope:    t.Scope,
 			File:     t.VSCodeSettingsFile,
 			Message: terminalIgnoreDefaultsKey + " is true — VS Code's built-in terminal auto-approve rules are switched off, including the denials its own documentation describes as \"designed to protect you against running dangerous commands\"." +
-				" On its own this approves nothing, but it removes the backstop under any pattern the same file approves. Leave it unset and narrow the allow patterns instead",
+				" On its own this approves nothing, but it removes the backstop under any pattern the same file approves." + terminalTrustNote +
+				" Leave it unset and narrow the allow patterns instead",
 		})
 	}
 	return findings
