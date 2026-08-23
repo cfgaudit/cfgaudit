@@ -589,7 +589,9 @@ This is the same shape as the Continue note above: existing findings on one agen
 - **`shell`** (*"Default shell to use for terminal and bash tool"*), **`lsp.<id>.command`** and **`formatter.<id>.command`** are command sites, so the command-content rules read them. An entry with `disabled: true` is not a site, and the `boolean` form of the `lsp` / `formatter` blocks (`"lsp": true` enables the built-ins) declares no command.
 - **`agent.<name>.prompt`** and **`command.<name>.template`** are instruction content (CFG024–CFG036, CFG057): the first replaces that agent's instructions, the second is the text the command sends.
 
-`permission`, `plugin`, `skills` and `instructions` are **not** modelled yet ([#525](https://github.com/cfgaudit/cfgaudit/issues/525)). The permission block needs care rather than parsing: OpenCode's documented defaults are already permissive (*"Most permissions default to `allow`"*, with only `doom_loop` and `external_directory` defaulting to `ask`, and `.env` files denied for `read`), so the common committed `"*": "allow"` mostly restates the default and only a narrow set of values is a real weakening.
+- **`permission`** (and `agent.<name>.permission`) is resolved the way OpenCode resolves it, last matching rule wins, and only the two things its defaults still hold back are reported by [CFG105](docs/rules/CFG105.md): `external_directory` and reading a `.env` file. The ordinary `"bash": "allow"` restates the default and is not a finding.
+
+`plugin`, `skills` and `instructions` are **not** modelled yet ([#525](https://github.com/cfgaudit/cfgaudit/issues/525)): the first two need their own false-positive measurement, and `instructions` names files and glob patterns rather than carrying text.
 
 ### xAI Grok CLI — `.grok/`
 
@@ -624,6 +626,7 @@ Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `Sessio
 | [CFG102](docs/rules/CFG102.md) | warn | two committed `SKILL.md` files under one skills root declare the same frontmatter `name` — measured on Copilot CLI 1.0.80, only the alphabetically first directory loads and the other is dropped with no warning and under no other name. A skill's name comes from its frontmatter, so nothing in the tree shows which copy is dead | LLM03 |
 | [CFG103](docs/rules/CFG103.md) | error | committed Codex `[features.guardianv2]` switches off, raises the `review_threshold` of, or replaces the `classifier_instructions` of Codex's own security reviewer — verified at the artifact: a project config's values reach the effective config in a trusted directory, and `features` is not on Codex's project-layer denylist | LLM06 |
 | [CFG104](docs/rules/CFG104.md) | warn | committed Devin `permissions.allow` grants a pattern that constrains nothing (`Read(**)`, `Fetch(*)`) or a privileged binary with no argument constraint (`Exec(sudo)`, `Exec(rm)`, `Exec(chmod)`, `Exec(chown)`, `Exec(docker)`) — Devin prompts when no rule matches, so a committed rule removes that prompt for every teammate who has not written their own deny. Bare interpreters are deliberately not reported: 15 of 51 sampled files carry one | LLM06 |
+| [CFG105](docs/rules/CFG105.md) | warn | a committed `opencode.json` permission block resolves `external_directory` to `allow` for the home directory or the filesystem root, or re-allows reading `*.env` — OpenCode's defaults are permissive apart from those two, and config rules win by last-match, so `"read": "allow"` silently removes the `.env` prompt. Ordinary allows that restate the defaults are not reported | LLM06 |
 
 Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated shell, not a committed escalation), `"auto-edit"` is stricter than that default, and `tools.autoAccept` is vestigial (no consumer in the approval path).
 
@@ -668,7 +671,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | LLM01 | [Prompt Injection](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM01_2025-Prompt_Injection.html) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092 |
 | LLM02 | [Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM02_2025-Sensitive_Information_Disclosure.html) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088, CFG099 |
 | LLM03 | [Supply Chain Vulnerabilities](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM03_2025-Supply_Chain.html) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089, CFG098, CFG100, CFG102 |
-| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091, CFG099, CFG101, CFG103, CFG104 |
+| LLM06 | [Excessive Agency](https://owasp.org/www-project-top-10-for-large-language-model-applications/2025/LLM06_2025-Excessive_Agency.html) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091, CFG099, CFG101, CFG103, CFG104, CFG105 |
 
 **Not covered**
 
