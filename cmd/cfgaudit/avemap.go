@@ -99,6 +99,11 @@ var aveByRule = map[string]string{
 	"CFG091": "AVE-2026-00063", // qwen tools.approvalMode: yolo
 	"CFG093": "AVE-2026-00063", // committed .cursor/permissions.json allowlist
 	"CFG096": "AVE-2026-00063", // Gemini MCP server trust: true
+	"CFG104": "AVE-2026-00063", // committed Devin permissions.allow: the default is a prompt, and a
+	//                             wildcard or a bare privileged binary removes it deterministically,
+	//                             with no instruction text. Same shape as CFG093.
+	"CFG105": "AVE-2026-00063", // committed OpenCode permission block: both reported cases
+	//                             (external_directory, reading .env) are prompts the file removes.
 
 	// Zero-click auto-run on project load (AVE-2026-00064).
 	"CFG047": "AVE-2026-00064", // .vscode/tasks.json folderOpen, Zed create_worktree hook task
@@ -152,6 +157,15 @@ var aveByRule = map[string]string{
 	// the agent) and AVE-2026-00063 (a setting, no instruction text), which is the
 	// gap this crosswalk had recorded for CFG094.
 	"CFG094": "AVE-2026-00076", // .cursor/permissions.json autoRun.allow_instructions
+	"CFG103": "AVE-2026-00076", // Imperfect fit, and only for one of the rule's three findings:
+	//                             features.guardianv2.classifier_instructions replaces the prompt of
+	//                             Codex's own reviewer, which is the record's mechanism exactly, a
+	//                             committed file aiming natural language at a separate, non-primary
+	//                             classifier. cfgaudit reports the stronger form (the whole prompt
+	//                             replaced) where the record describes steering. The other two
+	//                             findings, enabled = false and a raised review_threshold, have NO
+	//                             class: AVE-2026-00063 requires a *human*-approval step, and
+	//                             Guardian v2 is an automated reviewer. Reported as a gap.
 
 	// Deliberately unmapped, so the decision is not re-made every release:
 	// CFG100 (Grok [plugins] enabled/paths) would need AVE-2026-00064, which
@@ -162,6 +176,12 @@ var aveByRule = map[string]string{
 	// guardrail rather than an attacker behaviour. AVE-2026-00063 is a flag that
 	// removes a gate and AVE-2026-00068 is composition through shell state;
 	// neither is "the denylist misses an equivalent spelling".
+	// CFG106 (Codex browser_use / computer_use granted from a committed config)
+	// would need AVE-2026-00063, which is a bypassed *human-approval* step. The
+	// rule deliberately does not claim that: config/read shows the repository's
+	// value reaching the consumer boundary, and the browser and computer use
+	// tools live in the app, so whether a prompt is skipped is unverified. A
+	// mapping would assert more than the rule's own message does.
 	// CFG102 (two committed skills claiming one name) is name shadowing, but
 	// AVE-2026-00017 is explicitly MCP server identity and AVE-2026-00066 is
 	// registry squatting on hallucinated names. Reported as a gap instead.
