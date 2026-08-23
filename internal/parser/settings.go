@@ -269,6 +269,20 @@ type MCPServer struct {
 	Transport string            `json:"transport,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
 
+	// HeadersHelperKey is the spelling the source file used for HeadersHelper,
+	// so a finding names a key the reader can grep for. Empty means the Claude
+	// spelling, "headersHelper"; Codex writes "http_headers_helper".
+	HeadersHelperKey string `json:"-"`
+
+	// ApprovalModeKey and ApprovedTools carry Codex's approval settings, which
+	// remove the confirmation prompt without listing tool names the way
+	// alwaysAllow does. ApprovalModeKey is the key that set the server-wide
+	// "approve" mode (so a finding can name it), empty when no such mode is set;
+	// ApprovedTools are the tools whose own approval_mode is "approve", sorted.
+	// Populated by CodexConfig.MCPServerMap; no JSON config spells either.
+	ApprovalModeKey string   `json:"-"`
+	ApprovedTools   []string `json:"-"`
+
 	// Trust marks a server whose tool calls skip the confirmation prompt. Gemini
 	// CLI's key: DiscoveredMCPTool returns false from its confirmation path when
 	// `isTrustedFolder() && this.trust`, so it removes the prompt for every tool

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 func TestCFG011_Wildcard(t *testing.T) {
@@ -109,5 +110,70 @@ func TestCFG011_MultipleServers_SortedOutput(t *testing.T) {
 	}
 	if !strings.Contains(f[0].Message, "alpha") || !strings.Contains(f[1].Message, "zeta") {
 		t.Errorf("expected sorted output, got: %s / %s", f[0].Message, f[1].Message)
+	}
+}
+
+// codexMCPTarget builds the target the CLI builds for a project .codex/config.toml:
+// the servers ride ProjectMCP, which is what mcpServerRefs reads.
+func codexMCPTarget(servers map[string]parser.CodexMCP) *Target {
+	cc := &parser.CodexConfig{MCPServers: servers}
+	return &Target{
+		Scope:          finding.ScopeProject,
+		Codex:          cc,
+		CodexFile:      ".codex/config.toml",
+		ProjectMCP:     cc.MCPServerMap(),
+		ProjectMCPFile: ".codex/config.toml",
+	}
+}
+
+// #523: Codex spells per-server auto-approval as an approval mode rather than a
+// tool list. Only "approve" never asks; "auto" is the default and
+// "prompt"/"writes" narrow, so neither may produce a finding.
+func TestCFG011_CodexDefaultToolsApprovalMode(t *testing.T) {
+	tgt := codexMCPTarget(map[string]parser.CodexMCP{
+		"remote": {URL: "https://mcp.example/mcp", DefaultToolsApprovalMode: "approve"},
+	})
+	f := CFG011.Check(tgt)
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 warn for default_tools_approval_mode=approve, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "default_tools_approval_mode") {
+		t.Errorf("message should name the key, got %q", f[0].Message)
+	}
+	for _, quiet := range []string{"auto", "prompt", "writes", ""} {
+		q := codexMCPTarget(map[string]parser.CodexMCP{
+			"remote": {URL: "https://mcp.example/mcp", DefaultToolsApprovalMode: quiet},
+		})
+		if got := CFG011.Check(q); len(got) != 0 {
+			t.Errorf("approval mode %q must not fire, got %+v", quiet, got)
+		}
+	}
+}
+
+// The per-tool form is judged like alwaysAllow: state-mutating names are the
+// finding, a read-only one on its own is not.
+func TestCFG011_CodexPerToolApprovalMode(t *testing.T) {
+	tgt := codexMCPTarget(map[string]parser.CodexMCP{
+		"remote": {URL: "https://mcp.example/mcp", Tools: map[string]parser.CodexMCPTool{
+			"write_file": {ApprovalMode: "approve"},
+			"read_file":  {ApprovalMode: "approve"},
+			"list_dir":   {ApprovalMode: "prompt"},
+		}},
+	})
+	f := CFG011.Check(tgt)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "\"write_file\"") || strings.Contains(f[0].Message, "list_dir") {
+		t.Errorf("expected the state-mutating tool named and the prompt-mode one absent, got %q", f[0].Message)
+	}
+
+	readOnly := codexMCPTarget(map[string]parser.CodexMCP{
+		"remote": {URL: "https://mcp.example/mcp", Tools: map[string]parser.CodexMCPTool{
+			"read_file": {ApprovalMode: "approve"},
+		}},
+	})
+	if got := CFG011.Check(readOnly); len(got) != 0 {
+		t.Errorf("a single read-only approve must stay silent, got %+v", got)
 	}
 }
