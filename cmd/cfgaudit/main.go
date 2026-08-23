@@ -1327,23 +1327,39 @@ func agentHookTargets(dir string) ([]*rules.Target, error) {
 		return nil, err
 	}
 	// The repository settings file decides whether any Copilot hook runs at all,
-	// and contributes an inline table of its own.
-	copilotSettingsPath := filepath.Join(dir, ".github", "copilot", "settings.json")
-	copilotCfg, err := loadCopilotSettingsOptional(copilotSettingsPath)
-	if err != nil {
-		return nil, err
+	// and contributes an inline table of its own. The CLI's own settings map is
+	// {repo: ".github/copilot/settings.json", local: ".github/copilot/settings.local.json"},
+	// and the local twin is gitignored by design, so a committed one gets the
+	// project-local scope cfgaudit already uses for the Claude and Continue twins
+	// (#534). disableAllHooks is global, so either file switching hooks off drops
+	// the inline tables of both.
+	copilotSettingsFiles := []struct {
+		rel   string
+		scope finding.Scope
+	}{
+		{filepath.Join(".github", "copilot", "settings.json"), finding.ScopeProject},
+		{filepath.Join(".github", "copilot", "settings.local.json"), finding.ScopeProjectLocal},
 	}
-	if copilotCfg.HooksDisabled() {
-		return targets, nil
+	var copilotHookTargets []*rules.Target
+	for _, cs := range copilotSettingsFiles {
+		path := filepath.Join(dir, cs.rel)
+		cfg, err := loadCopilotSettingsOptional(path)
+		if err != nil {
+			return nil, err
+		}
+		if cfg.HooksDisabled() {
+			return targets, nil
+		}
+		if inline := cfg.InlineHooks(); inline != nil {
+			copilotHookTargets = append(copilotHookTargets, &rules.Target{
+				Scope:          cs.scope,
+				AgentHooks:     inline,
+				AgentHooksFile: path,
+				AgentHooksKind: "Copilot",
+			})
+		}
 	}
-	if inline := copilotCfg.InlineHooks(); inline != nil {
-		targets = append(targets, &rules.Target{
-			Scope:          finding.ScopeProject,
-			AgentHooks:     inline,
-			AgentHooksFile: copilotSettingsPath,
-			AgentHooksKind: "Copilot",
-		})
-	}
+	targets = append(targets, copilotHookTargets...)
 
 	// Copilot reads every *.json in .github/hooks, not one fixed filename.
 	matches, err := filepath.Glob(filepath.Join(dir, ".github", "hooks", "*.json"))
@@ -1686,17 +1702,25 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// Copilot .github/copilot/settings.json — repository-level plugin settings.
 	// enabledPlugins / extraKnownMarketplaces install third-party code, the same
 	// surface CFG055 covers for Claude.
-	copilotPath := filepath.Join(dir, ".github", "copilot", "settings.json")
-	copilotCfg, err := loadCopilotSettingsOptional(copilotPath)
-	if err != nil {
-		return nil, err
-	}
-	if copilotCfg != nil && (len(copilotCfg.EnabledPlugins) > 0 || len(copilotCfg.ExtraKnownMarketplaces) > 0) {
-		targets = append(targets, &rules.Target{
-			Scope:               finding.ScopeProject,
-			CopilotSettings:     copilotCfg,
-			CopilotSettingsFile: copilotPath,
-		})
+	for _, cs := range []struct {
+		rel   string
+		scope finding.Scope
+	}{
+		{filepath.Join(".github", "copilot", "settings.json"), finding.ScopeProject},
+		{filepath.Join(".github", "copilot", "settings.local.json"), finding.ScopeProjectLocal},
+	} {
+		copilotPath := filepath.Join(dir, cs.rel)
+		copilotCfg, err := loadCopilotSettingsOptional(copilotPath)
+		if err != nil {
+			return nil, err
+		}
+		if copilotCfg != nil && (len(copilotCfg.EnabledPlugins) > 0 || len(copilotCfg.ExtraKnownMarketplaces) > 0) {
+			targets = append(targets, &rules.Target{
+				Scope:               cs.scope,
+				CopilotSettings:     copilotCfg,
+				CopilotSettingsFile: copilotPath,
+			})
+		}
 	}
 
 	// Devin CLI keeps four project files, and its configuration reference names

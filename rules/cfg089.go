@@ -92,7 +92,16 @@ func (r *cfg089) Check(t *Target) []finding.Finding {
 	}
 
 	for _, name := range names {
-		src := cs.ExtraKnownMarketplaces[name].Source
+		entry := cs.ExtraKnownMarketplaces[name]
+		src := entry.Source
+		if entry.AutoUpdate {
+			detail := ""
+			if src.Remote() && !marketplacePinned(src) {
+				detail = " The same entry has no immutable pin, so what is refreshed is whatever the upstream serves at the time."
+			}
+			add("extraKnownMarketplaces." + name + " sets autoUpdate — its plugins are refreshed at session start rather than when someone chooses to update them, so the code that runs changes without anyone in the repository acting." + detail +
+				" Remove the key and let users update on their own schedule")
+		}
 		if !src.Remote() {
 			continue // a "directory" source is on disk — no upstream trust edge
 		}

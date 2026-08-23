@@ -122,3 +122,67 @@ func TestCFG089_NoSettings(t *testing.T) {
 		t.Errorf("expected no finding, got %+v", f)
 	}
 }
+
+// #534: autoUpdate refreshes a marketplace's plugins at session start. Copilot's
+// changelog names user settings, but the CLI merges the repository file into the
+// same resolution once the folder is trusted, so a committed entry reaches it.
+func TestCFG089_MarketplaceAutoUpdate(t *testing.T) {
+	f := CFG089.Check(copilotSettingsTarget(&parser.CopilotSettings{
+		ExtraKnownMarketplaces: map[string]parser.CopilotMarketplace{
+			"acme": {AutoUpdate: true, Source: parser.CopilotMarketplaceSource{
+				Source: "github", Repo: "acme/mkt", SHA: "0123456789abcdef0123456789abcdef01234567",
+			}},
+		},
+	}))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 warn for autoUpdate on a pinned source, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "autoUpdate") {
+		t.Errorf("message should name the key, got %q", f[0].Message)
+	}
+	// A pinned source refreshes to the same commit, so the extra sentence about an
+	// unpinned upstream must not appear.
+	if strings.Contains(f[0].Message, "no immutable pin") {
+		t.Errorf("pinned entry must not carry the unpinned sentence: %q", f[0].Message)
+	}
+}
+
+// Unpinned and auto-updating is the sharp combination: two findings, and the
+// autoUpdate one says the entry is also unpinned.
+func TestCFG089_MarketplaceAutoUpdateUnpinned(t *testing.T) {
+	f := CFG089.Check(copilotSettingsTarget(&parser.CopilotSettings{
+		ExtraKnownMarketplaces: map[string]parser.CopilotMarketplace{
+			"acme": {AutoUpdate: true, Source: parser.CopilotMarketplaceSource{
+				Source: "github", Repo: "acme/mkt", Ref: "main",
+			}},
+		},
+	}))
+	if len(f) != 2 {
+		t.Fatalf("expected the autoUpdate and the unpinned findings, got %+v", f)
+	}
+	var sawCombination bool
+	for _, x := range f {
+		if strings.Contains(x.Message, "autoUpdate") && strings.Contains(x.Message, "no immutable pin") {
+			sawCombination = true
+		}
+	}
+	if !sawCombination {
+		t.Errorf("the autoUpdate finding should say the entry is also unpinned: %+v", f)
+	}
+}
+
+// Absent or false changes nothing.
+func TestCFG089_MarketplaceAutoUpdateAbsent(t *testing.T) {
+	pinned := parser.CopilotMarketplaceSource{Source: "github", Repo: "a/b", SHA: "0123456789abcdef0123456789abcdef01234567"}
+	for _, entry := range []parser.CopilotMarketplace{
+		{Source: pinned},
+		{AutoUpdate: false, Source: pinned},
+	} {
+		f := CFG089.Check(copilotSettingsTarget(&parser.CopilotSettings{
+			ExtraKnownMarketplaces: map[string]parser.CopilotMarketplace{"acme": entry},
+		}))
+		if len(f) != 0 {
+			t.Errorf("expected no finding for %+v, got %+v", entry, f)
+		}
+	}
+}
