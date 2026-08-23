@@ -101,9 +101,14 @@ type Target struct {
 	Codex     *parser.CodexConfig
 	CodexFile string
 
-	// Devin holds a parsed Devin CLI .devin/config.json — committable "shared team
-	// configuration" per Devin's docs. Its mcpServers ride ProjectMCP so the MCP
-	// rules apply, and its hooks become command sites. Nil when absent; DevinFile
+	// Devin holds a parsed Devin CLI project config — .devin/config.json,
+	// committable "shared team configuration" per Devin's docs, or its gitignored
+	// twin .devin/config.local.json. Its mcpServers ride ProjectMCP so the MCP
+	// rules apply, and its hooks become command sites. Its permissions are decoded
+	// but no rule reads them yet, so a committed allow list produces no finding
+	// (#536). The dedicated .devin/mcp_config*.json files never set this field:
+	// they carry servers only, and reach the rules through ProjectMCP.
+	// Nil when absent; DevinFile
 	// is its path, used to attribute the findings.
 	Devin     *parser.DevinConfig
 	DevinFile string
