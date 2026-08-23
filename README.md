@@ -575,9 +575,19 @@ What it does mean is that cfgaudit's existing findings already cover most of tha
 | `.mcp.json`, `.claude/settings.json`, `.claude/settings.local.json` | scanned |
 | `.github/skills/**/SKILL.md` | scanned |
 | `.vscode/mcp.json`, `.zed/settings.json` | scanned |
-| `opencode.json` | scanned (its `mcp` block, [#497](https://github.com/cfgaudit/cfgaudit/issues/497)) |
+| `opencode.json` | scanned (`mcp`, `shell`, `lsp`, `formatter`, `agent.prompt`, `command.template`) |
 
 This is the same shape as the Continue note above: existing findings on one agent's files protect another agent's users, and it is not obvious from the rule list that they do.
+
+### OpenCode — `opencode.json`
+
+[OpenCode](https://github.com/anomalyco/opencode) keeps its project config at the repository root, and its own docs call the file *"safe to be checked into Git"*. It also **outranks the user's global config** in the documented precedence order, so a committed value wins against the one a contributor set for themselves. cfgaudit scans it with no OpenCode-specific rule logic:
+
+- **`mcp`** rides the shared MCP rules (CFG010–CFG021, CFG049–CFG059). The `command` array is split into the executable and its arguments, `environment` maps onto `env`, and an entry with `enabled: false` is skipped.
+- **`shell`** (*"Default shell to use for terminal and bash tool"*), **`lsp.<id>.command`** and **`formatter.<id>.command`** are command sites, so the command-content rules read them. An entry with `disabled: true` is not a site, and the `boolean` form of the `lsp` / `formatter` blocks (`"lsp": true` enables the built-ins) declares no command.
+- **`agent.<name>.prompt`** and **`command.<name>.template`** are instruction content (CFG024–CFG036, CFG057): the first replaces that agent's instructions, the second is the text the command sends.
+
+`permission`, `plugin`, `skills` and `instructions` are **not** modelled yet ([#525](https://github.com/cfgaudit/cfgaudit/issues/525)). The permission block needs care rather than parsing: OpenCode's documented defaults are already permissive (*"Most permissions default to `allow`"*, with only `doom_loop` and `external_directory` defaulting to `ask`, and `.env` files denied for `read`), so the common committed `"*": "allow"` mostly restates the default and only a narrow set of values is a real weakening.
 
 ### xAI Grok CLI — `.grok/`
 

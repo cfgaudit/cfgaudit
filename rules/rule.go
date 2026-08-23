@@ -101,6 +101,15 @@ type Target struct {
 	Codex     *parser.CodexConfig
 	CodexFile string
 
+	// OpenCode holds a parsed OpenCode opencode.json, the project config its own
+	// docs call "safe to be checked into Git" and which outranks the user's
+	// global config. Its mcp block rides ProjectMCP; this field carries the rest,
+	// so its lsp/formatter/shell commands become command sites and its agent
+	// prompts and command templates become instruction sources (#525). Nil when
+	// absent; OpenCodeFile is the path it was read from.
+	OpenCode     *parser.OpenCodeConfig
+	OpenCodeFile string
+
 	// Devin holds a parsed Devin CLI project config — .devin/config.json,
 	// committable "shared team configuration" per Devin's docs, or its gitignored
 	// twin .devin/config.local.json. Its mcpServers ride ProjectMCP so the MCP

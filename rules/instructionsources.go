@@ -45,6 +45,42 @@ func (t *Target) instructionSources() []instructionSource {
 	srcs = append(srcs, t.promptHookSources()...)
 	srcs = append(srcs, t.continueRuleSources()...)
 	srcs = append(srcs, t.continueHookPromptSources()...)
+	srcs = append(srcs, t.openCodePromptSources()...)
+	return srcs
+}
+
+// openCodePromptSources returns the instruction text an opencode.json carries
+// inline: an agent's `prompt`, which replaces that agent's instructions, and a
+// command's `template`, which is the text the command sends. Both are trusted
+// context written by whoever committed the file, so they are the same
+// prompt-injection surface as an instruction file.
+//
+// `instructions` is deliberately not here: it names additional files and glob
+// patterns rather than carrying text, so covering it means resolving those paths
+// and reading them, which is discovery work rather than another source.
+func (t *Target) openCodePromptSources() []instructionSource {
+	if t == nil || t.OpenCode == nil {
+		return nil
+	}
+	var srcs []instructionSource
+	for _, name := range sortedKeys2(t.OpenCode.Agent) {
+		if text := strings.TrimSpace(t.OpenCode.Agent[name].Prompt); text != "" {
+			srcs = append(srcs, instructionSource{
+				File:    t.OpenCodeFile,
+				Name:    "opencode agent \"" + name + "\" prompt",
+				Content: t.OpenCode.Agent[name].Prompt,
+			})
+		}
+	}
+	for _, name := range sortedKeys2(t.OpenCode.Command) {
+		if text := strings.TrimSpace(t.OpenCode.Command[name].Template); text != "" {
+			srcs = append(srcs, instructionSource{
+				File:    t.OpenCodeFile,
+				Name:    "opencode command \"" + name + "\" template",
+				Content: t.OpenCode.Command[name].Template,
+			})
+		}
+	}
 	return srcs
 }
 

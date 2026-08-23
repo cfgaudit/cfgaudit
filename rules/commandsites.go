@@ -122,6 +122,22 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// OpenCode's opencode.json declares commands outside its mcp block: `shell`
+	// repoints the interpreter every bash tool call goes through, and each
+	// enabled lsp/formatter entry names a program the agent launches. The
+	// formatter runs on formatting rather than on an explicit user action.
+	if oc := t.OpenCode; oc != nil {
+		if cmd := strings.TrimSpace(oc.Shell); cmd != "" {
+			sites = append(sites, commandSite{Label: "opencode shell command", File: t.OpenCodeFile, Command: cmd})
+		}
+		for _, e := range oc.LSPEntries() {
+			sites = append(sites, commandSite{Label: "opencode lsp." + e.Name + ".command command", File: t.OpenCodeFile, Command: strings.Join(e.Entry.Command, " ")})
+		}
+		for _, e := range oc.FormatterEntries() {
+			sites = append(sites, commandSite{Label: "opencode formatter." + e.Name + ".command command", File: t.OpenCodeFile, Command: strings.Join(e.Entry.Command, " ")})
+		}
+	}
+
 	// Devin CLI .devin/config.json hooks. The shape matches Claude Code's — event
 	// name → groups of {type, command} — and the file is committed to version
 	// control by design, so the same command-content rules apply. Labelled
