@@ -42,6 +42,19 @@ type CodexConfig struct {
 	ChatGPTBaseURL string                   `toml:"chatgpt_base_url"`
 	ModelProviders map[string]CodexProvider `toml:"model_providers"`
 
+	// BrowserUse and ComputerUse are the [browser_use] and [computer_use] tables
+	// Codex added on 2026-08-21. Neither is on PROJECT_LOCAL_CONFIG_DENYLIST, so a
+	// committed config sets both; verified against 0.150.0-alpha.7, where the
+	// repository's values come back through the app server's config/read in a
+	// trusted directory and vanish in an untrusted one.
+	//
+	// Version boundary, measured rather than assumed: 0.149.0 (npm `latest` on
+	// 2026-08-23) has no such field in its config surface at all, so a committed
+	// block is inert there. Presence-based gating handles that on its own — a
+	// build without the surface has no such config to read.
+	BrowserUse  *CodexBrowserUse  `toml:"browser_use"`
+	ComputerUse *CodexComputerUse `toml:"computer_use"`
+
 	// Features is the centralized [features] table. Only guardianv2 is modelled:
 	// it configures Codex's own security reviewer, and `features` is not on
 	// PROJECT_LOCAL_CONFIG_DENYLIST (the only project-layer removal inside it is
@@ -55,6 +68,58 @@ type CodexConfig struct {
 	// self-trust its own hooks.
 	Hooks CodexHookEventsToml `toml:"hooks"`
 }
+
+// CodexBrowserUse is [browser_use]. Every policy value is an AllowDeny enum with
+// exactly two members, so "allow" is the only weakening direction and there is
+// no "ask" middle state to argue about.
+type CodexBrowserUse struct {
+	AllowHistoryAccess  *bool                         `toml:"allow_history_access"`
+	DefaultOriginPolicy *CodexBrowserOriginPolicy     `toml:"default_origin_policy"`
+	Origins             map[string]CodexBrowserOrigin `toml:"origins"`
+}
+
+// CodexBrowserOriginPolicy is the per-origin policy shape, used both for the
+// default and for a named origin.
+type CodexBrowserOriginPolicy struct {
+	Access        string `toml:"access"`
+	Downloads     string `toml:"downloads"`
+	Uploads       string `toml:"uploads"`
+	FullCDPAccess string `toml:"full_cdp_access"`
+}
+
+// CodexBrowserOrigin is one [browser_use.origins."<origin>"] table.
+type CodexBrowserOrigin = CodexBrowserOriginPolicy
+
+// CodexComputerUse is [computer_use], which decides which desktop applications
+// the agent may drive.
+type CodexComputerUse struct {
+	DefaultAppAccess string                   `toml:"default_app_access"`
+	Macos            *CodexComputerUseMacos   `toml:"macos"`
+	Windows          *CodexComputerUseWindows `toml:"windows"`
+}
+
+// CodexComputerUseMacos maps a macOS bundle id to its access.
+type CodexComputerUseMacos struct {
+	BundleIDs map[string]string `toml:"bundle_ids"`
+}
+
+// CodexComputerUseWindows maps an AUMID to its access and lists executables.
+type CodexComputerUseWindows struct {
+	AUMIDs map[string]string            `toml:"aumids"`
+	Exes   []CodexComputerUseWindowsExe `toml:"exes"`
+}
+
+// CodexComputerUseWindowsExe is one entry of [[computer_use.windows.exes]].
+// PublisherName, ProductName and Access are required upstream.
+type CodexComputerUseWindowsExe struct {
+	PublisherName string `toml:"publisher_name"`
+	ProductName   string `toml:"product_name"`
+	BinaryName    string `toml:"binary_name"`
+	Access        string `toml:"access"`
+}
+
+// CodexAllows reports whether an AllowDeny value is the allowing one.
+func CodexAllows(v string) bool { return strings.EqualFold(strings.TrimSpace(v), "allow") }
 
 // CodexFeatures is the subset of the [features] table cfgaudit reads. The
 // wrapper is anyOf: [boolean, table] upstream, so `guardianv2 = false` and a
