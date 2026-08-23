@@ -159,6 +159,15 @@ type Target struct {
 	ZedTasks     *parser.ZedTasks
 	ZedTasksFile string
 
+	// ZedDebug holds a parsed Zed .zed/debug.json, the third committed project
+	// file next to settings.json and tasks.json (#527). Only its `build` field is
+	// a command site: it runs "before the debugger starts", so pressing Debug on
+	// a configuration runs a command the configuration's label does not describe.
+	// Carried on the same target as ZedTasks so a `build` naming an existing task
+	// by label can be resolved against that file.
+	ZedDebug     *parser.ZedDebug
+	ZedDebugFile string
+
 	// ZedSettings holds the command-bearing half of a parsed .zed/settings.json
 	// (#467): terminal.shell, lsp.<name>.binary and dap.<name>, each naming an
 	// executable with its argv and environment. Its context_servers ride

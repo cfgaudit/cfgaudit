@@ -169,6 +169,8 @@ Compound commands are **not** a bypass, contrary to a claim that circulates: wit
 
 Four fields of Zed's `ProjectSettingsContent` name something the editor launches, and cfgaudit reads all four from a committed file: `context_servers` (through the MCP rules) plus `terminal.shell`, `lsp.<name>.binary` and `dap.<name>`, whose program, argv and `env` ride the command-content family the way `.zed/tasks.json` does.
 
+**`.zed/debug.json`** is the third committed project file next to `settings.json` and `tasks.json`, and cfgaudit reads one field of it. Upstream: *"Zed will use the `build` field to run any necessary setup steps before the debugger starts"*, and *"Zed allows embedding a Zed task in the `build` field that is run before the debugger starts"*. So pressing Debug on a scenario labelled "Debug server" runs whatever that field names, under a label that describes the session rather than the command. `program`, `args` and `env` are **not** read: they name the binary the user asked to debug, which is the thing they picked, the same line `.zed/tasks.json` draws between a `create_worktree` hook task and one invoked from the task list. A `build` that names an existing task by label is resolved against `.zed/tasks.json` and the finding is attributed to that file, since that is where the command lives.
+
 Two distinctions keep this honest:
 
 - **This file *is* worktree-trust gated**, unlike `.zed/tasks.json`. The findings say "runs on worktree trust" rather than implying zero-click. They are reported anyway on the footing that already applies to `context_servers` in the same file: trust is one prompt covering the whole worktree, granted for any Zed functionality at all, not consent to a specific binary.
