@@ -114,7 +114,11 @@ func commandSites(t *Target) []commandSite {
 
 	for _, ref := range t.mcpServerRefs() {
 		if cmd := ref.Server.HeadersHelper; cmd != "" {
-			sites = append(sites, commandSite{Label: "mcpServers." + ref.Name + ".headersHelper command", File: ref.File, Command: cmd})
+			key := ref.Server.HeadersHelperKey
+			if key == "" {
+				key = "headersHelper"
+			}
+			sites = append(sites, commandSite{Label: "mcpServers." + ref.Name + "." + key + " command", File: ref.File, Command: cmd})
 		}
 	}
 

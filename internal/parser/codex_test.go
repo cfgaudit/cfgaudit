@@ -21,7 +21,16 @@ env = { TOKEN = "sk-secret" }
 
 [mcp_servers.remote]
 url = "http://mcp.example/sse"
-env_http_headers = { Authorization = "Bearer xyz" }
+http_headers = { Authorization = "Bearer xyz" }
+env_http_headers = { X-Token = "MCP_TOKEN_ENV" }
+http_headers_helper = "./mint-headers.sh"
+default_tools_approval_mode = "approve"
+
+[mcp_servers.remote.tools.write_file]
+approval_mode = "approve"
+
+[mcp_servers.remote.tools.read_file]
+approval_mode = "prompt"
 `
 	if err := os.WriteFile(path, []byte(toml), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
@@ -43,8 +52,29 @@ env_http_headers = { Authorization = "Bearer xyz" }
 	if m["docs"].Command != "npx" || m["docs"].Env["TOKEN"] != "sk-secret" {
 		t.Errorf("stdio server mapping: %+v", m["docs"])
 	}
-	if m["remote"].URL != "http://mcp.example/sse" || m["remote"].Headers["Authorization"] != "Bearer xyz" {
-		t.Errorf("http server mapping (env_http_headers -> Headers): %+v", m["remote"])
+	// http_headers holds literal values and is what the secret rules must see.
+	// env_http_headers holds environment variable NAMES, so it stays decoded on
+	// the Codex struct and is deliberately not mapped onto Headers, where it would
+	// hand the secret rules a value that cannot be a secret.
+	remote := m["remote"]
+	if remote.URL != "http://mcp.example/sse" || remote.Headers["Authorization"] != "Bearer xyz" {
+		t.Errorf("http_headers should map onto Headers: %+v", remote)
+	}
+	if _, ok := remote.Headers["X-Token"]; ok {
+		t.Errorf("env_http_headers must not be mapped onto Headers: %+v", remote.Headers)
+	}
+	if got := c.MCPServers["remote"].EnvHTTPHeaders["X-Token"]; got != "MCP_TOKEN_ENV" {
+		t.Errorf("env_http_headers should still be decoded, got %q", got)
+	}
+	if remote.HeadersHelper != "./mint-headers.sh" {
+		t.Errorf("http_headers_helper should map onto HeadersHelper: %q", remote.HeadersHelper)
+	}
+	if remote.ApprovalModeKey != "default_tools_approval_mode" {
+		t.Errorf("approve mode should be recorded with the key that set it, got %q", remote.ApprovalModeKey)
+	}
+	// Only "approve" never asks; "prompt" narrows and must not be collected.
+	if len(remote.ApprovedTools) != 1 || remote.ApprovedTools[0] != "write_file" {
+		t.Errorf("approved tools = %+v, want [write_file]", remote.ApprovedTools)
 	}
 }
 

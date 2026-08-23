@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -124,31 +125,79 @@ type CodexProvider struct {
 }
 
 // CodexMCP is a Codex [mcp_servers.<name>] table. stdio servers use
-// command/args/env; streamable-http servers use url/env_http_headers.
+// command/args/env; streamable-http servers use url and the header keys below.
+//
+// Codex has two header spellings and they are not interchangeable. http_headers
+// holds literal values, which is where a committed credential would be.
+// env_http_headers holds environment variable NAMES, so it is indirection and
+// cannot carry a secret; it stays decoded and is deliberately not mapped onto
+// the shared Headers field, which the secret rules read as literal values.
 type CodexMCP struct {
 	Command        string            `toml:"command"`
 	Args           []string          `toml:"args"`
 	Env            map[string]string `toml:"env"`
 	URL            string            `toml:"url"`
+	HTTPHeaders    map[string]string `toml:"http_headers"`
 	EnvHTTPHeaders map[string]string `toml:"env_http_headers"`
+
+	// HTTPHeadersHelper is a shell command whose stdout is parsed as a JSON header
+	// map. codex-rs/rmcp-client/src/http_headers.rs runs it as `sh -c "<command>"`
+	// with a 10 second timeout when the HTTP client for the server is built. Same
+	// class as headersHelper in the Claude settings shape.
+	HTTPHeadersHelper string `toml:"http_headers_helper"`
+
+	// DefaultToolsApprovalMode and Tools carry AppToolApproval
+	// (auto | prompt | writes | approve). Only "approve" removes the prompt:
+	// requires_mcp_tool_approval_for_mode returns false for it outright, "auto" is
+	// the default, and "prompt"/"writes" narrow rather than widen.
+	DefaultToolsApprovalMode string                  `toml:"default_tools_approval_mode"`
+	Tools                    map[string]CodexMCPTool `toml:"tools"`
+}
+
+// CodexMCPTool is a [mcp_servers.<name>.tools.<tool>] table, upstream's
+// "Per-tool approval settings for a single MCP server tool".
+type CodexMCPTool struct {
+	ApprovalMode string `toml:"approval_mode"`
+}
+
+// codexApprovalNeverAsks reports whether an AppToolApproval value is the one
+// that removes the confirmation prompt.
+func codexApprovalNeverAsks(mode string) bool {
+	return strings.EqualFold(strings.TrimSpace(mode), "approve")
 }
 
 // MCPServerMap converts the Codex mcp_servers tables to the shared MCPServer
-// shape so the existing MCP rules apply unchanged (command/args/env, url, and
-// env_http_headers mapped onto Headers).
+// shape so the existing MCP rules apply unchanged: command/args/env, url, the
+// literal http_headers mapped onto Headers, the headers helper as a command
+// site, and the approval modes that never ask.
 func (c *CodexConfig) MCPServerMap() map[string]MCPServer {
 	if c == nil || len(c.MCPServers) == 0 {
 		return nil
 	}
 	out := make(map[string]MCPServer, len(c.MCPServers))
 	for name, s := range c.MCPServers {
-		out[name] = MCPServer{
-			Command: s.Command,
-			Args:    s.Args,
-			Env:     s.Env,
-			URL:     s.URL,
-			Headers: s.EnvHTTPHeaders,
+		srv := MCPServer{
+			Command:       s.Command,
+			Args:          s.Args,
+			Env:           s.Env,
+			URL:           s.URL,
+			Headers:       s.HTTPHeaders,
+			HeadersHelper: s.HTTPHeadersHelper,
+			// Codex spells the key http_headers_helper; naming the Claude spelling
+			// in a finding would send the reader grepping for a key that is not in
+			// their file.
+			HeadersHelperKey: "http_headers_helper",
 		}
+		if codexApprovalNeverAsks(s.DefaultToolsApprovalMode) {
+			srv.ApprovalModeKey = "default_tools_approval_mode"
+		}
+		for tool, cfg := range s.Tools {
+			if codexApprovalNeverAsks(cfg.ApprovalMode) {
+				srv.ApprovedTools = append(srv.ApprovedTools, tool)
+			}
+		}
+		sort.Strings(srv.ApprovedTools)
+		out[name] = srv
 	}
 	return out
 }
