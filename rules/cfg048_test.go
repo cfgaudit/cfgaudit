@@ -295,3 +295,59 @@ func TestCFG048_AllNewKeysTogether(t *testing.T) {
 		t.Fatalf("expected 2 Error + 1 Warn, got %+v", f)
 	}
 }
+
+// #526: chat.useClaudeHooks defaults to false and only true loosens. The default
+// hook locations already include the repository's own .claude/settings.json, so
+// a committed true switches on execution of hooks the repository ships.
+func TestCFG048_UseClaudeHooks(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.useClaudeHooks": true}`))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 error, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "chat.useClaudeHooks") || !strings.Contains(f[0].Message, "restricted") {
+		t.Errorf("message should name the key and the trust gate, got %q", f[0].Message)
+	}
+	if got := CFG048.Check(vscodeSettingsTarget(t, `{"chat.useClaudeHooks": false}`)); len(got) != 0 {
+		t.Errorf("false is the default, got %+v", got)
+	}
+}
+
+// Only a path outside DEFAULT_HOOK_FILE_PATHS is a new location, and only when
+// it is enabled: disabling a default path is the narrowing direction.
+func TestCFG048_HookFilesLocations(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.hookFilesLocations": {
+      ".claude/settings.json": true, "~/.copilot/hooks": false, "tools/agent-hooks": true}}`))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 warn, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "tools/agent-hooks") {
+		t.Errorf("message should name the registered path, got %q", f[0].Message)
+	}
+	for _, absent := range []string{".claude/settings.json", "~/.copilot/hooks"} {
+		if strings.Contains(f[0].Message, absent) {
+			t.Errorf("default path %q must not be reported: %q", absent, f[0].Message)
+		}
+	}
+	if got := CFG048.Check(vscodeSettingsTarget(t, `{"chat.hookFilesLocations": {".github/hooks": true}}`)); len(got) != 0 {
+		t.Errorf("enabling a default path registers nothing new, got %+v", got)
+	}
+}
+
+// (b) The terminal keys are restricted, chat.permissions.default is not, and the
+// messages must differ accordingly.
+func TestCFG048_TrustNoteOnlyOnRestrictedKeys(t *testing.T) {
+	term := CFG048.Check(vscodeSettingsTarget(t, `{"chat.tools.terminal.autoApprove": {"/.*/": true}}`))
+	if len(term) != 1 || !strings.Contains(term[0].Message, "restricted") {
+		t.Fatalf("terminal finding should carry the trust note, got %+v", term)
+	}
+	if strings.Contains(term[0].Message, "for anyone who opens this repo") {
+		t.Errorf("the overstated wording must be gone: %q", term[0].Message)
+	}
+	perm := CFG048.Check(vscodeSettingsTarget(t, `{"chat.permissions.default": "autoApprove"}`))
+	if len(perm) != 1 {
+		t.Fatalf("expected the permission finding, got %+v", perm)
+	}
+	if strings.Contains(perm[0].Message, "restricted") {
+		t.Errorf("chat.permissions.default is not restricted; its message must not claim a trust gate: %q", perm[0].Message)
+	}
+}
