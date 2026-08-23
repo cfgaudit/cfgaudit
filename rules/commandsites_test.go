@@ -211,3 +211,68 @@ func TestCommandSites_SubagentStatusLineWithoutCommand_NoSite(t *testing.T) {
 		}
 	}
 }
+
+// #522: a settings file that declares a plugin marketplace carries commands of
+// its own. Claude Code's dangerous-settings inventory names these three paths,
+// and its validator types source.headersHelper as a string on a project file.
+func TestCommandSites_SettingsMarketplaceCommands(t *testing.T) {
+	tgt := settingsTarget(t, `{"extraKnownMarketplaces": {"acme": {
+      "headersHelper": "./entry-helper.sh",
+      "source": {"source": "url", "url": "https://acme.example/mk.json", "headersHelper": "./source-helper.sh"},
+      "plugins": [
+        {"name": "tool", "source": {"source": "command", "command": "./produce.sh"}},
+        {"name": "pinned", "source": {"source": "github", "repo": "acme/p", "sha": "d34db33f"}}
+      ]}}}`)
+	got := map[string]string{}
+	for _, s := range commandSites(tgt) {
+		got[s.Label] = s.Command
+	}
+	want := map[string]string{
+		"extraKnownMarketplaces.acme.headersHelper command":               "./entry-helper.sh",
+		"extraKnownMarketplaces.acme.source.headersHelper command":        "./source-helper.sh",
+		"extraKnownMarketplaces.acme.plugins.tool.source.command command": "./produce.sh",
+	}
+	for label, cmd := range want {
+		if got[label] != cmd {
+			t.Errorf("site %q = %q, want %q (all: %+v)", label, got[label], cmd, got)
+		}
+	}
+	for label := range got {
+		if strings.Contains(label, "pinned") {
+			t.Errorf("a github source is not a command site: %q", label)
+		}
+	}
+}
+
+// The alias spelling declares the same marketplace, so it carries the same
+// command sites and they are labelled with the spelling the file used.
+func TestCommandSites_SettingsMarketplaceCommands_AliasSpelling(t *testing.T) {
+	tgt := settingsTarget(t, `{"additionalMarketplaces": {"acme": {
+      "source": {"source": "url", "url": "https://acme.example/mk.json", "headersHelper": "./h.sh"}}}}`)
+	sites := commandSites(tgt)
+	if len(sites) != 1 || sites[0].Label != "additionalMarketplaces.acme.source.headersHelper command" {
+		t.Fatalf("expected the alias-labelled site, got %+v", sites)
+	}
+}
+
+// A committed marketplace manifest declares the same two command kinds for the
+// people who install from it.
+func TestCommandSites_MarketplaceManifestCommands(t *testing.T) {
+	tgt := marketplaceTargetFor(t, `{"plugins": [
+      {"name": "builder", "source": {"source": "command", "command": "./produce.sh"}},
+      {"name": "fetcher", "source": {"source": "archive", "url": "https://a.example/p.zip",
+                                     "sha256": "abc", "headersHelper": "./mint.sh"}}]}`)
+	got := map[string]string{}
+	for _, s := range commandSites(tgt) {
+		got[s.Label] = s.Command
+	}
+	want := map[string]string{
+		"marketplace.json plugin \"builder\" source.command command":       "./produce.sh",
+		"marketplace.json plugin \"fetcher\" source.headersHelper command": "./mint.sh",
+	}
+	for label, cmd := range want {
+		if got[label] != cmd {
+			t.Errorf("site %q = %q, want %q (all: %+v)", label, got[label], cmd, got)
+		}
+	}
+}

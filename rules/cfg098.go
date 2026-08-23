@@ -60,6 +60,18 @@ func (r *cfg098) Check(t *Target) []finding.Finding {
 					" Claude Code compares the hash only when the entry declares one, so an absent sha256 means the download is never checked. Upstream documents this as users getting an update \"whenever the hosted zip file's bytes change\"." +
 					" Add the sha256 of the archive you published",
 			})
+		case "command":
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG098",
+				Severity: finding.Error,
+				Scope:    t.Scope,
+				File:     t.MarketplaceFile,
+				Message: where + " is produced by running a shell command on the installing machine, not fetched from a source anything can pin." +
+					" Upstream describes the type as a \"Shell command that prints the absolute path of the plugin directory on stdout (exactly one line) and exits 0\", so the plugin is whatever that command leaves behind when it runs." +
+					" The command is shown and accepted at explicit install or update, and it is then re-resolved in the background for as long as it stays byte-identical, so the consent covers the command text rather than what the command does on any later run." +
+					modeNote(s.Source.Mode) +
+					" Publish the plugin from a source that names a fixed revision instead",
+			})
 		case "npm":
 			registry := strings.TrimSpace(s.Source.Registry)
 			if registry == "" || isDefaultNPMRegistry(registry) {
@@ -76,6 +88,16 @@ func (r *cfg098) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+// modeNote spells out the extra property of a link-mode command source: the
+// produced directory is used in place rather than copied into the plugin cache,
+// so its content stays under the producer's control after the install.
+func modeNote(mode string) string {
+	if strings.EqualFold(strings.TrimSpace(mode), "link") {
+		return " This entry sets mode \"link\", so the produced directory is used where it lies instead of being copied into the plugin cache, and its contents can change after install without any re-resolve."
+	}
+	return ""
 }
 
 // isDefaultNPMRegistry reports whether a registry URL points at the public npm

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 )
 
 // Settings is a partial representation of Claude Code's settings.json.
@@ -92,6 +93,60 @@ func (s *Settings) Marketplaces() (json.RawMessage, string) {
 		return raw, MarketplacesAliasKey
 	}
 	return nil, ""
+}
+
+// SettingsMarketplace is one entry of the extra-marketplaces object in a settings
+// file. It carries the same source shape as a marketplace manifest, plus the
+// inline plugin catalog a settings-declared marketplace may bring with it.
+//
+// The command-bearing fields are the reason this is decoded: Claude Code's own
+// dangerous-settings inventory lists exactly
+// `extraKnownMarketplaces[].source.headersHelper`,
+// `extraKnownMarketplaces[].headersHelper` and
+// `extraKnownMarketplaces[].plugins[].source.command`.
+type SettingsMarketplace struct {
+	Source        MarketplaceSource         `json:"source"`
+	HeadersHelper string                    `json:"headersHelper"`
+	Plugins       []SettingsMarketplacePlug `json:"plugins"`
+}
+
+// SettingsMarketplacePlug is one entry of a settings-inline plugin catalog.
+type SettingsMarketplacePlug struct {
+	Name   string            `json:"name"`
+	Source MarketplaceSource `json:"source"`
+}
+
+// MarketplaceEntries decodes the extra-marketplaces object, resolving the alias
+// spelling the same way Marketplaces does. Names are returned sorted so findings
+// are stable. A value that does not decode yields no entries rather than an
+// error: the schema gains fields over time, and refusing to parse a newer shape
+// would drop the whole block instead of the part cfgaudit does not model yet.
+func (s *Settings) MarketplaceEntries() ([]NamedSettingsMarketplace, string) {
+	raw, key := s.Marketplaces()
+	if len(raw) == 0 {
+		return nil, ""
+	}
+	var decoded map[string]SettingsMarketplace
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, key
+	}
+	names := make([]string, 0, len(decoded))
+	for name := range decoded {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]NamedSettingsMarketplace, 0, len(names))
+	for _, name := range names {
+		out = append(out, NamedSettingsMarketplace{Name: name, Entry: decoded[name]})
+	}
+	return out, key
+}
+
+// NamedSettingsMarketplace pairs a decoded entry with the name it was declared
+// under, so a finding can name the marketplace rather than an index.
+type NamedSettingsMarketplace struct {
+	Name  string
+	Entry SettingsMarketplace
 }
 
 // SandboxConfig is the subset of the sandbox settings object cfgaudit inspects.
