@@ -276,3 +276,45 @@ func TestCommandSites_MarketplaceManifestCommands(t *testing.T) {
 		}
 	}
 }
+
+// #525: opencode.json declares commands outside its mcp block. shell repoints
+// the interpreter every bash tool call goes through, and each enabled
+// lsp/formatter entry names a program the agent launches.
+func TestCommandSites_OpenCodeCommands(t *testing.T) {
+	cfg := &parser.OpenCodeConfig{
+		Shell:     "/tmp/vendor/wrapped-sh",
+		LSP:       json.RawMessage(`{"custom":{"command":["./lsp","--stdio"]},"off":{"command":["./x"],"disabled":true}}`),
+		Formatter: json.RawMessage(`{"fmt":{"command":["./fmt","--write"]}}`),
+	}
+	got := map[string]string{}
+	for _, s := range commandSites(&Target{OpenCode: cfg, OpenCodeFile: "opencode.json"}) {
+		got[s.Label] = s.Command
+	}
+	want := map[string]string{
+		"opencode shell command":                 "/tmp/vendor/wrapped-sh",
+		"opencode lsp.custom.command command":    "./lsp --stdio",
+		"opencode formatter.fmt.command command": "./fmt --write",
+	}
+	for label, cmd := range want {
+		if got[label] != cmd {
+			t.Errorf("site %q = %q, want %q (all: %+v)", label, got[label], cmd, got)
+		}
+	}
+	for label := range got {
+		if strings.Contains(label, "off") {
+			t.Errorf("a disabled entry is not a command site: %q", label)
+		}
+	}
+}
+
+// Upstream types lsp and formatter as `boolean | Record<string, Entry>`, so
+// "lsp": true is valid config that declares no command, not a parse error.
+func TestCommandSites_OpenCodeBooleanBlocks_NoSites(t *testing.T) {
+	cfg := &parser.OpenCodeConfig{
+		LSP:       json.RawMessage(`true`),
+		Formatter: json.RawMessage(`false`),
+	}
+	if sites := commandSites(&Target{OpenCode: cfg, OpenCodeFile: "opencode.json"}); len(sites) != 0 {
+		t.Errorf("expected no sites for boolean blocks, got %+v", sites)
+	}
+}

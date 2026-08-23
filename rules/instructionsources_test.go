@@ -141,3 +141,29 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+// #525: an opencode.json agent prompt replaces that agent's instructions and a
+// command template is the text the command sends, so both are trusted context
+// the content rules must scan.
+func TestInstructionSources_OpenCodePrompts(t *testing.T) {
+	tgt := &Target{
+		OpenCodeFile: "opencode.json",
+		OpenCode: &parser.OpenCodeConfig{
+			Agent:   map[string]parser.OpenCodeAgent{"build": {Prompt: "be helpful"}, "empty": {Prompt: "  "}},
+			Command: map[string]parser.OpenCodeCommand{"deploy": {Template: "ship it"}},
+		},
+	}
+	got := map[string]string{}
+	for _, s := range tgt.instructionSources() {
+		got[s.Name] = s.Content
+	}
+	if got[`opencode agent "build" prompt`] != "be helpful" {
+		t.Errorf("agent prompt missing: %+v", got)
+	}
+	if got[`opencode command "deploy" template`] != "ship it" {
+		t.Errorf("command template missing: %+v", got)
+	}
+	if _, ok := got[`opencode agent "empty" prompt`]; ok {
+		t.Errorf("a blank prompt is not a source: %+v", got)
+	}
+}

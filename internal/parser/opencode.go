@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -22,12 +23,109 @@ import (
 // with no trust prompt and no folder-trust concept in the resolved config, whose
 // keys were agent, command, mcp, mode, plugin and username.
 //
-// Only `mcp` is modelled here. The file also carries `agent`, `command`,
-// `instructions`, `shell`, `formatter`, `lsp` and `permission`, each of which is
-// a surface of its own with its own false-positive question; they are follow-ups
-// rather than dead config parsed ahead of a rule (#497).
+// Beyond `mcp` this reads the keys that carry a command, instruction text, or a
+// permission decision (#525). `plugin` and `skills` are still unmodelled: both
+// need their own false-positive measurement before a rule, and parsing them
+// ahead of one would be dead config.
 type OpenCodeConfig struct {
 	MCP map[string]OpenCodeMCP `json:"mcp,omitempty"`
+
+	// Shell is the "Default shell to use for terminal and bash tool", so a
+	// committed value repoints the interpreter every bash tool call goes through.
+	Shell string `json:"shell,omitempty"`
+
+	// LSP and Formatter each hold a command array per entry. Upstream types both
+	// blocks as `boolean | Record<string, Entry>`, so the raw form is kept and
+	// decoded tolerantly: `"lsp": true` is valid config, not a parse error.
+	LSP       json.RawMessage `json:"lsp,omitempty"`
+	Formatter json.RawMessage `json:"formatter,omitempty"`
+
+	// Instructions are "Additional instruction files or patterns to include", so
+	// a committed value pulls more files into every request.
+	Instructions []string `json:"instructions,omitempty"`
+
+	// Agent and Command carry instruction text inline: an agent's `prompt`
+	// replaces its instructions, and a command's `template` is the text the
+	// command sends.
+	Agent   map[string]OpenCodeAgent   `json:"agent,omitempty"`
+	Command map[string]OpenCodeCommand `json:"command,omitempty"`
+
+	// Permission is `ask | allow | deny`, either as a bare string applying to
+	// "*" or as an object of rules, and it repeats per agent. It is kept raw
+	// because the value is a union of three shapes; PermissionGrants decodes it.
+	Permission json.RawMessage `json:"permission,omitempty"`
+}
+
+// OpenCodeAgent is one `agent.<name>` entry. Only the fields cfgaudit reads are
+// modelled: Prompt is instruction text, Permission repeats the top-level block
+// for that agent.
+type OpenCodeAgent struct {
+	Prompt     string          `json:"prompt,omitempty"`
+	Permission json.RawMessage `json:"permission,omitempty"`
+}
+
+// OpenCodeCommand is one `command.<name>` entry. Template is required upstream
+// and is the text the command sends.
+type OpenCodeCommand struct {
+	Template string `json:"template,omitempty"`
+}
+
+// OpenCodeToolEntry is one `lsp.<id>` or `formatter.<id>` entry. Both carry a
+// command array; `disabled: true` switches the entry off, which is the narrowing
+// direction and therefore not a command site.
+type OpenCodeToolEntry struct {
+	Command     []string          `json:"command,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+	Environment map[string]string `json:"environment,omitempty"`
+	Disabled    bool              `json:"disabled,omitempty"`
+}
+
+// toolEntries decodes a `boolean | Record<string, Entry>` block, returning the
+// enabled entries by name in sorted order. A boolean (or anything else) yields
+// none: `"lsp": true` means "enable the built-ins", which declares no command.
+func toolEntries(raw json.RawMessage) []NamedOpenCodeToolEntry {
+	if len(raw) == 0 {
+		return nil
+	}
+	var decoded map[string]OpenCodeToolEntry
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(decoded))
+	for name := range decoded {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var out []NamedOpenCodeToolEntry
+	for _, name := range names {
+		if decoded[name].Disabled || len(decoded[name].Command) == 0 {
+			continue
+		}
+		out = append(out, NamedOpenCodeToolEntry{Name: name, Entry: decoded[name]})
+	}
+	return out
+}
+
+// NamedOpenCodeToolEntry pairs an lsp/formatter entry with its id.
+type NamedOpenCodeToolEntry struct {
+	Name  string
+	Entry OpenCodeToolEntry
+}
+
+// LSPEntries and FormatterEntries return the enabled entries that declare a
+// command.
+func (c *OpenCodeConfig) LSPEntries() []NamedOpenCodeToolEntry {
+	if c == nil {
+		return nil
+	}
+	return toolEntries(c.LSP)
+}
+
+func (c *OpenCodeConfig) FormatterEntries() []NamedOpenCodeToolEntry {
+	if c == nil {
+		return nil
+	}
+	return toolEntries(c.Formatter)
 }
 
 // OpenCodeMCP is one `mcp.<name>` entry. The shape differs from every other

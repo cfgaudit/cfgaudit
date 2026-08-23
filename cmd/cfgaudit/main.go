@@ -1824,12 +1824,18 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err != nil {
 		return nil, err
 	}
-	if servers := openCodeCfg.MCPServerMap(); len(servers) > 0 {
-		targets = append(targets, &rules.Target{
-			Scope:          finding.ScopeProject,
-			ProjectMCP:     servers,
-			ProjectMCPFile: openCodePath,
-		})
+	if openCodeCfg != nil {
+		servers := openCodeCfg.MCPServerMap()
+		tgt := &rules.Target{
+			Scope:        finding.ScopeProject,
+			OpenCode:     openCodeCfg,
+			OpenCodeFile: openCodePath,
+		}
+		if len(servers) > 0 {
+			tgt.ProjectMCP = servers
+			tgt.ProjectMCPFile = openCodePath
+		}
+		targets = append(targets, tgt)
 	}
 
 	// Grok .grok/hooks/*.json — committable hook files whose command handlers run
