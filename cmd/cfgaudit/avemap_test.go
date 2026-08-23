@@ -38,6 +38,12 @@ func TestAVEMap_ConsistentWithCrosswalk(t *testing.T) {
 		if !strings.Contains(doc, aveID) {
 			t.Errorf("%s → %s is not referenced in docs/cfgaudit-to-ave.md — map and crosswalk have drifted", ruleID, aveID)
 		}
+		// The rule id has to be there too. Checking only the AVE id let three
+		// mappings land while the crosswalk still listed neither rule, because
+		// the classes they joined were already named by other rules.
+		if !strings.Contains(doc, ruleID) {
+			t.Errorf("%s is mapped to %s but does not appear in docs/cfgaudit-to-ave.md — the crosswalk does not say which rule carries the class", ruleID, aveID)
+		}
 	}
 }
 
