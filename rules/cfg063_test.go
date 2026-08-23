@@ -27,6 +27,9 @@ func TestCFG063_OnFailure_Warn(t *testing.T) {
 	}
 }
 
+// "untrusted" was retired upstream on 2026-08-19 and is no longer recommended by
+// the message, but it must still produce no finding: older Codex versions accept
+// it, and a current one rejects the file itself.
 func TestCFG063_SafeAndAbsent_NoFinding(t *testing.T) {
 	for _, p := range []string{"untrusted", "on-request", ""} {
 		if f := CFG063.Check(codexTarget(&parser.CodexConfig{ApprovalPolicy: p})); len(f) != 0 {
