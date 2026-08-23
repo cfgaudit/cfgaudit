@@ -42,12 +42,93 @@ type CodexConfig struct {
 	ChatGPTBaseURL string                   `toml:"chatgpt_base_url"`
 	ModelProviders map[string]CodexProvider `toml:"model_providers"`
 
+	// Features is the centralized [features] table. Only guardianv2 is modelled:
+	// it configures Codex's own security reviewer, and `features` is not on
+	// PROJECT_LOCAL_CONFIG_DENYLIST (the only project-layer removal inside it is
+	// features.respect_system_proxy), so a committed value crosses.
+	Features CodexFeatures `toml:"features"`
+
 	// Hooks is the inline [hooks] table, the TOML twin of .codex/hooks.json.
 	// `hooks` is deliberately NOT on Codex's PROJECT_LOCAL_CONFIG_DENYLIST, so a
 	// committed table is discovered (#431). Its `state` sub-table is not decoded:
 	// only User and SessionFlags layers may write hook state, so a repo cannot
 	// self-trust its own hooks.
 	Hooks CodexHookEventsToml `toml:"hooks"`
+}
+
+// CodexFeatures is the subset of the [features] table cfgaudit reads. The
+// wrapper is anyOf: [boolean, table] upstream, so `guardianv2 = false` and a
+// table carrying `enabled = false` are two spellings of the same thing; both are
+// decoded here.
+//
+// Note the version split, measured rather than assumed: Codex 0.147.0 rejects
+// the TABLE form outright ("invalid type: map, expected a boolean in `features`"
+// → "Invalid configuration; using defaults"), while 0.150.0-alpha.7 resolves it.
+// So the boolean spelling weakens both, and the table spelling only weakens a
+// build new enough to understand it, and invalidates the file on an older one.
+type CodexFeatures struct {
+	GuardianV2 *CodexGuardianV2 `toml:"guardianv2"`
+}
+
+// CodexGuardianV2 is [features.guardianv2], upstream's "User-configurable
+// prompt, approval, and context settings for Guardian v2".
+//
+// Three fields decide whether the reviewer works, and all three resolve from the
+// merged layer stack. Verified against 0.150.0-alpha.7 with an isolated
+// CODEX_HOME: a committed .codex/config.toml in a trusted directory comes back
+// through the app server's config/read as
+// {"enabled": false, "classifier_instructions": "<marker>", "review_threshold": 0.95},
+// while the same file in an untrusted directory contributes nothing at all.
+type CodexGuardianV2 struct {
+	// Bool carries the `guardianv2 = false` spelling. Nil when the table form was
+	// used instead.
+	Bool *bool `toml:"-"`
+
+	Enabled *bool `toml:"enabled"`
+	// ReviewThreshold is the score at or above which the blocking reviewer runs
+	// on future actions. DEFAULT_REVIEW_THRESHOLD is 0.5, so a higher value
+	// narrows what escalates and 1.0 means effectively nothing does.
+	ReviewThreshold *float64 `toml:"review_threshold"`
+	// ClassifierInstructions replaces the reviewer's prompt outright.
+	ClassifierInstructions string `toml:"classifier_instructions"`
+}
+
+// UnmarshalTOML accepts both spellings of the feature wrapper: a bare boolean
+// and a table.
+func (g *CodexGuardianV2) UnmarshalTOML(v any) error {
+	switch val := v.(type) {
+	case bool:
+		g.Bool = &val
+		return nil
+	case map[string]any:
+		if b, ok := val["enabled"].(bool); ok {
+			g.Enabled = &b
+		}
+		switch t := val["review_threshold"].(type) {
+		case float64:
+			g.ReviewThreshold = &t
+		case int64:
+			f := float64(t)
+			g.ReviewThreshold = &f
+		}
+		if s, ok := val["classifier_instructions"].(string); ok {
+			g.ClassifierInstructions = s
+		}
+		return nil
+	default:
+		return nil // a shape this version does not model
+	}
+}
+
+// Off reports whether the block switches the reviewer off, in either spelling.
+func (g *CodexGuardianV2) Off() bool {
+	if g == nil {
+		return false
+	}
+	if g.Bool != nil && !*g.Bool {
+		return true
+	}
+	return g.Enabled != nil && !*g.Enabled
 }
 
 // HookEvents returns the inline [hooks] table as the shared CodexHooks shape.
