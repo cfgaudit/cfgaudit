@@ -45,7 +45,8 @@ func (s *Settings) StringField(key string) string {
 }
 
 // CommandHelperField returns the .command of a {"type":..,"command":..} object
-// key (statusLine, fileSuggestion). Missing or mistyped values yield "".
+// key (statusLine, subagentStatusLine, fileSuggestion). Missing or mistyped
+// values yield "".
 func (s *Settings) CommandHelperField(key string) string {
 	raw, ok := s.Raw[key]
 	if !ok {

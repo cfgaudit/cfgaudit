@@ -51,6 +51,15 @@ func TestCFG012_AllowlistedMcpServers_NoFinding(t *testing.T) {
 	}
 }
 
+// subagentStatusLine is a real, executed key that the bundled schema does not
+// carry. cfgaudit reads it as a command site, so CFG012 must not call it unknown.
+func TestCFG012_AllowlistedSubagentStatusLine_NoFinding(t *testing.T) {
+	f := CFG012.Check(settingsTarget(t, `{"subagentStatusLine":{"type":"command","command":"./bar.sh"}}`))
+	if len(f) != 0 {
+		t.Errorf("expected no finding for allowlisted subagentStatusLine, got %d: %+v", len(f), f)
+	}
+}
+
 func TestCFG012_AllowlistedDefaultMode_NoFinding(t *testing.T) {
 	f := CFG012.Check(settingsTarget(t, `{"defaultMode":"plan"}`))
 	if len(f) != 0 {

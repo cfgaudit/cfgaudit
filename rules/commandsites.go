@@ -11,8 +11,14 @@ import (
 // another agent) executes. The content rules (CFG008/009/014/015/…) inspect every
 // site uniformly: hooks are not the only place a repo-controlled config can
 // smuggle a command — credential helpers (apiKeyHelper, awsCredentialExport, …),
-// the status line, OTEL headers, file-suggestion scripts (CVE-2025-59536 attack
-// class), and each MCP server's headersHelper all run a shell command too.
+// the status line and its subagent twin, OTEL headers, file-suggestion scripts
+// (CVE-2025-59536 attack class), and each MCP server's headersHelper all run a
+// shell command too.
+//
+// subagentStatusLine is undocumented in the settings reference; the client's own
+// diagnostics are what put it on this list ("Skipping subagentStatusLine
+// execution - workspace trust not accepted", plus its exit and output-schema
+// errors). Same value shape and same trust gate as statusLine.
 type commandSite struct {
 	// Label is the finding-friendly origin of the command, already phrased as a
 	// noun ending in "command" (e.g. "hooks.SessionStart command", "apiKeyHelper
@@ -61,6 +67,7 @@ func commandSites(t *Target) []commandSite {
 		add("gcpAuthRefresh", s.StringField("gcpAuthRefresh"))
 		add("otelHeadersHelper", s.StringField("otelHeadersHelper"))
 		add("statusLine", s.CommandHelperField("statusLine"))
+		add("subagentStatusLine", s.CommandHelperField("subagentStatusLine"))
 		add("fileSuggestion", s.CommandHelperField("fileSuggestion"))
 	}
 
