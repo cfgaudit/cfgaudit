@@ -6,13 +6,21 @@ import (
 	"os"
 )
 
-// DevinConfig is the subset of Devin CLI's .devin/config.json that cfgaudit
-// reads. The file is described by Devin's own docs as "shared team configuration
-// committed to version control", so it is a committable surface.
+// DevinConfig is the subset of Devin CLI's project config that cfgaudit reads.
+// It backs all four project files: .devin/config.json ("Project settings
+// (committed)"), .devin/config.local.json ("Project local overrides
+// (gitignored)"), .devin/mcp_config.json ("Project MCP servers (committed)") and
+// .devin/mcp_config.local.json ("Project local MCP servers (gitignored)"). The
+// committed pair is described by Devin's own docs as "shared team configuration
+// committed to version control", so it is a committable surface; the gitignored
+// pair is read because a committed one still applies, and wins.
 //
-// Only four keys are honoured in a *project* config — permissions, mcpServers,
-// read_config_from and hooks — and only the security-relevant three are modelled
-// here. read_config_from is deliberately not one of them: its eight keys all
+// Only permissions, read_config_from and hooks are honoured in a *project*
+// config, and mcpServers is set at both levels but lives in the dedicated
+// mcp_config.json files since v3000.3 ("the Local 3.6 release"). The key is
+// still decoded here: older versions read servers from the main config, and
+// newer ones migrate such entries on startup, so both locations are real. The
+// security-relevant keys are modelled and read_config_from is not. read_config_from is deliberately not one of them: its eight keys all
 // default to true when absent, so the only thing a committed value can do is
 // NARROW which other tools' files are imported. It grants a repository no
 // capability it could not get by writing this file directly. What it does affect

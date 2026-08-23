@@ -1685,19 +1685,67 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
-	devinPath := filepath.Join(dir, ".devin", "config.json")
-	devinCfg, err := loadDevinConfigOptional(devinPath)
-	if err != nil {
-		return nil, err
+	// Devin CLI keeps four project files, and its configuration reference names
+	// each one's purpose: .devin/config.json "Project settings (committed)",
+	// .devin/config.local.json "Project local overrides (gitignored)",
+	// .devin/mcp_config.json "Project MCP servers (committed)" and
+	// .devin/mcp_config.local.json "Project local MCP servers (gitignored)".
+	//
+	// The dedicated MCP files are where servers live since v3000.3 ("the Local
+	// 3.6 release"); the mcpServers key of the main config is still honoured by
+	// older versions and migrated on startup by newer ones, so both locations are
+	// read rather than one replacing the other.
+	//
+	// The .local twins get ScopeProjectLocal, the scope cfgaudit already uses for
+	// .claude/settings.local.json and .continue/settings.local.json: gitignored by
+	// design, so a committed one is worth naming as its own file.
+	devinConfigs := []struct {
+		rel   string
+		scope finding.Scope
+	}{
+		{filepath.Join(".devin", "config.json"), finding.ScopeProject},
+		{filepath.Join(".devin", "config.local.json"), finding.ScopeProjectLocal},
 	}
-	if devinCfg != nil && (len(devinCfg.MCPServers) > 0 || len(devinCfg.Hooks) > 0) {
-		targets = append(targets, &rules.Target{
-			Scope:          finding.ScopeProject,
-			Devin:          devinCfg,
-			DevinFile:      devinPath,
-			ProjectMCP:     devinCfg.MCPServers,
-			ProjectMCPFile: devinPath,
-		})
+	for _, dc := range devinConfigs {
+		devinPath := filepath.Join(dir, dc.rel)
+		devinCfg, err := loadDevinConfigOptional(devinPath)
+		if err != nil {
+			return nil, err
+		}
+		if devinCfg != nil && (len(devinCfg.MCPServers) > 0 || len(devinCfg.Hooks) > 0) {
+			targets = append(targets, &rules.Target{
+				Scope:          dc.scope,
+				Devin:          devinCfg,
+				DevinFile:      devinPath,
+				ProjectMCP:     devinCfg.MCPServers,
+				ProjectMCPFile: devinPath,
+			})
+		}
+	}
+
+	// The dedicated MCP files carry only mcpServers, so they contribute a
+	// ProjectMCP target and no Devin target: hooks and permissions are not read
+	// from them, and attributing a hook finding to an MCP file would be wrong.
+	devinMCPConfigs := []struct {
+		rel   string
+		scope finding.Scope
+	}{
+		{filepath.Join(".devin", "mcp_config.json"), finding.ScopeProject},
+		{filepath.Join(".devin", "mcp_config.local.json"), finding.ScopeProjectLocal},
+	}
+	for _, dm := range devinMCPConfigs {
+		mcpPath := filepath.Join(dir, dm.rel)
+		mcpCfg, err := loadDevinConfigOptional(mcpPath)
+		if err != nil {
+			return nil, err
+		}
+		if mcpCfg != nil && len(mcpCfg.MCPServers) > 0 {
+			targets = append(targets, &rules.Target{
+				Scope:          dm.scope,
+				ProjectMCP:     mcpCfg.MCPServers,
+				ProjectMCPFile: mcpPath,
+			})
+		}
 	}
 
 	zedPath := filepath.Join(dir, ".zed", "settings.json")
