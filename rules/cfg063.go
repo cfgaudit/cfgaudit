@@ -28,6 +28,15 @@ func (r *cfg063) ID() string { return "CFG063" }
 // escalations — to a reviewer subagent instead of the person. A committed file
 // can therefore look safe on approval_policy and still have nobody watching.
 //
+// The remediation deliberately names only "on-request". Codex retired the
+// "untrusted" policy on 2026-08-19 ("Remove `untrusted` from the CLI,
+// configuration schema, and MCP tool interface. Explicit `approval_policy =
+// "untrusted"` settings now fail with an actionable error"), so recommending it
+// would hand the reader a config that no longer loads. "on-request" is valid
+// before and after that change, which is why no version gate is needed here.
+// A file that still carries "untrusted" stays unreported: older Codex versions
+// accept it, and on a current one the CLI raises its own error.
+//
 // approvals_reviewer is warn, not error: Codex's own field documentation says it
 // "does not disable separate safety checks such as ARC", and the subagent applies
 // a risk framework rather than blanket-approving, so it is a weaker claim than
@@ -50,7 +59,7 @@ func (r *cfg063) Check(t *Target) []finding.Finding {
 
 	switch strings.ToLower(strings.TrimSpace(t.Codex.ApprovalPolicy)) {
 	case "never":
-		add(finding.Error, "Codex approval_policy is \"never\" — commands are auto-approved without ever asking the user, the Codex equivalent of defaultMode: bypassPermissions (CFG004). Use \"untrusted\" or \"on-request\" to keep a human in the loop")
+		add(finding.Error, "Codex approval_policy is \"never\" — commands are auto-approved without ever asking the user, the Codex equivalent of defaultMode: bypassPermissions (CFG004). Use \"on-request\" to keep a human in the loop")
 	case "on-failure":
 		add(finding.Warn, "Codex approval_policy is \"on-failure\" (deprecated) — all commands are auto-approved and only escalated to the user on failure. Prefer \"on-request\" so actions are approved before they run")
 	}
