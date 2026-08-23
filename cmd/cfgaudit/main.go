@@ -1750,7 +1750,9 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if err != nil {
 			return nil, err
 		}
-		if devinCfg != nil && (len(devinCfg.MCPServers) > 0 || len(devinCfg.Hooks) > 0) {
+		// permissions joins the gate now that CFG104 reads it: a file carrying only
+		// an allow list is exactly the case that rule exists for.
+		if devinCfg != nil && (len(devinCfg.MCPServers) > 0 || len(devinCfg.Hooks) > 0 || devinCfg.Permissions != nil) {
 			targets = append(targets, &rules.Target{
 				Scope:          dc.scope,
 				Devin:          devinCfg,
