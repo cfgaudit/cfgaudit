@@ -280,3 +280,39 @@ models:
         X-Api-Key: "'sm_live_8f2a7c1b9e4d5a3f6b0c2d8e1a4f7c9b3d0e6a2f'"
 `)), finding.Error)
 }
+
+// #521: additionalMarketplaces is an alias Claude Code reads "exactly as if it
+// were spelled extraKnownMarketplaces", so the same headers are sent and the
+// finding names the spelling the file used.
+func TestCFG050_MarketplaceHeaderCredential_AliasSpelling(t *testing.T) {
+	got := onlyFinding(t, CFG050.Check(settingsTarget(t, `{
+      "additionalMarketplaces": {
+        "acme": {"source": {"source": "url", "url": "https://acme.example/mk.json",
+                 "headers": {"Authorization": "Bearer sk-live-9f2c8d1a4b6e"}}}
+      }}`)), finding.Error)
+	for _, want := range []string{"additionalMarketplaces.acme.source.headers.Authorization", "hardcoded"} {
+		if !strings.Contains(got.Message, want) {
+			t.Errorf("message should contain %q, got %q", want, got.Message)
+		}
+	}
+}
+
+// A file carrying both spellings is resolved the way Claude Code resolves it:
+// the canonical key is read and the alias is ignored. Verified against 2.1.241,
+// which reports the same case as "this file sets both; the
+// "additionalMarketplaces" value was ignored".
+func TestCFG050_MarketplaceHeaders_BothSpellings_CanonicalWins(t *testing.T) {
+	got := onlyFinding(t, CFG050.Check(settingsTarget(t, `{
+      "extraKnownMarketplaces": {
+        "canonical": {"source": {"headers": {"Authorization": "Bearer sk-live-9f2c8d1a4b6e"}}}
+      },
+      "additionalMarketplaces": {
+        "ignored": {"source": {"headers": {"Authorization": "Bearer sk-live-000011112222"}}}
+      }}`)), finding.Error)
+	if !strings.Contains(got.Message, "extraKnownMarketplaces.canonical") {
+		t.Errorf("expected the canonical entry to be reported, got %q", got.Message)
+	}
+	if strings.Contains(got.Message, "ignored") {
+		t.Errorf("the alias entry is ignored by Claude Code and must not be reported: %q", got.Message)
+	}
+}

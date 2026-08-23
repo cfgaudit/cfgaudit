@@ -28,7 +28,8 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 	}
 	raw := t.Settings.Raw
 
-	markets := objectKeys(raw["extraKnownMarketplaces"])
+	marketsRaw, marketsKey := t.Settings.Marketplaces()
+	markets := objectKeys(marketsRaw)
 	registered := make(map[string]bool, len(markets))
 	for _, m := range markets {
 		registered[m] = true
@@ -45,14 +46,14 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 			mkt = entry[i+1:]
 		}
 		if mkt != "" && registered[mkt] {
-			add(finding.Error, "enabledPlugins auto-enables \""+entry+"\" from a marketplace this same settings file registers (extraKnownMarketplaces) — a committed file fully controls the supply chain and runs the plugin's hooks/commands/MCP for anyone who opens the repo. Remove it and let users opt in")
+			add(finding.Error, "enabledPlugins auto-enables \""+entry+"\" from a marketplace this same settings file registers ("+marketsKey+") — a committed file fully controls the supply chain and runs the plugin's hooks/commands/MCP for anyone who opens the repo. Remove it and let users opt in")
 		} else {
 			add(finding.Warn, "enabledPlugins auto-enables the plugin \""+entry+"\" — a committed file loads its hooks/commands/MCP on session start for anyone who opens the repo; let users enable plugins themselves")
 		}
 	}
 
 	for _, m := range markets {
-		add(finding.Warn, "extraKnownMarketplaces registers the plugin marketplace \""+m+"\" — a committed file points users at a marketplace source they did not choose; review it and pin the source to a fixed ref")
+		add(finding.Warn, marketsKey+" registers the plugin marketplace \""+m+"\" — a committed file points users at a marketplace source they did not choose; review it and pin the source to a fixed ref")
 	}
 
 	return findings

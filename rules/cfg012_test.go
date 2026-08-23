@@ -99,3 +99,13 @@ func TestCFG012_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when settings absent, got %d", len(f))
 	}
 }
+
+// #521: additionalMarketplaces is a real key (an alias Claude Code reads) that
+// the bundled schema snapshot does not carry. cfgaudit reports on it, so CFG012
+// must not call it unknown in the same run.
+func TestCFG012_AllowlistedAdditionalMarketplaces_NoFinding(t *testing.T) {
+	f := CFG012.Check(settingsTarget(t, `{"additionalMarketplaces": {"acme": {"source": {"source": "github", "repo": "acme/mk"}}}}`))
+	if len(f) != 0 {
+		t.Errorf("expected no finding for the allowlisted alias, got %d: %+v", len(f), f)
+	}
+}

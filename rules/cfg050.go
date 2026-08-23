@@ -132,8 +132,8 @@ func (r *cfg050) checkMarketplaceHeaders(t *Target) []finding.Finding {
 	if t == nil || t.Settings == nil {
 		return nil
 	}
-	raw, ok := t.Settings.Raw["extraKnownMarketplaces"]
-	if !ok || len(raw) == 0 {
+	raw, key := t.Settings.Marketplaces()
+	if len(raw) == 0 {
 		return nil
 	}
 	var entries map[string]struct {
@@ -156,7 +156,7 @@ func (r *cfg050) checkMarketplaceHeaders(t *Target) []finding.Finding {
 		if len(headers) == 0 {
 			continue
 		}
-		findings = append(findings, headerSecrets("extraKnownMarketplaces."+name+".source", headers, t.SettingsFile, t)...)
+		findings = append(findings, headerSecrets(key+"."+name+".source", headers, t.SettingsFile, t)...)
 	}
 	return findings
 }

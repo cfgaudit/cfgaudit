@@ -59,6 +59,41 @@ func (s *Settings) CommandHelperField(key string) string {
 	return v.Command
 }
 
+// MarketplacesKey is the canonical spelling of the settings key that registers
+// extra plugin marketplaces, and MarketplacesAliasKey is the alias Claude Code
+// 2.1.232 added for it.
+const (
+	MarketplacesKey      = "extraKnownMarketplaces"
+	MarketplacesAliasKey = "additionalMarketplaces"
+)
+
+// Marketplaces returns the raw value of the extra-marketplaces key together with
+// the spelling it was written with, so a finding can name the key the file
+// actually used. The second return is "" when neither spelling is present.
+//
+// Claude Code documents the alias as "read exactly as if it were spelled
+// extraKnownMarketplaces", and resolves a file that carries both in favour of the
+// canonical key. Verified against 2.1.241, which accepts an alias-only file
+// silently and reports the other case as: "additionalMarketplaces" is an alias
+// for "extraKnownMarketplaces" and this file sets both; the
+// "additionalMarketplaces" value was ignored.
+//
+// The conflict is judged per file, which is why this reads one Settings rather
+// than a merged view: a repository spelling it one way and a user file the other
+// are two separate declarations, each honoured in its own file.
+func (s *Settings) Marketplaces() (json.RawMessage, string) {
+	if s == nil {
+		return nil, ""
+	}
+	if raw, ok := s.Raw[MarketplacesKey]; ok && len(raw) > 0 {
+		return raw, MarketplacesKey
+	}
+	if raw, ok := s.Raw[MarketplacesAliasKey]; ok && len(raw) > 0 {
+		return raw, MarketplacesAliasKey
+	}
+	return nil, ""
+}
+
 // SandboxConfig is the subset of the sandbox settings object cfgaudit inspects.
 // excludedCommands run outside the execution sandbox; bwrapPath/socatPath point
 // the sandbox's bubblewrap binary and network proxy and are documented as
