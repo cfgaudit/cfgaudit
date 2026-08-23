@@ -99,6 +99,14 @@ func (c *CopilotSettings) HooksDisabled() bool {
 // with a `source` discriminator. The repetition is genuine, not a typo.
 type CopilotMarketplace struct {
 	Source CopilotMarketplaceSource `json:"source,omitempty"`
+
+	// AutoUpdate refreshes the marketplace's plugins at session start. Copilot CLI
+	// 1.0.79: "Set \"autoUpdate\": true on an extraKnownMarketplaces entry in your
+	// user settings to auto-update its plugins at session start". The changelog
+	// names user settings, but the CLI's own resolution merges the repository file
+	// in as well once the folder is trusted, so a committed entry reaches the
+	// same path (see CFG089).
+	AutoUpdate bool `json:"autoUpdate,omitempty"`
 }
 
 // CopilotMarketplaceSource describes where a marketplace's contents come from.
