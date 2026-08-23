@@ -66,9 +66,50 @@ func commandSites(t *Target) []commandSite {
 		add("awsAuthRefresh", s.StringField("awsAuthRefresh"))
 		add("gcpAuthRefresh", s.StringField("gcpAuthRefresh"))
 		add("otelHeadersHelper", s.StringField("otelHeadersHelper"))
+		// Plugin-marketplace declarations in a settings file carry commands of
+		// their own, and Claude Code's dangerous-settings inventory names these
+		// three paths outright. A helper runs at explicit install or update after
+		// the command has been shown; a `command` source produces the plugin
+		// directory by running it. Consent gates what runs, it does not stop a
+		// committed file from choosing the command.
+		entries, mktKey := s.MarketplaceEntries()
+		for _, m := range entries {
+			base := mktKey + "." + m.Name
+			add(base+".headersHelper", m.Entry.HeadersHelper)
+			add(base+".source.headersHelper", m.Entry.Source.HeadersHelper)
+			if m.Entry.Source.Kind() == "command" {
+				add(base+".source.command", m.Entry.Source.Command)
+			}
+			for _, p := range m.Entry.Plugins {
+				if p.Source.Kind() != "command" {
+					continue
+				}
+				name := strings.TrimSpace(p.Name)
+				if name == "" {
+					name = "(unnamed)"
+				}
+				add(base+".plugins."+name+".source.command", p.Source.Command)
+			}
+		}
+
 		add("statusLine", s.CommandHelperField("statusLine"))
 		add("subagentStatusLine", s.CommandHelperField("subagentStatusLine"))
 		add("fileSuggestion", s.CommandHelperField("fileSuggestion"))
+	}
+
+	// A committed .claude-plugin/marketplace.json declares the same two command
+	// kinds for the people who install from it: a `command` source produces the
+	// plugin directory by running a shell command, and a catalog entry's
+	// headersHelper mints headers for its archive fetch. CFG098 judges the supply
+	// chain; the command text itself belongs to the content rules like any other.
+	for _, src := range t.Marketplace.ExternalSources() {
+		label := "marketplace.json plugin \"" + src.Plugin + "\""
+		if src.Source.Kind() == "command" {
+			sites = append(sites, commandSite{Label: label + " source.command command", File: t.MarketplaceFile, Command: src.Source.Command})
+		}
+		if cmd := src.Source.HeadersHelper; cmd != "" {
+			sites = append(sites, commandSite{Label: label + " source.headersHelper command", File: t.MarketplaceFile, Command: cmd})
+		}
 	}
 
 	for _, ref := range t.mcpServerRefs() {

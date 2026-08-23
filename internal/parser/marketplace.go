@@ -41,6 +41,8 @@ type MarketplacePlugin struct {
 //	git-subdir  url, path, ref?, sha?     — sha is immutable
 //	npm         package, version?, registry?
 //	archive     url, sha256?              — sha256 is the only pin there is
+//	command     command, timeout?, mode?  — nothing to pin: the directory is
+//	                                        produced by running the command
 type MarketplaceSource struct {
 	Type     string `json:"source"`
 	AltType  string `json:"type"`
@@ -53,6 +55,23 @@ type MarketplaceSource struct {
 	Package  string `json:"package"`
 	Version  string `json:"version"`
 	Registry string `json:"registry"`
+
+	// Command is the shell command of a `command` source, documented upstream as
+	// a "Shell command that prints the absolute path of the plugin directory on
+	// stdout (exactly one line) and exits 0". Timeout is its budget in seconds
+	// (default 60) and Mode is "copy" (default) or "link"; link uses the produced
+	// directory in place, so the plugin content stays under the producer's control
+	// after install.
+	Command string `json:"command"`
+	Timeout int    `json:"timeout"`
+	Mode    string `json:"mode"`
+
+	// HeadersHelper is a command that mints HTTP headers for the fetch. It is
+	// declared on a marketplace's own source or on a catalog entry, applies to
+	// archive fetches, and runs at explicit install or update after the command
+	// has been shown. Claude Code's settings validator types it as a string on
+	// `extraKnownMarketplaces.<name>.source.headersHelper`.
+	HeadersHelper string `json:"headersHelper"`
 }
 
 // Kind returns the normalised source type.

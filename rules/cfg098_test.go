@@ -163,3 +163,36 @@ func TestCFG098_NoMarketplace_NoFinding(t *testing.T) {
 		t.Errorf("expected no findings without a manifest, got %+v", f)
 	}
 }
+
+// #522: a `command` source produces the plugin directory by running a shell
+// command on the installing machine. Nothing pins that, so it is reported like
+// the unpinned archive, and the message states the consent gate rather than
+// implying the command runs unannounced.
+func TestCFG098_CommandSource(t *testing.T) {
+	got := onlyFinding(t, CFG098.Check(marketplaceTargetFor(t, `{
+      "plugins": [{"name": "builder", "source": {
+        "source": "command",
+        "command": "/opt/acme/produce.sh"}}]
+    }`)), finding.Error)
+	for _, want := range []string{"builder", "shell command", "install or update"} {
+		if !strings.Contains(got.Message, want) {
+			t.Errorf("message should contain %q, got %q", want, got.Message)
+		}
+	}
+	if strings.Contains(got.Message, "link") {
+		t.Errorf("copy mode must not carry the link-mode sentence: %q", got.Message)
+	}
+}
+
+// mode "link" uses the produced directory in place, so its content can change
+// after the install with no re-resolve. That earns its own sentence.
+func TestCFG098_CommandSourceLinkMode(t *testing.T) {
+	got := onlyFinding(t, CFG098.Check(marketplaceTargetFor(t, `{
+      "plugins": [{"name": "builder", "source": {
+        "source": "command", "mode": "link",
+        "command": "/opt/acme/produce.sh"}}]
+    }`)), finding.Error)
+	if !strings.Contains(got.Message, "used where it lies") {
+		t.Errorf("link mode should be called out, got %q", got.Message)
+	}
+}
