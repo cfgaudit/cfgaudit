@@ -12,8 +12,19 @@ FROM alpine:3.24
 # Alpine's repos serve only the current patch of a package, so an exact version
 # pin breaks the build the moment upstream bumps it — and would fight the Trivy
 # base-image freshness gate in ci.yml, which exists to force those bumps.
-# hadolint ignore=DL3018
-RUN apk add --no-cache ca-certificates
+#
+# The upgrade is what keeps the image actually patched. Docker Hub rebuilds
+# alpine:3.24 far less often than Alpine publishes security patches, so the base
+# image ships whatever package set the last rebuild froze in. CVE-2026-14456 is
+# the case in point: fixed in openssl 3.5.8-r0 and served by the 3.24 repo, while
+# the alpine:3.24.1 image still carries 3.5.7-r0 and fails the Trivy gate below.
+# A plain `apk add libcrypto3` would not help, since apk leaves an already
+# installed package alone. DL3017 warns that this makes the build depend on the
+# repo's state at build time, which is true, and is the point: the unpinned
+# `apk add` in the same command already has that property, and the Trivy gate is what turns a
+# stale package set into a failing build rather than a silent one.
+# hadolint ignore=DL3018,DL3017
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
 COPY --from=builder /build/cfgaudit /usr/local/bin/cfgaudit
 
 # Static identity labels only. The release build passes docker/metadata-action's
