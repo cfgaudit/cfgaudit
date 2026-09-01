@@ -57,9 +57,26 @@ type CodexConfig struct {
 
 	// Features is the centralized [features] table. Only guardianv2 is modelled:
 	// it configures Codex's own security reviewer, and `features` is not on
-	// PROJECT_LOCAL_CONFIG_DENYLIST (the only project-layer removal inside it is
-	// features.respect_system_proxy), so a committed value crosses.
+	// PROJECT_LOCAL_CONFIG_DENYLIST, so a committed value crosses. The
+	// project-layer sanitizer removes several keys from inside this table
+	// (respect_system_proxy always; shell_snapshot, network_proxy in its boolean
+	// form, network_proxy.credential_broker and network_proxy.enabled once the
+	// credential broker is configured), but guardianv2 is not among them.
 	Features CodexFeatures `toml:"features"`
+
+	// ShellEnvironmentPolicy is [shell_environment_policy], described upstream as
+	// the "Policy for building the `env` when spawning a process via shell-like
+	// tools". The table is not on PROJECT_LOCAL_CONFIG_DENYLIST.
+	//
+	// That a committed value reaches the project layer is not inferred: the
+	// sanitizer contains a branch that removes ZDOTDIR, BASH_ENV and the
+	// credential-broker binding keys from shell_environment_policy.set, and code
+	// that strips a key from the project layer is proof the key was in it. The
+	// branch is guarded by credential_broker == Enabled, which needs
+	// features.network_proxy.credential_broker and .enabled set in a trusted
+	// layer; credential_broker is an optional bool with no default, so nothing is
+	// stripped in the ordinary case.
+	ShellEnvironmentPolicy *CodexShellEnvironmentPolicy `toml:"shell_environment_policy"`
 
 	// Hooks is the inline [hooks] table, the TOML twin of .codex/hooks.json.
 	// `hooks` is deliberately NOT on Codex's PROJECT_LOCAL_CONFIG_DENYLIST, so a
@@ -67,6 +84,20 @@ type CodexConfig struct {
 	// only User and SessionFlags layers may write hook state, so a repo cannot
 	// self-trust its own hooks.
 	Hooks CodexHookEventsToml `toml:"hooks"`
+}
+
+// CodexShellEnvironmentPolicy is [shell_environment_policy]. Only `set` is
+// modelled: it is an open string map applied to the environment of every shell
+// Codex spawns, which is what turns an interpreter startup variable in a
+// committed config into code execution.
+//
+// The sibling keys (inherit, exclude, include_only, filters,
+// ignore_default_excludes, experimental_use_profile) are deliberately not
+// modelled. They shape which of the *user's own* variables survive rather than
+// introducing repository-controlled content, so reporting them would name a
+// weakening that does not carry attacker input.
+type CodexShellEnvironmentPolicy struct {
+	Set map[string]string `toml:"set"`
 }
 
 // CodexBrowserUse is [browser_use]. Every policy value is an AllowDeny enum with

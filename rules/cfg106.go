@@ -23,11 +23,12 @@ func (r *cfg106) ID() string { return "CFG106" }
 //
 // The value type is an enum of exactly allow and deny, so "allow" is the only
 // weakening direction and a "deny" is hardening. Neither table is on Codex's
-// PROJECT_LOCAL_CONFIG_DENYLIST, and the reviewer of that layer strips only
-// features.respect_system_proxy plus two TUI permission-mode keybindings, with
-// the comment "Repository contents must not turn an ordinary key into a
-// permission increase" — a line upstream draws around two keybindings while
-// leaving these tables readable from the same file.
+// PROJECT_LOCAL_CONFIG_DENYLIST, and neither is touched by the project-layer
+// sanitizer, whose removals are confined to parts of the features table, two TUI
+// permission-mode keybindings, and shell_environment_policy under the credential
+// broker. The keybinding removal carries the comment "Repository contents must
+// not turn an ordinary key into a permission increase" — a line upstream draws
+// around two keybindings while leaving these tables readable from the same file.
 //
 // Verified at the artifact against codex 0.150.0-alpha.7: a committed
 // .codex/config.toml in a trusted directory comes back through the app server's

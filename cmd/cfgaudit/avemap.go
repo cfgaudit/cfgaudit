@@ -182,6 +182,11 @@ var aveByRule = map[string]string{
 	// value reaching the consumer boundary, and the browser and computer use
 	// tools live in the app, so whether a prompt is skipped is unverified. A
 	// mapping would assert more than the rule's own message does.
+	// CFG107 (Codex shell_environment_policy.set injecting code into every
+	// spawned shell) has CFG020's mechanism exactly, but AVE-2026-00055 is bound
+	// to an untrusted *MCP launch config*, and no record covers a configuration
+	// -declared process environment that loads code into every shell the agent
+	// runs. Reported as a gap rather than stretched onto 00055.
 	// CFG102 (two committed skills claiming one name) is name shadowing, but
 	// AVE-2026-00017 is explicitly MCP server identity and AVE-2026-00066 is
 	// registry squatting on hallucinated names. Reported as a gap instead.
