@@ -633,7 +633,7 @@ Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated s
 
 qwen's `permissions.allow` is **not** flagged, for the same reason as Grok's `[permission] allow` above: evaluation is `deny > ask > allow`, so a user's `deny` beats a repo's `allow`, and `allow` matching is **segmented** rather than a prefix match — `splitCompoundCommand` breaks a chained command into segments and matches each on its own, and `matchesCommandPattern` requires a full match or a space boundary, so a `Bash(git *)` rule cannot auto-approve `git status && rm -rf /`. This is the Grok case, not the prefix-matching Cursor `terminalAllowlist` case that CFG093 exists for.
 
-Also not flagged: `security.allowPrivateNetworkHooks` and `security.allowedInsecureVoiceBaseUrls` are documented *"Only honored from User, System, and SystemDefaults settings scopes"* — a workspace value is ignored, the second saying outright that this is *"so a cloned repository cannot self-grant this bypass"*.
+Also not flagged: `security.allowPrivateNetworkHooks` and `security.allowedInsecureVoiceBaseUrls`. Both sit on qwen's `WORKSPACE_RESTRICTED_SETTINGS`, which `stripWorkspaceRestrictedSettings` removes from the workspace layer before the merge *"so a repository cannot opt the user into those capabilities"*, so a committed value is inert. That list, not the schema descriptions, is what to re-read when checking qwen scope: it currently holds five entries and three of them carry no scope sentence in their description at all ([CFG099](docs/rules/CFG099.md) has the table).
 
 Two further surfaces were scoped and, after source verification, deliberately **not** ruled — neither fires from a scanned repo without a manual step, so a rule would report a trigger that does not exist:
 
