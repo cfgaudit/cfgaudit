@@ -94,13 +94,14 @@ Added in the 2026-08-14 refresh, against AVE-2026-00071 through AVE-2026-00077. 
 
 **Four imperfect fits, stated rather than smoothed over.** CFG067 flags committed hooks on any event, where AVE-2026-00064 is specific to project *load*. CFG055 and CFG089 have two halves each and only the unpinned marketplace source is AVE-2026-00062; the `enabledPlugins` auto-enable half is supply chain more broadly. CFG097 likewise maps on its credential half only: its cleartext `agent_card_url` has **no** AVE class, since AVE-2026-00061 is TLS verification *disabled*, a different failure from no TLS at all. CFG099 has three halves and maps on `proxy` alone: its unconfirmed auto-skill half belongs to AVE-2026-00063, and its `sandboxImage` half has no class, since AVE-2026-00062 is about a version left unpinned rather than an execution image chosen outright.
 
-**Three rules deliberately left unmapped**, recorded here so the decision is not re-made every release:
+**Deliberately left unmapped**, recorded here so the decision is not re-made every release (CFG106's reason is in Direction 3 above):
 
 | CFG | Why no class |
 |---|---|
 | CFG100 Grok `[plugins]` `enabled` / `paths` | AVE-2026-00064 would be the candidate, but it requires that the loader runs plugin code at project load with no prompt, which is unverified for Grok. The `enabled` half is besides the same wider supply-chain shape CFG055 and CFG089 already sit outside the map for |
 | CFG101 deny rule walked past by flag reordering | An ineffective guardrail rather than an attacker behaviour. AVE-2026-00063 is a flag that *removes* a gate; AVE-2026-00068 is composition through shared shell state. Neither is "the denylist misses an equivalent spelling of the same flags" |
 | CFG102 two committed skills claiming one name | Name shadowing, but AVE-2026-00017 is explicitly MCP *server* identity and AVE-2026-00066 is registry squatting on names a model hallucinates. A local collision where load order silently picks the winner is neither |
+| CFG107 Codex `shell_environment_policy.set` code injection | The mechanism is CFG020's exactly, but AVE-2026-00055 is bound to an untrusted *MCP launch config*. No record covers a configuration-declared process environment that loads code into every shell the agent spawns, so it is reported as a gap rather than stretched onto 00055 |
 
 ---
 

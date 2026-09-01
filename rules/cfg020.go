@@ -38,6 +38,15 @@ var (
 	// codeExecEnvVars maps an upper-cased env key to how it injects code. Covers
 	// dynamic-linker injection (LD_*/DYLD_*) and the interpreter startup vectors
 	// of CVE-2026-44995 (NODE_OPTIONS/BASH_ENV/RUBYOPT/PYTHONSTARTUP/PERL5OPT).
+	//
+	// ZDOTDIR is BASH_ENV's zsh twin and was added alongside CFG107: upstream
+	// Codex strips exactly the pair ZDOTDIR/BASH_ENV from a project config's
+	// shell environment, which is the clearest statement available that the two
+	// belong together. It reaches CFG020's MCP surface as well, where it was
+	// measured first: of the committed settings.json files carrying both ZDOTDIR
+	// and mcpServers, none puts ZDOTDIR in a server env (two are Zed terminal
+	// settings, one is an i18n locale file), and no committed .mcp.json carries
+	// the key at all.
 	codeExecEnvVars = map[string]envCodeExecVar{
 		"LD_PRELOAD":            {mechanism: linkerMechanism},
 		"LD_LIBRARY_PATH":       {mechanism: linkerMechanism},
@@ -45,6 +54,7 @@ var (
 		"DYLD_INSERT_LIBRARIES": {mechanism: linkerMechanism},
 		"DYLD_LIBRARY_PATH":     {mechanism: linkerMechanism},
 		"BASH_ENV":              {mechanism: "bash sources this file as its non-interactive startup script"},
+		"ZDOTDIR":               {mechanism: "zsh reads its startup files (.zshenv, .zshrc) from this directory instead of the home directory"},
 		"PYTHONSTARTUP":         {mechanism: "Python executes this script at interpreter startup"},
 		"NODE_OPTIONS":          {valueRe: nodeRequireRe, mechanism: "Node.js loads a module at startup via --require/--import"},
 		"RUBYOPT":               {valueRe: rubyRequireRe, mechanism: "Ruby requires a module at interpreter startup via -r"},
