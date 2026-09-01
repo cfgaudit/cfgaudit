@@ -107,6 +107,7 @@ type CodexHookEventsToml struct {
 	SubagentStart    []CodexMatcherGroup `json:"SubagentStart,omitempty" toml:"SubagentStart"`
 	SubagentStop     []CodexMatcherGroup `json:"SubagentStop,omitempty" toml:"SubagentStop"`
 	Stop             []CodexMatcherGroup `json:"Stop,omitempty" toml:"Stop"`
+	Interrupt        []CodexMatcherGroup `json:"Interrupt,omitempty" toml:"Interrupt"`
 }
 
 // Hooks converts the decoded events to the event → groups map, keeping only
@@ -127,6 +128,7 @@ func (e *CodexHookEventsToml) Hooks() *CodexHooks {
 		"SubagentStart":     e.SubagentStart,
 		"SubagentStop":      e.SubagentStop,
 		"Stop":              e.Stop,
+		"Interrupt":         e.Interrupt,
 	}
 	out := make(map[string][]CodexMatcherGroup)
 	for name, groups := range byName {
