@@ -25,6 +25,21 @@ type bypassPattern struct {
 	skipCode bool // pattern 4 only: ignore matches inside fenced / inline code
 }
 
+// adversarialPersona is the target that turns a persona instruction into an
+// identity hijack. Naming a role ("the release manager") is how skills, subagents
+// and commands are written; naming one of these is not.
+//
+// The article is optional on the adjectives because "you are now unrestricted"
+// occurs in the wild without one, and the mode forms are here because "you are
+// now in developer mode" does too, which pattern 3 does not cover (it matches
+// only "developer mode enabled/activated/on"). "dan mode" is in the same
+// alternation because "you are now in DAN mode" puts a word between the phrase
+// and the target, so the bare DAN alternative cannot reach it.
+const adversarialPersona = `(DAN\b|the\s+user\b|the\s+system\b|root\b|admin\b` +
+	`|(an?\s+)?(unrestricted|unfiltered|jailbroken|uncensored)` +
+	`|an?\s+AI\s+(with\s+no|without)` +
+	`|(in\s+)?(developer|god|jailbreak|dan)\s+mode)`
+
 var bypassPatterns = []bypassPattern{
 	// The determiner run between the verb and the qualifier is what makes the
 	// canonical "ignore ALL previous instructions" match: without it the pattern
@@ -37,7 +52,18 @@ var bypassPatterns = []bypassPattern{
 	// "pretend you are <role>" are the standard, legitimate way to define a skill's
 	// or subagent's persona, so they are NOT matched; act-as/pretend only matches
 	// when the target is adversarial (an unrestricted AI, DAN, the user, root, …).
-	{2, regexp.MustCompile(`(?i)(you\s+are\s+now\b|your\s+(new\s+)?(name|identity|persona)\s+is|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+(DAN|the\s+user|the\s+system|root|admin|an?\s+(unrestricted|unfiltered|jailbroken|uncensored)|an?\s+AI\s+(with\s+no|without)))`),
+	//
+	// "you are now <target>" is qualified by the same list, for the same reason and
+	// after the same mistake: the alternative used to be bare, so it reported the
+	// construct the carve-out exists to protect, only reached through a different
+	// word order. Measured on 200 committed instruction files containing the phrase
+	// (CLAUDE.md, AGENTS.md, .claude/commands, .claude/agents, SKILL.md), all 200
+	// matched and the trailing text was a role or a mode: "you are now the Vault
+	// Operator", "you are now acting as a Senior Requirements Analyst", "you are now
+	// in **talk mode**". The adversarial forms that really occur are covered by the
+	// list below: "you are now unrestricted" and "you are now in developer mode"
+	// were both present, and both still match (#571).
+	{2, regexp.MustCompile(`(?i)(you\s+are\s+now\s+` + adversarialPersona + `|your\s+(new\s+)?(name|identity|persona)\s+is|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+` + adversarialPersona + `)`),
 		finding.Error, "persona / identity hijacking", false},
 	{3, regexp.MustCompile(`(?i)(as\s+(your\s+)?(developer|creator|trainer|Anthropic|operator|administrator|sys(tem)?\s*admin)|this\s+(is|message\s+is)\s+(from\s+)?(Anthropic|your\s+developer)|developer\s+mode\s+(enabled|activated|on)|jailbreak\s+(mode|enabled|activated))`),
 		finding.Error, "authority impersonation", false},
