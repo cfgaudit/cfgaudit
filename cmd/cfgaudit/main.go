@@ -825,7 +825,7 @@ var (
 		filepath.Join(".claude", "skills", "*", "SKILL.md"),
 		// .claude/rules/ is NOT listed here: Claude Code discovers it recursively
 		// (subdirectories allowed), which the single-level filepath.Glob above can't
-		// express, so it is collected by claudeRulesFiles instead (#325).
+		// express, so it is collected by agentRulesFiles instead (#325).
 		// xAI Grok CLI project rules and agent definitions — committable Markdown
 		// read as trusted context (#384). Grok discovers .grok/rules single-level
 		// (by *.md extension, no recursion) and .grok/agents/*.md, so a plain glob
@@ -837,8 +837,10 @@ var (
 		// Markdown read as trusted context (#390). Verified to exist: .qwen/agents/*.md
 		// (native frontmatter has NO permission field, so CFG085 is correctly not
 		// extended — only the instruction-content rules apply to the body),
-		// .qwen/commands/*.md, and one-deep .qwen/skills/<name>/SKILL.md. (.qwen/rules
-		// was NOT found in source and is deliberately omitted.)
+		// .qwen/commands/*.md, and one-deep .qwen/skills/<name>/SKILL.md. .qwen/rules
+		// did not exist when this list was written; it does now, and because qwen
+		// discovers it recursively it is collected by agentRulesFiles rather than
+		// by a glob here (#565).
 		filepath.Join(".qwen", "agents", "*.md"),
 		filepath.Join(".qwen", "commands", "*.md"),
 		filepath.Join(".qwen", "skills", "*", "SKILL.md"),
@@ -883,7 +885,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err := addGlobs(dir, agentInstructionGlobs, finding.ScopeProject); err != nil {
 		return nil, err
 	}
-	projRules, err := claudeRulesFiles(dir)
+	projRules, err := agentRulesFiles(dir, agentRulesDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -919,7 +921,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if err := addGlobs(home, userInstructionGlobs, finding.ScopeUser); err != nil {
 			return nil, err
 		}
-		userRules, err := claudeRulesFiles(home)
+		userRules, err := agentRulesFiles(home, agentRulesDirs)
 		if err != nil {
 			return nil, err
 		}
@@ -1108,13 +1110,33 @@ func geminiAgentFiles(base string) ([]string, error) {
 	return out, nil
 }
 
-// claudeRulesFiles returns every *.md file under <base>/.claude/rules, discovered
-// recursively. Claude Code loads .claude/rules/**/*.md as trusted instruction
-// context at the same priority as CLAUDE.md — unconditional files at launch and
-// conditional ones (carrying a `paths:` frontmatter) when a matching file is read
-// — and walks subdirectories to find them, so unlike the single-level globs this
-// needs a full walk (#325). A missing rules directory yields no files and no
-// error; results are sorted for deterministic ordering.
+// agentRulesDirs are the agent rule directories walked recursively by
+// agentRulesFiles. Both agents load them as trusted instruction context and both
+// walk subdirectories, so unlike the single-level entries in
+// agentInstructionGlobs these need a full walk.
+//
+//   - `.claude/rules` is read at the same priority as CLAUDE.md: unconditional
+//     files at launch and conditional ones (carrying a `paths:` frontmatter) when
+//     a matching file is read (#325).
+//   - `.qwen/rules` is the same shape, added upstream on 2026-08-24
+//     (packages/core/src/config/rulesDiscovery.ts). Its header states the split
+//     verbatim: "Rules WITHOUT `paths:` always load at session start (baseline
+//     rules). Rules WITH `paths:` are deferred and injected on-demand when the
+//     model reads or edits a matching file". Baseline rules are returned "for
+//     immediate injection into the system prompt", and loadRules reads both
+//     ~/.qwen/rules and, for a trusted folder, <projectRoot>/.qwen/rules. qwen
+//     ships folder trust off by default, which is the same backdrop CFG099
+//     records, so the project directory applies to a fresh clone (#565).
+//
+// Both are scanned in project scope and, with --user, under $HOME.
+var agentRulesDirs = []string{
+	filepath.Join(".claude", "rules"),
+	filepath.Join(".qwen", "rules"),
+}
+
+// agentRulesFiles returns every *.md file under each of <base>/<dir>, discovered
+// recursively. A missing rules directory yields no files and no error; results
+// are sorted for deterministic ordering.
 // projectSkillsDirs and userSkillsDirs are the skills directories walked
 // recursively by agentSkillsFiles, on top of the one-deep <agent>/skills globs in
 // agentInstructionGlobs.
@@ -1193,7 +1215,7 @@ func agentSkillsFiles(base string, dirs []string) ([]string, error) {
 // kimiAgentFiles returns every *.md under <base>/.kimi-code/agents and
 // <base>/.agents/agents, discovered recursively. Kimi Code loads project agent
 // definitions from both directories (resolved from the nearest .git ancestor of
-// the working directory), scanning subdirectories, so — like claudeRulesFiles —
+// the working directory), scanning subdirectories, so — like agentRulesFiles —
 // this needs a full walk rather than a single-level glob. A committed file there
 // is trusted instruction context with no trust gate, and its frontmatter can carry
 // override: true (CFG092). A missing directory yields no files and no error;
@@ -1225,24 +1247,26 @@ func kimiAgentFiles(base string) ([]string, error) {
 	return out, nil
 }
 
-func claudeRulesFiles(base string) ([]string, error) {
-	root := filepath.Join(base, ".claude", "rules")
+func agentRulesFiles(base string, dirs []string) ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			// A missing .claude/rules directory is the common case — not an error.
-			if errors.Is(err, os.ErrNotExist) {
-				return nil
+	for _, dir := range dirs {
+		root := filepath.Join(base, dir)
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				// A missing rules directory is the common case — not an error.
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
+				return err
 			}
-			return err
+			if !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
+				out = append(out, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
-		if !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
-			out = append(out, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 	sort.Strings(out)
 	return out, nil
