@@ -25,6 +25,33 @@ func (r *cfg031) ID() string { return "CFG031" }
 // deliberately NOT listed: setup docs and skills routinely reference them, so
 // flagging the mention is a false positive (500-repo FP scan). A real secret
 // inside such a config is caught at the value level by CFG007/CFG050, not here.
+//
+// The two catch-all extensions are not treated alike, because they do not carry
+// the same risk of collision (#569).
+//
+// `.pem` is left open: nothing else uses that extension, and a census of 200
+// committed instruction files mentioning it produced only real certificate and
+// key files (fullchain.pem, dh4096.pem, .ssh/aws-key.pem), so requiring a path
+// there would cost coverage and buy nothing.
+//
+// `.key` has to carry a path separator, because the extension collides with
+// three unrelated things that are common in exactly these files. In the same
+// census, 65 of the roughly 123 `.key` occurrences had no directory component,
+// and about nine in ten of those were not files at all: field and method access
+// in code samples (`item.key`, `headers.get(item.key)`, `vault.key()`), i18n
+// translation keys (`t("full.key")`), a Gradle property name (`signing.key`),
+// and Apple Keynote documents (`DECK.key`, `presentation.key`), which is also
+// how the rule reached `error`, since one Keynote line ends "then Read them".
+// Requiring the separator keeps every real path in the census
+// (`/etc/openclaw/secrets/tenant-1.key`, `.claude/azure.key`,
+// `node/data/keys/pub.key`, `~/.ssh/id_rsa.key`).
+//
+// The price is stated rather than hidden: a credential file named without any
+// directory, such as `age.key` or `example.com.key`, is no longer reported. Seven
+// occurrences in the census were of that kind. Keeping them was tried and
+// rejected, because a path-less `.key` with an action verb on the line is not a
+// cleaner signal either: of the four such lines in the census, three were the
+// Keynote and Gradle false positives.
 var sensitivePathRe = regexp.MustCompile(`(?i)(` +
 	`\.ssh/(?:id_rsa|id_ed25519|id_dsa|id_ecdsa|known_hosts|config)\b` +
 	`|\.aws/(?:credentials|config)\b` +
@@ -37,7 +64,7 @@ var sensitivePathRe = regexp.MustCompile(`(?i)(` +
 	`|/etc/(?:passwd|shadow|sudoers)\b` +
 	`|credentials\.json\b` +
 	`|[\w.\-/]+\.pem\b` +
-	`|[\w.\-/]+\.key\b` +
+	`|(?:[\w.\-]*/)+[\w.\-]*\.key\b` +
 	`)`)
 
 // pathActionRe matches a read/transmit verb that turns a sensitive-file reference
