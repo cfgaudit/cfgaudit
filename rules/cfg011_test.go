@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -175,5 +177,98 @@ func TestCFG011_CodexPerToolApprovalMode(t *testing.T) {
 	})
 	if got := CFG011.Check(readOnly); len(got) != 0 {
 		t.Errorf("a single read-only approve must stay silent, got %+v", got)
+	}
+}
+
+// codexAppsTarget builds a Codex target from a config.toml body so the apps
+// tests exercise the TOML shape rather than a hand-built struct.
+func codexAppsTarget(t *testing.T, body string) *Target {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cc, err := parser.ParseCodexConfig(path)
+	if err != nil {
+		t.Fatalf("ParseCodexConfig: %v", err)
+	}
+	return &Target{Scope: finding.ScopeProject, Codex: cc, CodexFile: ".codex/config.toml"}
+}
+
+func TestCFG011_CodexAppsBlanketPositions(t *testing.T) {
+	f := CFG011.Check(codexAppsTarget(t, `
+[apps._default]
+default_tools_approval_mode = "approve"
+
+[apps.linear]
+default_tools_approval_mode = "approve"
+
+[apps.linear.links.acct_1]
+default_tools_approval_mode = "approve"
+`))
+	if len(f) != 3 {
+		t.Fatalf("expected 3 findings for the blanket apps positions, got %d: %+v", len(f), f)
+	}
+	want := []string{
+		"apps._default.default_tools_approval_mode",
+		"apps.linear.default_tools_approval_mode",
+		"apps.linear.links.acct_1.default_tools_approval_mode",
+	}
+	for i, w := range want {
+		if !strings.Contains(f[i].Message, w) {
+			t.Errorf("finding %d should name %q, got: %s", i, w, f[i].Message)
+		}
+		if f[i].Severity != finding.Warn {
+			t.Errorf("finding %d: expected Warn, got %s", i, f[i].Severity)
+		}
+		if f[i].File != ".codex/config.toml" {
+			t.Errorf("finding %d: expected the Codex file, got %s", i, f[i].File)
+		}
+	}
+	if !strings.Contains(f[0].Message, "every connector") {
+		t.Errorf("the _default finding should name its blast radius, got: %s", f[0].Message)
+	}
+	if !strings.Contains(f[2].Message, "connected account") {
+		t.Errorf("the link finding should name the account, got: %s", f[2].Message)
+	}
+}
+
+// The per-tool spelling gets the same judgement as its MCP twin: a
+// state-mutating name is reported, a single read-only one is not.
+func TestCFG011_CodexAppsToolsUseTheMCPJudgement(t *testing.T) {
+	f := CFG011.Check(codexAppsTarget(t, `
+[apps.linear.tools.linear_delete_attachment]
+approval_mode = "approve"
+`))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for a state-mutating app tool, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "apps.linear.tools") ||
+		!strings.Contains(f[0].Message, "linear_delete_attachment") {
+		t.Errorf("expected the table path and the tool name, got: %s", f[0].Message)
+	}
+
+	quiet := CFG011.Check(codexAppsTarget(t, `
+[apps.drive.tools.drive_read_file]
+approval_mode = "approve"
+`))
+	if len(quiet) != 0 {
+		t.Errorf("a single read-only app tool should stay unreported, got %+v", quiet)
+	}
+}
+
+func TestCFG011_CodexAppsNonWeakeningValues(t *testing.T) {
+	f := CFG011.Check(codexAppsTarget(t, `
+[apps.notion]
+default_tools_approval_mode = "prompt"
+destructive_enabled = true
+open_world_enabled = true
+default_tools_enabled = true
+
+[apps.notion.tools.notion_delete_page]
+approval_mode = "writes"
+`))
+	if len(f) != 0 {
+		t.Errorf("expected no findings for values that do not remove the prompt, got %+v", f)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 type cfg011 struct{}
@@ -60,6 +61,51 @@ func (r *cfg011) Check(t *Target) []finding.Finding {
 				File:     ref.File,
 				Message:  "mcpServers." + ref.Name + ".alwaysAllow " + msg,
 			})
+		}
+	}
+	findings = append(findings, codexAppApprovalFindings(t)...)
+	return findings
+}
+
+// codexAppApprovalFindings covers Codex's [apps] table, which repeats the
+// approval decision the MCP branch above already reads. The tables are separate
+// in the config and separate in the resolver, so a value in one is invisible to
+// the other: the same tool name under [apps.<id>.tools.<tool>] and under
+// [mcp_servers.<name>.tools.<tool>] reaches a different code path.
+//
+// The blanket positions are always reported. The per-tool position is put
+// through analyzeApprovedTools, the same judgement the MCP side applies to its
+// own per-tool spelling, so naming one read-only tool stays unreported on both
+// sides rather than only on one.
+func codexAppApprovalFindings(t *Target) []finding.Finding {
+	if t == nil || t.Codex == nil {
+		return nil
+	}
+	var findings []finding.Finding
+	add := func(msg string) {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG011",
+			Severity: finding.Warn,
+			Scope:    t.Scope,
+			File:     t.CodexFile,
+			Message:  msg,
+		})
+	}
+	const remedy = ". Codex asks for approval by default (\"auto\"); use \"writes\" to keep the prompt for state-changing tools, or \"prompt\" to keep it for all of them"
+
+	for _, a := range t.Codex.AppApprovals() {
+		switch {
+		case a.App == parser.CodexAppsDefaultKey:
+			add(a.Path + " is \"approve\", so every tool of every connector runs with no confirmation prompt, including connectors added later" + remedy)
+		case a.Link != "":
+			add(a.Path + " is \"approve\", so every tool call made through that connected account runs with no confirmation prompt" + remedy)
+		default:
+			add(a.Path + " is \"approve\", so every tool this connector exposes runs with no confirmation prompt, including ones it gains later" + remedy)
+		}
+	}
+	for _, at := range t.Codex.AppToolApprovals() {
+		if msg := analyzeApprovedTools(at.Tools); msg != "" {
+			add(at.Path + " sets approval_mode \"approve\" " + msg)
 		}
 	}
 	return findings

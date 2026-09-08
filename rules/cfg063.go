@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 type cfg063 struct{}
@@ -67,6 +68,24 @@ func (r *cfg063) Check(t *Target) []finding.Finding {
 	if t.Codex.UsesAutoReviewer() {
 		add(finding.Warn, "Codex approvals_reviewer is \""+strings.TrimSpace(t.Codex.ApprovalsReviewer)+
 			"\" — escalated approval requests (sandbox escapes, blocked network access, MCP prompts) go to a reviewer subagent instead of the person, so a committed file can leave approval_policy looking safe with nobody actually watching. Codex's own docs note this does not disable separate safety checks such as ARC. Set it to \"user\", or drop the key, to keep the prompts human-answered")
+	}
+
+	// The same decision is spelled three more times inside [apps], where it
+	// applies to one connector's prompts rather than the thread's. The root key
+	// above is the thread default; these override it per app and per connected
+	// account (core/src/connectors.rs mcp_approvals_reviewer_from_layers resolves
+	// link, then app, then _default), so a file can leave the root key untouched
+	// and still route a connector's prompts away from the person.
+	for _, r := range t.Codex.AppReviewers() {
+		scope := "this connector's approval prompts"
+		switch {
+		case r.App == parser.CodexAppsDefaultKey:
+			scope = "approval prompts from every connector"
+		case r.Link != "":
+			scope = "approval prompts from that connected account"
+		}
+		add(finding.Warn, r.Path+" is \""+r.Value+"\", so "+scope+
+			" go to a reviewer subagent instead of the person. This is the per-app spelling of the root approvals_reviewer key, so a file can look safe on the root key and still leave nobody watching here. Set it to \"user\", or drop the key, to keep the prompts human-answered")
 	}
 	return findings
 }

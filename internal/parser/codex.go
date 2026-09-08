@@ -23,6 +23,15 @@ type CodexConfig struct {
 	// value (codex-rs/protocol/src/config_types.rs), so both must be recognised.
 	ApprovalsReviewer string `toml:"approvals_reviewer"`
 
+	// Apps is the [apps] table, upstream's "App/connector settings loaded from
+	// `config.toml`". It repeats the approval decisions cfgaudit reads on
+	// [mcp_servers] at four more positions and approvals_reviewer at three more;
+	// see codexapps.go. `apps` is not on PROJECT_LOCAL_CONFIG_DENYLIST (the
+	// denylisted `apps_mcp_product_sku` is a different root key) and
+	// sanitize_project_config does not touch the table, so a committed value
+	// crosses into the project layer.
+	Apps map[string]CodexApp `toml:"apps"`
+
 	// SandboxWorkspaceWrite is the [sandbox_workspace_write] table, which Codex
 	// consults only when the effective sandbox mode is workspace-write.
 	SandboxWorkspaceWrite *CodexSandboxWorkspaceWrite `toml:"sandbox_workspace_write"`
@@ -267,12 +276,23 @@ func (c *CodexConfig) UsesAutoReviewer() bool {
 	if c == nil {
 		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(c.ApprovalsReviewer)) {
+	return codexAutoReviewer(c.ApprovalsReviewer)
+}
+
+// codexAutoReviewer reports whether an ApprovalsReviewer value routes prompts to
+// the subagent rather than the person, accepting Codex's legacy alias. The same
+// enum sits on the root key and at three positions inside [apps].
+func codexAutoReviewer(v string) bool {
+	switch strings.ToLower(trimmedCodexValue(v)) {
 	case "auto_review", "guardian_subagent":
 		return true
 	}
 	return false
 }
+
+// trimmedCodexValue normalises a TOML string value for comparison and for
+// quoting back in a finding.
+func trimmedCodexValue(v string) string { return strings.TrimSpace(v) }
 
 // WorkspaceWriteTableApplies reports whether Codex would consult the
 // [sandbox_workspace_write] table given this file's sandbox_mode.
