@@ -649,3 +649,59 @@ func TestCFG064_FilesystemDormantProfileSilent(t *testing.T) {
 		t.Errorf("an unselected profile must not be flagged, got %+v", f)
 	}
 }
+
+func TestCFG063_CodexAppsReviewerPositions(t *testing.T) {
+	f := CFG063.Check(codexAppsTarget(t, `
+[apps._default]
+approvals_reviewer = "auto_review"
+
+[apps.linear]
+approvals_reviewer = "guardian_subagent"
+
+[apps.linear.links.acct_1]
+approvals_reviewer = "auto_review"
+
+[apps.notion]
+approvals_reviewer = "user"
+`))
+	if len(f) != 3 {
+		t.Fatalf("expected 3 findings for the apps reviewer positions, got %d: %+v", len(f), f)
+	}
+	want := []string{
+		"apps._default.approvals_reviewer",
+		"apps.linear.approvals_reviewer",
+		"apps.linear.links.acct_1.approvals_reviewer",
+	}
+	for i, w := range want {
+		if !strings.Contains(f[i].Message, w) {
+			t.Errorf("finding %d should name %q, got: %s", i, w, f[i].Message)
+		}
+		if f[i].Severity != finding.Warn {
+			t.Errorf("finding %d: expected Warn, got %s", i, f[i].Severity)
+		}
+	}
+	// The legacy alias is quoted back as written, so the reader can find the line.
+	if !strings.Contains(f[1].Message, "\"guardian_subagent\"") {
+		t.Errorf("expected the legacy alias quoted verbatim, got: %s", f[1].Message)
+	}
+}
+
+// The root key and an apps position are independent, and a file carrying both
+// reports both: they name different blast radiuses.
+func TestCFG063_RootAndAppsReviewerBothReport(t *testing.T) {
+	f := CFG063.Check(codexAppsTarget(t, `
+approvals_reviewer = "auto_review"
+
+[apps.linear]
+approvals_reviewer = "auto_review"
+`))
+	if len(f) != 2 {
+		t.Fatalf("expected the root key and the apps position, got %d: %+v", len(f), f)
+	}
+	if strings.Contains(f[0].Message, "apps.") {
+		t.Errorf("expected the root finding first, got: %s", f[0].Message)
+	}
+	if !strings.Contains(f[1].Message, "apps.linear.approvals_reviewer") {
+		t.Errorf("expected the apps finding second, got: %s", f[1].Message)
+	}
+}
