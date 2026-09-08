@@ -844,6 +844,12 @@ var (
 		filepath.Join(".qwen", "agents", "*.md"),
 		filepath.Join(".qwen", "commands", "*.md"),
 		filepath.Join(".qwen", "skills", "*", "SKILL.md"),
+		// qwen output styles, the twin of .claude/output-styles above. The body of
+		// the named file is appended to the system prompt verbatim; a committed
+		// .qwen/settings.json `general.outputStyle` selects it, and folder trust is
+		// off by default. Discovery is a single readdir with a /\.md$/i filter
+		// (loadOutputStylesFromDir), not a walk, so a glob matches it exactly (#564).
+		filepath.Join(".qwen", "output-styles", "*.md"),
 	}
 	// userInstructionGlobs are scanned only with --user (relative to $HOME): the
 	// user-global subagents, slash commands, and skills apply to every project.
@@ -853,6 +859,9 @@ var (
 		filepath.Join(".claude", "skills", "*", "SKILL.md"),
 		filepath.Join(".gemini", "GEMINI.md"), // Gemini CLI user-global instruction file
 		filepath.Join(".qwen", "QWEN.md"),     // qwen-code user-global instruction file
+		// The user half of the output-style surface. loadRules' Claude twin is
+		// covered by recursiveInstructionDirs, which is walked under $HOME too.
+		filepath.Join(".qwen", "output-styles", "*.md"),
 	}
 )
 
@@ -885,7 +894,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err := addGlobs(dir, agentInstructionGlobs, finding.ScopeProject); err != nil {
 		return nil, err
 	}
-	projRules, err := agentRulesFiles(dir, agentRulesDirs)
+	projRules, err := agentRulesFiles(dir, recursiveInstructionDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -921,7 +930,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if err := addGlobs(home, userInstructionGlobs, finding.ScopeUser); err != nil {
 			return nil, err
 		}
-		userRules, err := agentRulesFiles(home, agentRulesDirs)
+		userRules, err := agentRulesFiles(home, recursiveInstructionDirs)
 		if err != nil {
 			return nil, err
 		}
@@ -1110,9 +1119,9 @@ func geminiAgentFiles(base string) ([]string, error) {
 	return out, nil
 }
 
-// agentRulesDirs are the agent rule directories walked recursively by
-// agentRulesFiles. Both agents load them as trusted instruction context and both
-// walk subdirectories, so unlike the single-level entries in
+// recursiveInstructionDirs are the agent instruction directories walked
+// recursively by agentRulesFiles. Each agent loads them as trusted context and
+// each discovers them below the top level, so unlike the single-level entries in
 // agentInstructionGlobs these need a full walk.
 //
 //   - `.claude/rules` is read at the same priority as CLAUDE.md: unconditional
@@ -1127,9 +1136,16 @@ func geminiAgentFiles(base string) ([]string, error) {
 //     ~/.qwen/rules and, for a trusted folder, <projectRoot>/.qwen/rules. qwen
 //     ships folder trust off by default, which is the same backdrop CFG099
 //     records, so the project directory applies to a fresh clone (#565).
+//   - `.claude/output-styles` holds files whose body is appended to the system
+//     prompt verbatim under a `# Output Style: <name>` heading when
+//     `settings.json` `outputStyle` names one. Claude Code reads the directory
+//     with `rg --files --hidden --follow --no-ignore --glob '*.md'`, so discovery
+//     is recursive here even though qwen's equivalent directory is single-level
+//     and sits in agentInstructionGlobs instead (#564).
 //
-// Both are scanned in project scope and, with --user, under $HOME.
-var agentRulesDirs = []string{
+// All are scanned in project scope and, with --user, under $HOME.
+var recursiveInstructionDirs = []string{
+	filepath.Join(".claude", "output-styles"),
 	filepath.Join(".claude", "rules"),
 	filepath.Join(".qwen", "rules"),
 }
