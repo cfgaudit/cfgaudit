@@ -63,7 +63,16 @@ var bypassPatterns = []bypassPattern{
 	// in **talk mode**". The adversarial forms that really occur are covered by the
 	// list below: "you are now unrestricted" and "you are now in developer mode"
 	// were both present, and both still match (#571).
-	{2, regexp.MustCompile(`(?i)(you\s+are\s+now\s+` + adversarialPersona + `|your\s+(new\s+)?(name|identity|persona)\s+is|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+` + adversarialPersona + `)`),
+	//
+	// "your <name|identity|persona> is <target>" is qualified for the same reason
+	// (#573). Naming the agent is how these files are authored, and a second corpus
+	// seeded on that phrase said so without exception: 204 committed files, and the
+	// trailing text was a name ("Alice", "Claude", "{{AGENT_NAME}}", "${name}") or
+	// prose about where identity is configured ("your identity is fixed in
+	// IDENTITY/SOUL", "detected automatically"). No adversarial target appeared at
+	// all. The optional "now" is there because "your name is now DAN" is the one
+	// filler an author of the hijack would reach for.
+	{2, regexp.MustCompile(`(?i)(you\s+are\s+now\s+` + adversarialPersona + `|your\s+(new\s+)?(name|identity|persona)\s+is\s+(now\s+)?` + adversarialPersona + `|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+` + adversarialPersona + `)`),
 		finding.Error, "persona / identity hijacking", false},
 	{3, regexp.MustCompile(`(?i)(as\s+(your\s+)?(developer|creator|trainer|Anthropic|operator|administrator|sys(tem)?\s*admin)|this\s+(is|message\s+is)\s+(from\s+)?(Anthropic|your\s+developer)|developer\s+mode\s+(enabled|activated|on)|jailbreak\s+(mode|enabled|activated))`),
 		finding.Error, "authority impersonation", false},
