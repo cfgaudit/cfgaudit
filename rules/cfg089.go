@@ -62,10 +62,10 @@ func (r *cfg089) Check(t *Target) []finding.Finding {
 	sort.Strings(names)
 
 	var findings []finding.Finding
-	add := func(msg string) {
+	add := func(sev finding.Severity, msg string) {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG089",
-			Severity: finding.Warn,
+			Severity: sev,
 			Scope:    t.Scope,
 			File:     t.CopilotSettingsFile,
 			Message:  msg + userScopeNote(t),
@@ -88,19 +88,22 @@ func (r *cfg089) Check(t *Target) []finding.Finding {
 		if mkt != "" && registered[mkt] {
 			detail = " from a marketplace this same file registers (extraKnownMarketplaces)" + detail
 		}
-		add("enabledPlugins auto-enables \"" + spec + "\"" + detail)
+		add(finding.Warn, "enabledPlugins auto-enables \""+spec+"\""+detail)
 	}
 
 	for _, name := range names {
 		entry := cs.ExtraKnownMarketplaces[name]
 		src := entry.Source
 		if entry.AutoUpdate {
-			detail := ""
-			if src.Remote() && !marketplacePinned(src) {
-				detail = " The same entry has no immutable pin, so what is refreshed is whatever the upstream serves at the time."
-			}
-			add("extraKnownMarketplaces." + name + " sets autoUpdate — its plugins are refreshed at session start rather than when someone chooses to update them, so the code that runs changes without anyone in the repository acting." + detail +
-				" Remove the key and let users update on their own schedule")
+			// Repository scope only (user scope returned above). GitHub's CLI
+			// configuration reference states the flag does nothing here: "an
+			// autoUpdate: true on an entry is accepted at the repository level but
+			// currently ignored — the auto-update opt-in is only honored when set in
+			// the user's own settings or in managed (MDM/server) settings." So this
+			// is info, not warn: reported because the key is a declared opt-in a
+			// future release could honour, but a committed repository value changes
+			// nothing today (#582).
+			add(finding.Info, "extraKnownMarketplaces."+name+" sets autoUpdate: true, but GitHub's Copilot CLI configuration reference states this is \"accepted at the repository level but currently ignored\" — the auto-update opt-in is only honoured in a user's own settings or in managed (MDM/server) settings. A committed repository-scope value refreshes nothing today; it is reported only in case a future release honours it")
 		}
 		if !src.Remote() {
 			continue // a "directory" source is on disk — no upstream trust edge
@@ -108,7 +111,7 @@ func (r *cfg089) Check(t *Target) []finding.Finding {
 		if marketplacePinned(src) {
 			continue
 		}
-		add("extraKnownMarketplaces." + name + " registers a plugin marketplace from \"" + src.Location() +
+		add(finding.Warn, "extraKnownMarketplaces."+name+" registers a plugin marketplace from \""+src.Location()+
 			"\" with no immutable pin — neither a full-SHA `sha` nor a full-SHA `ref`, so whoever controls the upstream can change what is installed under every contributor. Pin the source to a full 40-character commit SHA")
 	}
 
