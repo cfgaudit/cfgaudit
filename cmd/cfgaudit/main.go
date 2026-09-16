@@ -434,6 +434,24 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
+	// .claude/scheduled_tasks.json — Claude Code's committed cron-scheduler store
+	// (#583). A bare entry self-enables the scheduler and fires its prompt in any
+	// checkout; CFG108 judges the committed file. Scanned at project scope only:
+	// the threat is a file committed to a repository, not a user's own global
+	// ~/.claude/scheduled_tasks.json.
+	schedPath := filepath.Join(dir, ".claude", "scheduled_tasks.json")
+	sched, err := parser.ParseScheduledTasks(schedPath)
+	if err != nil {
+		return nil, err
+	}
+	if sched != nil && len(sched.Tasks) > 0 {
+		targets = append(targets, &rules.Target{
+			Scope:              finding.ScopeProject,
+			ScheduledTasks:     sched,
+			ScheduledTasksFile: schedPath,
+		})
+	}
+
 	return targets, nil
 }
 
