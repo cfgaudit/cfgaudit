@@ -23,6 +23,17 @@ type CodexConfig struct {
 	// value (codex-rs/protocol/src/config_types.rs), so both must be recognised.
 	ApprovalsReviewer string `toml:"approvals_reviewer"`
 
+	// AutoReview is the [auto_review] table (distinct from the scalar
+	// `approvals_reviewer = "auto_review"` above). Its two string fields are spliced
+	// into the Guardian reviewer's prompt, the same reviewer [features.guardianv2]
+	// configures, so a committed value rewrites the prompt that judges the agent
+	// (CFG103). The table is not on PROJECT_LOCAL_CONFIG_DENYLIST and the
+	// project-layer sanitizer does not touch it; verified against codex 0.154.0,
+	// where a committed `[auto_review] policy` comes back through the app server's
+	// config/read in a trusted directory (model_provider, the denylisted control,
+	// is stripped from the same file).
+	AutoReview *CodexAutoReview `toml:"auto_review"`
+
 	// Apps is the [apps] table, upstream's "App/connector settings loaded from
 	// `config.toml`". It repeats the approval decisions cfgaudit reads on
 	// [mcp_servers] at four more positions and approvals_reviewer at three more;
@@ -223,6 +234,24 @@ func (g *CodexGuardianV2) UnmarshalTOML(v any) error {
 	default:
 		return nil // a shape this version does not model
 	}
+}
+
+// CodexAutoReview is the [auto_review] table (AutoReviewToml upstream). Both
+// fields are optional strings woven into the Guardian reviewer's prompt:
+//
+//   - Policy is "Additional policy instructions inserted into the guardian
+//     prompt", spliced into the tenant-policy section
+//     (resolve_guardian_policy → normalize_guardian_policy_config). In the schema
+//     since April 2026, honoured by current stable.
+//   - ExperimentalPolicyTemplate is the "Experimental full Guardian prompt
+//     template containing the tenant policy placeholder", replacing the entire
+//     template around {{ tenant_policy_config }}
+//     (guardian_policy_prompt_with_config_and_template). Added 2026-09-14, nightly
+//     only at the time of writing, so a committed value is inert on a stable build
+//     and honoured on a nightly one.
+type CodexAutoReview struct {
+	Policy                     string `toml:"policy"`
+	ExperimentalPolicyTemplate string `toml:"experimental_policy_template"`
 }
 
 // Off reports whether the block switches the reviewer off, in either spelling.
