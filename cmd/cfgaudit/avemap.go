@@ -190,6 +190,12 @@ var aveByRule = map[string]string{
 	// CFG102 (two committed skills claiming one name) is name shadowing, but
 	// AVE-2026-00017 is explicitly MCP server identity and AVE-2026-00066 is
 	// registry squatting on hallucinated names. Reported as a gap instead.
+	// CFG108 (a committed .claude/scheduled_tasks.json self-enabling the cron
+	// scheduler and firing a repo-authored prompt) has no record: the closest,
+	// AVE-2026-00063, is a bypassed *human* approval gate, but CFG108 does not
+	// bypass a gate — the file's presence creates a new autonomous channel that
+	// enqueues a prompt on a timer. No record covers a config-declared scheduler
+	// that fires prompts, so it is a gap rather than stretched onto 00063.
 }
 
 // ruleAVE returns the primary AVE id for a rule, or "" if none is mapped.

@@ -27,6 +27,8 @@ cfgaudit maps (covered + partial) to **44 of 49**. Counts refreshed 2026-08-14 f
 
 Refreshed again 2026-08-23 against AVE-2026-00078 through AVE-2026-00080. **None of the three is a static configuration surface**: 00078 is consensus poisoning in a multi-agent pipeline, 00079 is plan hijacking through a false completion signal, and 00080 is silent agent substitution at a routing slot during a retry. All three are orchestration-runtime behaviours, so they add no home for a previously unmapped rule and shift no existing mapping. Of cfgaudit's four new rules, CFG104 and CFG105 map to AVE-2026-00063, CFG103 maps to AVE-2026-00076 for one of its three findings, and CFG106 is deliberately unmapped.
 
+Rechecked 2026-09-17 for the v1.14.0 release: the AVE record set is unchanged at AVE-2026-00080, so no previously unmapped rule gains a class. The two rules added since v1.13.0, CFG107 and CFG108, are both reported as gaps (below): neither a config-declared process environment that loads code into every shell nor a config-declared scheduler that fires prompts on a timer has a record.
+
 The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the four config records among them were mapped, AVE-2026-00065 (A2A agent card poisoning) became a gap, and AVE-2026-00060 (STDIO shell injection) and AVE-2026-00069 (image-hidden instructions in a skill package) went out of scope as server-source and binary-content analysis. The out-of-scope records are a note back to AVE — see the last section.
 
 ---
@@ -102,6 +104,7 @@ Added in the 2026-08-14 refresh, against AVE-2026-00071 through AVE-2026-00077. 
 | CFG101 deny rule walked past by flag reordering | An ineffective guardrail rather than an attacker behaviour. AVE-2026-00063 is a flag that *removes* a gate; AVE-2026-00068 is composition through shared shell state. Neither is "the denylist misses an equivalent spelling of the same flags" |
 | CFG102 two committed skills claiming one name | Name shadowing, but AVE-2026-00017 is explicitly MCP *server* identity and AVE-2026-00066 is registry squatting on names a model hallucinates. A local collision where load order silently picks the winner is neither |
 | CFG107 Codex `shell_environment_policy.set` code injection | The mechanism is CFG020's exactly, but AVE-2026-00055 is bound to an untrusted *MCP launch config*. No record covers a configuration-declared process environment that loads code into every shell the agent spawns, so it is reported as a gap rather than stretched onto 00055 |
+| CFG108 committed `.claude/scheduled_tasks.json` fires a prompt on a timer | The closest record, AVE-2026-00063, is a bypassed *human* approval gate. CFG108 bypasses no gate: the file's presence self-enables the otherwise-off cron scheduler and enqueues a repository-authored prompt on a schedule, a new autonomous channel. No record covers a config-declared scheduler that fires prompts, so it is a gap |
 
 ---
 
