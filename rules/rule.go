@@ -276,6 +276,14 @@ type Target struct {
 	// binary is available.
 	ShellCheck bool
 
+	// ScheduledTasks holds a parsed .claude/scheduled_tasks.json — Claude Code's
+	// cron-scheduler store. A committed file with a non-empty tasks array is
+	// committed autonomous scheduling: a bare entry (no session identity)
+	// self-enables the scheduler and enqueues its prompt in any checkout (CFG108).
+	// Nil when absent; ScheduledTasksFile is its path.
+	ScheduledTasks     *parser.ScheduledTasks
+	ScheduledTasksFile string
+
 	// SkillsLock holds a parsed skills-lock.json (vercel-labs/skills CLI) at the
 	// repo root — the committed lock file declaring the external repos agent-skill
 	// (instruction) content is pulled from. An entry with an unpinned ref is a

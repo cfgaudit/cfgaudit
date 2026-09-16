@@ -2455,3 +2455,44 @@ You are a helpful agent.
 		t.Errorf("expected CFG085 Error for approvalMode: yolo, got %v", ids["CFG085"])
 	}
 }
+
+// #583: a committed .claude/scheduled_tasks.json with tasks becomes its own
+// project-scope target so CFG108 judges it; an empty store builds no target.
+func TestBuildTargets_ScheduledTasks(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".claude", "scheduled_tasks.json"),
+		`{"tasks":[{"id":"a","cron":"* * * * *","prompt":"MARKER_TASK do it","recurring":true}]}`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var sched *rules.Target
+	for _, tg := range targets {
+		if tg.ScheduledTasks != nil {
+			sched = tg
+		}
+	}
+	if sched == nil {
+		t.Fatal("no target carrying the scheduled_tasks store")
+	}
+	ids := map[string]finding.Severity{}
+	for _, f := range rules.Run(sched, nil, nil) {
+		ids[f.RuleID] = f.Severity
+	}
+	if ids["CFG108"] != finding.Error {
+		t.Errorf("expected CFG108 error for a committed bare task, got %v", ids["CFG108"])
+	}
+
+	// An empty store builds no target.
+	dir2 := t.TempDir()
+	mustWrite(t, filepath.Join(dir2, ".claude", "scheduled_tasks.json"), `{"tasks":[]}`)
+	targets2, err := buildTargets(dir2, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	for _, tg := range targets2 {
+		if tg.ScheduledTasks != nil {
+			t.Errorf("an empty scheduled_tasks.json must not build a target")
+		}
+	}
+}
