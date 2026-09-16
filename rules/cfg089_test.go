@@ -123,9 +123,10 @@ func TestCFG089_NoSettings(t *testing.T) {
 	}
 }
 
-// #534: autoUpdate refreshes a marketplace's plugins at session start. Copilot's
-// changelog names user settings, but the CLI merges the repository file into the
-// same resolution once the folder is trusted, so a committed entry reaches it.
+// #582: at the repository level Copilot's own configuration reference says
+// autoUpdate is "accepted at the repository level but currently ignored", so the
+// finding is info (reported because the key is a declared opt-in a future release
+// could honour), not a warn claiming a live refresh.
 func TestCFG089_MarketplaceAutoUpdate(t *testing.T) {
 	f := CFG089.Check(copilotSettingsTarget(&parser.CopilotSettings{
 		ExtraKnownMarketplaces: map[string]parser.CopilotMarketplace{
@@ -134,21 +135,18 @@ func TestCFG089_MarketplaceAutoUpdate(t *testing.T) {
 			}},
 		},
 	}))
-	if len(f) != 1 || f[0].Severity != finding.Warn {
-		t.Fatalf("expected 1 warn for autoUpdate on a pinned source, got %+v", f)
+	if len(f) != 1 || f[0].Severity != finding.Info {
+		t.Fatalf("expected 1 info for autoUpdate at the repository level, got %+v", f)
 	}
-	if !strings.Contains(f[0].Message, "autoUpdate") {
-		t.Errorf("message should name the key, got %q", f[0].Message)
-	}
-	// A pinned source refreshes to the same commit, so the extra sentence about an
-	// unpinned upstream must not appear.
-	if strings.Contains(f[0].Message, "no immutable pin") {
-		t.Errorf("pinned entry must not carry the unpinned sentence: %q", f[0].Message)
+	if !strings.Contains(f[0].Message, "autoUpdate") || !strings.Contains(f[0].Message, "currently ignored") {
+		t.Errorf("message should name the key and the vendor's wording, got %q", f[0].Message)
 	}
 }
 
-// Unpinned and auto-updating is the sharp combination: two findings, and the
-// autoUpdate one says the entry is also unpinned.
+// Unpinned and auto-updating yields two separate findings: the info autoUpdate
+// note and the warn about the unpinned source. The autoUpdate note no longer
+// carries the pin sentence, since it refreshes nothing at this scope; the pin
+// concern is the source finding's job.
 func TestCFG089_MarketplaceAutoUpdateUnpinned(t *testing.T) {
 	f := CFG089.Check(copilotSettingsTarget(&parser.CopilotSettings{
 		ExtraKnownMarketplaces: map[string]parser.CopilotMarketplace{
@@ -160,14 +158,20 @@ func TestCFG089_MarketplaceAutoUpdateUnpinned(t *testing.T) {
 	if len(f) != 2 {
 		t.Fatalf("expected the autoUpdate and the unpinned findings, got %+v", f)
 	}
-	var sawCombination bool
+	var sawAutoUpdateInfo, sawUnpinnedWarn bool
 	for _, x := range f {
-		if strings.Contains(x.Message, "autoUpdate") && strings.Contains(x.Message, "no immutable pin") {
-			sawCombination = true
+		switch {
+		case strings.Contains(x.Message, "autoUpdate"):
+			sawAutoUpdateInfo = x.Severity == finding.Info
+			if strings.Contains(x.Message, "no immutable pin") {
+				t.Errorf("the autoUpdate note must not claim a live refresh / carry the pin sentence: %q", x.Message)
+			}
+		case strings.Contains(x.Message, "no immutable pin"):
+			sawUnpinnedWarn = x.Severity == finding.Warn
 		}
 	}
-	if !sawCombination {
-		t.Errorf("the autoUpdate finding should say the entry is also unpinned: %+v", f)
+	if !sawAutoUpdateInfo || !sawUnpinnedWarn {
+		t.Errorf("expected an info autoUpdate note and a warn unpinned-source finding, got %+v", f)
 	}
 }
 
