@@ -834,13 +834,15 @@ var (
 		filepath.Join(".grok", "rules", "*.md"),
 		filepath.Join(".grok", "agents", "*.md"),
 		// qwen-code custom subagents, slash commands, and skills — committable
-		// Markdown read as trusted context (#390). Verified to exist: .qwen/agents/*.md
-		// (native frontmatter has NO permission field, so CFG085 is correctly not
-		// extended — only the instruction-content rules apply to the body),
-		// .qwen/commands/*.md, and one-deep .qwen/skills/<name>/SKILL.md. .qwen/rules
-		// did not exist when this list was written; it does now, and because qwen
-		// discovers it recursively it is collected by agentRulesFiles rather than
-		// by a glob here (#565).
+		// Markdown read as trusted context (#390). .qwen/agents/*.md frontmatter
+		// "mirrors Claude Code 2.1.168's .claude/agents/<name>.md schema verbatim"
+		// (agent-frontmatter-schema.ts), so CFG085 reads its approvalMode /
+		// permissionMode, and attachSubagentBlocks routes its hooks, mcpServers and
+		// qwen-only executor block (#579); the instruction-content rules apply to
+		// the body. .qwen/commands/*.md and one-deep .qwen/skills/<name>/SKILL.md
+		// follow. .qwen/rules did not exist when this list was written; it does now,
+		// and because qwen discovers it recursively it is collected by
+		// agentRulesFiles rather than by a glob here (#565).
 		filepath.Join(".qwen", "agents", "*.md"),
 		filepath.Join(".qwen", "commands", "*.md"),
 		filepath.Join(".qwen", "skills", "*", "SKILL.md"),
@@ -991,14 +993,20 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 //
 //   - Claude Code, .claude/agents/*.md (#428): `hooks:` become command sites, and
 //     the inline `mcpServers:` list rides ProjectMCP like the servers in .mcp.json.
+//
 //   - GitHub Copilot, .github/agents/*.md (#439): the kebab-case `mcp-servers:`
 //     mapping rides ProjectMCP. Copilot's custom-agent frontmatter has no hooks
 //     block — its hooks come from config dirs and plugin manifests, not from an
 //     agent file — so none is decoded here.
 //
-// Other agents' subagent files are a different contract again: Grok's frontmatter
-// carries permissionMode but no hooks/mcpServers, and qwen's has neither, so
-// decoding these keys there would report fields the agent never reads.
+//   - qwen-code, .qwen/agents/*.md (#579): the frontmatter "mirrors Claude Code
+//     2.1.168's .claude/agents/<name>.md schema verbatim", so the same `hooks:`
+//     and `mcpServers:` blocks are decoded through SubagentFrontmatterBlocks.
+//     qwen adds an `executor:` block, a qwen-only extension whose Command names
+//     an external process; it rides QwenExecutor and becomes a command site.
+//
+// Grok's subagent frontmatter is a different contract: it carries permissionMode
+// (CFG085) but no hooks/mcpServers/executor, so none of those are decoded for it.
 //
 // Plugin-loaded agents are out of scope by construction: Claude Code ignores
 // hooks/mcpServers/permissionMode for them, and cfgaudit only builds instruction
@@ -1010,7 +1018,8 @@ func attachSubagentBlocks(t *rules.Target) {
 	claude := isClaudeSubagentFile(t.InstructionFile)
 	copilot := isCopilotAgentFile(t.InstructionFile)
 	gemini := isGeminiAgentFile(t.InstructionFile)
-	if !claude && !copilot && !gemini {
+	qwen := isQwenSubagentFile(t.InstructionFile)
+	if !claude && !copilot && !gemini && !qwen {
 		return
 	}
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
@@ -1036,6 +1045,16 @@ func attachSubagentBlocks(t *rules.Target) {
 			t.ProjectMCPFile = t.InstructionFile
 		}
 		return
+	}
+
+	// qwen's executor: block is a qwen-only extension, not part of the mirrored
+	// Claude schema, so it is decoded only for a .qwen/agents file. Its hooks and
+	// mcpServers share the Claude path below.
+	if qwen {
+		if ex := parser.ParseSubagentExecutor(fm); ex != nil {
+			t.QwenExecutor = ex
+			t.QwenExecutorFile = t.InstructionFile
+		}
 	}
 
 	blocks := parser.SubagentFrontmatterBlocks(fm)
@@ -1076,6 +1095,16 @@ func isCopilotAgentFile(path string) bool {
 // reached here already passed that filter in geminiAgentFiles.
 func isGeminiAgentFile(path string) bool {
 	return isAgentDefinitionFile(path, ".gemini")
+}
+
+// isQwenSubagentFile reports whether path is a Markdown file directly inside a
+// .qwen/agents directory. qwen-code's frontmatter mirrors Claude Code's agent
+// schema, so the same hooks/mcpServers blocks are read for it, plus its own
+// executor extension. Discovery is a single readdir with an .md filter
+// (subagent-manager.ts), so a nested file is not loaded; the single-level glob in
+// projectInstructionGlobs matches that.
+func isQwenSubagentFile(path string) bool {
+	return isAgentDefinitionFile(path, ".qwen")
 }
 
 // isAgentDefinitionFile reports whether path is a Markdown file directly inside

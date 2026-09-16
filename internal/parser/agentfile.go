@@ -1,6 +1,9 @@
 package parser
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // SubagentBlocks holds the two nested execution blocks a Claude Code subagent
 // definition (.claude/agents/*.md) can carry in its YAML frontmatter, decoded
@@ -161,6 +164,74 @@ func inlineSubagentMCPServers(raw any) map[string]MCPServer {
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+// SubagentExecutor is the qwen-code `executor:` frontmatter block, a qwen-only
+// extension to the mirrored Claude Code agent schema (.qwen/agents/*.md). It
+// delegates the subagent's turn to an external process spawned from Command
+// (plus Args) instead of running it in-process, so the named binary is a
+// committed command the repository chooses.
+//
+// The shape and validation mirror qwen's parseAgentExecutor
+// (packages/core/src/subagents/agent-frontmatter-schema.ts):
+//
+//   - Kind must be exactly "acp" or "codex"; any other value (including a
+//     different case such as "ACP") drops the whole block.
+//   - Command must be a non-blank string; qwen trims it and does NOT check that
+//     the binary exists, so a bare tool name and a relative path both pass.
+//   - Args, when present, must be an array of strings; a non-array or a
+//     non-string element drops the whole block rather than truncating it, so a
+//     partial argument list never runs.
+//
+// The "codex" kind is nightly-only at the time of writing; "acp" ships in the
+// 0.23.3 release. cfgaudit models both because a committed file can carry either.
+type SubagentExecutor struct {
+	Kind    string
+	Command string
+	Args    []string
+}
+
+// ParseSubagentExecutor decodes the frontmatter `executor:` block of a qwen
+// agent file, returning nil when the block is absent or fails qwen's own
+// validation (in which case qwen refuses to load the file rather than running it
+// in-process, so there is no command to report).
+func ParseSubagentExecutor(fm *Frontmatter) *SubagentExecutor {
+	if fm == nil {
+		return nil
+	}
+	raw, ok := fm.Raw["executor"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	kind, _ := raw["kind"].(string)
+	if kind != "acp" && kind != "codex" {
+		return nil
+	}
+	command, ok := raw["command"].(string)
+	if !ok {
+		return nil
+	}
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return nil
+	}
+	out := &SubagentExecutor{Kind: kind, Command: command}
+	if rawArgs, present := raw["args"]; present {
+		list, ok := rawArgs.([]any)
+		if !ok {
+			return nil // a non-array args block drops the whole executor upstream
+		}
+		args := make([]string, 0, len(list))
+		for _, a := range list {
+			s, ok := a.(string)
+			if !ok {
+				return nil // a non-string element drops the whole executor upstream
+			}
+			args = append(args, s)
+		}
+		out.Args = args
 	}
 	return out
 }
