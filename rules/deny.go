@@ -21,30 +21,112 @@ var denyAllGlobMinVersion = version.Version{Major: 2, Minor: 1, Patch: 166}
 // version-independent: Read(...) path globs have always been honoured.
 var readAllPatterns = map[string]bool{"*": true, "**": true, "**/*": true}
 
-// denyCoversEverything reports whether the deny block contains an entry that
-// blocks every read relevant to the file-class coverage rules (CFG041–044), so
-// those rules must not report a per-class gap:
-//   - a Read-all wildcard — Read(*) / Read(**) / Read(**/*) — on any version, or
-//   - the bare "*" deny-all-tools glob — only on Claude Code >= 2.1.166, or when
-//     the version is unknown (ver == nil); on older releases "*" denies nothing.
-func denyCoversEverything(deny []string, ver *version.Version) bool {
+// denyReadsCovered reports whether the deny block denies READING the file class
+// described by classRe (matched against deny path globs) and samples
+// (representative secret paths of the class), for the file-class coverage rules
+// (CFG041–044). It is evaluated in order and honours the exception form (#581):
+//
+//   - grant: a bare "*" deny-all-tools glob (>= 2.1.166, or unknown version), a
+//     Read-all wildcard Read(*) / Read(**) / Read(**/*) on any version, or a Read
+//     deny whose path glob matches classRe.
+//   - carve: an exception rule — any Tool(!glob), with an optional ./ before the
+//     "!" — removes, from the rules listed before it, coverage of the paths its
+//     glob matches. It carves this class when its glob matches a sample path.
+//
+// The carve is matched by glob against real secret paths rather than by classRe
+// against the exception's glob string, so a narrow re-allow such as
+// Read(!**/.env.example) does not read as exposing .env, while Read(!**/.env)
+// does. Any tool wrapper counts for the carve: the "!" form denies nothing, and
+// treating it uniformly errs toward reporting (the managed-settings filter names
+// Read and Edit, but a Write(!glob) deny already grants nothing here).
+func denyReadsCovered(deny []string, classRe *regexp.Regexp, samples []string, ver *version.Version) bool {
 	denyAllActive := ver == nil || ver.AtLeast(denyAllGlobMinVersion)
+	covered := false
 	for _, e := range deny {
-		t := strings.TrimSpace(e)
-		if t == "*" {
-			if denyAllActive {
-				return true
+		if g, ok := exceptionGlob(e); ok {
+			if matchesAnySample(g, samples) {
+				covered = false
 			}
 			continue
 		}
-		if m := toolPatternRe.FindStringSubmatch(t); m != nil {
-			tool := t[:strings.IndexByte(t, '(')]
-			if strings.EqualFold(tool, "Read") && readAllPatterns[m[1]] {
-				return true
+		t := strings.TrimSpace(e)
+		if t == "*" {
+			if denyAllActive {
+				covered = true
+			}
+			continue
+		}
+		if pat, ok := readDenyPattern(e); ok {
+			if readAllPatterns[pat] || classRe.MatchString(pat) {
+				covered = true
 			}
 		}
 	}
+	return covered
+}
+
+// exceptionGlob returns the glob of a Tool(!glob) / Tool(./!glob) exception rule
+// and true, or ("", false) for any other entry. The binary recognises the form
+// with /^(?:Read|Edit)\((?:\.\/)?!/ (2.1.269+); cfgaudit accepts the "!" under
+// any tool name, since the deny side already grants nothing for the tools the
+// binary excludes.
+func exceptionGlob(entry string) (string, bool) {
+	m := toolPatternRe.FindStringSubmatch(strings.TrimSpace(entry))
+	if m == nil {
+		return "", false
+	}
+	inner := strings.TrimSpace(m[1])
+	inner = strings.TrimPrefix(inner, "./")
+	if rest, ok := strings.CutPrefix(inner, "!"); ok {
+		return strings.TrimSpace(rest), true
+	}
+	return "", false
+}
+
+// matchesAnySample reports whether the glob matches any of the class's
+// representative secret paths. A read-all glob (**, */**, …) matches every
+// sample and so carves every class.
+func matchesAnySample(glob string, samples []string) bool {
+	if glob == "" {
+		return false
+	}
+	re := globToPathRegexp(glob)
+	for _, s := range samples {
+		if re.MatchString(s) {
+			return true
+		}
+	}
 	return false
+}
+
+// globToPathRegexp compiles a permission-rule path glob to a regexp: `**` spans
+// path segments (including none, so `**/.env` matches `.env`), `*` stays within a
+// segment, `?` is one non-separator character, and a leading `//` (filesystem
+// root anchor) or `/` is treated literally. Used only to test an exception glob
+// against a handful of sample paths, so per-call compilation is fine.
+func globToPathRegexp(glob string) *regexp.Regexp {
+	var b strings.Builder
+	b.WriteString("^")
+	for i := 0; i < len(glob); i++ {
+		switch glob[i] {
+		case '*':
+			if i+1 < len(glob) && glob[i+1] == '*' {
+				b.WriteString(".*")
+				i++
+				if i+1 < len(glob) && glob[i+1] == '/' {
+					i++
+				}
+			} else {
+				b.WriteString("[^/]*")
+			}
+		case '?':
+			b.WriteString("[^/]")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(glob[i])))
+		}
+	}
+	b.WriteString("$")
+	return regexp.MustCompile(b.String())
 }
 
 // readDenyPattern returns the path glob of a Read(...) deny entry and true, or
@@ -75,19 +157,6 @@ func readDenyPattern(entry string) (string, bool) {
 		return "", false
 	}
 	return m[1], true
-}
-
-// denyCoversAny reports whether any Read deny entry's path glob matches re — used
-// by the deny-coverage rules (CFG041…) to check that a sensitive file class is
-// blocked from being read. Non-Read deny entries provide no read coverage (see
-// readDenyPattern).
-func denyCoversAny(deny []string, re *regexp.Regexp) bool {
-	for _, e := range deny {
-		if pat, ok := readDenyPattern(e); ok && re.MatchString(pat) {
-			return true
-		}
-	}
-	return false
 }
 
 // canonicalizedParamFields maps a tool (lower-cased) to the one input parameter

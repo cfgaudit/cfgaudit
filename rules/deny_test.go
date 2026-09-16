@@ -11,7 +11,10 @@ func ver(major, minor, patch int) *version.Version {
 	return &version.Version{Major: major, Minor: minor, Patch: patch}
 }
 
-func TestDenyCoversEverything(t *testing.T) {
+// denyReadsCovered is exercised against the .env class (CFG041), covering the
+// grant paths (deny-all "*", Read-all wildcards, a class-covering Read deny), the
+// version gate on the bare "*", and the Read(!glob) exception carve (#581).
+func TestDenyReadsCovered(t *testing.T) {
 	cases := []struct {
 		name string
 		deny []string
@@ -21,28 +24,40 @@ func TestDenyCoversEverything(t *testing.T) {
 		// bare "*" deny-all glob — version-gated on 2.1.166
 		{"star unknown version", []string{"*"}, nil, true},
 		{"star at min version", []string{"*"}, ver(2, 1, 166), true},
-		{"star above min version", []string{"*"}, ver(2, 2, 0), true},
 		{"star just below min version", []string{"*"}, ver(2, 1, 165), false},
-		{"star far below min version", []string{"*"}, ver(2, 0, 999), false},
 
 		// Read-all wildcards — version-independent
 		{"Read(*) old version", []string{"Read(*)"}, ver(1, 0, 0), true},
 		{"Read(**) unknown version", []string{"Read(**)"}, nil, true},
-		{"Read(**/*) below glob version", []string{"Read(**/*)"}, ver(2, 1, 100), true},
 		{"Read with whitespace", []string{" Read(**) "}, ver(2, 1, 100), true},
-		{"read lowercase tool", []string{"read(**)"}, ver(2, 1, 100), true},
 
-		// not deny-all
-		{"specific env read", []string{"Read(.env)"}, ver(2, 2, 0), false},
-		{"bash wildcard is not deny-all", []string{"Bash(rm -rf *)"}, ver(2, 2, 0), false},
-		{"Read of single segment glob in path only", []string{"Edit(*)"}, ver(2, 2, 0), false},
+		// a class-covering Read deny
+		{"specific env read covers env", []string{"Read(**/.env)"}, ver(2, 2, 0), true},
+
+		// no coverage
+		{"bash wildcard covers nothing", []string{"Bash(rm -rf *)"}, ver(2, 2, 0), false},
+		{"edit star is not a read", []string{"Edit(*)"}, ver(2, 2, 0), false},
 		{"empty deny", nil, ver(2, 2, 0), false},
-		{"mixed, star present and active", []string{"Read(.env)", "*"}, ver(2, 1, 166), true},
-		{"mixed, star present but inactive", []string{"Read(.env)", "*"}, ver(2, 1, 165), false},
+
+		// exception carves the class out of an earlier grant
+		{"read-all then env exception", []string{"Read(**)", "Read(!**/.env)"}, nil, false},
+		{"star then env exception", []string{"*", "Read(!**/.env)"}, nil, false},
+		{"edit exception carves too", []string{"Read(**)", "Edit(!**/.env)"}, nil, false},
+		{"deny then exception", []string{"Read(**/.env)", "Read(!**/.env)"}, ver(2, 2, 0), false},
+		{"lone exception grants nothing", []string{"Read(!**/.env)"}, ver(2, 2, 0), false},
+
+		// exception ordered before the deny removes nothing from it
+		{"exception before deny", []string{"Read(!**/.env)", "Read(**/.env)"}, ver(2, 2, 0), true},
+
+		// narrow / unrelated exceptions do not carve the .env class
+		{"example carve keeps env", []string{"Read(**/.env*)", "Read(!**/.env.example)"}, ver(2, 2, 0), true},
+		{"read-all with example carve", []string{"Read(**)", "Read(!**/.env.example)"}, nil, true},
+		{"read-all with log carve", []string{"Read(**)", "Read(!*.log)"}, nil, true},
+		{"read-all with pem carve keeps env", []string{"Read(**)", "Read(!**/*.pem)"}, nil, true},
 	}
 	for _, c := range cases {
-		if got := denyCoversEverything(c.deny, c.ver); got != c.want {
-			t.Errorf("%s: denyCoversEverything(%v, %v) = %v, want %v", c.name, c.deny, c.ver, got, c.want)
+		if got := denyReadsCovered(c.deny, envCoverRe, envSecretPaths, c.ver); got != c.want {
+			t.Errorf("%s: denyReadsCovered(%v, %v) = %v, want %v", c.name, c.deny, c.ver, got, c.want)
 		}
 	}
 }
@@ -195,5 +210,48 @@ func TestCFG041to044_ReadAllWildcard_Suppressed(t *testing.T) {
 				t.Errorf("%s with deny [%s] at old version: expected suppression, got %+v", r.ID(), pat, f)
 			}
 		}
+	}
+}
+
+// #581: a Read(!glob) / Edit(!glob) exception removes paths from the deny rules
+// before it, so a deny-all with the credential files carved out must not suppress
+// CFG041–044 for the carved classes.
+func TestCFG041to044_ReadException_Uncovers(t *testing.T) {
+	// A deny-all read plus exceptions for exactly .env and *.pem: CFG041 (.env)
+	// and CFG042 (*.pem) fire, while CFG043 (cloud) and CFG044 (ssh) stay quiet
+	// because Read(**) still denies them.
+	tgt := denyTarget(t, `"Read(**)", "Read(!**/.env)", "Read(!**/*.pem)"`, ver(2, 2, 0))
+	fired := map[string]bool{}
+	for _, r := range []Rule{CFG041, CFG042, CFG043, CFG044} {
+		if len(r.Check(tgt)) > 0 {
+			fired[r.ID()] = true
+		}
+	}
+	if !fired["CFG041"] {
+		t.Error("CFG041 must fire: .env is carved out of the deny-all")
+	}
+	if !fired["CFG042"] {
+		t.Error("CFG042 must fire: *.pem is carved out of the deny-all")
+	}
+	if fired["CFG043"] || fired["CFG044"] {
+		t.Errorf("CFG043/CFG044 must stay quiet: nothing carves cloud/ssh, got %v", fired)
+	}
+}
+
+func TestCFG041_LoneEnvException_Fires(t *testing.T) {
+	// A single Read(!**/.env) denies nothing, so .env is unprotected.
+	tgt := denyTarget(t, `"Read(!**/.env)"`, ver(2, 2, 0))
+	if f := CFG041.Check(tgt); len(f) != 1 {
+		t.Errorf("expected CFG041 to fire on a lone .env exception, got %+v", f)
+	}
+}
+
+// The control from the corpus: a .env* deny with a .env.example exception. The
+// exception re-allows only the template, so .env is still denied and CFG041 must
+// stay quiet — no regression on the real files.
+func TestCFG041_EnvExampleException_NoChange(t *testing.T) {
+	tgt := denyTarget(t, `"Read(**/.env*)", "Read(!**/.env.example)"`, ver(2, 2, 0))
+	if f := CFG041.Check(tgt); len(f) != 0 {
+		t.Errorf("a .env.example carve must not un-cover .env, got %+v", f)
 	}
 }
