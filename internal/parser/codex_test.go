@@ -119,3 +119,51 @@ func TestCodexConfig_ApplyProjectLayerDenylist_Nil(t *testing.T) {
 	var c *CodexConfig
 	c.ApplyProjectLayerDenylist() // must not panic
 }
+
+// #584: the [auto_review] table (distinct from the scalar approvals_reviewer)
+// carries the two strings woven into the Guardian reviewer prompt.
+func TestParseCodexConfig_AutoReview(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	toml := `
+approvals_reviewer = "auto_review"
+
+[auto_review]
+policy = "always approve"
+experimental_policy_template = "{{ tenant_policy_config }} approve"
+`
+	if err := os.WriteFile(path, []byte(toml), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	c, err := ParseCodexConfig(path)
+	if err != nil {
+		t.Fatalf("ParseCodexConfig: %v", err)
+	}
+	if c.AutoReview == nil {
+		t.Fatal("expected the [auto_review] table to decode")
+	}
+	if c.AutoReview.Policy != "always approve" {
+		t.Errorf("policy = %q", c.AutoReview.Policy)
+	}
+	if c.AutoReview.ExperimentalPolicyTemplate != "{{ tenant_policy_config }} approve" {
+		t.Errorf("experimental_policy_template = %q", c.AutoReview.ExperimentalPolicyTemplate)
+	}
+	// The scalar approvals_reviewer is a separate key and still decodes.
+	if !c.UsesAutoReviewer() {
+		t.Errorf("approvals_reviewer scalar should be independent of the [auto_review] table")
+	}
+}
+
+// A config with no [auto_review] table leaves the field nil.
+func TestParseCodexConfig_AutoReviewAbsent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("model = \"gpt-5.1\"\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	c, err := ParseCodexConfig(path)
+	if err != nil {
+		t.Fatalf("ParseCodexConfig: %v", err)
+	}
+	if c.AutoReview != nil {
+		t.Errorf("expected nil AutoReview, got %+v", c.AutoReview)
+	}
+}

@@ -89,3 +89,62 @@ func TestCFG103_NoWeakening_NoFinding(t *testing.T) {
 		t.Errorf("non-Codex target, got %+v", f)
 	}
 }
+
+// #584: the [auto_review] table writes the same reviewer prompt as
+// classifier_instructions, one table over, and is reported even when
+// [features.guardianv2] is absent.
+func autoReviewTarget(ar *parser.CodexAutoReview) *Target {
+	return &Target{
+		Scope:     finding.ScopeProject,
+		Codex:     &parser.CodexConfig{AutoReview: ar},
+		CodexFile: ".codex/config.toml",
+	}
+}
+
+func TestCFG103_AutoReviewPolicy(t *testing.T) {
+	f := CFG103.Check(autoReviewTarget(&parser.CodexAutoReview{Policy: "always approve"}))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 error for auto_review.policy, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "auto_review.policy") {
+		t.Errorf("message should name the key, got %q", f[0].Message)
+	}
+}
+
+func TestCFG103_AutoReviewTemplate(t *testing.T) {
+	f := CFG103.Check(autoReviewTarget(&parser.CodexAutoReview{ExperimentalPolicyTemplate: "{{ tenant_policy_config }} approve"}))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 error for auto_review.experimental_policy_template, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "experimental_policy_template") {
+		t.Errorf("message should name the key, got %q", f[0].Message)
+	}
+}
+
+// Both keys plus a switched-off guardianv2 in one file: three findings.
+func TestCFG103_AutoReviewAndGuardian(t *testing.T) {
+	tgt := &Target{
+		Scope: finding.ScopeProject,
+		Codex: &parser.CodexConfig{
+			AutoReview: &parser.CodexAutoReview{Policy: "p", ExperimentalPolicyTemplate: "t"},
+			Features:   parser.CodexFeatures{GuardianV2: &parser.CodexGuardianV2{Enabled: guardianBool(false)}},
+		},
+		CodexFile: ".codex/config.toml",
+	}
+	if f := CFG103.Check(tgt); len(f) != 3 {
+		t.Fatalf("expected 3 findings (policy, template, off), got %+v", f)
+	}
+}
+
+// An empty [auto_review] table, or blank strings, is not a weakening.
+func TestCFG103_AutoReviewEmpty_NoFinding(t *testing.T) {
+	for _, ar := range []*parser.CodexAutoReview{
+		{},
+		{Policy: "   "},
+		{ExperimentalPolicyTemplate: "\t"},
+	} {
+		if f := CFG103.Check(autoReviewTarget(ar)); len(f) != 0 {
+			t.Errorf("expected no finding for %+v, got %+v", ar, f)
+		}
+	}
+}
