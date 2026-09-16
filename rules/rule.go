@@ -227,6 +227,14 @@ type Target struct {
 	SubagentHooks     map[string][]parser.HookGroup
 	SubagentHooksFile string
 
+	// QwenExecutor holds the qwen-code `executor:` block from a .qwen/agents/*.md
+	// frontmatter (#579) — a qwen-only extension that delegates the subagent's
+	// turn to an external process. Its Command (and Args) are committed and chosen
+	// by the repository, so they become a command site. Nil when absent;
+	// QwenExecutorFile is the agent file's path, used to attribute findings.
+	QwenExecutor     *parser.SubagentExecutor
+	QwenExecutorFile string
+
 	// CopilotSettings holds a parsed GitHub Copilot repository-level
 	// .github/copilot/settings.json. Its enabledPlugins / extraKnownMarketplaces
 	// auto-install third-party plugin code, the same surface CFG055 covers for

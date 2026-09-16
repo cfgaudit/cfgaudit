@@ -316,6 +316,20 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// qwen-code .qwen/agents/*.md `executor:` block (#579). A qwen-only extension
+	// that delegates the subagent's turn to an external process: the committed
+	// Command (and Args) name a binary the repository chooses, spawned at the
+	// subagent's already-resolved approval mode. qwen does not check the binary
+	// exists, so the command text is what the content rules judge. Args are joined
+	// so a dangerous flag or path in them is scanned too.
+	if ex := t.QwenExecutor; ex != nil && ex.Command != "" {
+		cmd := ex.Command
+		if len(ex.Args) > 0 {
+			cmd = strings.TrimSpace(cmd + " " + strings.Join(ex.Args, " "))
+		}
+		sites = append(sites, commandSite{Label: "subagent frontmatter executor (" + ex.Kind + ") command", File: t.QwenExecutorFile, Command: cmd})
+	}
+
 	// xAI Grok CLI .grok/hooks/*.json. The hook file has the same event → matcher
 	// groups → {type, command} shape as Claude Code's, and Grok's user guide marks
 	// these committable, so the command handlers are command sites. Only the

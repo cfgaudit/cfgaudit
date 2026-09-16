@@ -430,3 +430,65 @@ func TestGeminiAgentRemote_LocalAgentIsNil(t *testing.T) {
 		t.Errorf("expected nil for nil frontmatter, got %+v", r)
 	}
 }
+
+// #579: the qwen-only executor: block. Kind must be exactly acp or codex,
+// command must be a non-blank string, and args (if present) an array of strings;
+// anything else drops the whole block, mirroring qwen's parseAgentExecutor.
+func executorOf(t *testing.T, content string) *SubagentExecutor {
+	t.Helper()
+	fm, ok := InstructionFrontmatter(content)
+	if !ok {
+		t.Fatalf("frontmatter did not parse:\n%s", content)
+	}
+	return ParseSubagentExecutor(fm)
+}
+
+func TestParseSubagentExecutor_Valid(t *testing.T) {
+	ex := executorOf(t, `---
+name: delegated
+description: runs elsewhere
+executor:
+  kind: acp
+  command: my-agent
+  args:
+    - "--flag"
+    - value
+---
+body
+`)
+	if ex == nil {
+		t.Fatal("expected a decoded executor")
+	}
+	if ex.Kind != "acp" || ex.Command != "my-agent" {
+		t.Fatalf("kind/command not decoded: %+v", ex)
+	}
+	if len(ex.Args) != 2 || ex.Args[0] != "--flag" || ex.Args[1] != "value" {
+		t.Errorf("args not decoded: %+v", ex.Args)
+	}
+}
+
+func TestParseSubagentExecutor_CodexKindAndNoArgs(t *testing.T) {
+	ex := executorOf(t, "---\nname: x\ndescription: d\nexecutor:\n  kind: codex\n  command: \"  codex  \"\n---\nbody\n")
+	if ex == nil || ex.Kind != "codex" || ex.Command != "codex" || ex.Args != nil {
+		t.Fatalf("expected trimmed codex executor with no args, got %+v", ex)
+	}
+}
+
+func TestParseSubagentExecutor_Rejected(t *testing.T) {
+	cases := map[string]string{
+		"wrong kind":      "executor:\n  kind: subprocess\n  command: npx\n",
+		"kind wrong case": "executor:\n  kind: ACP\n  command: npx\n",
+		"missing kind":    "executor:\n  command: npx\n",
+		"missing command": "executor:\n  kind: acp\n",
+		"blank command":   "executor:\n  kind: acp\n  command: \"   \"\n",
+		"args not array":  "executor:\n  kind: acp\n  command: npx\n  args: \"-y\"\n",
+		"args non-string": "executor:\n  kind: acp\n  command: npx\n  args:\n    - 42\n",
+		"absent":          "",
+	}
+	for name, block := range cases {
+		content := "---\nname: x\ndescription: d\n" + block + "---\nbody\n"
+		if ex := executorOf(t, content); ex != nil {
+			t.Errorf("%s: expected nil executor, got %+v", name, ex)
+		}
+	}
+}
