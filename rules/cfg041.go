@@ -18,6 +18,12 @@ func (r *cfg041) ID() string { return "CFG041" }
 // *.env, **/.env, **/.env.*, .env.local, etc.
 var envCoverRe = regexp.MustCompile(`(?i)\.env($|[./*])`)
 
+// envSecretPaths are representative .env secret paths an exception rule must
+// re-expose to count as carving this class. .env.example / .env.sample are
+// deliberately absent: a Read(!**/.env.example) carve is a safe template, not the
+// secret file, so it must not read as exposing .env.
+var envSecretPaths = []string{".env", ".env.local", "config/.env"}
+
 // Check flags a permissions.deny block that exists but does not restrict access
 // to .env files — Claude could then read database passwords, API keys, and other
 // credentials they contain. A missing deny block entirely is CFG006's job.
@@ -29,10 +35,7 @@ func (r *cfg041) Check(t *Target) []finding.Finding {
 	if len(deny) == 0 {
 		return nil // absent/empty deny is covered by CFG006
 	}
-	if denyCoversEverything(deny, t.ClaudeVersion) {
-		return nil // a deny-all "*"/Read(**) entry already blocks every read
-	}
-	if denyCoversAny(deny, envCoverRe) {
+	if denyReadsCovered(deny, envCoverRe, envSecretPaths, t.ClaudeVersion) {
 		return nil
 	}
 	return []finding.Finding{{

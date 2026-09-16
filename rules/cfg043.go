@@ -20,13 +20,17 @@ func (r *cfg043) ID() string { return "CFG043" }
 var cloudProviders = []struct {
 	name    string
 	re      *regexp.Regexp
+	samples []string
 	suggest []string
 }{
 	{"AWS", regexp.MustCompile(`(?i)\.aws(/|\*|$)`),
+		[]string{".aws/credentials", ".aws/config"},
 		[]string{"Read(//**/.aws/credentials)", "Read(//**/.aws/config)"}},
 	{"GCP", regexp.MustCompile(`(?i)gcloud|application_default_credentials`),
+		[]string{".config/gcloud/credentials.db", "application_default_credentials.json"},
 		[]string{"Read(//**/.config/gcloud/**)", "Read(//**/application_default_credentials.json)"}},
 	{"Azure", regexp.MustCompile(`(?i)\.azure(/|\*|$)`),
+		[]string{".azure/accessTokens.json"},
 		[]string{"Read(//**/.azure/**)"}},
 }
 
@@ -41,12 +45,9 @@ func (r *cfg043) Check(t *Target) []finding.Finding {
 	if len(deny) == 0 {
 		return nil
 	}
-	if denyCoversEverything(deny, t.ClaudeVersion) {
-		return nil // a deny-all "*"/Read(**) entry already blocks every read
-	}
 	var missing, suggest []string
 	for _, p := range cloudProviders {
-		if !denyCoversAny(deny, p.re) {
+		if !denyReadsCovered(deny, p.re, p.samples, t.ClaudeVersion) {
 			missing = append(missing, p.name)
 			suggest = append(suggest, p.suggest...)
 		}

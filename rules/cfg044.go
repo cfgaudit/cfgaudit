@@ -18,6 +18,10 @@ func (r *cfg044) ID() string { return "CFG044" }
 // directory pattern, or a well-known private-key filename.
 var sshKeyCoverRe = regexp.MustCompile(`(?i)\.ssh(/|\*|$)|id_(?:rsa|ed25519|ecdsa|dsa)`)
 
+// sshKeySecretPaths are representative SSH private-key paths an exception must
+// re-expose to count as carving this class.
+var sshKeySecretPaths = []string{".ssh/id_rsa", "id_rsa", "id_ed25519"}
+
 // Check flags a permissions.deny block that exists but does not cover SSH private
 // keys — Claude could read and leak keys granting access to remote systems. A
 // missing deny block entirely is CFG006's job.
@@ -29,10 +33,7 @@ func (r *cfg044) Check(t *Target) []finding.Finding {
 	if len(deny) == 0 {
 		return nil
 	}
-	if denyCoversEverything(deny, t.ClaudeVersion) {
-		return nil // a deny-all "*"/Read(**) entry already blocks every read
-	}
-	if denyCoversAny(deny, sshKeyCoverRe) {
+	if denyReadsCovered(deny, sshKeyCoverRe, sshKeySecretPaths, t.ClaudeVersion) {
 		return nil
 	}
 	return []finding.Finding{{
