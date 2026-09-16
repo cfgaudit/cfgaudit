@@ -595,7 +595,9 @@ This is the same shape as the Continue note above: existing findings on one agen
 
 - **`permission`** (and `agent.<name>.permission`) is resolved the way OpenCode resolves it, last matching rule wins, and only the two things its defaults still hold back are reported by [CFG105](docs/rules/CFG105.md): `external_directory` and reading a `.env` file. The ordinary `"bash": "allow"` restates the default and is not a finding.
 
-`plugin`, `skills` and `instructions` are **not** modelled yet ([#525](https://github.com/cfgaudit/cfgaudit/issues/525)): the first two need their own false-positive measurement, and `instructions` names files and glob patterns rather than carrying text.
+**The v2 config spelling is lowered before those rules run.** Since 1.18.28 the v1 loader accepts the newer spelling and lowers it to the shape above ([#580](https://github.com/cfgaudit/cfgaudit/issues/580)), so cfgaudit lowers it too: the `mcp.servers` envelope unwraps to `mcp.<name>`, the v2 `disabled: true` reads as `enabled: false` (a disabled server is still skipped), `commands` folds onto `command` and `agents.<name>.system` onto `agent.<name>.prompt`, with the v1 name winning a same-name conflict. A v2 `permissions` block (top-level or under an agent) makes the **whole file fail to load** upstream, so cfgaudit reads nothing from such a file — the singular v1 `permission` key is unaffected.
+
+`plugin`, `skills` and `instructions` are **not** modelled yet ([#525](https://github.com/cfgaudit/cfgaudit/issues/525)): the first two need their own false-positive measurement, and `instructions` names files and glob patterns rather than carrying text. The v2 `skills` array (split into `skills.paths`/`skills.urls`) is not folded for the same reason.
 
 ### xAI Grok CLI — `.grok/`
 

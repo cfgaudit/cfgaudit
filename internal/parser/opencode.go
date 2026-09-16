@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -146,12 +147,24 @@ type OpenCodeMCP struct {
 	Headers     map[string]string `json:"headers,omitempty"`
 	Enabled     *bool             `json:"enabled,omitempty"`
 	CWD         string            `json:"cwd,omitempty"`
+
+	// V2Disabled is the v2 spelling `disabled: true`, lowered to `enabled: false`
+	// by the v1 loader (lowerServer: `enabled: input.disabled !== true`, #580).
+	// An explicit `enabled` still wins over it (normalizeServer re-applies the raw
+	// `enabled` when the key is present), so Disabled reads Enabled first.
+	V2Disabled bool `json:"disabled,omitempty"`
 }
 
-// Disabled reports whether the entry is switched off. `enabled` defaults to true
-// when absent, so only an explicit false disables, and a disabled server is not
-// a finding: it is the narrowing direction.
-func (m OpenCodeMCP) Disabled() bool { return m.Enabled != nil && !*m.Enabled }
+// Disabled reports whether the entry is switched off. An explicit `enabled` wins
+// (it defaults to true when absent, so only an explicit false disables); when it
+// is absent the v2 `disabled: true` spelling applies. A disabled server is not a
+// finding: it is the narrowing direction.
+func (m OpenCodeMCP) Disabled() bool {
+	if m.Enabled != nil {
+		return !*m.Enabled
+	}
+	return m.V2Disabled
+}
 
 // MCPServerMap converts the mcp block to the shared MCPServer shape so the
 // existing MCP rules apply unchanged. The command array is split into its
@@ -201,9 +214,165 @@ func ParseOpenCodeConfig(path string) (*OpenCodeConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	var c OpenCodeConfig
-	if err := json.Unmarshal(stripJSONC(data), &c); err != nil {
+	clean := stripJSONC(data)
+
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(clean, &top); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+
+	// A v2 `permissions` block (top-level or under agents/agent/mode.<name>) is a
+	// hard load error in the v1 loader ("V2 permissions are not supported by
+	// OpenCode V1", lower() throws InvalidError before returning), so the whole
+	// file fails to load and nothing in it applies. Report nothing on it, the same
+	// discipline as an unparseable file — reading its mcp or permission would fire
+	// on config the agent never ran (#580). Note the v1 key is the singular
+	// `permission`, which is unaffected.
+	if openCodeHasV2Permissions(top) {
+		return &OpenCodeConfig{}, nil
+	}
+
+	var c OpenCodeConfig
+	if err := json.Unmarshal(clean, &c); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+
+	lowerOpenCodeV2(top, &c)
 	return &c, nil
+}
+
+// openCodeHasV2Permissions reports whether the config carries a v2 `permissions`
+// block, which makes the v1 loader reject the whole file. Upstream checks the
+// top level plus every `agents`/`agent`/`mode` entry (lower() in v2-compat.ts).
+func openCodeHasV2Permissions(top map[string]json.RawMessage) bool {
+	if _, ok := top["permissions"]; ok {
+		return true
+	}
+	for _, key := range []string{"agents", "agent", "mode"} {
+		raw, ok := top[key]
+		if !ok {
+			continue
+		}
+		var agents map[string]map[string]json.RawMessage
+		if json.Unmarshal(raw, &agents) != nil {
+			continue
+		}
+		for _, agent := range agents {
+			if _, ok := agent["permissions"]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// lowerOpenCodeV2 folds the v2 config spelling onto the v1 shape cfgaudit reads,
+// mirroring ConfigV2Compat.lower (v2-compat.ts, v1.18.28+): the `mcp.servers`
+// envelope unwraps to `mcp.<name>`, `commands` folds onto `command`, and
+// `agents.<name>.system` folds onto `agent.<name>.prompt`. On a same-name
+// conflict the v1 entry wins, as upstream does. `disabled: true` is read by
+// OpenCodeMCP.Disabled directly, so no separate fold is needed for it.
+//
+// v2 `skills` (a string array split into skills.paths/urls) is deliberately not
+// folded: cfgaudit models no skills surface in either spelling yet. The `oauth`
+// snake-case keys (client_secret) are a possible CFG050 position but are read in
+// neither spelling today.
+func lowerOpenCodeV2(top map[string]json.RawMessage, c *OpenCodeConfig) {
+	if raw, ok := top["mcp"]; ok {
+		c.MCP = lowerOpenCodeMCP(raw)
+	}
+
+	if raw, ok := top["commands"]; ok {
+		var cmds map[string]OpenCodeCommand
+		if json.Unmarshal(raw, &cmds) == nil && len(cmds) > 0 {
+			if c.Command == nil {
+				c.Command = make(map[string]OpenCodeCommand, len(cmds))
+			}
+			for name, cmd := range cmds {
+				if _, exists := c.Command[name]; exists {
+					continue // the v1 `command` entry wins on a same-name conflict
+				}
+				c.Command[name] = cmd
+			}
+		}
+	}
+
+	if raw, ok := top["agents"]; ok {
+		var agents map[string]struct {
+			System string `json:"system"`
+		}
+		if json.Unmarshal(raw, &agents) == nil && len(agents) > 0 {
+			if c.Agent == nil {
+				c.Agent = make(map[string]OpenCodeAgent, len(agents))
+			}
+			for name, a := range agents {
+				if _, exists := c.Agent[name]; exists {
+					continue // the v1 `agent` entry wins on a same-name conflict
+				}
+				c.Agent[name] = OpenCodeAgent{Prompt: a.System}
+			}
+		}
+	}
+}
+
+// lowerOpenCodeMCP decodes the `mcp` block, unwrapping the v2 `mcp.servers`
+// envelope. Upstream treats `mcp.servers` as an envelope unless it is itself a
+// direct server (isDirectServer: it carries a scalar `type` or `enabled` key).
+// Flat `mcp.<name>` entries are processed first and win a same-name conflict with
+// an envelope entry, matching normalizeMcp.
+func lowerOpenCodeMCP(raw json.RawMessage) map[string]OpenCodeMCP {
+	var entries map[string]json.RawMessage
+	if json.Unmarshal(raw, &entries) != nil {
+		return nil
+	}
+
+	var envelope map[string]json.RawMessage
+	if serversRaw, ok := entries["servers"]; ok && !openCodeIsDirectServer(serversRaw) {
+		_ = json.Unmarshal(serversRaw, &envelope)
+	}
+
+	out := make(map[string]OpenCodeMCP)
+	for name, v := range entries {
+		if name == "servers" && envelope != nil {
+			continue
+		}
+		var srv OpenCodeMCP
+		if json.Unmarshal(v, &srv) == nil {
+			out[name] = srv
+		}
+	}
+	for name, v := range envelope {
+		if _, exists := out[name]; exists {
+			continue // the flat v1 entry wins
+		}
+		var srv OpenCodeMCP
+		if json.Unmarshal(v, &srv) == nil {
+			out[name] = srv
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// openCodeIsDirectServer reports whether an object value is itself a server (so
+// `mcp.servers` is not the v2 envelope). Upstream isDirectServer treats it as a
+// direct server when a `type` or `enabled` key holds a non-object: null, an
+// array, or a scalar. A plain object under those keys means it is the envelope.
+func openCodeIsDirectServer(raw json.RawMessage) bool {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return false
+	}
+	for _, key := range []string{"type", "enabled"} {
+		v, ok := m[key]
+		if !ok {
+			continue
+		}
+		if t := bytes.TrimSpace(v); len(t) == 0 || t[0] != '{' {
+			return true // null, array, or scalar → a server named "type"/"enabled"
+		}
+	}
+	return false
 }
