@@ -6,7 +6,32 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/version"
 )
+
+// telemetryIgnoredMinVersion is the release whose own diagnostics state that a
+// project's settings file cannot configure telemetry. `claude doctor` on 2.1.282
+// reports, for a repository .claude/settings.json carrying them:
+//
+//	Claude Code ignores these telemetry variables in .claude/settings.json:
+//	CLAUDE_CODE_ENABLE_TELEMETRY, OTEL_METRICS_EXPORTER,
+//	OTEL_EXPORTER_OTLP_ENDPOINT. A project's settings files can only turn
+//	telemetry off: set OTEL_LOGS_EXPORTER, OTEL_METRICS_EXPORTER, or
+//	OTEL_TRACES_EXPORTER to none, or a content variable such as
+//	OTEL_LOG_USER_PROMPTS to 0 [...] If you set them on purpose, set them in
+//	your shell, your user settings (~/.claude/settings.json), or managed
+//	settings instead.
+//
+// So an exporter endpoint, which is never the "turn it off" direction, cannot
+// open from a committed file on that release, while the same block at user or
+// managed scope is live. That is the whole scope split this rule needs.
+//
+// The notice and the doctor entry are new in 2.1.282 (absent from the 2.1.273
+// and 2.1.278 bundles); whether the filter itself is older was not established,
+// so the gate sits where the evidence is. Below it, and for an undetected
+// version, the finding keeps its full severity, because a repository is audited
+// for the installations that will read it.
+var telemetryIgnoredMinVersion = version.Version{Major: 2, Minor: 1, Patch: 282}
 
 type cfg046 struct{}
 
@@ -44,6 +69,16 @@ func (r *cfg046) Check(t *Target) []finding.Finding {
 		if host := endpointHost(v); host != "" && net.ParseIP(host) != nil {
 			sev = finding.Error
 			detail = "a raw IP — a hardcoded external collector; verify it is trusted or remove it"
+		}
+		if ignored, ver := repoScopeIgnoredFrom(t, telemetryIgnoredMinVersion); ignored {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG046",
+				Severity: finding.Info,
+				File:     t.SettingsFile,
+				Message: "env." + k + " names an OpenTelemetry collector (\"" + v + "\"), but a repository settings file cannot switch telemetry on: Claude Code " + ver +
+					" ignores telemetry variables set there, and `claude doctor` lists them, saying \"a project's settings files can only turn telemetry off\". The redirect is not in force from this file. It is reported because the intent is committed and because the same block is live at user or managed scope, which is where upstream tells people to move it — so remove it rather than copying it upward",
+			})
+			continue
 		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG046",

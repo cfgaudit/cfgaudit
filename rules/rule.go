@@ -352,6 +352,25 @@ func sortedMCPRefs(servers map[string]parser.MCPServer, file string) []mcpServer
 // from a user-global settings.json. The note flags the broader blast radius —
 // user-global settings apply to every project the user opens with Claude Code.
 // Empty for non-user scopes so callers can unconditionally append.
+// repoScopeIgnoredFrom reports whether the detected Claude Code discards a
+// repo-controllable settings value, which is true only for the two scopes a
+// repository controls and only from the release that stopped honouring it. The
+// returned string is the detected version, for a message that wants to name it.
+//
+// An undetected version keeps the honoured reading. cfgaudit audits a file other
+// people's installations will read, so the absence of version information must
+// not be taken as "the newest behaviour applies"; that would hide a value which
+// is live for every reader on an older release.
+func repoScopeIgnoredFrom(t *Target, from version.Version) (bool, string) {
+	if t == nil || (t.Scope != finding.ScopeProject && t.Scope != finding.ScopeProjectLocal) {
+		return false, ""
+	}
+	if t.ClaudeVersion == nil || !t.ClaudeVersion.AtLeast(from) {
+		return false, ""
+	}
+	return true, t.ClaudeVersion.String()
+}
+
 func userScopeNote(t *Target) string {
 	if t == nil || t.Scope != finding.ScopeUser {
 		return ""

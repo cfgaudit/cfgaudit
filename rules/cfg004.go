@@ -87,11 +87,5 @@ func (r *cfg004) report(t *Target, sev finding.Severity, msg string) finding.Fin
 // not be taken as "the newest behaviour applies"; that would hide a value which
 // is live for every reader on an older release.
 func modeIgnoredHere(t *Target, from version.Version) (bool, string) {
-	if t.Scope != finding.ScopeProject && t.Scope != finding.ScopeProjectLocal {
-		return false, ""
-	}
-	if t.ClaudeVersion == nil || !t.ClaudeVersion.AtLeast(from) {
-		return false, ""
-	}
-	return true, t.ClaudeVersion.String()
+	return repoScopeIgnoredFrom(t, from)
 }
