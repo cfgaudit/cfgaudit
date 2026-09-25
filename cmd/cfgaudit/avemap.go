@@ -187,15 +187,36 @@ var aveByRule = map[string]string{
 	// to an untrusted *MCP launch config*, and no record covers a configuration
 	// -declared process environment that loads code into every shell the agent
 	// runs. Reported as a gap rather than stretched onto 00055.
-	// CFG102 (two committed skills claiming one name) is name shadowing, but
+	// CFG102 (two committed skills claiming one name) is name shadowing.
 	// AVE-2026-00017 is explicitly MCP server identity and AVE-2026-00066 is
-	// registry squatting on hallucinated names. Reported as a gap instead.
+	// registry squatting on hallucinated names, so neither fits. AVE-2026-00082
+	// (2026-09) is much closer — a local skill name collision resolved by load
+	// order — but it asserts two things this rule does not establish: that the
+	// shadowing is silent, and that the collision spans roots of differing
+	// trust. Measured for Claude Code, a duplicate inside one repository is
+	// resolved by qualification rather than silently shadowed ("the bare name
+	// always resolves to this unscoped skill; the variants are reachable only by
+	// their exact qualified names"), and the cross-root case needs the
+	// machine-wide view a repository-scoped scanner does not have. Still a gap,
+	// now a narrower one.
 	// CFG108 (a committed .claude/scheduled_tasks.json self-enabling the cron
 	// scheduler and firing a repo-authored prompt) has no record: the closest,
 	// AVE-2026-00063, is a bypassed *human* approval gate, but CFG108 does not
 	// bypass a gate — the file's presence creates a new autonomous channel that
 	// enqueues a prompt on a timer. No record covers a config-declared scheduler
 	// that fires prompts, so it is a gap rather than stretched onto 00063.
+	// CFG109 (a committed agent config file that does not parse, so the settings
+	// it declares are not in force) has no record, and the whole record set was
+	// read to be sure: none of the 59 static_detection classes is about a
+	// declared configuration that fails to load. The nearest is AVE-2026-00083
+	// (2026-09), a protection mechanism that executes but never evaluates its
+	// verdict — the same *effect*, a guardrail that reads as present and is not,
+	// but it is runtime_observed and scoped to the mechanism's own comparison
+	// logic, while CFG109 is a file the agent never loads at all. AVE-2026-00063
+	// is a gate a configuration removes; CFG109's file declares nothing that
+	// takes effect. Mapping it to either would assert a mechanism the rule does
+	// not claim, so it is reported as a gap: "a repository declares guardrails
+	// that never load, and its files read as configured".
 }
 
 // ruleAVE returns the primary AVE id for a rule, or "" if none is mapped.
