@@ -788,12 +788,31 @@ func loadVSCodeTasks(dir string) (*parser.VSCodeTasks, string, error) {
 	return v, path, nil
 }
 
-// agentInstructionFiles lists the (non-CLAUDE.md) instruction files cfgaudit
-// scans across agents: single files plus glob patterns for rule directories.
+// agentInstructionFiles lists the instruction files cfgaudit scans beside the
+// project CLAUDE.md (which rides the project target in buildTargets): single
+// files plus glob patterns for rule directories.
 var (
 	agentInstructionFiles = []string{
 		".cursorrules",
 		".windsurfrules",
+		// Claude Code's own project instruction files beyond the repo-root
+		// CLAUDE.md. The 2.1.281 binary carries the two lists verbatim as
+		// ["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"] and
+		// ["AGENTS.md", ".claude/AGENTS.md"], and a capture-endpoint probe
+		// confirmed every one of them reaches the request (#594). The AGENTS
+		// pair loads only when no CLAUDE-family file is present, which is the
+		// project-instructions setting's agents-fallback mode; cfgaudit reports
+		// them either way, because the content is the same prompt-injection
+		// surface once the fallback applies and the condition can flip with a
+		// single file deletion.
+		//
+		// CLAUDE.local.md is the personal, usually gitignored sibling. It stays
+		// at project scope like the AGENTS.local.md entry in this list, which is
+		// the same kind of file: scope here labels where the file sits, not how
+		// likely it is to be committed.
+		filepath.Join(".claude", "CLAUDE.md"),
+		"CLAUDE.local.md",
+		filepath.Join(".claude", "AGENTS.md"),
 		"AGENTS.md",
 		// The local sibling of AGENTS.md. Devin CLI's configuration-import
 		// reference lists it among the "standard project rules" it reads
