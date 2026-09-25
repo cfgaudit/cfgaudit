@@ -29,7 +29,7 @@ func (r *cfg044) Check(t *Target) []finding.Finding {
 	if t == nil || t.Settings == nil || t.Settings.Permissions == nil {
 		return nil
 	}
-	deny := t.Settings.Permissions.Deny
+	deny := t.effectiveDeny()
 	if len(deny) == 0 {
 		return nil
 	}

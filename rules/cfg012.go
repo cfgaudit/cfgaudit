@@ -55,9 +55,10 @@ func (r *cfg012) Check(t *Target) []finding.Finding {
 		if !stringInSlice(actual, ps.AllowedTypes) {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG012",
-				Severity: finding.Warn,
+				Severity: finding.Error,
 				File:     t.SettingsFile,
-				Message:  "key \"" + k + "\" has JSON type " + actual + " but the schema expects " + strings.Join(ps.AllowedTypes, " or ") + " — type mismatches usually indicate a malformed value or a deliberate attempt to confuse downstream parsers",
+				Message: "key \"" + k + "\" has JSON type " + actual + " but the schema expects " + strings.Join(ps.AllowedTypes, " or ") +
+					" — Claude Code does not ignore the value, it discards this settings file whole, so every permission rule, hook and env entry in it is inert, with nothing printed to say so. Fix the type (an unknown key would be tolerated; a wrong type on a known one is not)",
 			})
 		}
 	}

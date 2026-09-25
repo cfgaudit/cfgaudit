@@ -32,7 +32,7 @@ func (r *cfg025) Check(t *Target) []finding.Finding {
 	var allow, deny []string
 	if t.Settings != nil && t.Settings.Permissions != nil {
 		allow = t.Settings.Permissions.Allow
-		deny = t.Settings.Permissions.Deny
+		deny = t.effectiveDeny()
 	}
 
 	var findings []finding.Finding

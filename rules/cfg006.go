@@ -24,7 +24,7 @@ func (r *cfg006) Check(t *Target) []finding.Finding {
 	if t.Settings == nil || t.Settings.Permissions == nil {
 		return nil
 	}
-	if len(t.Settings.Permissions.Deny) > 0 {
+	if len(t.effectiveDeny()) > 0 {
 		return nil
 	}
 	// A settings.local.json need not repeat the project deny list: Claude Code
@@ -36,6 +36,7 @@ func (r *cfg006) Check(t *Target) []finding.Finding {
 		RuleID:   "CFG006",
 		Severity: finding.Warn,
 		File:     t.SettingsFile,
-		Message:  "permissions.deny is absent or empty — no guardrails block destructive operations (rm -rf, git push --force, etc.); add explicit denylist entries" + userScopeNote(t),
+		Message: "permissions.deny is absent or empty — no guardrails block destructive operations (rm -rf, git push --force, etc.); add explicit denylist entries" +
+			discardedNote(t) + userScopeNote(t),
 	}}
 }
