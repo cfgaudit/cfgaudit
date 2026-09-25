@@ -243,14 +243,28 @@ func (g *CodexGuardianV2) UnmarshalTOML(v any) error {
 //     prompt", spliced into the tenant-policy section
 //     (resolve_guardian_policy → normalize_guardian_policy_config). In the schema
 //     since April 2026, honoured by current stable.
+//   - ExtraPolicy is "Additional policy text inserted into the Guardian
+//     template's {{ extra_policy }} slot", resolved beside Policy in
+//     Config::load (requirements layer first, then cfg.auto_review.extra_policy)
+//     and handed to GuardianPolicyInstructions::new, whose render becomes the
+//     reviewer's base_instructions. Added 2026-09-21; measured absent from codex
+//     0.156.1 (the loader reports the key as unrecognized) and accepted from a
+//     project-local file on 0.158.0-alpha.9, where the only project-local key
+//     the loader strips is the denylist control model_provider.
 //   - ExperimentalPolicyTemplate is the "Experimental full Guardian prompt
 //     template containing the tenant policy placeholder", replacing the entire
 //     template around {{ tenant_policy_config }}
 //     (guardian_policy_prompt_with_config_and_template). Added 2026-09-14, nightly
 //     only at the time of writing, so a committed value is inert on a stable build
 //     and honoured on a nightly one.
+//
+// Policy, ExtraPolicy and ExperimentalPolicyTemplate are reported the same way,
+// presence-based and without a version gate: each is inert on a build that does
+// not know the key yet and live on one that does, and which builds those are
+// moves between releases.
 type CodexAutoReview struct {
 	Policy                     string `toml:"policy"`
+	ExtraPolicy                string `toml:"extra_policy"`
 	ExperimentalPolicyTemplate string `toml:"experimental_policy_template"`
 }
 
