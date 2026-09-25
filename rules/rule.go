@@ -276,6 +276,15 @@ type Target struct {
 	// binary is available.
 	ShellCheck bool
 
+	// UnreadableFile is a committed agent config file cfgaudit could not parse,
+	// and UnreadableReason is the parser's own message. A target carrying them
+	// describes a file rather than a configuration: the file's settings are not
+	// in force for the agent, and no rule for that surface could run over it.
+	// CFG109 reports the pair; every other rule ignores such a target because
+	// nothing else on it is set.
+	UnreadableFile   string
+	UnreadableReason string
+
 	// ScheduledTasks holds a parsed .claude/scheduled_tasks.json — Claude Code's
 	// cron-scheduler store. A committed file with a non-empty tasks array is
 	// committed autonomous scheduling: a bare entry (no session identity)

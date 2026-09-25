@@ -251,7 +251,64 @@ func resolveClaudeVersion(override string) *version.Version {
 	return &v
 }
 
+// unreadableFile is a committed agent config file cfgaudit could not parse.
+type unreadableFile struct {
+	path   string
+	reason string
+}
+
+// unreadable collects those files for the scan in progress. buildTargets resets
+// it, and turns what it holds into targets CFG109 reports. cfgaudit scans one
+// directory at a time in one goroutine, so this needs no locking; the reset is
+// what keeps a second scan in the same process (the tests do this) from
+// inheriting the first one's failures.
+//
+// A package-level record is the narrow way to do this: every loader below
+// already returns "absent" for a file that is not there, so recording the
+// failure and returning the same thing keeps the change inside the loaders,
+// rather than threading a collector through every builder that calls them.
+var unreadable []unreadableFile
+
+// skipUnreadable records a config file that did not parse and lets the caller
+// carry on as if it were absent.
+//
+// Before this, such a file ended the scan with exit 2 and every finding in the
+// repository disappeared with it (#606). The agents do not behave that way
+// either: a layer that cannot be read is skipped, not fatal. The file itself is
+// still reported, by CFG109, so nothing goes quiet.
+//
+// cfgaudit's own inputs are deliberately not routed here. A .cfgauditignore or
+// .cfgaudit.yml that does not parse changes what cfgaudit itself does, so it
+// stays a hard error.
+func skipUnreadable(path string, err error) {
+	reason := err.Error()
+	if i := strings.Index(reason, ": "); i >= 0 && strings.HasPrefix(reason, "parse ") {
+		reason = reason[i+2:] // drop the "parse <path>: " prefix; the file is named by the finding
+	}
+	unreadable = append(unreadable, unreadableFile{path: path, reason: reason})
+}
+
+// unreadableTargets turns the collected files into one target each, carrying
+// nothing but the file and the reason, so CFG109 reports them and every other
+// rule ignores them.
+func unreadableTargets(dir string) []*rules.Target {
+	var out []*rules.Target
+	for _, u := range unreadable {
+		scope := finding.ScopeProject
+		if !strings.HasPrefix(u.path, dir) {
+			scope = finding.ScopeUser
+		}
+		out = append(out, &rules.Target{
+			Scope:            scope,
+			UnreadableFile:   u.path,
+			UnreadableReason: u.reason,
+		})
+	}
+	return out
+}
+
 func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
+	unreadable = nil
 	ignorePath := filepath.Join(dir, ".claudeignore")
 	ignoreLines, err := parser.ParseIgnore(ignorePath)
 	if err != nil {
@@ -455,6 +512,10 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
+	// Last, so a file that did not parse is reported after the configuration
+	// that could be read, rather than in place of it.
+	targets = append(targets, unreadableTargets(dir)...)
+
 	return targets, nil
 }
 
@@ -470,7 +531,8 @@ func loadSkillsLock(dir string) (*parser.SkillsLock, string, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, "", nil
 		}
-		return nil, "", err
+		skipUnreadable(path, err)
+		return nil, "", nil
 	}
 	if sl == nil || len(sl.Skills) == 0 {
 		return nil, "", nil
@@ -524,7 +586,8 @@ func parseContinueOptional(path string) (*parser.ContinueConfig, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return cc, nil
 }
@@ -616,7 +679,8 @@ func parseCodexOptional(path string) (*parser.CodexConfig, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return cc, nil
 }
@@ -668,7 +732,8 @@ func parseGeminiOptional(path string) (*parser.GeminiSettings, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return gs, nil
 }
@@ -720,7 +785,8 @@ func parseQwenOptional(path string) (*parser.QwenSettings, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return qs, nil
 }
@@ -765,7 +831,8 @@ func loadVSCodeSettings(dir string) (*parser.VSCodeSettings, string, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, "", nil
 		}
-		return nil, "", err
+		skipUnreadable(path, err)
+		return nil, "", nil
 	}
 	if v == nil || len(v.Raw) == 0 {
 		return nil, "", nil
@@ -783,7 +850,8 @@ func loadVSCodeTasks(dir string) (*parser.VSCodeTasks, string, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, "", nil
 		}
-		return nil, "", err
+		skipUnreadable(path, err)
+		return nil, "", nil
 	}
 	if v == nil || len(v.Tasks) == 0 {
 		return nil, "", nil
@@ -1379,7 +1447,8 @@ func parseSettingsOptional(path string) (*parser.Settings, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return s, nil
 }
@@ -1419,7 +1488,8 @@ func agentHookTargets(dir string) ([]*rules.Target, error) {
 			if errors.Is(err, os.ErrNotExist) {
 				return nil
 			}
-			return err
+			skipUnreadable(path, err)
+			return nil
 		}
 		if len(h.Hooks) == 0 {
 			return nil
@@ -1493,7 +1563,8 @@ func loadDevinConfigOptional(path string) (*parser.DevinConfig, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return c, nil
 }
@@ -1508,7 +1579,8 @@ func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, erro
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return p, nil
 }
@@ -1522,7 +1594,8 @@ func loadZedDebugOptional(path string) (*parser.ZedDebug, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return z, nil
 }
@@ -1536,7 +1609,8 @@ func loadZedTasksOptional(path string) (*parser.ZedTasks, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return z, nil
 }
@@ -1551,7 +1625,8 @@ func loadContinueHooksOptional(path string) (*parser.ContinueHooks, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return h, nil
 }
@@ -1565,7 +1640,8 @@ func loadCodexHooksOptional(path string) (*parser.CodexHooks, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return h, nil
 }
@@ -1579,7 +1655,8 @@ func loadCursorSandboxOptional(path string) (*parser.CursorSandbox, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return s, nil
 }
@@ -1594,7 +1671,8 @@ func loadCopilotSettingsOptional(path string) (*parser.CopilotSettings, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return c, nil
 }
@@ -1608,7 +1686,8 @@ func loadOpenCodeConfigOptional(path string) (*parser.OpenCodeConfig, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return c, nil
 }
@@ -1622,7 +1701,8 @@ func loadGrokConfigOptional(path string) (*parser.GrokConfig, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return c, nil
 }
@@ -1635,7 +1715,8 @@ func loadGrokHooksOptional(path string) (*parser.GrokHooks, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return h, nil
 }
@@ -1649,7 +1730,8 @@ func loadZedSettingsOptional(path string) (*parser.ZedSettings, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return z, nil
 }
@@ -1663,7 +1745,8 @@ func loadMCPConfigOptional(path string) (map[string]parser.MCPServer, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		skipUnreadable(path, err)
+		return nil, nil
 	}
 	return cfg.MCPServers, nil
 }
