@@ -314,9 +314,12 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			IgnoreFile:   ignorePath,
 			IgnoreLines:  ignoreLines,
 			// Claude Code merges settings.json into settings.local.json, so the
-			// project deny list applies to the local file too (CFG006).
+			// project deny list applies to the local file too (CFG006) — unless
+			// the project file carries a top-level type mismatch, which makes
+			// Claude Code discard it whole, deny block included (#595).
 			SiblingDeny: projectSettings != nil && projectSettings.Permissions != nil &&
-				len(projectSettings.Permissions.Deny) > 0,
+				len(projectSettings.Permissions.Deny) > 0 &&
+				!rules.SettingsDiscarded(projectSettings),
 		})
 	}
 

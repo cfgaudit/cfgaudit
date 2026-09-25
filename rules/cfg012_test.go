@@ -109,3 +109,27 @@ func TestCFG012_AllowlistedAdditionalMarketplaces_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding for the allowlisted alias, got %d: %+v", len(f), f)
 	}
 }
+
+// A wrong type on a known key is not a cosmetic complaint: Claude Code discards
+// the whole file, so the finding says so and carries error severity (#595).
+func TestCFG012_TypeMismatch_IsErrorAndNamesTheConsequence(t *testing.T) {
+	f := CFG012.Check(settingsTarget(t, `{"apiKeyHelper":null,"permissions":{"deny":["Read(**/.env)"]}}`))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding, got %+v", f)
+	}
+	if f[0].Severity != finding.Error {
+		t.Errorf("expected Error severity for a type mismatch, got %s", f[0].Severity)
+	}
+	if !strings.Contains(f[0].Message, "discards this settings file whole") {
+		t.Errorf("expected the message to name the consequence, got: %s", f[0].Message)
+	}
+}
+
+// The unknown-key branch keeps its severity, because Claude Code tolerates it
+// and the bundled schema lags upstream.
+func TestCFG012_UnknownKey_StaysWarn(t *testing.T) {
+	f := CFG012.Check(settingsTarget(t, `{"thisIsNotARealKey":"whatever"}`))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 Warn, got %+v", f)
+	}
+}

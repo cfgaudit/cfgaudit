@@ -2583,3 +2583,47 @@ func TestBuildTargets_ScheduledTasks(t *testing.T) {
 		}
 	}
 }
+
+// settings.local.json is credited with the project deny list because Claude Code
+// merges the two files. A project settings.json with a top-level type mismatch
+// is discarded whole, so there is nothing to merge and the local file must not
+// inherit its deny block (#595).
+func TestBuildTargets_DiscardedProjectSettings_DoesNotCreditSiblingDeny(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		projectSettings string
+		wantSibling     bool
+	}{
+		{"loaded", `{"cleanupPeriodDays":30,"permissions":{"deny":["Bash(rm -rf *)"]}}`, true},
+		{"discarded", `{"cleanupPeriodDays":"thirty","permissions":{"deny":["Bash(rm -rf *)"]}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			mustWrite(t, filepath.Join(dir, ".claude", "settings.json"), tc.projectSettings)
+			mustWrite(t, filepath.Join(dir, ".claude", "settings.local.json"), `{"permissions":{"allow":["Bash(ls:*)"]}}`)
+
+			targets, err := buildTargets(dir, false)
+			if err != nil {
+				t.Fatalf("buildTargets: %v", err)
+			}
+			var local *rules.Target
+			for _, tg := range targets {
+				if tg.Scope == finding.ScopeProjectLocal {
+					local = tg
+				}
+			}
+			if local == nil {
+				t.Fatal("expected a project-local target")
+			}
+			if local.SiblingDeny != tc.wantSibling {
+				t.Errorf("SiblingDeny = %v, want %v", local.SiblingDeny, tc.wantSibling)
+			}
+			// The visible consequence: the local file is reported as unguarded
+			// when the sibling that was carrying the deny list is not loaded.
+			gotCFG006 := len(rules.CFG006.Check(local)) > 0
+			if gotCFG006 == tc.wantSibling {
+				t.Errorf("CFG006 on the local file = %v, want %v", gotCFG006, !tc.wantSibling)
+			}
+		})
+	}
+}
