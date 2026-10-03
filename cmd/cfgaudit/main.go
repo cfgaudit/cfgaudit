@@ -104,7 +104,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "cfgaudit: %v\n", err)
 		os.Exit(2)
 	}
-	targets = append(targets, pluginTargets...)
+	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
 
 	if shellCheckEnabled(*shellcheck || cfg.ShellCheckEnabled()) {
 		for _, t := range targets {

@@ -41,6 +41,43 @@ type PluginManifest struct {
 	// probe: `"skills": "./mystuff"` logged
 	// `Loaded 1 skills from plugin ... custom path: .../mystuff`.
 	Skills json.RawMessage `json:"skills,omitempty"`
+
+	// DefaultEnabled decides whether a skills-directory plugin loads when no
+	// settings file names it (#609). Absent means enabled. Measured on 2.1.288:
+	// `"defaultEnabled": false` kept the plugin's SessionStart hook from running,
+	// and `enabledPlugins: {"<name>@skills-dir": true}` in project settings
+	// turned it back on.
+	DefaultEnabled *bool `json:"defaultEnabled,omitempty"`
+
+	// Hooks names extra hook files to load besides hooks/hooks.json: a string
+	// path or an array of them, resolved against the plugin root. Measured on
+	// 2.1.288: a hooks.json at sub/hooks/ did not run until the manifest named it
+	// with `"hooks": "./sub/hooks/hooks.json"`. An inline object is not decoded.
+	Hooks json.RawMessage `json:"hooks,omitempty"`
+}
+
+// ManifestPaths decodes a manifest component field that holds a string path or
+// an array of them, and drops anything else (an inline object, a non-string
+// entry).
+func ManifestPaths(raw json.RawMessage) []string {
+	var one string
+	if json.Unmarshal(raw, &one) == nil {
+		if one == "" {
+			return nil
+		}
+		return []string{one}
+	}
+	var many []json.RawMessage
+	if json.Unmarshal(raw, &many) != nil {
+		return nil
+	}
+	var out []string
+	for _, m := range many {
+		if json.Unmarshal(m, &one) == nil && one != "" {
+			out = append(out, one)
+		}
+	}
+	return out
 }
 
 // MCPServerRef returns the manifest's MCP servers. Inline entries come back
