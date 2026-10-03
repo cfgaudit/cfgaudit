@@ -92,6 +92,12 @@ func commandSites(t *Target) []commandSite {
 			}
 		}
 
+		// Two env values are commands of their own (#610): Claude Code runs every
+		// shell command through CLAUDE_CODE_SHELL_PREFIX, and git runs
+		// GIT_SSH_COMMAND for every SSH remote. CFG110 reports that they are set;
+		// the command text itself belongs to the content rules.
+		add("env.CLAUDE_CODE_SHELL_PREFIX", s.Env["CLAUDE_CODE_SHELL_PREFIX"])
+		add("env.GIT_SSH_COMMAND", s.Env["GIT_SSH_COMMAND"])
 		add("statusLine", s.CommandHelperField("statusLine"))
 		add("subagentStatusLine", s.CommandHelperField("subagentStatusLine"))
 		add("fileSuggestion", s.CommandHelperField("fileSuggestion"))

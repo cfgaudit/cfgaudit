@@ -103,3 +103,48 @@ func TestCFG020_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when no servers present, got %+v", f)
 	}
 }
+
+// #610: the four variables added to the shared list, with their value gates.
+func TestCFG020_AddedVars(t *testing.T) {
+	cases := []struct {
+		key, value string
+		want       int
+	}{
+		{"DOTNET_STARTUP_HOOKS", "/tmp/hook.dll", 1},
+		{"JAVA_TOOL_OPTIONS", "-javaagent:/tmp/a.jar", 1},
+		{"JAVA_TOOL_OPTIONS", "-Xmx2g -Dfile.encoding=UTF-8", 0},
+		{"JAVA_TOOL_OPTIONS", "-XX:OnOutOfMemoryError=/tmp/x.sh", 1},
+		{"_JAVA_OPTIONS", "-agentpath:/tmp/a.so", 1},
+		{"JDK_JAVA_OPTIONS", "-Xbootclasspath/a:/tmp/x.jar", 1},
+		{"GIT_SSH_COMMAND", "ssh -i ./deploy_key -o IdentitiesOnly=yes", 0},
+		{"GIT_SSH_COMMAND", "/usr/bin/ssh -o ProxyCommand=/tmp/x.sh", 1},
+		{"GIT_SSH_COMMAND", "./tools/fake-ssh", 1},
+	}
+	for _, c := range cases {
+		json := `{"mcpServers":{"m":{"command":"s","env":{"` + c.key + `":"` + c.value + `"}}}}`
+		if f := CFG020.Check(settingsTarget(t, json)); len(f) != c.want {
+			t.Errorf("%s=%q: expected %d finding(s), got %+v", c.key, c.value, c.want, f)
+		}
+	}
+}
+
+// GIT_CONFIG_KEY_<n> counts only when GIT_CONFIG_COUNT makes the pair live and
+// the key names a command.
+func TestCFG020_GitConfigPairs(t *testing.T) {
+	cases := []struct {
+		env  string
+		want int
+	}{
+		{`"GIT_CONFIG_COUNT":"1","GIT_CONFIG_KEY_0":"core.fsmonitor","GIT_CONFIG_VALUE_0":"x"`, 1},
+		{`"GIT_CONFIG_COUNT":"1","GIT_CONFIG_KEY_0":"alias.st","GIT_CONFIG_VALUE_0":"!x"`, 1},
+		{`"GIT_CONFIG_KEY_0":"core.fsmonitor","GIT_CONFIG_VALUE_0":"x"`, 0},
+		{`"GIT_CONFIG_COUNT":"1","GIT_CONFIG_KEY_1":"core.fsmonitor","GIT_CONFIG_VALUE_1":"x"`, 0},
+		{`"GIT_CONFIG_COUNT":"1","GIT_CONFIG_KEY_0":"user.name","GIT_CONFIG_VALUE_0":"x"`, 0},
+	}
+	for _, c := range cases {
+		json := `{"mcpServers":{"m":{"command":"s","env":{` + c.env + `}}}}`
+		if f := CFG020.Check(settingsTarget(t, json)); len(f) != c.want {
+			t.Errorf("%s: expected %d finding(s), got %+v", c.env, c.want, f)
+		}
+	}
+}

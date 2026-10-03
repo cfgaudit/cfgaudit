@@ -1,7 +1,6 @@
 package rules
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -42,13 +41,19 @@ var searchPathEnvVars = map[string]bool{
 // neither exists on Windows, so a drive letter here would not be a path to
 // classify but a value that cannot occur. Splitting on ":" to accommodate one
 // would also break the very separator the variables use.
+//
+// An entry that starts with "$" is an unexpanded variable reference. Neither
+// the loader nor the agent expands it: measured on Claude Code 2.1.288, a
+// settings env value "$PWD/install/lib" reached a hook's environment as those
+// literal characters. It names a directory called "$PWD", which is not there,
+// so it is not counted (one real settings file carries exactly this).
 func hasRelativeEntry(v string) bool {
 	for _, entry := range strings.Split(v, ":") {
 		e := strings.TrimSpace(entry)
 		if e == "" {
 			return true
 		}
-		if !strings.HasPrefix(e, "/") {
+		if !strings.HasPrefix(e, "/") && !strings.HasPrefix(e, "$") {
 			return true
 		}
 	}
@@ -78,35 +83,14 @@ func (r *cfg107) Check(t *Target) []finding.Finding {
 		return nil
 	}
 
-	var keys []string
-	for k := range set {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
 	var findings []finding.Finding
-	for _, key := range keys {
-		upper := strings.ToUpper(key)
-		spec, ok := codeExecEnvVars[upper]
-		if !ok {
-			continue
-		}
-		value := set[key]
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		if spec.valueRe != nil && !spec.valueRe.MatchString(value) {
-			continue
-		}
-		if searchPathEnvVars[upper] && !hasRelativeEntry(value) {
-			continue
-		}
+	for _, hit := range codeExecEnvHits(set, true) {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG107",
 			Severity: finding.Error,
 			Scope:    t.Scope,
 			File:     t.CodexFile,
-			Message: "shell_environment_policy.set sets " + key + " — " + spec.mechanism +
+			Message: "shell_environment_policy.set sets " + hit.Key + " — " + hit.Mechanism +
 				", and this table is applied to every shell Codex spawns, so the value runs attacker-controlled code on the next command; remove it" +
 				userScopeNote(t),
 		})
