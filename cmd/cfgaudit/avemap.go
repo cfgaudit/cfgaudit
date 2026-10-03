@@ -187,6 +187,8 @@ var aveByRule = map[string]string{
 	// to an untrusted *MCP launch config*, and no record covers a configuration
 	// -declared process environment that loads code into every shell the agent
 	// runs. Reported as a gap rather than stretched onto 00055.
+	// CFG110 (a Claude Code settings env block injecting code into every hook
+	// and Bash command) is the same gap on another file, for the same reason.
 	// CFG102 (two committed skills claiming one name) is name shadowing.
 	// AVE-2026-00017 is explicitly MCP server identity and AVE-2026-00066 is
 	// registry squatting on hallucinated names, so neither fits. AVE-2026-00082
