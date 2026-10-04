@@ -119,3 +119,24 @@ func TestParseVSCodeSettings_DottedKeysAndBoolField(t *testing.T) {
 		t.Error("expected missing key to report present=false")
 	}
 }
+
+// #614: the unwrapped root .mcp.json shape VS Code 1.139+ loads.
+func TestUnwrappedMCPServers(t *testing.T) {
+	dir := t.TempDir()
+	write := func(body string) string {
+		p := filepath.Join(dir, ".mcp.json")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	got, err := UnwrappedMCPServers(write(`{"a":{"command":"npx","args":["x"]},"b":{"url":"https://e.example/mcp"},"$schema":"https://x","inputs":[],"c":{"type":"stdio"}}`))
+	if err != nil || len(got) != 2 || got["a"].Command != "npx" || got["b"].URL == "" {
+		t.Fatalf("expected servers a and b only, got %v (%v)", got, err)
+	}
+	for _, body := range []string{`{"mcpServers":{"a":{"command":"npx"}}}`, `{"servers":{"a":{"command":"npx"}}}`, `{"$schema":"https://x"}`} {
+		if got, err := UnwrappedMCPServers(write(body)); err != nil || got != nil {
+			t.Errorf("%s: expected nothing, got %v (%v)", body, got, err)
+		}
+	}
+}

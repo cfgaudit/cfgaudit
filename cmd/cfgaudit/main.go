@@ -380,6 +380,21 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
+	// The same root .mcp.json written without its mcpServers wrapper is a file
+	// VS Code 1.139+ loads and Claude Code rejects (#614), so its servers get a
+	// target of their own rather than riding the Claude project target.
+	if len(projectMCP) == 0 {
+		rootMCP := filepath.Join(dir, ".mcp.json")
+		if servers, err := parser.UnwrappedMCPServers(rootMCP); err == nil && len(servers) > 0 {
+			targets = append(targets, &rules.Target{
+				Scope:          finding.ScopeProject,
+				ProjectDir:     dir,
+				ProjectMCP:     servers,
+				ProjectMCPFile: rootMCP,
+			})
+		}
+	}
+
 	// User scope: ~/.claude/settings.json and ~/.claude/CLAUDE.md (only with --user).
 	if includeUser {
 		home, err := os.UserHomeDir()

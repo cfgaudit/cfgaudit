@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 )
 
 // Settings is a partial representation of Claude Code's settings.json.
@@ -312,6 +313,53 @@ type MCPConfig struct {
 // ParseMCPConfig reads and decodes an MCP config file. The VS Code "servers"
 // variant is folded into MCPServers so callers see a single map; on a name
 // collision the mcpServers entry wins.
+// UnwrappedMCPServers reads a repository-root .mcp.json written without the
+// mcpServers wrapper, a server-name map at the top level (#614).
+//
+// VS Code reads that shape since 1.139.0: parseWorkspaceRootMcpConfiguration in
+// src/vs/platform/mcp/common/mcpWorkspaceConfiguration.ts takes
+// `wrapped ? value.mcpServers : value` (889152a4e), and the discovery that starts
+// the servers calls it with trust inherited from the workspace (c81724e65, in
+// 1.138.0). Claude Code rejects the same file: on 2.1.288 an unwrapped server
+// logged "MCP config errors ... Invalid input: expected record" and did not
+// start, while the wrapped control did.
+//
+// Only applies when the file has neither mcpServers nor servers, and keeps only
+// entries that are objects carrying a command or a url, the entries VS Code's
+// normalizeMcpServerConfiguration turns into servers. Returns nil when the file
+// is absent, wrapped, or holds no such entry.
+func UnwrappedMCPServers(path string) (map[string]MCPServer, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	if err != nil {
+		return nil, err
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if _, ok := top["mcpServers"]; ok {
+		return nil, nil
+	}
+	if _, ok := top["servers"]; ok {
+		return nil, nil
+	}
+	out := map[string]MCPServer{}
+	for name, raw := range top {
+		var srv MCPServer
+		if json.Unmarshal(raw, &srv) != nil {
+			continue
+		}
+		if strings.TrimSpace(srv.Command) == "" && strings.TrimSpace(srv.URL) == "" {
+			continue
+		}
+		out[name] = srv
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
 func ParseMCPConfig(path string) (*MCPConfig, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
 	if err != nil {
