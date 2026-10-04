@@ -1680,6 +1680,85 @@ func loadCopilotSettingsOptional(path string) (*parser.CopilotSettings, error) {
 // loadOpenCodeConfigOptional parses opencode.json, returning (nil, nil) when the
 // file does not exist. A malformed file is an error, so a config that is
 // silently not being scanned is reported rather than mistaken for empty.
+// openCodeConfigFiles are the project config files OpenCode reads when started
+// at the repository root, lowest precedence first. From
+// packages/opencode/src/config: ConfigPaths.files() walks up from the working
+// directory for opencode.jsonc and opencode.json and reverses the list, so at
+// the root opencode.jsonc is merged after opencode.json; then every .opencode
+// directory on the way contributes opencode.json and then opencode.jsonc. Each
+// file is deep-merged over the result so far.
+//
+// Measured with opencode 1.18.34 `debug config` on a scratch repository holding
+// all four plus sub/opencode.json: every root file contributed its servers, a
+// server named in both root files took the .jsonc command, `shell` came from
+// .opencode/opencode.json, a later `{"enabled": false}` switched off a server an
+// earlier file declared, and sub/opencode.json did not load. A file in a
+// subdirectory only applies when OpenCode is started there, so it is not read.
+var openCodeConfigFiles = []string{
+	"opencode.json",
+	"opencode.jsonc",
+	filepath.Join(".opencode", "opencode.json"),
+	filepath.Join(".opencode", "opencode.jsonc"),
+}
+
+// openCodeTargets builds one target per OpenCode project config file present.
+//
+// Two consequences of the deep merge are applied, so a file is not reported for
+// a value a later file overrides: a server a later file switches off with
+// `enabled: false` (or the v2 `disabled: true`) is dropped from the earlier
+// files' servers, and `shell`, a single value, is kept only on the last file
+// that sets it. Other blocks are judged per file.
+func openCodeTargets(dir string) ([]*rules.Target, error) {
+	type loaded struct {
+		path string
+		cfg  *parser.OpenCodeConfig
+	}
+	var files []loaded
+	for _, rel := range openCodeConfigFiles {
+		path := filepath.Join(dir, rel)
+		cfg, err := loadOpenCodeConfigOptional(path)
+		if err != nil {
+			return nil, err
+		}
+		if cfg != nil {
+			files = append(files, loaded{path, cfg})
+		}
+	}
+
+	var targets []*rules.Target
+	for i, f := range files {
+		cfg := f.cfg
+		servers := cfg.MCPServerMap()
+		shellOverridden := false
+		for _, later := range files[i+1:] {
+			for name, m := range later.cfg.MCP {
+				if m.Disabled() {
+					delete(servers, name)
+				}
+			}
+			if strings.TrimSpace(later.cfg.Shell) != "" {
+				shellOverridden = true
+			}
+		}
+		if shellOverridden && cfg.Shell != "" {
+			c := *cfg
+			c.Shell = ""
+			cfg = &c
+		}
+		tgt := &rules.Target{
+			Scope:        finding.ScopeProject,
+			OpenCode:     cfg,
+			OpenCodeFile: f.path,
+		}
+		if len(servers) > 0 {
+			tgt.ProjectMCP = servers
+			tgt.ProjectMCPFile = f.path
+		}
+		targets = append(targets, tgt)
+	}
+	return targets, nil
+}
+
 func loadOpenCodeConfigOptional(path string) (*parser.OpenCodeConfig, error) {
 	c, err := parser.ParseOpenCodeConfig(path)
 	if err != nil {
@@ -2059,29 +2138,17 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		}
 	}
 
-	// OpenCode opencode.json — the project config, which its own docs call "safe
-	// to be checked into Git" and which OUTRANKS the user's global config in the
-	// documented precedence order. Its mcp block rides ProjectMCP so the shared
-	// MCP rules apply; the command array and the `environment` key are folded onto
-	// the common shape by MCPServerMap (#497).
-	openCodePath := filepath.Join(dir, "opencode.json")
-	openCodeCfg, err := loadOpenCodeConfigOptional(openCodePath)
+	// OpenCode project config: opencode.json and its siblings (#612). The project
+	// config is the one its own docs call "safe to be checked into Git", and it
+	// OUTRANKS the user's global config in the documented precedence order. Each
+	// file is its own target, so a finding names the file to edit; its mcp block
+	// rides ProjectMCP so the shared MCP rules apply, with the command array and
+	// the `environment` key folded onto the common shape by MCPServerMap (#497).
+	ocTargets, err := openCodeTargets(dir)
 	if err != nil {
 		return nil, err
 	}
-	if openCodeCfg != nil {
-		servers := openCodeCfg.MCPServerMap()
-		tgt := &rules.Target{
-			Scope:        finding.ScopeProject,
-			OpenCode:     openCodeCfg,
-			OpenCodeFile: openCodePath,
-		}
-		if len(servers) > 0 {
-			tgt.ProjectMCP = servers
-			tgt.ProjectMCPFile = openCodePath
-		}
-		targets = append(targets, tgt)
-	}
+	targets = append(targets, ocTargets...)
 
 	// Grok .grok/hooks/*.json — committable hook files whose command handlers run
 	// shell commands. Routed through commandSites so the command-content rules

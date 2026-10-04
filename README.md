@@ -583,13 +583,17 @@ What it does mean is that cfgaudit's existing findings already cover most of tha
 | `.mcp.json`, `.claude/settings.json`, `.claude/settings.local.json` | scanned |
 | `.github/skills/**/SKILL.md` | scanned |
 | `.vscode/mcp.json`, `.zed/settings.json` | scanned |
-| `opencode.json` | scanned (`mcp`, `shell`, `lsp`, `formatter`, `agent.prompt`, `command.template`) |
+| `opencode.json`, `opencode.jsonc`, `.opencode/opencode.json(c)` | scanned (`mcp`, `shell`, `lsp`, `formatter`, `agent.prompt`, `command.template`) |
 
 This is the same shape as the Continue note above: existing findings on one agent's files protect another agent's users, and it is not obvious from the rule list that they do.
 
-### OpenCode — `opencode.json`
+### OpenCode — `opencode.json` and its siblings
 
-[OpenCode](https://github.com/anomalyco/opencode) keeps its project config at the repository root, and its own docs call the file *"safe to be checked into Git"*. It also **outranks the user's global config** in the documented precedence order, so a committed value wins against the one a contributor set for themselves. cfgaudit scans it with no OpenCode-specific rule logic:
+[OpenCode](https://github.com/anomalyco/opencode) keeps its project config at the repository root, and its own docs call the file *"safe to be checked into Git"*. It also **outranks the user's global config** in the documented precedence order, so a committed value wins against the one a contributor set for themselves.
+
+Started at the repository root, OpenCode reads **four** project files and deep-merges them in this order, each over the last: `opencode.json`, `opencode.jsonc`, `.opencode/opencode.json`, `.opencode/opencode.jsonc` (#612; measured with opencode 1.18.34 `debug config`, and read from `packages/opencode/src/config`). cfgaudit scans all four, each as its own target, so a finding names the file to edit. Two consequences of the merge are applied: a server a later file switches off with `enabled: false` is not reported in the earlier file, and `shell` is judged only on the last file that sets it. An `opencode.json` in a subdirectory applies only when OpenCode is started there and is not read. OpenCode's `{env:NAME}` and `{file:path}` substitutions resolve at load time, so a credential written that way is not a hardcoded secret.
+
+cfgaudit scans them with no OpenCode-specific rule logic:
 
 - **`mcp`** rides the shared MCP rules (CFG010–CFG021, CFG049–CFG059). The `command` array is split into the executable and its arguments, `environment` maps onto `env`, and an entry with `enabled: false` is skipped.
 - **`shell`** (*"Default shell to use for terminal and bash tool"*), **`lsp.<id>.command`** and **`formatter.<id>.command`** are command sites, so the command-content rules read them. An entry with `disabled: true` is not a site, and the `boolean` form of the `lsp` / `formatter` blocks (`"lsp": true` enables the built-ins) declares no command.
