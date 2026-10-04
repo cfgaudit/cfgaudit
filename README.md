@@ -499,7 +499,7 @@ Cursor 2.5 also added **`.cursor/sandbox.json`**, the profile bounding what agen
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
-| [CFG086](docs/rules/CFG086.md) | error | committed agent hook runs on a zero-click event — Cursor `.cursor/hooks.json` `workspaceOpen`, Copilot `.github/hooks/*.json` or the inline `hooks` table in `.github/copilot/settings.json` `sessionStart`, or Grok `.grok/hooks/*.json` `SessionStart` — executes on every teammate who opens the repo, before they ask the agent for anything (cross-agent analogue of CFG047/CFG067) | LLM04 |
+| [CFG086](docs/rules/CFG086.md) | error | committed agent hook runs on a zero-click event — Cursor `.cursor/hooks.json` `workspaceOpen`, Copilot `.github/hooks/*.json` or the inline `hooks` table in `.github/copilot/settings.json` `sessionStart`, Grok `.grok/hooks/*.json` `SessionStart`, or Devin CLI `.devin/hooks.v1.json` / `.devin/config.json` `SessionStart` — executes on every teammate who opens the repo, before they ask the agent for anything (cross-agent analogue of CFG047/CFG067) | LLM04 |
 | [CFG087](docs/rules/CFG087.md) | error/warn | committed hook auto-approves tool calls — answers a permission gate with the allowing value (Copilot `behavior` on `permissionRequest`, `permissionDecision` on `preToolUse`; Cursor `permission` on `preToolUse`/`beforeShellExecution`/`beforeMCPExecution`/`subagentStart`), removing the confirmation prompt for everyone who opens the repo; argument rewriting (`modifiedArgs`/`updated_input`) is warn | LLM03 |
 | [CFG088](docs/rules/CFG088.md) | error/warn | Copilot `type: "http"` hook POSTs the event payload (prompts, tool names and arguments) to a non-loopback URL — a network channel declared in config rather than command text (CFG038's blind spot); a non-empty `allowedEnvVars`, which permits named environment variables to be expanded into the request headers, escalates it to error | LLM02 |
 | [CFG089](docs/rules/CFG089.md) | warn/info | `.github/copilot/settings.json` (and its gitignored twin `settings.local.json`) auto-installs third-party plugins — `enabledPlugins` loads a plugin's hooks/commands/MCP on session start (warn), an `extraKnownMarketplaces` source without a full-SHA `sha`/`ref` is unpinned (warn), and a repository-level `autoUpdate` is reported `info` because GitHub's reference says Copilot ignores it at that tier (CFG055's threat model in Copilot's file; `warn` because a third of real files register the marketplace they publish, not because committability is in doubt) | LLM04 |
@@ -569,6 +569,7 @@ Devin keeps **four** project files, and cfgaudit reads all of them, attributing 
 | `.devin/config.local.json` | Project local overrides (gitignored) | project-local |
 | `.devin/mcp_config.json` | Project MCP servers (committed) | project |
 | `.devin/mcp_config.local.json` | Project local MCP servers (gitignored) | project-local |
+| `.devin/hooks.v1.json` | Standalone hooks file (recommended); the hooks object is the entire file | project |
 
 MCP servers moved into the dedicated files in **v3000.3** (*"the Local 3.6 release"*); the `mcpServers` key of the main config is still honoured by older versions and migrated on startup by newer ones, so both locations are read rather than one replacing the other. The `.local` twins are gitignored by design and get the project-local scope cfgaudit already uses for `.claude/settings.local.json` and `.continue/settings.local.json` — a committed one still applies, and takes precedence over the shared file. The dedicated MCP files contribute servers only: a hook or permission finding is never attributed to them.
 
@@ -588,6 +589,19 @@ What it does mean is that cfgaudit's existing findings already cover most of tha
 | `opencode.json`, `opencode.jsonc`, `.opencode/opencode.json(c)` | scanned (`mcp`, `shell`, `lsp`, `formatter`, `agent.prompt`, `command.template`) |
 
 This is the same shape as the Continue note above: existing findings on one agent's files protect another agent's users, and it is not obvious from the rule list that they do.
+
+### Devin Desktop (formerly Windsurf) — `.devin/`, with `.windsurf/` as the fallback
+
+Windsurf is now **Devin Desktop**, and every workspace file it reads moved to `.devin/`, with the old `.windsurf/` path kept as a fallback (#613). cfgaudit reads both:
+
+| Files | Read as |
+|---|---|
+| `.devin/hooks.json`, or `.windsurf/hooks.json` when that file is absent or defines no hooks | command sites: each handler's `command` (run via `bash -c`) **and** `powershell` |
+| `.devin/rules/*.md`, `.windsurf/rules/*.md` | instruction content |
+| `.devin/workflows/*.md`, `.windsurf/workflows/*.md` | instruction content (workflows are manual-only slash commands whose body is the prompt) |
+| `.devin/skills/<name>/SKILL.md`, `.windsurf/skills/<name>/SKILL.md` | instruction content |
+
+The two hook files are not merged: Devin's docs say the legacy file *"is used only when .devin/hooks.json is absent or defines no hooks"*. Workspace hooks do not load in Restricted Mode, and none of the twelve events fires on opening the folder, so [CFG086](docs/rules/CFG086.md) has nothing to report on them. Both platform commands of a handler are read, because each runs on its own platform: a harmless `powershell` beside a malicious `command` still runs the command on macOS and Linux. The same now holds for Copilot's `bash` / `powershell` pair.
 
 ### OpenCode — `opencode.json` and its siblings
 

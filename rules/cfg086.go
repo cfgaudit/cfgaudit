@@ -128,8 +128,21 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 			}
 		}
 	}
+	// Devin CLI (.devin/config.json hooks and the standalone .devin/hooks.v1.json:
+	// event → matcher groups → command handlers, Claude Code's shape). Devin's
+	// hooks reference: "SessionStart fires before any user interaction", and it
+	// documents no trust step for project hooks (#613).
+	if d := t.Devin; d != nil && len(d.Hooks) > 0 {
+		if groups, ok := d.Hooks[devinZeroClickEvent]; ok && grokEventHasCommand(groups, nil) {
+			findings = append(findings, zeroClickFinding(t, "Devin", devinZeroClickEvent, zeroClickHookEvents["sessionstart"], t.DevinFile))
+		}
+	}
 	return findings
 }
+
+// devinZeroClickEvent is Devin CLI's hook event that fires before the user does
+// anything. Devin documents the events in Claude Code's exact PascalCase.
+const devinZeroClickEvent = "SessionStart"
 
 // continueZeroClickEvent is the Continue hook event that fires before the user
 // asks the agent for anything. Continue resolves events by exact name against its

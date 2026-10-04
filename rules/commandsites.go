@@ -420,7 +420,7 @@ func commandSites(t *Target) []commandSite {
 		sort.Strings(events)
 		for _, event := range events {
 			for _, h := range ah.Hooks[event] {
-				if cmd := h.ShellCommand(); cmd != "" {
+				for _, cmd := range h.ShellCommands() {
 					sites = append(sites, commandSite{Label: t.AgentHooksKind + " hooks." + event + " command", File: t.AgentHooksFile, Command: cmd})
 				}
 			}

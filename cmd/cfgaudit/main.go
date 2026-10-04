@@ -929,6 +929,18 @@ var (
 		// auto-loaded, like every command directory here.
 		filepath.Join(".cursor", "commands", "*.md"),
 		filepath.Join(".windsurf", "rules", "*.md"),
+		// Devin Desktop, the renamed Windsurf, reads .devin/ first and keeps
+		// .windsurf/ as the fallback for every one of these (#613): rules
+		// (".devin/rules/*.md (preferred) or .windsurf/rules/*.md (fallback)"),
+		// workflows, which are "manual-only" slash commands whose body is the
+		// prompt, and skills (".devin/skills/<skill-name>/ (the legacy
+		// .windsurf/skills/<skill-name>/ is still read)"). All are instruction
+		// content, on the same footing as .claude/commands and .claude/skills.
+		filepath.Join(".devin", "rules", "*.md"),
+		filepath.Join(".devin", "workflows", "*.md"),
+		filepath.Join(".windsurf", "workflows", "*.md"),
+		filepath.Join(".devin", "skills", "*", "SKILL.md"),
+		filepath.Join(".windsurf", "skills", "*", "SKILL.md"),
 		// GitHub Copilot path-specific instructions (newer than the repo-wide
 		// .github/copilot-instructions.md, which is in agentInstructionFiles) —
 		// committed Markdown loaded as Copilot context, same prompt-injection surface.
@@ -1520,6 +1532,29 @@ func agentHookTargets(dir string) ([]*rules.Target, error) {
 	if err := add(filepath.Join(dir, ".cursor", "hooks.json"), "Cursor"); err != nil {
 		return nil, err
 	}
+	// Devin Desktop (Windsurf renamed) workspace hooks, the same event → handlers
+	// shape with command / powershell per handler (#613). Its docs: workspace
+	// hooks live in ".devin/hooks.json in your workspace root (the legacy
+	// .windsurf/hooks.json is used only when .devin/hooks.json is absent or
+	// defines no hooks)". They do not load in Restricted Mode, and none of the
+	// twelve events fires on opening the folder, so CFG086 has nothing to report;
+	// the commands go to the command-content rules.
+	// A .devin/hooks.json that does not parse defines no hooks, so the fallback
+	// applies; add still reports the broken file (CFG109).
+	devinDesktopHooks := filepath.Join(dir, ".devin", "hooks.json")
+	h, herr := parser.ParseAgentHooks(devinDesktopHooks)
+	if herr != nil && !errors.Is(herr, os.ErrNotExist) {
+		if err := add(devinDesktopHooks, "Devin Desktop"); err != nil {
+			return nil, err
+		}
+	}
+	devinHooksFile := devinDesktopHooks
+	if herr != nil || len(h.Hooks) == 0 {
+		devinHooksFile = filepath.Join(dir, ".windsurf", "hooks.json")
+	}
+	if err := add(devinHooksFile, "Devin Desktop"); err != nil {
+		return nil, err
+	}
 	// The repository settings file decides whether any Copilot hook runs at all,
 	// and contributes an inline table of its own. The CLI's own settings map is
 	// {repo: ".github/copilot/settings.json", local: ".github/copilot/settings.local.json"},
@@ -2047,6 +2082,22 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				ProjectMCPFile: devinPath,
 			})
 		}
+	}
+
+	// Devin CLI's standalone hooks file, .devin/hooks.v1.json, holds the hooks
+	// object as the whole file (#613). It rides a Devin target so the Devin hook
+	// command sites and CFG086 read it like the hooks key of .devin/config.json.
+	hooksV1 := filepath.Join(dir, ".devin", "hooks.v1.json")
+	if hc, err := parser.ParseDevinHooksV1(hooksV1); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			skipUnreadable(hooksV1, err)
+		}
+	} else if len(hc.Hooks) > 0 {
+		targets = append(targets, &rules.Target{
+			Scope:     finding.ScopeProject,
+			Devin:     hc,
+			DevinFile: hooksV1,
+		})
 	}
 
 	// The dedicated MCP files carry only mcpServers, so they contribute a
