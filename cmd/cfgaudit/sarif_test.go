@@ -104,11 +104,11 @@ func TestEncodeSARIF_TaxonomyProperties(t *testing.T) {
 	if res.RuleID != "CFG090" {
 		t.Errorf("ruleId must stay the CFG id, got %q", res.RuleID)
 	}
-	if res.Properties["ave_id"] != "AVE-2026-00032" || res.Properties["owasp_llm"] != "LLM06" {
+	if res.Properties["ave_id"] != "AVE-2026-00032" || res.Properties["owasp_llm"] != "LLM03" {
 		t.Errorf("result properties wrong: %v", res.Properties)
 	}
 	rule := run.Tool.Driver.Rules[0]
-	if rule.Properties["ave_id"] != "AVE-2026-00032" || rule.Properties["owasp_llm"] != "LLM06" {
+	if rule.Properties["ave_id"] != "AVE-2026-00032" || rule.Properties["owasp_llm"] != "LLM03" {
 		t.Errorf("rule properties wrong: %v", rule.Properties)
 	}
 }

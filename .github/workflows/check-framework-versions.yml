@@ -7,8 +7,8 @@ name: Check framework versions
 #
 # The three frameworks expose their version differently, so each is checked its
 # own way (none publish a clean semver release feed like OWASP/ASVS does):
-#   - OWASP Top 10 for LLM Applications — year-tagged (2023, 2024, …); alert on a
-#     tag year newer than the reviewed edition.
+#   - OWASP GenAI LLM Top 10: one directory per edition in its repository, a
+#     released one holding final/; alert on a newer year with final/.
 #   - OWASP AISVS — versioned by top-level directory (1.0, …); alert on a newer dir.
 #   - OWASP MCP Top 10 — no release feed; tracked via the lifecycle "We are here
 #     right now" phase marker on its index page (provisional v0.1, Phase 3).
@@ -56,17 +56,29 @@ jobs:
           # ver_gt A B -> success when A is strictly newer than B (version sort).
           ver_gt() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]; }
 
-          # --- OWASP Top 10 for LLM Applications (year tags) ---
+          # --- OWASP GenAI LLM Top 10 (year directories with a final/ release) ---
+          # The project moved to GenAI-Security-Project/GenAI-LLM-Top10 and stopped
+          # tagging: the old repository's newest tag is 2024, it was marked legacy
+          # on 2026-08-05, and the 2026 edition shipped without a tag, so a tag
+          # check reported nothing (#619). The new repository keeps one directory
+          # per edition, and a released one holds final/ (2026/final), while a
+          # draft holds only working/. Alert on the newest year that has final/.
+          llm_repo=$(jq -r '.llm_top10.repo' "$VF")
           llm_reviewed=$(jq -r '.llm_top10.reviewed_year' "$VF")
-          llm_latest=$(gh api repos/OWASP/www-project-top-10-for-large-language-model-applications/tags --jq '.[].name' \
-            | grep -oE '^[0-9]{4}' | sort -n | tail -1)
-          echo "LLM Top 10: reviewed_year=$llm_reviewed latest_tag_year=${llm_latest:-none}"
-          if [ -z "$llm_latest" ]; then echo "::error::could not read LLM Top 10 tags"; exit 1; fi
+          llm_latest=""
+          for year in $(gh api "repos/$llm_repo/contents" --jq '.[] | select(.type == "dir") | .name' | grep -E '^[0-9]{4}$' | sort -rn); do
+            if gh api "repos/$llm_repo/contents/$year" --jq '.[] | select(.type == "dir") | .name' | grep -qx final; then
+              llm_latest=$year
+              break
+            fi
+          done
+          echo "LLM Top 10: reviewed_year=$llm_reviewed latest_final_year=${llm_latest:-none}"
+          if [ -z "$llm_latest" ]; then echo "::error::no <year>/final release directory found in $llm_repo; the layout may have changed"; exit 1; fi
           if [ "$llm_latest" -gt "$llm_reviewed" ]; then
-            alert "Framework update: OWASP Top 10 for LLM Applications $llm_latest available" \
-          "A newer OWASP Top 10 for LLM Applications edition (tag \`$llm_latest\`) exists upstream; cfgaudit's **primary** mapping targets the \`$llm_reviewed\` edition (the \`**OWASP:** LLMxx:$llm_reviewed\` lines across the rule docs and the README rule tables).
+            alert "Framework update: OWASP GenAI LLM Top 10 $llm_latest available" \
+          "A newer OWASP GenAI LLM Top 10 edition (\`$llm_latest/final\` in $llm_repo) exists upstream; cfgaudit's **primary** mapping targets the \`$llm_reviewed\` edition (the \`**OWASP:** LLMxx:$llm_reviewed\` lines across the rule docs and the README rule tables).
 
-          Re-review the LLMxx assignments against the \`$llm_latest\` edition; if still the best fit, bump \`llm_top10.reviewed_year\` in \`.github/framework-versions.json\`, otherwise update the affected rule-doc headers / README rows too.
+          Re-review the LLMxx assignments against the \`$llm_latest\` edition, which may renumber the list as 2026 did; if still the best fit, bump \`llm_top10.reviewed_year\` in \`.github/framework-versions.json\`, otherwise update the affected rule-doc headers / README rows too.
 
           Run: $RUN_URL"
           fi

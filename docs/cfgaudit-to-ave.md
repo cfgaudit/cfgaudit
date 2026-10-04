@@ -119,7 +119,7 @@ Four `static_detection` classes with no CFG rule today (CFG090 ships AVE-2026-00
 | AVE | Status | Note |
 |---|---|---|
 | **AVE-2026-00036** lateral movement / agent pivot | deferred (the reverted rule; its CFG091 id is now the qwen approvalMode rule) | a pre-release FP analysis found the vocabulary ("lateral movement", "pivot to other systems") is intent-ambiguous — it appears overwhelmingly in security-tool self-description, defensive/detection contexts ("prevent/identify lateral movement"), and offensive-agent capability tables that a static linter cannot distinguish from a malicious directive. Not statically detectable with acceptable precision |
-| **AVE-2026-00015** system-prompt extraction | deferred | maps to OWASP LLM07, which cfgaudit treats as runtime — the *leak* is runtime, the *instruction* is static; decide the boundary before filing |
+| **AVE-2026-00015** system-prompt extraction | deferred | maps to OWASP LLM08, which cfgaudit treats as runtime — the *leak* is runtime, the *instruction* is static; decide the boundary before filing |
 | **AVE-2026-00059** fragmented cross-description injection (ShareLock-class) | deferred | structurally needs multi-source correlation cfgaudit can't do today (every rule checks one file in isolation; the attack's defining property is that no single description is flaggable) — the attack-chain-correlation idea would serve both |
 | **AVE-2026-00077** cross-origin tool and resource declaration in one MCP server manifest | open (new 2026-08-14) | committable and checkable: the URLs live in a manifest cfgaudit already parses, and the test is whether they resolve to more than one root domain. The nearest existing rule, CFG066, is wildcard CORS, a different question |
 
@@ -169,7 +169,7 @@ Five records carry `detection_stage: static_detection` but are not auditable fro
 | AVE | Actually requires |
 |---|---|
 | AVE-2026-00024 content-type mismatch (Magika) | file magic-byte analysis of binaries |
-| AVE-2026-00040 insecure output handling | runtime output escaping (OWASP LLM05) |
+| AVE-2026-00040 insecure output handling | runtime output escaping (OWASP LLM10) |
 | AVE-2026-00051 OAuth discovery rebinding | runtime auth-flow redirect |
 | AVE-2026-00052 command injection via tool-call parameter | **server-side source** (SAST of the MCP implementation) |
 | AVE-2026-00053 path traversal via path parameter | **server-side source** (SAST) |

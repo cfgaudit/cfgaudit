@@ -34,7 +34,7 @@ func listOutput(args []string) (string, int) {
 	var out strings.Builder
 	fs.SetOutput(&out)
 	format := fs.String("format", "text", "output format: text, json")
-	owasp := fs.String("owasp", "", "filter by OWASP category — LLM (e.g. LLM06) or MCP (e.g. MCP05)")
+	owasp := fs.String("owasp", "", "filter by OWASP category — LLM (e.g. LLM03) or MCP (e.g. MCP05)")
 	if err := fs.Parse(args); err != nil {
 		return out.String(), 2
 	}
