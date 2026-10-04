@@ -61,3 +61,40 @@ func ParseDevinConfig(path string) (*DevinConfig, error) {
 	}
 	return &c, nil
 }
+
+// ParseDevinHooksV1 reads a Devin CLI .devin/hooks.v1.json (#613). Devin's hooks
+// reference lists it first among the project locations, as the "Standalone hooks
+// file (recommended)", and: "In .devin/hooks.v1.json, the hooks object is the
+// entire file (no wrapper key needed)". So the file is the event → matcher
+// groups map itself, in the same shape as the hooks key of .devin/config.json,
+// and it is returned as a DevinConfig carrying only Hooks.
+func ParseDevinHooksV1(path string) (*DevinConfig, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	// Some real files wrap the table in a "hooks" key anyway, the shape of every
+	// other location. Whether Devin reads that here is unverified; it is read, so
+	// a wrapped file is judged rather than silently skipped.
+	if inner, ok := top["hooks"]; ok {
+		var wrapped map[string]json.RawMessage
+		if json.Unmarshal(inner, &wrapped) == nil {
+			top = wrapped
+		}
+	}
+	// Entry by entry, so a generator's "_generated_by" string or another stray
+	// key does not cost the file its hooks; anything that is not a list of
+	// matcher groups is left out.
+	hooks := map[string][]HookGroup{}
+	for event, raw := range top {
+		var groups []HookGroup
+		if json.Unmarshal(raw, &groups) == nil && len(groups) > 0 {
+			hooks[event] = groups
+		}
+	}
+	return &DevinConfig{Hooks: hooks}, nil
+}

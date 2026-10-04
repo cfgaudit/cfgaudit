@@ -40,6 +40,23 @@ func (h AgentHook) ShellCommand() string {
 	return ""
 }
 
+// ShellCommands returns every distinct shell command this hook declares. A hook
+// may carry a command per platform (Copilot's bash / powershell, Devin
+// Desktop's command / powershell), and each one runs on its platform: a
+// harmless powershell beside a malicious command still runs the command on
+// macOS and Linux, so reading only the first would miss it.
+func (h AgentHook) ShellCommands() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, c := range []string{h.Bash, h.Shell, h.Command} {
+		if c != "" && !seen[c] {
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // AgentHooks is the shared shape of both files: a version marker and a map from
 // event name to the hooks that fire on it. Copilot additionally supports
 // disableAllHooks, which turns the whole file off.
@@ -51,9 +68,17 @@ func (h AgentHook) ShellCommand() string {
 // scan error, which costs the whole file its coverage over one entry cfgaudit
 // cannot read (#506).
 type AgentHooks struct {
-	Version         int                        `json:"version,omitempty"`
-	DisableAllHooks bool                       `json:"disableAllHooks,omitempty"`
-	RawHooks        map[string]json.RawMessage `json:"hooks,omitempty"`
+	// Version and the hooks table are kept raw so a file of another shape is a
+	// file with no hooks, not a scan error (#613): a real Windsurf-era
+	// .windsurf/hooks.json writes "version": "1.0" and `hooks` as an array of
+	// named entries, which is not the event → handlers table Devin Desktop
+	// documents and loads. Cursor writes "version": 1.
+	Version         json.RawMessage `json:"version,omitempty"`
+	DisableAllHooks bool            `json:"disableAllHooks,omitempty"`
+	HooksRaw        json.RawMessage `json:"hooks,omitempty"`
+
+	// RawHooks is HooksRaw when it is an object, keyed by event.
+	RawHooks map[string]json.RawMessage `json:"-"`
 
 	// Hooks holds the entries that decode as the modelled event → handlers shape.
 	// Populated by ParseAgentHooks; entries of any other shape are left out rather
@@ -66,6 +91,9 @@ type AgentHooks struct {
 // whether the CLI honours it would invent findings on configuration nothing
 // reads, which is the opposite error from missing coverage.
 func (h *AgentHooks) decodeHooks() {
+	if len(h.HooksRaw) > 0 && h.RawHooks == nil {
+		_ = json.Unmarshal(h.HooksRaw, &h.RawHooks) // an array or scalar leaves it empty
+	}
 	if len(h.RawHooks) == 0 {
 		return
 	}

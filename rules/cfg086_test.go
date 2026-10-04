@@ -12,7 +12,7 @@ import (
 func agentHooksTarget(kind string, hooks map[string][]parser.AgentHook, disableAll bool) *Target {
 	return &Target{
 		Scope:          finding.ScopeProject,
-		AgentHooks:     &parser.AgentHooks{Version: 1, DisableAllHooks: disableAll, Hooks: hooks},
+		AgentHooks:     &parser.AgentHooks{Version: json.RawMessage("1"), DisableAllHooks: disableAll, Hooks: hooks},
 		AgentHooksFile: ".cursor/hooks.json",
 		AgentHooksKind: kind,
 	}
