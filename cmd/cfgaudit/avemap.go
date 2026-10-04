@@ -176,6 +176,9 @@ var aveByRule = map[string]string{
 	// guardrail rather than an attacker behaviour. AVE-2026-00063 is a flag that
 	// removes a gate and AVE-2026-00068 is composition through shell state;
 	// neither is "the denylist misses an equivalent spelling".
+	// CFG111 (an invisible character leaving a deny/ask rule or hook matcher
+	// inert) is the same kind of ineffective guardrail, and unmapped for the
+	// same reason.
 	// CFG106 (Codex browser_use / computer_use granted from a committed config)
 	// would need AVE-2026-00063, which is a bypassed *human-approval* step. The
 	// rule deliberately does not claim that: config/read shows the repository's
