@@ -89,3 +89,18 @@ func TestCFG007_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when settings absent, got %d", len(f))
 	}
 }
+
+// #612: OpenCode's {env:NAME} / {file:path} substitutions and VS Code's
+// ${input:id} prompt resolve at load time, so none is a committed secret.
+func TestIsSecretReference_SubstitutionForms(t *testing.T) {
+	for _, v := range []string{"{env:GITHUB_TOKEN}", "{file:~/.secrets/openai}", "${input:context7-api-key}", " {env:X} "} {
+		if !isSecretReference(v) {
+			t.Errorf("%q should count as a reference", v)
+		}
+	}
+	for _, v := range []string{"{env:}", "sk-live-{env:X}", "ghp_abcdefghijklmnopqrstuvwxyz0123456789"} {
+		if isSecretReference(v) {
+			t.Errorf("%q must not count as a reference", v)
+		}
+	}
+}

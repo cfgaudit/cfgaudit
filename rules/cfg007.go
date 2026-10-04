@@ -51,7 +51,18 @@ var shellRefRe = regexp.MustCompile(`^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$`)
 // Continue sample are ${{ secrets.NAME }}. shellRefRe rejects it because of the
 // second brace, so without this branch every one of them reads as a committed
 // literal.
-var templateRefRe = regexp.MustCompile(`^(?:\$?\{\{.+?\}\}|%\{[^}]+\}|<%.+?%>|__[A-Z][A-Z0-9_]+__)$`)
+//
+// {env:NAME} and {file:path} are OpenCode's config substitutions (#612):
+// packages/opencode/src/config/variable.ts applies both to the whole config text
+// before parsing ("Apply {env:VAR} and {file:path} substitutions to config
+// text"). In a 673-repository OpenCode sample, almost every credential under an
+// mcp entry's environment or headers was written this way, and reading it as a
+// literal reported a hardcoded secret in each.
+//
+// ${input:id} is VS Code's prompted input in mcp.json: the editor asks for the
+// value and stores it, so the committed text names a prompt, not a secret. The
+// same sample carried it in an OpenCode file copied from a VS Code config.
+var templateRefRe = regexp.MustCompile(`^(?:\$?\{\{.+?\}\}|%\{[^}]+\}|<%.+?%>|__[A-Z][A-Z0-9_]+__|\{env:[^}]+\}|\{file:[^}]+\}|\$\{input:[^}]+\})$`)
 
 // screamingPlaceholderRe matches an all-caps token that names a credential rather
 // than being one: TU_API_KEY_AQUI, MY_TOKEN_HERE, API_KEY. A real key has mixed
