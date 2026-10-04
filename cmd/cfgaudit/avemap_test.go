@@ -63,7 +63,7 @@ func TestWithTaxonomy_EnrichesFindings(t *testing.T) {
 		{RuleID: "CFG006", Severity: finding.Warn}, // OWASP but no AVE
 	}
 	out := withTaxonomy(in)
-	if out[0].OWASP != "LLM06" || out[0].AVEID != "AVE-2026-00032" {
+	if out[0].OWASP != "LLM03" || out[0].AVEID != "AVE-2026-00032" {
 		t.Errorf("CFG090: got owasp=%q ave=%q", out[0].OWASP, out[0].AVEID)
 	}
 	if out[1].OWASP == "" {

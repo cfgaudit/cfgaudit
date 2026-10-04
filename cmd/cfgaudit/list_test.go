@@ -80,7 +80,7 @@ func TestList_BadFlag(t *testing.T) {
 }
 
 func TestSummarize(t *testing.T) {
-	doc := "# CFG999 — `permissions.allow` does a thing\n\n**Severity:** `error` · `warn`\n**OWASP:** [LLM06:2025 – Excessive Agency](https://x)\n**OWASP MCP:** [MCP02:2025 – Privilege Escalation via Scope Creep](https://y) — provisional (MCP Top 10 v0.1)\n"
+	doc := "# CFG999 — `permissions.allow` does a thing\n\n**Severity:** `error` · `warn`\n**OWASP:** [LLM03:2026 – Excessive Agency](https://x)\n**OWASP MCP:** [MCP02:2025 – Privilege Escalation via Scope Creep](https://y) — provisional (MCP Top 10 v0.1)\n"
 	s := summarize("CFG999", doc)
 	if s.Description != "permissions.allow does a thing" {
 		t.Errorf("description: got %q", s.Description)
@@ -88,7 +88,7 @@ func TestSummarize(t *testing.T) {
 	if s.Severity != "error/warn" {
 		t.Errorf("severity: got %q", s.Severity)
 	}
-	if s.OWASP != "LLM06" {
+	if s.OWASP != "LLM03" {
 		t.Errorf("owasp: got %q", s.OWASP)
 	}
 	if s.OWASPMCP != "MCP02" {
@@ -97,7 +97,7 @@ func TestSummarize(t *testing.T) {
 }
 
 func TestSummarize_NoMCPMapping(t *testing.T) {
-	doc := "# CFG998 — a thing\n\n**Severity:** `error`\n**OWASP:** [LLM01:2025 – Prompt Injection](https://x)\n"
+	doc := "# CFG998 — a thing\n\n**Severity:** `error`\n**OWASP:** [LLM01:2026 – Prompt Injection](https://x)\n"
 	if s := summarize("CFG998", doc); s.OWASPMCP != "" {
 		t.Errorf("expected empty OWASPMCP for a non-MCP rule, got %q", s.OWASPMCP)
 	}
