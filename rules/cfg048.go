@@ -32,10 +32,19 @@ var blanketAutoApproveKeys = []string{
 	"chat.tools.autoApprove",        // earlier / experimental
 }
 
-// The object-valued auto-approve settings. Neither declares a scope, so both take
-// the registry default of ConfigurationScope.WINDOW and *are* applied from a
-// committed .vscode/settings.json. Neither is `restricted`, so workspace trust
-// does not gate them either.
+// The object-valued auto-approve settings. Neither is `restricted`, so workspace
+// trust does not gate them.
+//
+// chat.tools.urls.autoApprove declares no scope, takes the registry default of
+// ConfigurationScope.WINDOW, and *is* applied from a committed
+// .vscode/settings.json.
+//
+// chat.tools.edits.autoApprove was the same until VS Code 1.134.0, which
+// registers it with `scope: ConfigurationScope.APPLICATION` (f2542bcba2,
+// "agentHost: Harden edit auto-approval rules"; the 1.133.0 registration has no
+// scope, the 1.134.0 one does). Since then upstream ignores it from a workspace
+// file, so its findings are downgraded the way blanketAutoApproveKeys are: VS
+// Code 1.133 and earlier still apply it, and so may forks that read the file.
 const (
 	editsAutoApproveKey = "chat.tools.edits.autoApprove"
 	urlsAutoApproveKey  = "chat.tools.urls.autoApprove"
@@ -381,6 +390,10 @@ func terminalEntryApproves(raw json.RawMessage) bool {
 	return *obj.Approve
 }
 
+// editsScopeNote states where chat.tools.edits.autoApprove from a workspace file
+// still takes effect.
+const editsScopeNote = " VS Code 1.134 and later ignore this key from a workspace file (it is application-scoped), but VS Code 1.133 and earlier apply it, and forks that read the same file may too."
+
 // checkEdits inspects chat.tools.edits.autoApprove, a map of glob → bool deciding
 // which file edits the agent may make unattended. VS Code's default approves
 // everything *except* a denylist of files with immediate side effects — notably
@@ -404,11 +417,12 @@ func (r *cfg048) checkEdits(t *Target) []finding.Finding {
 			}
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG048",
-				Severity: finding.Error,
+				Severity: finding.Warn, // application-scoped since 1.134; see editsAutoApproveKey
 				Scope:    t.Scope,
 				File:     t.VSCodeSettingsFile,
 				Message: editsAutoApproveKey + " sets \"" + pat + "\": true — auto-approves agent edits to a file VS Code protects by default." +
-					" Editing .vscode/*.json unattended chains into a task that runs on folder open (CFG047), so this is a path to unprompted code execution. Remove the entry",
+					" Editing .vscode/*.json unattended chains into a task that runs on folder open (CFG047), so this is a path to unprompted code execution." +
+					editsScopeNote + " Remove the entry",
 			})
 		case broadGlobRe.MatchString(pat) && approved:
 			broad = append(broad, pat)
@@ -421,11 +435,12 @@ func (r *cfg048) checkEdits(t *Target) []finding.Finding {
 	if len(broad) > 0 && !keptProtection && len(findings) == 0 {
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG048",
-			Severity: finding.Warn,
+			Severity: finding.Info, // application-scoped since 1.134; see editsAutoApproveKey
 			Scope:    t.Scope,
 			File:     t.VSCodeSettingsFile,
 			Message: editsAutoApproveKey + " sets \"" + strings.Join(broad, "\", \"") + "\": true without restating the default denials" +
-				" (**/.vscode/*.json, **/.git/**, .env, lockfiles) — if the committed map replaces the defaults rather than merging into them, agent edits to those files are auto-approved. Re-add the denials, or scope the pattern",
+				" (**/.vscode/*.json, **/.git/**, .env, lockfiles) — if the committed map replaces the defaults rather than merging into them, agent edits to those files are auto-approved." +
+				editsScopeNote + " Re-add the denials, or scope the pattern",
 		})
 	}
 	return findings

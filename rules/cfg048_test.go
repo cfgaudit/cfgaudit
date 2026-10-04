@@ -45,16 +45,16 @@ func TestCFG048_EditsAutoApprove_SensitivePattern(t *testing.T) {
 		`{"chat.tools.edits.autoApprove": {"**/.git/**": true}}`,
 	} {
 		f := CFG048.Check(vscodeSettingsTarget(t, c))
-		if len(f) != 1 || f[0].Severity != finding.Error {
-			t.Errorf("expected 1 error for %s, got %+v", c, f)
+		if len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, "1.134") {
+			t.Errorf("expected 1 warn naming the 1.134 scope change for %s, got %+v", c, f)
 		}
 	}
 }
 
-func TestCFG048_EditsAutoApprove_BroadWithoutDenials_Warn(t *testing.T) {
+func TestCFG048_EditsAutoApprove_BroadWithoutDenials_Info(t *testing.T) {
 	f := CFG048.Check(vscodeSettingsTarget(t, `{"chat.tools.edits.autoApprove": {"**/*": true}}`))
-	if len(f) != 1 || f[0].Severity != finding.Warn {
-		t.Fatalf("expected 1 warn, got %+v", f)
+	if len(f) != 1 || f[0].Severity != finding.Info {
+		t.Fatalf("expected 1 info, got %+v", f)
 	}
 }
 
