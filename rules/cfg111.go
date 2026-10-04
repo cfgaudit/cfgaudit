@@ -141,5 +141,5 @@ func hiddenAt(runes []rune, i int) bool {
 	if !ok || pos != 1 {
 		return false
 	}
-	return !(runes[i] == zwjRune && zwjJoinsEmoji(runes, i))
+	return runes[i] != zwjRune || !zwjJoinsEmoji(runes, i)
 }
