@@ -881,6 +881,15 @@ var (
 	agentInstructionFiles = []string{
 		".cursorrules",
 		".windsurfrules",
+		// Zed's project rules file (#617). Zed loads the first of RULES_FILE_NAMES
+		// that exists as a file in the worktree root (crates/prompt_store
+		// prompts.rs, crates/agent agent.rs load_worktree_rules_file), and the
+		// list starts with ".rules", ahead of .cursorrules. The name is generic,
+		// but at a repository root it is used for exactly this: every root .rules
+		// in a code-search sample was agent instructions. .clinerules, also on
+		// Zed's list, is read by clineRulesFiles because Cline lets it be a
+		// directory.
+		".rules",
 		// Claude Code's own project instruction files beyond the repo-root
 		// CLAUDE.md. The 2.1.281 binary carries the two lists verbatim as
 		// ["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"] and
@@ -928,6 +937,9 @@ var (
 		// which this list already covers for Claude Code. User-invoked rather than
 		// auto-loaded, like every command directory here.
 		filepath.Join(".cursor", "commands", "*.md"),
+		// Cursor custom subagents (#617): "Project subagents | .cursor/agents/ |
+		// Current project only", a Markdown file whose body is the prompt.
+		filepath.Join(".cursor", "agents", "*.md"),
 		filepath.Join(".windsurf", "rules", "*.md"),
 		// Devin Desktop, the renamed Windsurf, reads .devin/ first and keeps
 		// .windsurf/ as the fallback for every one of these (#613): rules
@@ -1043,6 +1055,20 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	for _, m := range projSkills {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	cursorSkills, err := agentSkillsFiles(dir, cursorSkillsDirs)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range cursorSkills {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	clineRules, err := clineRulesFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range clineRules {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	projKimi, err := kimiAgentFiles(dir)
@@ -1346,8 +1372,65 @@ var (
 	}
 	userSkillsDirs = []string{
 		filepath.Join(".agents", "skills"),
+		// Cursor's user-level skills, "~/.cursor/skills/ | User-level (global)".
+		filepath.Join(".cursor", "skills"),
+	}
+
+	// cursorSkillsDirs is Cursor's project skills root (#617). Its docs:
+	// ".cursor/skills/ | Project-level", and "Cursor walks the skills root
+	// recursively and picks up any SKILL.md it finds". Kept apart from
+	// projectSkillsDirs so the same-name collision check (CFG102), measured for
+	// Claude Code, is not asserted for Cursor.
+	cursorSkillsDirs = []string{
+		filepath.Join(".cursor", "skills"),
 	}
 )
+
+// clineRulesExts are the extensions Cline's rule loader reads as rule text
+// (MARKDOWN_EXTENSIONS in sdk/packages/core/.../user-instruction-config-loader.ts).
+var clineRulesExts = map[string]bool{".md": true, ".markdown": true, ".txt": true}
+
+// clineRulesFiles returns Cline's workspace rule files (#617). Cline reads
+// .clinerules as a single file or, when it is a directory, every file under it
+// recursively, and also .cline/rules (resolveWorkspaceRulesConfigPaths: "the
+// legacy <workspace>/.clinerules layout and the current <workspace>/.cline/rules
+// layout"). Inside .clinerules, workflows/ and skills/ are not rules to Cline
+// but are instruction text all the same (a workflow's body is the prompt it
+// sends, a skill is a SKILL.md), so they are read too; hooks/ holds executables
+// and is skipped. A .clinerules file is also Zed's rules file.
+func clineRulesFiles(base string) ([]string, error) {
+	var out []string
+	single := filepath.Join(base, ".clinerules")
+	if info, err := os.Stat(single); err == nil && !info.IsDir() {
+		out = append(out, single)
+	}
+	for _, root := range []string{single, filepath.Join(base, ".cline", "rules")} {
+		info, err := os.Stat(root)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				if path != root && d.Name() == "hooks" && filepath.Dir(path) == single {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if clineRulesExts[strings.ToLower(filepath.Ext(path))] {
+				out = append(out, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
 
 // agentSkillsFiles returns every SKILL.md under each of <base>/<dir>, discovered
 // recursively. A skill is instruction text, so the content rules apply to it
