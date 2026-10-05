@@ -33,7 +33,7 @@ func (r *cfg029) ID() string { return "CFG029" }
 // object between the verb and the adverb.
 var permissionBypassRe = regexp.MustCompile(`(?i)(` +
 	`(?:always|automatically)\s+approve` +
-	`|auto-?approve` +
+	`|auto-?approve\b` +
 	`|approve\b[^.\n]{0,30}?\b(?:permission|approval|confirmation|prompt)s?\b[^.\n]{0,25}?\b(?:automatically|without\s+asking|by\s+default)` +
 	`|bypass\s+(?:permission|confirmation|approval)` +
 	`|skip\s+(?:confirm(?:ation)?|approval|the\s+prompt)` +
@@ -47,6 +47,31 @@ var permissionBypassRe = regexp.MustCompile(`(?i)(` +
 // asked different questions: this one is looked for *around* a match, never as
 // one.
 var prohibitionRe = regexp.MustCompile(`(?i)\b(never|do\s+not|don'?t|must\s+not|mustn'?t|may\s+not|cannot|can'?t|avoid|refuse\s+to|forbidden|prohibited|not\s+allowed|no\s+circumstances)\b`)
+
+// noWithoutRe matches "no <up to four words>" right before a "without ..."
+// match: "no file modified without approval", "No code changes without
+// approval". It applies only to that branch, because "with no prompts,
+// auto-approve everything" puts the same word before a real bypass (#623).
+var noWithoutRe = regexp.MustCompile(`(?i)\bno\s+(?:\S+\s+){0,4}$`)
+
+// forbiddenMarkRe matches a line marked as a forbidden item rather than worded
+// as one: "❌ Bypass permissions", "- 🚫 auto-approve deploys" (#623).
+var forbiddenMarkRe = regexp.MustCompile(`^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*)?\s*(?:\x{274C}|\x{1F6AB}|\x{26D4}|\x{2717}|\x{2718})`)
+
+// antiPatternHeadRe matches a heading or list lead-in that introduces things not
+// to do without a negation word: "Common failure modes", "Anti-patterns",
+// "Red flags" (#623).
+var antiPatternHeadRe = regexp.MustCompile(`(?i)\b(?:anti-?patterns?|failure\s+modes?|pitfalls?|common\s+mistakes|red\s+flags|what\s+not\s+to\s+do|don'?ts)\b`)
+
+// conditionAfterRe matches text after a match that turns it into the name of a
+// condition rather than an instruction: "Destructive action without
+// confirmation → stop and confirm", "... without approval is forbidden" (#623).
+var conditionAfterRe = regexp.MustCompile(`(?i)^[^.;]{0,60}?(?:→\s*stop\b|\bstop\s+and\s+(?:ask|confirm)\b|\b(?:is|are)\s+(?:forbidden|prohibited|not\s+allowed|never\s+allowed)\b)`)
+
+// modeNameAfterRe matches "auto-approve mode" and its kin, where the phrase
+// names a setting the text is describing ("when auto-approve mode is on")
+// rather than telling the agent to approve (#623).
+var modeNameAfterRe = regexp.MustCompile(`(?i)^\s+(?:mode|setting|flag|option|policy|list|rules?|config(?:uration)?)\b`)
 
 // listItemRe matches a markdown list item and captures its indentation, so the
 // walk up to a list's governing line can tell a sibling from a parent.
@@ -96,13 +121,32 @@ func clauseStart(line string, end int) int {
 // a fake "never do these" heading instructs the agent not to do it either.
 func negated(lines []string, i int, loc []int) bool {
 	line := lines[i]
-	if m := prohibitionRe.FindStringIndex(line[loc[0]:loc[1]]); m != nil && m[0] == 0 {
+	match := line[loc[0]:loc[1]]
+	if m := prohibitionRe.FindStringIndex(match); m != nil && m[0] == 0 {
 		return false
 	}
-	if prohibitionRe.MatchString(line[clauseStart(line, loc[0]):loc[0]]) {
+	before := line[clauseStart(line, loc[0]):loc[0]]
+	if prohibitionRe.MatchString(before) {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(match), "without") && noWithoutRe.MatchString(before) {
+		return true
+	}
+	if forbiddenMarkRe.MatchString(line) || conditionAfterRe.MatchString(line[loc[1]:]) {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(match), "auto") && modeNameAfterRe.MatchString(line[loc[1]:]) {
+		return true
+	}
+	// A command-line flag (terraform apply -auto-approve, --auto-approve) names
+	// an option of some tool, not an order to the agent (#623).
+	if loc[0] > 0 && line[loc[0]-1] == '-' {
 		return true
 	}
 	g := governingLine(lines, i)
+	if introducesList(g) && (antiPatternHeadRe.MatchString(g) || forbiddenMarkRe.MatchString(g)) {
+		return true
+	}
 	// Only the clause the list hangs off counts, for the same reason the line
 	// check is clause-scoped: a long paragraph that ends in a colon can carry a
 	// negation about something else entirely. Measured, that is not theoretical
