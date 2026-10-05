@@ -2,6 +2,8 @@ package rules
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -314,5 +316,31 @@ func TestCFG050_MarketplaceHeaders_BothSpellings_CanonicalWins(t *testing.T) {
 	}
 	if strings.Contains(got.Message, "ignored") {
 		t.Errorf("the alias entry is ignored by Claude Code and must not be reported: %q", got.Message)
+	}
+}
+
+// #615: a literal Codex MCP oauth.client_secret, read through the TOML parser.
+func TestCFG050_CodexOAuthClientSecret(t *testing.T) {
+	dir := t.TempDir()
+	write := func(secret string) *Target {
+		p := filepath.Join(dir, "config.toml")
+		body := "[mcp_servers.remote]\nurl = \"https://example.com/mcp\"\n\n[mcp_servers.remote.oauth]\nclient_id = \"abc\"\nclient_secret = \"" + secret + "\"\n"
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := parser.ParseCodexConfig(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &Target{ProjectMCP: c.MCPServerMap(), ProjectMCPFile: p}
+	}
+	f := CFG050.Check(write("s3cr3t-live-9f8e7d6c5b4a3210"))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "oauth.client_secret") {
+		t.Fatalf("expected one finding on oauth.client_secret, got %+v", f)
+	}
+	for _, v := range []string{"${CLIENT_SECRET}", "<your-secret>", "CLIENT_SECRET"} {
+		if f := CFG050.Check(write(v)); len(f) != 0 {
+			t.Errorf("%q is a placeholder, got %+v", v, f)
+		}
 	}
 }

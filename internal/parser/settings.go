@@ -253,6 +253,11 @@ type HookCommand struct {
 }
 
 type MCPServer struct {
+	// OAuthClientSecret is a literal OAuth client secret the server declaration
+	// carries. Filled by the Codex mapping from [mcp_servers.<name>.oauth]
+	// client_secret (#615); no JSON shape cfgaudit reads has one.
+	OAuthClientSecret string `json:"-"`
+
 	// BearerTokenFile is a local file whose contents the agent sends as the
 	// server's bearer token. Filled by the Grok mapping from bearer_token_file
 	// (#616); no JSON shape cfgaudit reads has one.

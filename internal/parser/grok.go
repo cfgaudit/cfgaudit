@@ -110,9 +110,9 @@ func (c *GrokConfig) MCPServerMap() map[string]MCPServer {
 	out := make(map[string]MCPServer, len(c.MCPServers))
 	for name, s := range c.MCPServers {
 		out[name] = MCPServer{
-			Command: s.Command,
-			Args:    s.Args,
-			Env:     s.Env,
+			Command:         s.Command,
+			Args:            s.Args,
+			Env:             s.Env,
 			URL:             s.URL,
 			Headers:         s.Headers,
 			BearerTokenFile: s.BearerTokenFile,

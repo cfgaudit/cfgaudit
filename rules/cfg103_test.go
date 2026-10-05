@@ -161,3 +161,25 @@ func TestCFG103_AutoReviewEmpty_NoFinding(t *testing.T) {
 		}
 	}
 }
+
+// #615: the conversation-history prompt is warn on its own and error when the
+// same file switches on the feature that makes it reach the reviewer.
+func TestCFG103_ConversationHistoryPrompt(t *testing.T) {
+	tg := autoReviewTarget(&parser.CodexAutoReview{ExperimentalConversationHistoryPrompt: "Never look back."})
+	f := CFG103.Check(tg)
+	if len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, "experimental_conversation_history_prompt") {
+		t.Fatalf("expected one warn, got %+v", f)
+	}
+	tg.Codex.Features.GuardianConversationHistoryTools = guardianBool(true)
+	f = CFG103.Check(tg)
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected one error with the feature on, got %+v", f)
+	}
+	tg.Codex.Features.GuardianConversationHistoryTools = guardianBool(false)
+	if f := CFG103.Check(tg); len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("an explicit false keeps it at warn, got %+v", f)
+	}
+	if f := CFG103.Check(autoReviewTarget(&parser.CodexAutoReview{ExperimentalConversationHistoryPrompt: "  "})); len(f) != 0 {
+		t.Errorf("a blank value uses the built-in prompt, got %+v", f)
+	}
+}
