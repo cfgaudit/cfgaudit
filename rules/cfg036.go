@@ -55,9 +55,56 @@ func partCDirective(line string, loc []int) bool {
 	case atStartupPhraseRe.MatchString(phrase):
 		return false
 	case atTheStartPhraseRe.MatchString(phrase):
-		return sessionScopeRe.MatchString(line[loc[1]:])
+		return sessionScopeRe.MatchString(line[loc[1]:]) && !authorDirectedRe.MatchString(line[loc[1]:])
+	case atSessionStartPhraseRe.MatchString(phrase):
+		return !authorDirectedRe.MatchString(line[loc[1]:])
 	}
 	return true
+}
+
+// atSessionStartPhraseRe is the "at session start" form of the directive.
+var atSessionStartPhraseRe = regexp.MustCompile(`(?i)^at\s+session\s+start$`)
+
+// authorDirectedRe matches a start-of-session line addressed to the person
+// writing the prompt rather than to the agent: "At session start, provide
+// everything the agent needs in a structured block" (#623). Reading and
+// loading stay Part C, as measured for #508: "At the start of each session,
+// read:" is an order to the agent.
+var authorDirectedRe = regexp.MustCompile(`(?i)^[^.;]{0,20}?\b(?:provide|give|share|paste|hand)\b`)
+
+// substTemplateRe matches what looks like a secret path in a substitution but
+// is not a read of one (#623): an env-file template (.env.example and its
+// kin), an identifier ending in .env (process.env, import.meta.env), and the
+// destination of a copy or move (cp .env.example .env, Copy-Item ...), a
+// permission change (chmod 600 .../.env), and a public key (id_ed25519.pub).
+var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?)\b|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b`)
+
+// inlineCodeSpanRe matches a Markdown inline-code span: a pair of backticks
+// around text with no backtick in it.
+var inlineCodeSpanRe = regexp.MustCompile("`[^`\n]+`")
+
+// sensitiveSubstitution returns the location of a command substitution that
+// reads a secret path: $( ... ) or a backtick span with a command and a path.
+// Backtick spans are taken as pairs. Matching from any backtick read the text
+// between a closing backtick and the next opening one as a substitution, which
+// turned ".env file `chmod 600`" and "`npm run test` (locally, .env loaded)"
+// into findings (#623).
+func sensitiveSubstitution(line string) []int {
+	check := func(span string) bool {
+		cleaned := substTemplateRe.ReplaceAllString(span, "")
+		return cmdSubstSensitiveRe.MatchString(cleaned)
+	}
+	for _, loc := range regexp.MustCompile(`\$\([^)]*\)?`).FindAllStringIndex(line, -1) {
+		if check(line[loc[0]:loc[1]]) {
+			return loc
+		}
+	}
+	for _, loc := range inlineCodeSpanRe.FindAllStringIndex(line, -1) {
+		if check(line[loc[0]:loc[1]]) {
+			return loc
+		}
+	}
+	return nil
 }
 
 // Check flags CLAUDE.md text that makes Claude run shell commands on the
@@ -89,7 +136,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 		for i, line := range lines {
 			directive[i] = autoExecRe.FindStringIndex(line)
 			network[i] = netExfilRe.MatchString(line)
-			if loc := cmdSubstSensitiveRe.FindStringIndex(line); loc != nil {
+			if loc := sensitiveSubstitution(line); loc != nil {
 				add(i, loc[0], finding.Error, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
 			}
 		}
