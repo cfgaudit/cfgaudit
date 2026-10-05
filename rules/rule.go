@@ -257,6 +257,12 @@ type Target struct {
 	GrokHooks     *parser.GrokHooks
 	GrokHooksFile string
 
+	// GrokLSP holds a parsed xAI Grok .grok/lsp.json (#616): language servers
+	// Grok spawns for diagnostics once the folder is trusted. Their command and
+	// args become command sites. Nil when absent; GrokLSPFile is its path.
+	GrokLSP     map[string]parser.GrokLSPServer
+	GrokLSPFile string
+
 	// Continue holds a parsed Continue config.yaml (.continue/config.yaml or
 	// ~/.continue/config.yaml). Its mcpServers list rides ProjectMCP so the MCP
 	// rules apply; inline model/MCP apiKey literals drive CFG065. Nil when absent;

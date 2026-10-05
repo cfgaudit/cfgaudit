@@ -427,6 +427,16 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Grok .grok/lsp.json: each language server is a command Grok spawns (#616).
+	for _, name := range sortedKeys2(t.GrokLSP) {
+		s := t.GrokLSP[name]
+		if strings.TrimSpace(s.Command) == "" {
+			continue
+		}
+		cmd := strings.TrimSpace(strings.Join(append([]string{s.Command}, s.Args...), " "))
+		sites = append(sites, commandSite{Label: "Grok lsp." + name + " command", File: t.GrokLSPFile, Command: cmd})
+	}
+
 	// OpenAI Codex config.toml `notify` — a program (argv) Codex spawns on events.
 	if t.Codex != nil && len(t.Codex.Notify) > 0 {
 		sites = append(sites, commandSite{Label: "Codex notify command", File: t.CodexFile, Command: strings.Join(t.Codex.Notify, " ")})

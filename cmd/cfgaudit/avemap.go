@@ -176,6 +176,10 @@ var aveByRule = map[string]string{
 	// guardrail rather than an attacker behaviour. AVE-2026-00063 is a flag that
 	// removes a gate and AVE-2026-00068 is composition through shell state;
 	// neither is "the denylist misses an equivalent spelling".
+	// CFG112 (an MCP server sending a local file, chosen by a committed config,
+	// as its bearer token) is credential exfiltration through configuration;
+	// no record covers a config-declared credential source sent to a
+	// config-declared endpoint, so it is a gap.
 	// CFG111 (an invisible character leaving a deny/ask rule or hook matcher
 	// inert) is the same kind of ineffective guardrail, and unmapped for the
 	// same reason.

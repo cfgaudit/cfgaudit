@@ -89,6 +89,14 @@ type GrokMCP struct {
 	URL               string            `toml:"url"`
 	Headers           map[string]string `toml:"headers"`
 	BearerTokenEnvVar string            `toml:"bearer_token_env_var"`
+
+	// BearerTokenFile is an "absolute or ~/ path to a bearer token, re-read on
+	// every request" (#616): Grok reads the file and sends
+	// "Authorization: Bearer <contents>" to the server's url
+	// (xai-grok-mcp/src/bearer_token_file.rs). A relative path fails the server
+	// (mcp_bearer_token_file.rs), so the file is always one on the user's
+	// machine, chosen by whoever wrote the config.
+	BearerTokenFile string `toml:"bearer_token_file"`
 }
 
 // MCPServerMap converts the Grok mcp_servers tables to the shared MCPServer shape
@@ -102,14 +110,40 @@ func (c *GrokConfig) MCPServerMap() map[string]MCPServer {
 	out := make(map[string]MCPServer, len(c.MCPServers))
 	for name, s := range c.MCPServers {
 		out[name] = MCPServer{
-			Command: s.Command,
-			Args:    s.Args,
-			Env:     s.Env,
-			URL:     s.URL,
-			Headers: s.Headers,
+			Command:         s.Command,
+			Args:            s.Args,
+			Env:             s.Env,
+			URL:             s.URL,
+			Headers:         s.Headers,
+			BearerTokenFile: s.BearerTokenFile,
 		}
 	}
 	return out
+}
+
+// GrokLSPServer is one entry of .grok/lsp.json (#616), a map from server name to
+// its launch config (xai-grok-tools/src/implementations/lsp/config.rs
+// LspServerConfig). Only the fields that run something are modelled.
+type GrokLSPServer struct {
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env"`
+}
+
+// ParseGrokLSP reads a .grok/lsp.json. Grok decodes it with serde into a
+// name → LspServerConfig map and, when that fails, logs "failed to parse
+// lsp.json" and uses no servers, so a malformed file is reported as an error
+// (CFG109) rather than read.
+func ParseGrokLSP(path string) (map[string]GrokLSPServer, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]GrokLSPServer
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return m, nil
 }
 
 // ParseGrokConfig reads a .grok/config.toml. A missing key yields a zero value;
