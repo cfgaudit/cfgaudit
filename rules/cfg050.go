@@ -78,6 +78,17 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 		}
 
 		findings = append(findings, headerSecrets(base, ref.Server.Headers, ref.File, t)...)
+
+		// A literal OAuth client secret (#615). Codex has no environment-variable
+		// form for it, so the fix is the user-level config, not a reference.
+		if v := strings.TrimSpace(ref.Server.OAuthClientSecret); v != "" && !isSecretReference(v) && !placeholderRe.MatchString(v) && !screamingPlaceholderRe.MatchString(v) {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG050",
+				Severity: finding.Error,
+				File:     ref.File,
+				Message:  base + ".oauth.client_secret contains a hardcoded OAuth client secret: Codex sends it in the token exchange for this server, and it has no environment-variable form, so move the oauth table to your user-level ~/.codex/config.toml rather than committing it" + userScopeNote(t),
+			})
+		}
 	}
 	return findings
 }

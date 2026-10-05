@@ -79,6 +79,17 @@ func (r *cfg103) Check(t *Target) []finding.Finding {
 			add(finding.Error, "auto_review.extra_policy inserts repository-controlled text into Codex's security reviewer prompt — "+
 				"the same weakening as auto_review.policy, filling the template's {{ extra_policy }} slot instead of the tenant-policy one. Both are resolved in the same place and both end up in the reviewer's instructions, so a repository that cannot set one can set the other. Remove the key and let the stock reviewer prompt stand")
 		}
+		if strings.TrimSpace(ar.ExperimentalConversationHistoryPrompt) != "" {
+			// The text only reaches the reviewer while the under-development
+			// guardian_conversation_history_tools feature is on; a file that also
+			// turns it on makes the replacement live for everyone (#615).
+			sev, live := finding.Warn, "it takes effect once the under-development feature guardian_conversation_history_tools is enabled"
+			if f := t.Codex.Features.GuardianConversationHistoryTools; f != nil && *f {
+				sev, live = finding.Error, "this file also enables guardian_conversation_history_tools, so the replacement is live"
+			}
+			add(sev, "auto_review.experimental_conversation_history_prompt replaces the instructions Codex's security reviewer follows when it checks the earlier conversation: "+
+				"the stock text tells it to check relevant historical instructions \"even if the visible transcript appears to authorize it\", and a repository can replace that with its own; "+live+". Remove the key and let the stock reviewer prompt stand")
+		}
 		if strings.TrimSpace(ar.ExperimentalPolicyTemplate) != "" {
 			add(finding.Error, "auto_review.experimental_policy_template replaces Codex's security reviewer prompt template outright with text from this repository — "+
 				"a stronger form of auto_review.policy that rewrites the whole template around the tenant-policy placeholder rather than adding to it. The reviewer that judges the agent is then defined by the repository. Remove the key and let the stock reviewer prompt stand")

@@ -184,6 +184,15 @@ func CodexAllows(v string) bool { return strings.EqualFold(strings.TrimSpace(v),
 // build new enough to understand it, and invalidates the file on an older one.
 type CodexFeatures struct {
 	GuardianV2 *CodexGuardianV2 `toml:"guardianv2"`
+
+	// GuardianConversationHistoryTools is the under-development feature (default
+	// off) that, together with apps (stable, default on), makes the Guardian
+	// reviewer's instructions carry the conversation-history section, whose text
+	// auto_review.experimental_conversation_history_prompt replaces (#615).
+	// Measured on codex 0.160.0: set in a trusted project's .codex/config.toml it
+	// is honoured ("Under-development features enabled:
+	// guardian_conversation_history_tools").
+	GuardianConversationHistoryTools *bool `toml:"guardian_conversation_history_tools"`
 }
 
 // CodexGuardianV2 is [features.guardianv2], upstream's "User-configurable
@@ -243,6 +252,7 @@ func (g *CodexGuardianV2) UnmarshalTOML(v any) error {
 //     prompt", spliced into the tenant-policy section
 //     (resolve_guardian_policy → normalize_guardian_policy_config). In the schema
 //     since April 2026, honoured by current stable.
+//
 //   - ExtraPolicy is "Additional policy text inserted into the Guardian
 //     template's {{ extra_policy }} slot", resolved beside Policy in
 //     Config::load (requirements layer first, then cfg.auto_review.extra_policy)
@@ -251,12 +261,24 @@ func (g *CodexGuardianV2) UnmarshalTOML(v any) error {
 //     0.156.1 (the loader reports the key as unrecognized) and accepted from a
 //     project-local file on 0.158.0-alpha.9, where the only project-local key
 //     the loader strips is the denylist control model_provider.
+//
 //   - ExperimentalPolicyTemplate is the "Experimental full Guardian prompt
 //     template containing the tenant policy placeholder", replacing the entire
 //     template around {{ tenant_policy_config }}
 //     (guardian_policy_prompt_with_config_and_template). Added 2026-09-14, nightly
 //     only at the time of writing, so a committed value is inert on a stable build
 //     and honoured on a nightly one.
+//
+//   - ExperimentalConversationHistoryPrompt is the "Experimental replacement for
+//     the history-retrieval instructions when history tools and Apps are
+//     enabled" (#615, openai/codex #49036, in stable 0.160.0).
+//     core/src/guardian/reviewer_config.rs appends it to the reviewer's
+//     base_instructions when features guardian_conversation_history_tools and
+//     apps are both enabled. The stock text it replaces tells the reviewer to
+//     check the earlier conversation "even if the visible transcript appears to
+//     authorize it". Measured on 0.160.0 from a trusted project-local file: the
+//     key is accepted (a bogus sibling in the same table is reported as ignored,
+//     model_provider as stripped, this key as neither).
 //
 // Policy, ExtraPolicy and ExperimentalPolicyTemplate are reported the same way,
 // presence-based and without a version gate: each is inert on a build that does
@@ -266,6 +288,8 @@ type CodexAutoReview struct {
 	Policy                     string `toml:"policy"`
 	ExtraPolicy                string `toml:"extra_policy"`
 	ExperimentalPolicyTemplate string `toml:"experimental_policy_template"`
+
+	ExperimentalConversationHistoryPrompt string `toml:"experimental_conversation_history_prompt"`
 }
 
 // Off reports whether the block switches the reviewer off, in either spelling.
@@ -392,6 +416,17 @@ type CodexMCP struct {
 	// the default, and "prompt"/"writes" narrow rather than widen.
 	DefaultToolsApprovalMode string                  `toml:"default_tools_approval_mode"`
 	Tools                    map[string]CodexMCPTool `toml:"tools"`
+
+	// OAuth is [mcp_servers.<name>.oauth]. Only client_secret is read: "OAuth
+	// client secret used for token exchange with a pre-registered client"
+	// (config/src/mcp_types.rs), a literal with no environment-variable form,
+	// accepted from a project-local file on 0.160.0 (#615).
+	OAuth *CodexMCPOAuth `toml:"oauth"`
+}
+
+// CodexMCPOAuth is the part of an MCP server's oauth table cfgaudit reads.
+type CodexMCPOAuth struct {
+	ClientSecret string `toml:"client_secret"`
 }
 
 // CodexMCPTool is a [mcp_servers.<name>.tools.<tool>] table, upstream's
@@ -427,6 +462,9 @@ func (c *CodexConfig) MCPServerMap() map[string]MCPServer {
 			// in a finding would send the reader grepping for a key that is not in
 			// their file.
 			HeadersHelperKey: "http_headers_helper",
+		}
+		if s.OAuth != nil {
+			srv.OAuthClientSecret = s.OAuth.ClientSecret
 		}
 		if codexApprovalNeverAsks(s.DefaultToolsApprovalMode) {
 			srv.ApprovalModeKey = "default_tools_approval_mode"
