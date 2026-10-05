@@ -253,6 +253,11 @@ type HookCommand struct {
 }
 
 type MCPServer struct {
+	// OAuthClientSecret is a literal OAuth client secret the server declaration
+	// carries. Filled by the Codex mapping from [mcp_servers.<name>.oauth]
+	// client_secret (#615); no JSON shape cfgaudit reads has one.
+	OAuthClientSecret string `json:"-"`
+
 	Command                 string            `json:"command,omitempty"`
 	Args                    []string          `json:"args,omitempty"`
 	AlwaysAllow             []string          `json:"alwaysAllow,omitempty"`
