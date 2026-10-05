@@ -2299,6 +2299,22 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, ocTargets...)
 
+	// Grok .grok/lsp.json — project language servers Grok spawns for diagnostics
+	// once the folder is trusted ("Project | .grok/lsp.json | Current
+	// repository"; filter_project_lsp_when_untrusted drops them otherwise). #616.
+	grokLSPPath := filepath.Join(dir, ".grok", "lsp.json")
+	if lsp, err := parser.ParseGrokLSP(grokLSPPath); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			skipUnreadable(grokLSPPath, err)
+		}
+	} else if len(lsp) > 0 {
+		targets = append(targets, &rules.Target{
+			Scope:       finding.ScopeProject,
+			GrokLSP:     lsp,
+			GrokLSPFile: grokLSPPath,
+		})
+	}
+
 	// Grok .grok/hooks/*.json — committable hook files whose command handlers run
 	// shell commands. Routed through commandSites so the command-content rules
 	// apply, one target per file, attributed to the file the command came from.

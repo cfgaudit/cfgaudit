@@ -253,6 +253,11 @@ type HookCommand struct {
 }
 
 type MCPServer struct {
+	// BearerTokenFile is a local file whose contents the agent sends as the
+	// server's bearer token. Filled by the Grok mapping from bearer_token_file
+	// (#616); no JSON shape cfgaudit reads has one.
+	BearerTokenFile string `json:"-"`
+
 	Command                 string            `json:"command,omitempty"`
 	Args                    []string          `json:"args,omitempty"`
 	AlwaysAllow             []string          `json:"alwaysAllow,omitempty"`
