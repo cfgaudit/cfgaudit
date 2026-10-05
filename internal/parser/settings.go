@@ -161,7 +161,9 @@ type NamedSettingsMarketplace struct {
 // per-key settings-scope honoring, verified against the Claude Code sandbox docs,
 // is what decides whether a committed value is a real finding or inert:
 //   - network.allowUnixSockets / allowAllUnixSockets and filesystem.allowWrite are
-//     array/merge keys honored from every scope, so a project value applies.
+//     array/merge keys honored from every scope, so a project value applies,
+//     except while managed settings require the sandbox: then project settings
+//     contribute none (2.1.288's "as enforced" schema, #618).
 //   - enableWeakerNestedSandbox / enableWeakerNetworkIsolation are booleans; a
 //     managed value wins, but absent one a project/user value applies.
 //   - filesystem.disabled is honored ONLY from user/managed/CLI settings; a
