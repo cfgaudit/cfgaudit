@@ -10,6 +10,15 @@ on:
 # gate never holds signing rights it has no use for.
 permissions: {}
 
+# One run per tag at a time. A single tag push has been delivered as several
+# push events (v1.15.0 started four runs of each workflow in the same second),
+# and parallel runs collide on the same release assets and image tags. Queued
+# runs are not cancelled mid-publish; the gate below turns a queued duplicate
+# into a no-op once an earlier run for the same commit has succeeded.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: cfgaudit/cfgaudit
@@ -22,6 +31,8 @@ jobs:
   gate:
     name: Require green CI
     runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.dedupe.outputs.publish }}
     permissions:
       actions: read # read this repo's workflow-run history
     steps:
@@ -40,9 +51,28 @@ jobs:
             exit 1
           fi
 
+      - name: Skip a duplicate run of this tag
+        id: dedupe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          done=$(gh api \
+            "repos/$REPO/actions/workflows/docker.yml/runs?head_sha=$SHA&event=push&status=success" \
+            --jq "[.workflow_runs[] | select(.id != $RUN_ID)] | length")
+          if [ "$done" -gt 0 ]; then
+            echo "::notice::An earlier run of this workflow already published $SHA; nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-push:
     name: Build and push image
     needs: gate
+    if: needs.gate.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read # checkout
