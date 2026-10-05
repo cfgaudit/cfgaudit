@@ -20,6 +20,40 @@ func (r *cfg080) ID() string { return "CFG080" }
 // (the (?s) flag lets `.` span newlines). Submatch 1 is the comment text.
 var htmlCommentRe = regexp.MustCompile(`(?s)<!--(.*?)-->`)
 
+// mdCommentRe captures the title of a Markdown link reference definition whose
+// destination is "#" or "<>", the idiom `[//]: # (text)` that Markdown writers
+// use as a comment (#621). A link reference definition does not render
+// (CommonMark spec, section 4.7), and the title can be in parentheses, double
+// or single quotes. Up to three spaces of indent, as the spec allows. One of
+// submatches 1-3 is the title.
+var mdCommentRe = regexp.MustCompile(`(?m)^ {0,3}\[[^\]\n]*\]:[ \t]*(?:#|<>)[ \t]+(?:\(([^)\n]*)\)|"([^"\n]*)"|'([^'\n]*)')[ \t]*$`)
+
+// commentSpan is a comment found in an instruction file: its body and the byte
+// offset where the comment starts.
+type commentSpan struct {
+	body  string
+	start int
+	kind  string
+}
+
+// commentSpans returns every HTML comment and Markdown link-reference comment
+// in content.
+func commentSpans(content string) []commentSpan {
+	var out []commentSpan
+	for _, loc := range htmlCommentRe.FindAllStringSubmatchIndex(content, -1) {
+		out = append(out, commentSpan{body: content[loc[2]:loc[3]], start: loc[0], kind: "an HTML comment (<!-- … -->"})
+	}
+	for _, loc := range mdCommentRe.FindAllStringSubmatchIndex(content, -1) {
+		for g := 1; g <= 3; g++ {
+			if loc[2*g] >= 0 {
+				out = append(out, commentSpan{body: content[loc[2*g]:loc[2*g+1]], start: loc[0], kind: "a Markdown comment ([//]: # (…)"})
+				break
+			}
+		}
+	}
+	return out
+}
+
 // commentDirectiveRe matches instruction-like text that has no legitimate reason
 // to be concealed inside an HTML comment of a trusted instruction file:
 // second-person directives, override/ignore phrasing, "note to the model"
@@ -49,13 +83,12 @@ func (r *cfg080) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
 		fenced := fencedLines(src.Content)
-		for _, loc := range htmlCommentRe.FindAllStringSubmatchIndex(src.Content, -1) {
-			body := src.Content[loc[2]:loc[3]]
-			m := commentDirectiveRe.FindString(body)
+		for _, c := range commentSpans(src.Content) {
+			m := commentDirectiveRe.FindString(c.body)
 			if m == "" {
 				continue
 			}
-			startLine := 1 + strings.Count(src.Content[:loc[0]], "\n")
+			startLine := 1 + strings.Count(src.Content[:c.start], "\n")
 			if fenced[startLine] {
 				continue
 			}
@@ -64,8 +97,8 @@ func (r *cfg080) Check(t *Target) []finding.Finding {
 				Severity: finding.Error,
 				File:     src.File,
 				Line:     startLine,
-				Col:      columnAt(src.Content, loc[0]),
-				Message: src.Name + " line " + strconv.Itoa(startLine) + ` hides an instruction inside an HTML comment (<!-- … -->, matched "` + collapseWS(m) +
+				Col:      columnAt(src.Content, c.start),
+				Message: src.Name + " line " + strconv.Itoa(startLine) + ` hides an instruction inside ` + c.kind + `, matched "` + collapseWS(m) +
 					`") — comments are invisible in rendered Markdown and easy to miss in review, but the agent reads the raw file as trusted context, so a directive concealed here is a prompt-injection vector. Remove it`,
 			})
 		}

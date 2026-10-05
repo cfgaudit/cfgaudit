@@ -52,6 +52,7 @@ var aveByRule = map[string]string{
 	"CFG032": "AVE-2026-00025", // pseudo-system/role injection → conversation-history injection
 	"CFG033": "AVE-2026-00039", // image-exfil sink → covert channel
 	"CFG035": "AVE-2026-00011", // configure/trust MCP → dynamic tool call
+	"CFG113": "AVE-2026-00001", // fetch remote instructions and follow them → metamorphic payload via external config fetch
 	"CFG036": "AVE-2026-00003", // embedded exfil shell → credential exfil
 	"CFG051": "AVE-2026-00048", // allowed-tools grant → unsafe delegation
 	"CFG056": "AVE-2026-00058", // broad trigger → deceptive trigger scope

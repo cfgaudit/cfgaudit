@@ -18,12 +18,12 @@ Even within the 44, the boundary is real: cfgaudit does not connect to servers, 
 
 | Bucket | Count |
 |---|--:|
-| Covered — ≥1 CFG rule maps cleanly | 33 |
+| Covered — ≥1 CFG rule maps cleanly | 34 |
 | Partial — committable slice or adjacent shape only | 11 |
 | Gap — committable, no CFG rule (rule candidate) | 5 |
 | Out of scope — labelled static by AVE, beyond static-config auditing | 9 |
 
-cfgaudit maps (covered + partial) to **44 of 49**. Counts refreshed 2026-08-14 for AVE-2026-00071 through AVE-2026-00077, all seven of them `static_detection`. Four are now covered by rules that had no class before: AVE-2026-00071 (daemon redirect) by CFG082, AVE-2026-00072 (bind-all, which the record also calls NeighborJack) by CFG018, AVE-2026-00073 (endpoint redirect via a static value) by CFG005/CFG046/CFG099, and AVE-2026-00076 (steering an approval classifier) by CFG094. AVE-2026-00077 (cross-origin tool and resource declaration in one MCP manifest) is a new gap. AVE-2026-00074 (reclaimable dead external anchor) and AVE-2026-00075 (`.pyc` bytecode poisoning) join the out-of-scope list: the first needs the anchor resolved over the network, the second is binary-content analysis, and cfgaudit does neither.
+cfgaudit maps (covered + partial) to **45 of 50** (AVE-2026-00001, counted in none of the buckets until #621, is now covered by CFG113). Counts refreshed 2026-08-14 for AVE-2026-00071 through AVE-2026-00077, all seven of them `static_detection`. Four are now covered by rules that had no class before: AVE-2026-00071 (daemon redirect) by CFG082, AVE-2026-00072 (bind-all, which the record also calls NeighborJack) by CFG018, AVE-2026-00073 (endpoint redirect via a static value) by CFG005/CFG046/CFG099, and AVE-2026-00076 (steering an approval classifier) by CFG094. AVE-2026-00077 (cross-origin tool and resource declaration in one MCP manifest) is a new gap. AVE-2026-00074 (reclaimable dead external anchor) and AVE-2026-00075 (`.pyc` bytecode poisoning) join the out-of-scope list: the first needs the anchor resolved over the network, the second is binary-content analysis, and cfgaudit does neither.
 
 Refreshed again 2026-08-23 against AVE-2026-00078 through AVE-2026-00080. **None of the three is a static configuration surface**: 00078 is consensus poisoning in a multi-agent pipeline, 00079 is plan hijacking through a false completion signal, and 00080 is silent agent substitution at a routing slot during a retry. All three are orchestration-runtime behaviours, so they add no home for a previously unmapped rule and shift no existing mapping. Of cfgaudit's four new rules, CFG104 and CFG105 map to AVE-2026-00063, CFG103 maps to AVE-2026-00076 for one of its three findings, and CFG106 is deliberately unmapped.
 
@@ -46,6 +46,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG030 conceal behavior | AVE-2026-00010 covert instruction concealment |
 | CFG032 pseudo-system / role injection | AVE-2026-00025 conversation-history injection · AVE-2026-00030 false role claim |
 | CFG035 configure/trust MCP from instructions | AVE-2026-00011 dynamic tool call *(partial)* · AVE-2026-00034 dynamic skill import *(partial)* |
+| CFG113 fetch remote instructions and follow them | AVE-2026-00001 metamorphic payload via external config fetch (#621; this record was missing from the coverage buckets, which summed to 58 of the 59) |
 | CFG036 embedded shell for exfil / auto-exec | AVE-2026-00003 credential exfil · AVE-2026-00013 PII exfil · AVE-2026-00006 crypto drain *(partial)* |
 | CFG056 broad / always-on trigger | AVE-2026-00058 deceptive trigger scope · AVE-2026-00038 unbounded tool use *(partial)* · AVE-2026-00022 scope creep *(partial)* |
 | CFG057 encoded payload | AVE-2026-00057 obfuscated payload evading scanners · AVE-2026-00026 output-encoding exfil *(partial)* |
