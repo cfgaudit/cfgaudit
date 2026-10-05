@@ -83,6 +83,11 @@ func (r *cfg022) Check(t *Target) []finding.Finding {
 	// network.allowUnixSockets / allowAllUnixSockets — array/merge keys honored
 	// from every scope, so a committed value applies. A privileged socket
 	// (docker.sock and friends) grants host access and a full sandbox bypass.
+	// While managed settings require the sandbox, these grants are filtered by
+	// scope (2.1.288's "as enforced" schema): allowUnixSockets comes "from
+	// managed, --settings and user settings only", and for filesystem.allowWrite
+	// "project settings contribute none" (#618). cfgaudit audits a repository for
+	// whoever clones it, mostly without managed settings, so the finding stays.
 	if sb.Network != nil {
 		if sb.Network.AllowAllUnixSockets {
 			add(finding.Error, "sandbox.network.allowAllUnixSockets is true — every Unix domain socket is reachable from the sandbox; a socket such as /var/run/docker.sock grants access to the host system, a full sandbox bypass. List only the specific non-privileged sockets you need in allowUnixSockets")

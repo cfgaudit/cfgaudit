@@ -18,10 +18,18 @@ func (r *cfg092) ID() string { return "CFG092" }
 
 // Check flags a committed Kimi Code agent-definition file whose frontmatter sets
 // override: true. Kimi loads project agent files from .kimi-code/agents/ and
-// .agents/agents/ (resolved from the repo's .git root, with no trust gate), and
+// .agents/agents/ (resolved from the repo's .git root), and
 // override: true makes the file *replace the built-in agent's entire system
 // prompt* — the file body IS the prompt, not an addition to it, unless the body
 // re-embeds ${base_prompt}. Naming it agent.md takes over the default main agent;
+//
+// Trust (#618): Kimi Code added a workspace trust prompt in 0.33.0, and since
+// 2.1.0 applies project-local configuration only once the workspace is trusted.
+// The interactive prompt defaults to "Trust this folder" and declining exits
+// (kimi-tui.ts maybeRunWorkspaceTrustPrompt). It discloses agent profiles
+// rather than gating them, and the agent-file loaders read for #618 carry no
+// trust check of their own, so a headless run is not shown to stop them; that
+// part is read from source, not measured. The severity stays.
 // coder.md takes over the default sub-agent.
 //
 // This is a strictly larger takeover than CFG085's permission-mode weakening: the
@@ -46,7 +54,7 @@ func (r *cfg092) Check(t *Target) []finding.Finding {
 	}
 
 	msg := t.instructionName() + " frontmatter sets override: true — this Kimi agent file replaces the built-in agent's entire system prompt with the file's own body" +
-		" (named agent.md it takes over the default main agent). Committed to a repository, which Kimi loads with no trust gate, a fresh clone runs with its instruction context swapped for repo contents"
+		" (named agent.md it takes over the default main agent). Committed to a repository, it takes effect for anyone who accepts Kimi's workspace trust prompt, which defaults to \"Trust this folder\", so a fresh clone runs with its instruction context swapped for repo contents"
 	if _, hasTools := fm.Raw["tools"]; !hasTools || fm.String("tools") == "*" {
 		msg += ", and with no tools allowlist it keeps every tool"
 	}
