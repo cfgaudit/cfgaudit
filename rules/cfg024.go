@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -23,6 +24,83 @@ const bomRune rune = 0xFEFF
 // range below, but it is also the codepoint that binds an emoji sequence
 // together, so it needs its surrounding context before it can be judged.
 const zwjRune rune = 0x200D
+
+// The zero-width non-joiner and the two implicit directional marks, which
+// ordinary writing in several scripts needs (#620).
+const (
+	zwnjRune rune = 0x200C
+	lrmRune  rune = 0x200E
+	rlmRune  rune = 0x200F
+)
+
+// joiningScripts are the scripts whose orthography uses ZWNJ / ZWJ inside a
+// word: the Unicode Standard (chapter 23.2) describes them as required for
+// Persian and Urdu spellings in Arabic script and for conjunct and half forms
+// in the Indic scripts.
+var joiningScripts = []*unicode.RangeTable{
+	unicode.Arabic, unicode.Syriac, unicode.Nko, unicode.Mongolian,
+	unicode.Devanagari, unicode.Bengali, unicode.Gurmukhi, unicode.Gujarati,
+	unicode.Oriya, unicode.Tamil, unicode.Telugu, unicode.Kannada,
+	unicode.Malayalam, unicode.Sinhala,
+}
+
+// joinerInScript reports whether the ZWNJ / ZWJ at runes[i] is part of writing
+// in a joining script: the character before it (looking past combining marks,
+// which Unicode assigns to the Inherited script, such as the Arabic kasra) or
+// the character after it belongs to one of joiningScripts. One side is enough,
+// because Persian attaches its suffixes to Latin loanwords with a ZWNJ
+// ("merge" + ZWNJ + a Persian plural ending), and a word in Markdown emphasis
+// can sit on the other side of a "**". A joiner between two Latin letters, the
+// shape that splits a keyword invisibly, is still reported.
+//
+// In a corpus of 875 non-English instruction files, every ZWNJ / ZWJ CFG024
+// reported before this exemption had one of these shapes.
+func joinerInScript(runes []rune, i int) bool {
+	inJoining := func(r rune) bool {
+		for _, s := range joiningScripts {
+			if unicode.Is(s, r) {
+				return true
+			}
+		}
+		return false
+	}
+	for j := i - 1; j >= 0; j-- {
+		if unicode.Is(unicode.Mn, runes[j]) && !inJoining(runes[j]) {
+			continue // an Inherited combining mark: judge the base it sits on
+		}
+		if inJoining(runes[j]) {
+			return true
+		}
+		break
+	}
+	return i+1 < len(runes) && inJoining(runes[i+1])
+}
+
+// rtlScripts are the right-to-left scripts whose text uses LRM / RLM to fix the
+// direction of neutral characters (UAX #9).
+var rtlScripts = []*unicode.RangeTable{unicode.Hebrew, unicode.Arabic, unicode.Syriac, unicode.Thaana, unicode.Nko}
+
+// lineHasRTL reports whether the line holding runes[i] contains a
+// right-to-left letter. The marks rarely sit next to one: in the same corpus
+// they stood before a digit, a backtick, a bracket or a space in Hebrew and
+// Arabic lines, which is where a direction mark is needed.
+func lineHasRTL(runes []rune, i int) bool {
+	start, end := i, i
+	for start > 0 && runes[start-1] != '\n' {
+		start--
+	}
+	for end < len(runes) && runes[end] != '\n' {
+		end++
+	}
+	for _, r := range runes[start:end] {
+		for _, s := range rtlScripts {
+			if unicode.Is(s, r) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // regionalIndicatorRunMin is how many consecutive regional indicator symbols
 // count as smuggling. Each flag emoji is exactly two, so the run length is what
@@ -134,6 +212,17 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 			// that is rendering, not smuggling. Only ZWJ outside an emoji
 			// sequence is a hiding vector.
 			if ch == zwjRune && zwjJoinsEmoji(runes, i) {
+				continue
+			}
+			// ZWNJ and ZWJ inside a word of a script that uses them for correct
+			// spelling or conjunct forms (the Persian word for "half-space", spelled with a ZWNJ inside it, or a Bengali ra-phala formed with a ZWJ before the virama), and
+			// LRM / RLM in a line of right-to-left text, are writing, not hiding
+			// (#620). Neither can conceal text or reorder it the way the
+			// embedding, override and isolate controls can.
+			if (ch == zwnjRune || ch == zwjRune) && joinerInScript(runes, i) {
+				continue
+			}
+			if (ch == lrmRune || ch == rlmRune) && lineHasRTL(runes, i) {
 				continue
 			}
 			if name, ok := suspiciousUnicode(ch); ok {
