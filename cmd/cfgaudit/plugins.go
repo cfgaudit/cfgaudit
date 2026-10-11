@@ -299,11 +299,11 @@ func skillsDirSettings(dir string) []map[string]json.RawMessage {
 
 // enabledPluginsOf reads a settings file's enabledPlugins map. A missing or
 // unreadable file, and one Claude Code discards whole for a top-level type
-// mismatch (#595), contribute nothing: a disable in a file that never loads
+// mismatch or an unloadable guard hook (#595, #639), contribute nothing: a disable in a file that never loads
 // must not hide a plugin that does.
 func enabledPluginsOf(path string) map[string]json.RawMessage {
 	s, err := parser.ParseSettings(path)
-	if err != nil || rules.SettingsDiscarded(s) {
+	if err != nil || rules.SettingsDiscarded(s, nil) {
 		return nil
 	}
 	var m map[string]json.RawMessage

@@ -78,7 +78,7 @@ func TestSettingsDiscarded_OnlyTopLevelTypes(t *testing.T) {
 		{`{"cleanupPeriodDays":"thirty"}`, true},
 		{`{"model":5}`, true},
 	} {
-		got := SettingsDiscarded(settingsTarget(t, tc.json).Settings)
+		got := SettingsDiscarded(settingsTarget(t, tc.json).Settings, nil)
 		if got != tc.want {
 			t.Errorf("SettingsDiscarded(%s) = %v, want %v", tc.json, got, tc.want)
 		}

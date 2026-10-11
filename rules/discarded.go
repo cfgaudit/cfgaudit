@@ -6,6 +6,7 @@ import (
 
 	"github.com/cfgaudit/cfgaudit/internal/parser"
 	"github.com/cfgaudit/cfgaudit/internal/schema"
+	"github.com/cfgaudit/cfgaudit/internal/version"
 )
 
 // SchemaTypeMismatch is one top-level settings key whose JSON type the bundled
@@ -66,9 +67,10 @@ func SettingsTypeMismatches(s *parser.Settings) []SchemaTypeMismatch {
 // So the boundary is exactly the top-level property: a wrong scalar type, or
 // null, on any one of them drops the file with every permission rule, hook and
 // env entry in it, while an unknown key and a malformed value deeper inside are
-// tolerated. Nothing is printed when it happens. The same holds for
-// .claude/settings.local.json and for the user-scope ~/.claude/settings.json,
-// both measured the same way against a valid-file control.
+// tolerated (with the one exception below). Nothing is printed when it happens.
+// The same holds for .claude/settings.local.json and for the user-scope
+// ~/.claude/settings.json, both measured the same way against a valid-file
+// control.
 //
 // Upstream 2.1.282 fixed the neighbouring case for managed settings ("managed
 // permissions, autoMode, worktree and attribution settings being ignored
@@ -78,15 +80,21 @@ func SettingsTypeMismatches(s *parser.Settings) []SchemaTypeMismatch {
 // This drives two things: CFG012 reports the consequence rather than a probable
 // typo, and the rules that go quiet because a deny block covers a file class
 // stop crediting a file that is never loaded.
-func SettingsDiscarded(s *parser.Settings) bool {
-	return len(SettingsTypeMismatches(s)) > 0
+//
+// The second trigger sits one level down (#639): an entry under PreToolUse or
+// PermissionRequest that Claude Code cannot load drops the file too, because
+// such a hook may be what guards the permissions declared beside it. See
+// GuardHookDefects for the measured boundary. ver gates the defects that only
+// became one in a later release; nil takes the reading that reports.
+func SettingsDiscarded(s *parser.Settings, ver *version.Version) bool {
+	return len(SettingsTypeMismatches(s)) > 0 || len(GuardHookDefects(s, ver)) > 0
 }
 
 // discarded reports whether this target's settings file is one Claude Code drops
 // whole. A target with no settings file is not discarded: there is nothing to
 // drop, and the absence is what the other rules already reason about.
 func (t *Target) discarded() bool {
-	return t != nil && SettingsDiscarded(t.Settings)
+	return t != nil && SettingsDiscarded(t.Settings, t.ClaudeVersion)
 }
 
 // effectiveDeny returns the deny entries that are actually in force: the file's
@@ -115,6 +123,12 @@ func discardedNote(t *Target) string {
 	for _, m := range SettingsTypeMismatches(t.Settings) {
 		keys = append(keys, "\""+m.Key+"\"")
 	}
+	var why string
+	if len(keys) > 0 {
+		why = strings.Join(keys, ", ") + " has a type the schema rejects"
+	} else {
+		why = "a " + GuardHookDefects(t.Settings, t.ClaudeVersion)[0].Path + " hook entry cannot be loaded"
+	}
 	return " (the file does list deny entries, but Claude Code discards this settings file whole because " +
-		strings.Join(keys, ", ") + " has a type the schema rejects, so nothing in it is in force — see CFG012)"
+		why + ", so nothing in it is in force — see CFG012)"
 }

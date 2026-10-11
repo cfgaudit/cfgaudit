@@ -62,7 +62,35 @@ func (r *cfg012) Check(t *Target) []finding.Finding {
 			})
 		}
 	}
-	return findings
+	return append(findings, guardHookFindings(t)...)
+}
+
+// guardHookFindings reports the PreToolUse/PermissionRequest entries that make
+// Claude Code drop the file (#639). Every defect is listed, so fixing the first
+// does not reveal a second one on the next scan. A defect that only drops the
+// file from a later release than the detected one is a warn: this install still
+// loads the file, newer ones reading the same repository do not.
+func guardHookFindings(t *Target) []finding.Finding {
+	var out []finding.Finding
+	for _, d := range GuardHookDefects(t.Settings, nil) {
+		sev := finding.Error
+		consequence := "Claude Code discards this settings file whole"
+		if d.FromVersion != "" {
+			consequence = "Claude Code " + d.FromVersion + " and later discard this settings file whole"
+			if t.ClaudeVersion != nil && !t.ClaudeVersion.AtLeast(onFailureMinVersion) {
+				sev = finding.Warn
+				consequence += " (the detected " + t.ClaudeVersion.String() + " still ignores the value)"
+			}
+		}
+		out = append(out, finding.Finding{
+			RuleID:   "CFG012",
+			Severity: sev,
+			File:     t.SettingsFile,
+			Message: d.Path + " " + d.Reason + ". A PreToolUse or PermissionRequest hook that cannot be loaded may be what guards the permissions beside it, so " +
+				consequence + ": every permission rule, hook and env entry in it is inert, with nothing printed to say so (`claude doctor` names it). Fix or remove the entry; under any other hook event the same mistake only skips that one entry",
+		})
+	}
+	return out
 }
 
 func jsonTypeOf(raw json.RawMessage) string {

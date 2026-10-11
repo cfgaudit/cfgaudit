@@ -240,8 +240,11 @@ type HookCommand struct {
 	// feeds into its own context when the hook event fires. Like an instruction
 	// file, it is read as trusted guidance, so it is a prompt-injection surface
 	// the instruction-content rules must scan (see instructionSources).
-	Prompt  string `json:"prompt,omitempty"`
-	Timeout int    `json:"timeout,omitempty"`
+	Prompt string `json:"prompt,omitempty"`
+	// Timeout is a number of seconds, and fractions are valid: Claude Code loads
+	// "timeout": 0.5, so an int field here turned a working file into a parse
+	// error (CFG109) that hid every finding in it (#639).
+	Timeout float64 `json:"timeout,omitempty"`
 
 	// URL, Headers and AllowedEnvVars belong to a type:"http" handler, which POSTs
 	// the event payload to an endpoint instead of running a command (CFG088).
