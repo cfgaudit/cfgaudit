@@ -3012,3 +3012,59 @@ func TestBuildTargets_GrokBearerFileAndLSP(t *testing.T) {
 		t.Error("a malformed lsp.json should be reported as CFG109")
 	}
 }
+
+// Copilot, Cursor and Devin discover their instruction directories recursively,
+// each with its own filename rule, so a file one folder down is loaded by the
+// agent and must be scanned (#641).
+func TestBuildTargets_FilteredInstructionDirsRecursive(t *testing.T) {
+	dir := t.TempDir()
+	scanned := []string{
+		".github/instructions/top.instructions.md",
+		".github/instructions/sub/nested.instructions.md",
+		".github/instructions/a/b/c/deep.instructions.md",
+		".cursor/rules/top.mdc",
+		".cursor/rules/frontend/components.mdc",
+		".cursor/rules/plain.md", // one level, as before; Cursor itself ignores .md
+		".devin/rules/top.md",
+		".devin/rules/sub/a.md",
+		".windsurf/rules/sub/b.md",
+	}
+	skipped := []string{
+		".github/instructions/sub/README.md", // not an instructions file to VS Code or Copilot
+		".cursor/rules/frontend/notes.md",    // .md below the top level of .cursor/rules
+		".devin/rules/sub/notes.txt",         // not markdown
+		".devin/workflows/sub/deploy.md",     // workflows stay single-level
+	}
+	for _, rel := range append(append([]string{}, scanned...), skipped...) {
+		mustWrite(t, filepath.Join(dir, filepath.FromSlash(rel)), "Some instruction.\n")
+	}
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	got := map[string]int{}
+	for _, tg := range targets {
+		if tg.InstructionFile == "" {
+			continue
+		}
+		rel, err := filepath.Rel(dir, tg.InstructionFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got[filepath.ToSlash(rel)]++
+		if tg.Scope != finding.ScopeProject {
+			t.Errorf("%s: expected project scope, got %s", rel, tg.Scope)
+		}
+	}
+	for _, rel := range scanned {
+		if got[rel] != 1 {
+			t.Errorf("%s: scanned %d times, want once", rel, got[rel])
+		}
+	}
+	for _, rel := range skipped {
+		if got[rel] != 0 {
+			t.Errorf("%s: should not be scanned", rel)
+		}
+	}
+}

@@ -931,8 +931,12 @@ var (
 	// separate decision rather than folded into this list. This is the same
 	// case-sensitivity surface CFG028 already reasons about for trust files.
 	agentInstructionGlobs = []string{
+		// .cursor/rules/*.mdc is walked recursively (see filteredInstructionDirs).
+		// A plain .md there is ignored by Cursor's rules system ("Project rules
+		// must use the .mdc extension"); it is still read one level deep, as
+		// before, because a rules directory is where such a file is meant as
+		// agent instructions, and dropping it would only ever hide content.
 		filepath.Join(".cursor", "rules", "*.md"),
-		filepath.Join(".cursor", "rules", "*.mdc"),
 		// Cursor custom commands (Cursor 1.6+). The filename becomes the slash
 		// command and the file's entire content becomes the prompt, so a committed
 		// file is instruction context on the same footing as .claude/commands/*.md,
@@ -942,7 +946,8 @@ var (
 		// Cursor custom subagents (#617): "Project subagents | .cursor/agents/ |
 		// Current project only", a Markdown file whose body is the prompt.
 		filepath.Join(".cursor", "agents", "*.md"),
-		filepath.Join(".windsurf", "rules", "*.md"),
+		// .windsurf/rules and .devin/rules are walked recursively (see
+		// filteredInstructionDirs).
 		// Devin Desktop, the renamed Windsurf, reads .devin/ first and keeps
 		// .windsurf/ as the fallback for every one of these (#613): rules
 		// (".devin/rules/*.md (preferred) or .windsurf/rules/*.md (fallback)"),
@@ -950,15 +955,12 @@ var (
 		// prompt, and skills (".devin/skills/<skill-name>/ (the legacy
 		// .windsurf/skills/<skill-name>/ is still read)"). All are instruction
 		// content, on the same footing as .claude/commands and .claude/skills.
-		filepath.Join(".devin", "rules", "*.md"),
 		filepath.Join(".devin", "workflows", "*.md"),
 		filepath.Join(".windsurf", "workflows", "*.md"),
 		filepath.Join(".devin", "skills", "*", "SKILL.md"),
 		filepath.Join(".windsurf", "skills", "*", "SKILL.md"),
-		// GitHub Copilot path-specific instructions (newer than the repo-wide
-		// .github/copilot-instructions.md, which is in agentInstructionFiles) —
-		// committed Markdown loaded as Copilot context, same prompt-injection surface.
-		filepath.Join(".github", "instructions", "*.instructions.md"),
+		// GitHub Copilot path-specific instructions (.github/instructions) are
+		// walked recursively (see filteredInstructionDirs).
 		// GitHub Copilot custom agents (#439). The body is the agent's system
 		// prompt, so the instruction-content rules apply, and the frontmatter can
 		// carry an inline mcp-servers block (see attachSubagentBlocks). Copilot
@@ -1050,6 +1052,13 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	for _, m := range projRules {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	filtered, err := filteredInstructionFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range filtered {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	projSkills, err := agentSkillsFiles(dir, projectSkillsDirs)
@@ -1340,6 +1349,72 @@ var recursiveInstructionDirs = []string{
 	filepath.Join(".claude", "output-styles"),
 	filepath.Join(".claude", "rules"),
 	filepath.Join(".qwen", "rules"),
+}
+
+// filteredInstructionDir is an instruction directory an agent walks recursively
+// but reads only some files from, chosen by name.
+type filteredInstructionDir struct {
+	dir   string
+	match func(name string) bool
+}
+
+// filteredInstructionDirs are project instruction directories that the agents
+// discover recursively, each with the agent's own filename rule (#641). A file
+// one folder down is loaded by the agent, so a single-level glob missed it.
+//
+//   - `.github/instructions`: VS Code's promptFilesLocator.resolveFilesAtLocation
+//     recurses into instruction folders (MAX_INSTRUCTIONS_RECURSION_DEPTH, 5) and
+//     keeps a file when getPromptFileType says instructions: a name ending in
+//     `.instructions.md`, or `copilot-instructions.md`. Copilot's documented glob
+//     is `.github/instructions/**/*.instructions.md`. The walk here has no depth
+//     cap: the CLI glob has none, and a deeper file is still committed text.
+//   - `.cursor/rules`: "Project rules must use the .mdc extension", and the docs
+//     show rules organised in folders (`frontend/components.mdc`).
+//   - `.devin/rules` and `.windsurf/rules`: Devin CLI "Rules are discovered
+//     recursively under .devin/rules/ and .windsurf/rules/" (stable changelog).
+//
+// Devin also reads these directories from any subdirectory of the workspace, and
+// its workflows the same way. That is the nested-location question cfgaudit
+// answers root-only for every agent (AGENTS.md and CLAUDE.md included), so it is
+// not taken up here; nothing documents recursion inside .devin/workflows, which
+// therefore stays a single-level glob.
+//
+// Project scope only: the user-level equivalents are other paths
+// (~/.copilot/instructions, ~/.devin/rules) that cfgaudit does not read today.
+var filteredInstructionDirs = []filteredInstructionDir{
+	{filepath.Join(".github", "instructions"), func(name string) bool {
+		return strings.HasSuffix(name, ".instructions.md") || name == "copilot-instructions.md"
+	}},
+	{filepath.Join(".cursor", "rules"), func(name string) bool { return strings.HasSuffix(name, ".mdc") }},
+	{filepath.Join(".devin", "rules"), func(name string) bool { return strings.EqualFold(filepath.Ext(name), ".md") }},
+	{filepath.Join(".windsurf", "rules"), func(name string) bool { return strings.EqualFold(filepath.Ext(name), ".md") }},
+}
+
+// filteredInstructionFiles walks each of filteredInstructionDirs under base and
+// returns the files its filter accepts, sorted. A missing directory yields
+// nothing.
+func filteredInstructionFiles(base string) ([]string, error) {
+	var out []string
+	for _, fd := range filteredInstructionDirs {
+		root := filepath.Join(base, fd.dir)
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
+				return err
+			}
+			if !d.IsDir() && fd.match(d.Name()) {
+				out = append(out, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // agentRulesFiles returns every *.md file under each of <base>/<dir>, discovered
