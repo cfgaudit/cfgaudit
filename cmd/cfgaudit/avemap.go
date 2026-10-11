@@ -109,6 +109,7 @@ var aveByRule = map[string]string{
 	// Zero-click auto-run on project load (AVE-2026-00064).
 	"CFG047": "AVE-2026-00064", // .vscode/tasks.json folderOpen, Zed create_worktree hook task
 	"CFG086": "AVE-2026-00064", // committed hook on a zero-click event (workspaceOpen / SessionStart)
+	"CFG114": "AVE-2026-00064", // committed OpenCode plugin/tool code, imported at startup with no prompt
 	"CFG067": "AVE-2026-00064", // committed project-scoped hooks. Imperfect fit: the record is specific
 	//                             to project *load*, CFG067 flags committed hooks on any event.
 

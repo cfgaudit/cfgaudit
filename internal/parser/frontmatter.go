@@ -16,28 +16,12 @@ type Frontmatter struct {
 // InstructionFrontmatter extracts and decodes the leading `---`-fenced YAML block
 // of content. Returns ok=false when there is no frontmatter or it fails to parse.
 func InstructionFrontmatter(content string) (*Frontmatter, bool) {
-	s := strings.TrimLeft(content, "\ufeff \t\r\n")
-	if !strings.HasPrefix(s, "---") {
-		return nil, false
-	}
-	// Body after the opening fence line.
-	nl := strings.IndexByte(s, '\n')
-	if nl < 0 {
-		return nil, false
-	}
-	rest := s[nl+1:]
-	// Closing fence: a line that is exactly --- (or ...).
-	end := -1
-	for _, fence := range []string{"\n---", "\n..."} {
-		if i := strings.Index(rest, fence); i >= 0 && (end < 0 || i < end) {
-			end = i
-		}
-	}
-	if end < 0 {
+	block, ok := frontmatterBlock(content)
+	if !ok {
 		return nil, false
 	}
 	var raw map[string]any
-	if err := yaml.Unmarshal([]byte(rest[:end]), &raw); err != nil || raw == nil {
+	if err := yaml.Unmarshal([]byte(block), &raw); err != nil || raw == nil {
 		return nil, false
 	}
 	return &Frontmatter{Raw: raw}, true

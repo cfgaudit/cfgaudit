@@ -3068,3 +3068,74 @@ func TestBuildTargets_FilteredInstructionDirsRecursive(t *testing.T) {
 		}
 	}
 }
+
+// OpenCode's .opencode tree, as measured with opencode 1.18.18 (#642).
+func TestBuildTargets_OpenCodeTree(t *testing.T) {
+	dir := t.TempDir()
+	instr := []string{
+		".opencode/agent/a1.md", ".opencode/agents/sub/a2.md",
+		".opencode/mode/m1.md", ".opencode/modes/m2.md",
+		".opencode/command/c1.md", ".opencode/commands/sub/c2.md",
+		".opencode/skill/s1/SKILL.md", ".opencode/skills/s2/deep/SKILL.md",
+	}
+	notInstr := []string{".opencode/skills/flat.md", ".opencode/mode/sub/m3.md"}
+	code := []string{".opencode/plugin/p.ts", ".opencode/plugins/p.js", ".opencode/tool/t.ts", ".opencode/tools/t.js"}
+	notCode := []string{".opencode/plugin/readme.md", ".opencode/plugin/sub/deep.ts", "notopencode/plugin/x.ts"}
+	for _, rel := range append(append(append(append([]string{}, instr...), notInstr...), code...), notCode...) {
+		body := "Some instruction.\n"
+		if rel == ".opencode/agent/a1.md" {
+			body = "---\ndescription: a\npermission:\n  external_directory: allow\n---\nBody.\n"
+		}
+		mustWrite(t, filepath.Join(dir, filepath.FromSlash(rel)), body)
+	}
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	gotInstr, gotCode, gotPerm := map[string]bool{}, map[string]string{}, map[string]bool{}
+	rel := func(p string) string {
+		r, err := filepath.Rel(dir, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return filepath.ToSlash(r)
+	}
+	for _, tg := range targets {
+		if tg.InstructionFile != "" {
+			gotInstr[rel(tg.InstructionFile)] = true
+		}
+		if tg.OpenCodeCode != nil {
+			gotCode[rel(tg.OpenCodeCode.Path)] = tg.OpenCodeCode.Kind
+		}
+		if tg.OpenCode != nil && strings.HasPrefix(rel(tg.OpenCodeFile), ".opencode/agent/") {
+			gotPerm[rel(tg.OpenCodeFile)] = true
+		}
+	}
+	for _, r := range instr {
+		if !gotInstr[r] {
+			t.Errorf("%s: expected an instruction target", r)
+		}
+	}
+	for _, r := range notInstr {
+		if gotInstr[r] {
+			t.Errorf("%s: OpenCode does not load it, should not be an instruction target", r)
+		}
+	}
+	for _, r := range code {
+		if gotCode[r] == "" {
+			t.Errorf("%s: expected a CFG114 target", r)
+		}
+	}
+	for _, r := range notCode {
+		if gotCode[r] != "" {
+			t.Errorf("%s: should not be a CFG114 target", r)
+		}
+	}
+	if gotCode[".opencode/tools/t.js"] != "tool" || gotCode[".opencode/plugin/p.ts"] != "plugin" {
+		t.Errorf("wrong kinds: %v", gotCode)
+	}
+	if !gotPerm[".opencode/agent/a1.md"] || len(gotPerm) != 1 {
+		t.Errorf("expected exactly the agent with permission frontmatter as a CFG105 target, got %v", gotPerm)
+	}
+}

@@ -110,6 +110,11 @@ type Target struct {
 	OpenCode     *parser.OpenCodeConfig
 	OpenCodeFile string
 
+	// OpenCodeCode is a committed OpenCode plugin or tool file, JavaScript or
+	// TypeScript that OpenCode imports and runs on its own (CFG114). Nil for
+	// every other target.
+	OpenCodeCode *OpenCodeCodeFile
+
 	// Devin holds a parsed Devin CLI project config — .devin/config.json,
 	// committable "shared team configuration" per Devin's docs, or its gitignored
 	// twin .devin/config.local.json. Its mcpServers ride ProjectMCP so the MCP
@@ -401,3 +406,10 @@ type Rule interface {
 
 // All is the ordered list of rules run on every target.
 var All []Rule
+
+// OpenCodeCodeFile is one .opencode/{plugin,plugins,tool,tools}/*.{ts,js} file.
+// Kind is "plugin" or "tool".
+type OpenCodeCodeFile struct {
+	Path string
+	Kind string
+}

@@ -81,7 +81,7 @@ Added in the 2026-08-04 refresh, against the records AVE shipped from [aveprojec
 | CFG | AVE |
 |---|---|
 | CFG003 `enableAllProjectMcpServers` · CFG004 `defaultMode` · CFG048 VS Code `chat.permissions.default` · CFG053 blanket MCP-trust keys · CFG063 Codex `approval_policy` / `approvals_reviewer` · CFG079 `autoMode` classifier · CFG087 hook answers a permission gate · CFG091 qwen `approvalMode: yolo` · CFG093 `.cursor/permissions.json` allowlist · CFG096 Gemini MCP `trust` · CFG104 Devin `permissions.allow` · CFG105 OpenCode `permission` block | AVE-2026-00063 approval gate bypassed via declarative configuration |
-| CFG047 `.vscode/tasks.json` `folderOpen` + Zed `create_worktree` · CFG086 zero-click hook event · CFG067 committed project hooks | AVE-2026-00064 zero-click code execution via project-load auto-run configuration |
+| CFG047 `.vscode/tasks.json` `folderOpen` + Zed `create_worktree` · CFG086 zero-click hook event · CFG067 committed project hooks · CFG114 committed OpenCode plugin/tool code | AVE-2026-00064 zero-click code execution via project-load auto-run configuration (CFG114: measured on opencode 1.18.18, the loader runs the files at startup with no prompt, the condition the CFG100 row below names) |
 | CFG010 unpinned `@latest`/`:latest` · CFG074 `skills-lock.json` with no integrity pin · CFG055 / CFG089 unpinned marketplace source · CFG098 `marketplace.json` archive with no `sha256` | AVE-2026-00062 unpinned dependency, supply-chain substitution |
 | CFG075 MCP `env`/`args` TLS-verify killswitch | AVE-2026-00061 TLS certificate verification disabled in component configuration |
 | CFG097 Gemini remote-agent `auth` literal | AVE-2026-00047 hardcoded credentials in component |

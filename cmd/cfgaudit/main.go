@@ -946,6 +946,10 @@ var (
 		// Cursor custom subagents (#617): "Project subagents | .cursor/agents/ |
 		// Current project only", a Markdown file whose body is the prompt.
 		filepath.Join(".cursor", "agents", "*.md"),
+		// OpenCode modes (#642), read as agents: .opencode/mode/m1.md resolved
+		// as an agent under opencode 1.18.18. Single-level, unlike its agents.
+		filepath.Join(".opencode", "mode", "*.md"),
+		filepath.Join(".opencode", "modes", "*.md"),
 		// .windsurf/rules and .devin/rules are walked recursively (see
 		// filteredInstructionDirs).
 		// Devin Desktop, the renamed Windsurf, reads .devin/ first and keeps
@@ -1386,9 +1390,26 @@ var filteredInstructionDirs = []filteredInstructionDir{
 		return strings.HasSuffix(name, ".instructions.md") || name == "copilot-instructions.md"
 	}},
 	{filepath.Join(".cursor", "rules"), func(name string) bool { return strings.HasSuffix(name, ".mdc") }},
-	{filepath.Join(".devin", "rules"), func(name string) bool { return strings.EqualFold(filepath.Ext(name), ".md") }},
-	{filepath.Join(".windsurf", "rules"), func(name string) bool { return strings.EqualFold(filepath.Ext(name), ".md") }},
+	{filepath.Join(".devin", "rules"), isMarkdown},
+	{filepath.Join(".windsurf", "rules"), isMarkdown},
+	// OpenCode reads agents, commands and skills from .opencode/ (#642), each
+	// under a singular and a plural directory name. Measured with opencode
+	// 1.18.18: `debug config` resolved .opencode/agent/a1.md and
+	// .opencode/agents/sub/a2.md as agents (the body becomes the prompt) and
+	// .opencode/command/c1.md and .opencode/commands/sub/c2.md as commands;
+	// `debug skill` listed .opencode/skill/s1/SKILL.md and
+	// .opencode/skills/s2/deep/SKILL.md, and not a plain .opencode/skills/x.md.
+	// Modes are single-level and sit in agentInstructionGlobs.
+	{filepath.Join(".opencode", "agent"), isMarkdown},
+	{filepath.Join(".opencode", "agents"), isMarkdown},
+	{filepath.Join(".opencode", "command"), isMarkdown},
+	{filepath.Join(".opencode", "commands"), isMarkdown},
+	{filepath.Join(".opencode", "skill"), isSkillFile},
+	{filepath.Join(".opencode", "skills"), isSkillFile},
 }
+
+func isMarkdown(name string) bool  { return strings.EqualFold(filepath.Ext(name), ".md") }
+func isSkillFile(name string) bool { return name == "SKILL.md" }
 
 // filteredInstructionFiles walks each of filteredInstructionDirs under base and
 // returns the files its filter accepts, sorted. A missing directory yields
@@ -1965,6 +1986,135 @@ func openCodeTargets(dir string) ([]*rules.Target, error) {
 			tgt.ProjectMCPFile = f.path
 		}
 		targets = append(targets, tgt)
+	}
+
+	agents, err := openCodeAgentPermissionTargets(dir)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, agents...)
+
+	code, err := openCodeCodeTargets(dir)
+	if err != nil {
+		return nil, err
+	}
+	return append(targets, code...), nil
+}
+
+// openCodeAgentDirs are where OpenCode reads agent definitions: agents recursively
+// and modes one level deep (see filteredInstructionDirs).
+var openCodeAgentDirs = []struct {
+	dir       string
+	recursive bool
+}{
+	{filepath.Join(".opencode", "agent"), true},
+	{filepath.Join(".opencode", "agents"), true},
+	{filepath.Join(".opencode", "mode"), false},
+	{filepath.Join(".opencode", "modes"), false},
+}
+
+// openCodeAgentPermissionTargets gives each OpenCode agent or mode file whose
+// frontmatter sets `permission` a target of its own, so CFG105 judges it as it
+// judges agent.<name>.permission in opencode.json (#642), and under that name,
+// so the finding says which agent it applies to. The name is the file's path
+// below the agent directory without .md, as OpenCode names it (sub/a2).
+//
+// Measured with opencode 1.18.18 `debug agent`: an agent whose frontmatter sets
+// `read: allow` resolves reading .env to allow, while a control agent beside it
+// keeps the default ask, because the agent's rules are appended after the
+// defaults and the last match wins.
+func openCodeAgentPermissionTargets(dir string) ([]*rules.Target, error) {
+	var targets []*rules.Target
+	for _, ad := range openCodeAgentDirs {
+		files, err := markdownFiles(filepath.Join(dir, ad.dir), ad.recursive)
+		if err != nil {
+			return nil, err
+		}
+		for _, path := range files {
+			data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+			if err != nil {
+				return nil, err
+			}
+			perm := parser.OpenCodeAgentPermission(string(data))
+			if perm == nil {
+				continue
+			}
+			name, err := filepath.Rel(filepath.Join(dir, ad.dir), path)
+			if err != nil {
+				return nil, err
+			}
+			name = strings.TrimSuffix(filepath.ToSlash(name), filepath.Ext(name))
+			targets = append(targets, &rules.Target{
+				Scope:        finding.ScopeProject,
+				OpenCode:     &parser.OpenCodeConfig{Agent: map[string]parser.OpenCodeAgent{name: {Permission: perm}}},
+				OpenCodeFile: path,
+			})
+		}
+	}
+	return targets, nil
+}
+
+// markdownFiles lists the *.md files in root, recursively or one level deep. A
+// missing directory yields nothing.
+func markdownFiles(root string, recursive bool) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			if path != root && !recursive {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if isMarkdown(d.Name()) {
+			out = append(out, path)
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
+}
+
+// openCodeCodeDirs are the .opencode directories whose JavaScript and TypeScript
+// files OpenCode imports and runs (#642). Measured with opencode 1.18.18 and a
+// scratch HOME: every {plugin,plugins}/*.{ts,js} wrote its marker during a bare
+// `opencode debug config`, every {tool,tools}/*.{ts,js} during `opencode debug
+// agent`, with no prompt either time, and the same plugin under notopencode/
+// wrote none. OpenCode has no workspace trust step, so nothing stands between
+// opening the repository and running these files. One level deep, as upstream
+// globs them.
+var openCodeCodeDirs = []struct{ dir, kind string }{
+	{filepath.Join(".opencode", "plugin"), "plugin"},
+	{filepath.Join(".opencode", "plugins"), "plugin"},
+	{filepath.Join(".opencode", "tool"), "tool"},
+	{filepath.Join(".opencode", "tools"), "tool"},
+}
+
+// openCodeCodeTargets gives CFG114 one target per committed OpenCode plugin or
+// tool file.
+func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
+	var targets []*rules.Target
+	for _, cd := range openCodeCodeDirs {
+		for _, ext := range []string{"*.ts", "*.js"} {
+			matches, err := filepath.Glob(filepath.Join(dir, cd.dir, ext))
+			if err != nil {
+				return nil, err
+			}
+			for _, m := range matches {
+				if info, err := os.Stat(m); err != nil || info.IsDir() {
+					continue
+				}
+				targets = append(targets, &rules.Target{
+					Scope:        finding.ScopeProject,
+					OpenCodeCode: &rules.OpenCodeCodeFile{Path: m, Kind: cd.kind},
+				})
+			}
+		}
 	}
 	return targets, nil
 }
