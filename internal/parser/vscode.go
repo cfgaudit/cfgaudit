@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
+	"sort"
+	"strings"
 )
 
 // VSCodeTasks is a partial representation of a .vscode/tasks.json file, read by
@@ -50,21 +53,146 @@ func ParseVSCodeTasks(path string) (*VSCodeTasks, error) {
 }
 
 // VSCodeSettings is a .vscode/settings.json file, read by VS Code and its forks
-// (Cursor, Windsurf). VS Code settings use flat dotted string keys (e.g.
-// "chat.tools.autoApprove"), so the document is kept as a raw key→value map and
-// queried by exact key rather than decoded into a struct.
+// (Cursor, Windsurf). Settings are queried by their dotted name
+// ("chat.tools.autoApprove"), but a file may write a setting either as that flat
+// key or as nested objects ({"chat": {"tools": {"autoApprove": true}}}), and VS
+// Code applies both (#640). Lookups therefore go through a value tree built the
+// way VS Code builds it, not through Raw.
 type VSCodeSettings struct {
+	// Raw is the file's top-level key→value map, as written.
 	Raw map[string]json.RawMessage
+
+	// order is the top-level keys in file order. VS Code applies them in that
+	// order, so it decides which spelling wins when both set the same setting.
+	// Nil when the struct was built from Raw alone; sorted order is used then.
+	order []string
+	tree  *settingsNode
+}
+
+// settingsNode is one node of the value tree: an object (kids non-nil) or a
+// leaf value.
+type settingsNode struct {
+	raw  json.RawMessage
+	kids map[string]*settingsNode
+}
+
+func newSettingsNode(raw json.RawMessage) *settingsNode {
+	var obj map[string]json.RawMessage
+	if len(raw) > 0 && raw[0] == '{' && json.Unmarshal(raw, &obj) == nil {
+		n := &settingsNode{kids: make(map[string]*settingsNode, len(obj))}
+		for k, v := range obj {
+			n.kids[k] = newSettingsNode(v)
+		}
+		return n
+	}
+	return &settingsNode{raw: raw}
+}
+
+// marshal renders a node back to JSON. An object node is rebuilt from its
+// children, because a later dotted key may have written into it.
+func (n *settingsNode) marshal() json.RawMessage {
+	if n.kids == nil {
+		return n.raw
+	}
+	m := make(map[string]json.RawMessage, len(n.kids))
+	for k, c := range n.kids {
+		m[k] = c.marshal()
+	}
+	out, _ := json.Marshal(m)
+	return out
+}
+
+// buildTree mirrors toValuesTree/addToValueTree in VS Code's
+// src/vs/platform/configuration/common/configuration.ts: each top-level key, in
+// file order, is split on "." and its value assigned at that path, replacing
+// whatever was there. A segment that already holds a non-object value makes VS
+// Code drop the key ("Ignoring <key> as <segment> is ..."), and so does this.
+// Keys inside a nested object are not split, so {"chat": {"tools.autoApprove":
+// true}} does not set chat.tools.autoApprove, matching getConfigurationValue.
+func (s *VSCodeSettings) buildTree() *settingsNode {
+	keys := s.order
+	if keys == nil {
+		keys = make([]string, 0, len(s.Raw))
+		for k := range s.Raw {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+	}
+	root := &settingsNode{kids: map[string]*settingsNode{}}
+	for _, key := range keys {
+		segs := strings.Split(key, ".")
+		curr := root
+		ok := true
+		for _, seg := range segs[:len(segs)-1] {
+			next, exists := curr.kids[seg]
+			if !exists {
+				next = &settingsNode{kids: map[string]*settingsNode{}}
+				curr.kids[seg] = next
+			} else if next.kids == nil {
+				ok = false
+				break
+			}
+			curr = next
+		}
+		if ok {
+			curr.kids[segs[len(segs)-1]] = newSettingsNode(s.Raw[key])
+		}
+	}
+	return root
+}
+
+// lookup returns the effective value of a setting and whether it is set.
+func (s *VSCodeSettings) lookup(key string) (json.RawMessage, bool) {
+	if s == nil {
+		return nil, false
+	}
+	if s.tree == nil {
+		s.tree = s.buildTree()
+	}
+	n := s.tree
+	for _, seg := range strings.Split(key, ".") {
+		if n.kids == nil {
+			return nil, false
+		}
+		next, ok := n.kids[seg]
+		if !ok {
+			return nil, false
+		}
+		n = next
+	}
+	return n.marshal(), true
+}
+
+// Nested reports whether a setting takes its effective value from the nested
+// object form rather than from its own flat key. Up to VS Code 1.136.1 the
+// nested form skipped the workspace scope and Restricted Mode filters
+// (CVE-2026-70334, CVE-2026-81376; fixed in 1.136.2 by 0684cb5), so a rule that
+// leans on those filters needs to know which spelling it is reading.
+func (s *VSCodeSettings) Nested(key string) bool {
+	val, ok := s.lookup(key)
+	if !ok {
+		return false
+	}
+	flat, isFlat := s.Raw[key]
+	if !isFlat {
+		return true
+	}
+	return !jsonEqual(flat, val)
+}
+
+func jsonEqual(a, b json.RawMessage) bool {
+	var x, y interface{}
+	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {
+		return false
+	}
+	return reflect.DeepEqual(x, y)
 }
 
 // BoolField returns the value of a boolean setting and whether it was present as
 // a JSON boolean. A missing key or a non-boolean value yields (false, false), so
 // callers can distinguish "explicitly true" from "absent / wrong type".
 func (s *VSCodeSettings) BoolField(key string) (val, present bool) {
-	if s == nil {
-		return false, false
-	}
-	raw, ok := s.Raw[key]
+	raw, ok := s.lookup(key)
 	if !ok {
 		return false, false
 	}
@@ -78,10 +206,7 @@ func (s *VSCodeSettings) BoolField(key string) (val, present bool) {
 // StringField returns the value of a string setting and whether it was present as
 // a JSON string. A missing key or a non-string value yields ("", false).
 func (s *VSCodeSettings) StringField(key string) (val string, present bool) {
-	if s == nil {
-		return "", false
-	}
-	raw, ok := s.Raw[key]
+	raw, ok := s.lookup(key)
 	if !ok {
 		return "", false
 	}
@@ -97,10 +222,7 @@ func (s *VSCodeSettings) StringField(key string) (val string, present bool) {
 // auto-approve edits map is pattern→bool, while the URL map allows either a bool
 // or an object of per-direction flags.
 func (s *VSCodeSettings) ObjectField(key string) (map[string]json.RawMessage, bool) {
-	if s == nil {
-		return nil, false
-	}
-	raw, ok := s.Raw[key]
+	raw, ok := s.lookup(key)
 	if !ok {
 		return nil, false
 	}
@@ -118,11 +240,45 @@ func ParseVSCodeSettings(path string) (*VSCodeSettings, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	return ParseVSCodeSettingsBytes(data, path)
+}
+
+// ParseVSCodeSettingsBytes decodes settings.json content; path only labels errors.
+func ParseVSCodeSettingsBytes(data []byte, path string) (*VSCodeSettings, error) {
+	clean := stripJSONC(data)
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(stripJSONC(data), &raw); err != nil {
+	if err := json.Unmarshal(clean, &raw); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	return &VSCodeSettings{Raw: raw}, nil
+	return &VSCodeSettings{Raw: raw, order: topLevelKeyOrder(clean)}, nil
+}
+
+// topLevelKeyOrder returns the top-level keys of a JSON object in the order they
+// first appear. A repeated key keeps its first position and, through
+// json.Unmarshal, its last value, which is how JSON.parse treats it too.
+func topLevelKeyOrder(data []byte) []string {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return nil
+	}
+	var keys []string
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil
+		}
+		key, _ := tok.(string)
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return nil
+		}
+		if !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 // stripJSONC removes // line comments, /* */ block comments, and trailing commas

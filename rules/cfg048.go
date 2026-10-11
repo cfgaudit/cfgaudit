@@ -160,6 +160,23 @@ const vscodeRestrictedNote = " The key is `restricted`, so the value is ignored 
 
 const terminalTrustNote = " These terminal keys are `restricted`, so the value is ignored until the workspace is trusted; trust is a single prompt, granted once, after which every clone is covered."
 
+// nestedFilterNote qualifies the scope and trust statements above for a value
+// written in nested-object form. VS Code 1.136.1 and earlier checked only the
+// top-level JSON key against the configuration registry, so {"chat": {...}}
+// skipped the workspace scope filter and Restricted Mode alike (CVE-2026-70334,
+// CVE-2026-81376; fixed by 0684cb5 in 1.136.2). The keys reported here are the
+// ones whose mitigation is one of those two filters.
+const nestedFilterNote = " This value is written in nested-object form, which VS Code 1.136.1 and earlier did not run through the workspace scope and Restricted Mode filters (CVE-2026-70334, CVE-2026-81376, fixed in 1.136.2), so on those releases it applies from the committed file without trust."
+
+// nestedNote returns nestedFilterNote when key takes its value from the nested
+// form, and nothing otherwise, so callers can append it unconditionally.
+func nestedNote(t *Target, key string) string {
+	if t.VSCodeSettings.Nested(key) {
+		return nestedFilterNote
+	}
+	return ""
+}
+
 // catchAllTerminalPatternRe matches a terminal auto-approve regex that approves
 // any command. Deliberately narrow: only the unmistakable catch-alls, because a
 // pattern that merely looks broad ("/^git /") is ordinary team configuration.
@@ -199,7 +216,7 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 			Scope:    t.Scope,
 			File:     t.VSCodeSettingsFile,
 			Message: "\"" + key + "\": true blanket-auto-approves every agent tool call, including terminal commands" +
-				" — committed to a repo this removes the confirmation prompt for anyone who opens it in agent mode (it also disables the terminal allow/deny list). Upstream VS Code ignores this key from a workspace file (it is application-scoped), but forks that read the same file may not. Remove it",
+				" — committed to a repo this removes the confirmation prompt for anyone who opens it in agent mode (it also disables the terminal allow/deny list). Upstream VS Code ignores this key from a workspace file (it is application-scoped), but forks that read the same file may not." + nestedNote(t, key) + " Remove it",
 		})
 	}
 
@@ -300,7 +317,7 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 				Scope:    t.Scope,
 				File:     t.VSCodeSettingsFile,
 				Message: terminalAutoApproveKey + " approves the catch-all pattern \"" + strings.Join(broad, "\", \"") +
-					"\" — every command the agent proposes runs in the terminal with no confirmation." + terminalTrustNote +
+					"\" — every command the agent proposes runs in the terminal with no confirmation." + terminalTrustNote + nestedNote(t, terminalAutoApproveKey) +
 					" List the specific commands the project needs instead",
 			})
 		}
@@ -313,7 +330,7 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 			Scope:    t.Scope,
 			File:     t.VSCodeSettingsFile,
 			Message: useClaudeHooksKey + " is true — it switches on execution of Claude-format hooks, which VS Code leaves off by default, and the default hook locations already include this repository's own .claude/settings.json." +
-				" A committed file therefore turns on execution of hook commands the same repository ships." + vscodeRestrictedNote +
+				" A committed file therefore turns on execution of hook commands the same repository ships." + vscodeRestrictedNote + nestedNote(t, useClaudeHooksKey) +
 				" Remove the key and let each user decide",
 		})
 	}
@@ -336,7 +353,7 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 				File:     t.VSCodeSettingsFile,
 				Message: hookLocationsKey + " registers the hook location \"" + strings.Join(added, "\", \"") +
 					"\" — hook files declare \"custom shell commands to execute at strategic points in an agent's workflow\", and a relative path is resolved from the workspace root, so a committed value points the editor at command files this repository chose." +
-					" cfgaudit reads the standard hook paths and does not follow a registered one, so whatever those files contain is unreviewed by this scan." + vscodeRestrictedNote,
+					" cfgaudit reads the standard hook paths and does not follow a registered one, so whatever those files contain is unreviewed by this scan." + vscodeRestrictedNote + nestedNote(t, hookLocationsKey),
 			})
 		}
 	}
@@ -348,7 +365,7 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 			Scope:    t.Scope,
 			File:     t.VSCodeSettingsFile,
 			Message: terminalIgnoreDefaultsKey + " is true — VS Code's built-in terminal auto-approve rules are switched off, including the denials its own documentation describes as \"designed to protect you against running dangerous commands\"." +
-				" On its own this approves nothing, but it removes the backstop under any pattern the same file approves." + terminalTrustNote +
+				" On its own this approves nothing, but it removes the backstop under any pattern the same file approves." + terminalTrustNote + nestedNote(t, terminalIgnoreDefaultsKey) +
 				" Leave it unset and narrow the allow patterns instead",
 		})
 	}
@@ -422,7 +439,7 @@ func (r *cfg048) checkEdits(t *Target) []finding.Finding {
 				File:     t.VSCodeSettingsFile,
 				Message: editsAutoApproveKey + " sets \"" + pat + "\": true — auto-approves agent edits to a file VS Code protects by default." +
 					" Editing .vscode/*.json unattended chains into a task that runs on folder open (CFG047), so this is a path to unprompted code execution." +
-					editsScopeNote + " Remove the entry",
+					editsScopeNote + nestedNote(t, editsAutoApproveKey) + " Remove the entry",
 			})
 		case broadGlobRe.MatchString(pat) && approved:
 			broad = append(broad, pat)
@@ -440,7 +457,7 @@ func (r *cfg048) checkEdits(t *Target) []finding.Finding {
 			File:     t.VSCodeSettingsFile,
 			Message: editsAutoApproveKey + " sets \"" + strings.Join(broad, "\", \"") + "\": true without restating the default denials" +
 				" (**/.vscode/*.json, **/.git/**, .env, lockfiles) — if the committed map replaces the defaults rather than merging into them, agent edits to those files are auto-approved." +
-				editsScopeNote + " Re-add the denials, or scope the pattern",
+				editsScopeNote + nestedNote(t, editsAutoApproveKey) + " Re-add the denials, or scope the pattern",
 		})
 	}
 	return findings

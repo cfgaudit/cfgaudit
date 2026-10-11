@@ -11,14 +11,14 @@ import (
 
 func vscodeSettingsTarget(t *testing.T, raw string) *Target {
 	t.Helper()
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+	s, err := parser.ParseVSCodeSettingsBytes([]byte(raw), ".vscode/settings.json")
+	if err != nil {
 		t.Fatalf("bad test JSON: %v", err)
 	}
 	return &Target{
 		Scope:              finding.ScopeProject,
 		VSCodeSettingsFile: ".vscode/settings.json",
-		VSCodeSettings:     &parser.VSCodeSettings{Raw: m},
+		VSCodeSettings:     s,
 	}
 }
 
@@ -349,5 +349,50 @@ func TestCFG048_TrustNoteOnlyOnRestrictedKeys(t *testing.T) {
 	}
 	if strings.Contains(perm[0].Message, "restricted") {
 		t.Errorf("chat.permissions.default is not restricted; its message must not claim a trust gate: %q", perm[0].Message)
+	}
+}
+
+// A setting written as nested objects is the same setting to VS Code, and the
+// rule must see it (#640). Where the finding's mitigation is the workspace scope
+// or Restricted Mode filter, the message says those filters did not apply to the
+// nested form up to 1.136.1; where it is not, the message is unchanged.
+func TestCFG048_NestedForm(t *testing.T) {
+	for _, tc := range []struct {
+		name, flat, nested string
+		note               bool
+	}{
+		{"global auto-approve (application-scoped)",
+			`{"chat.tools.global.autoApprove": true}`,
+			`{"chat": {"tools": {"global": {"autoApprove": true}}}}`, true},
+		{"terminal catch-all (restricted)",
+			`{"chat.tools.terminal.autoApprove": {"/.*/": true}}`,
+			`{"chat": {"tools": {"terminal": {"autoApprove": {"/.*/": true}}}}}`, true},
+		{"Claude hooks (restricted)",
+			`{"chat.useClaudeHooks": true}`,
+			`{"chat": {"useClaudeHooks": true}}`, true},
+		{"edits re-enabling a protected file (application-scoped)",
+			`{"chat.tools.edits.autoApprove": {"**/.vscode/*.json": true}}`,
+			`{"chat": {"tools": {"edits": {"autoApprove": {"**/.vscode/*.json": true}}}}}`, true},
+		{"permission level (window-scoped, unrestricted)",
+			`{"chat.permissions.default": "autopilot"}`,
+			`{"chat": {"permissions": {"default": "autopilot"}}}`, false},
+		{"URL catch-all (window-scoped, unrestricted)",
+			`{"chat.tools.urls.autoApprove": {"*": true}}`,
+			`{"chat": {"tools": {"urls": {"autoApprove": {"*": true}}}}}`, false},
+	} {
+		flat := CFG048.Check(vscodeSettingsTarget(t, tc.flat))
+		nested := CFG048.Check(vscodeSettingsTarget(t, tc.nested))
+		if len(flat) != 1 || len(nested) != 1 {
+			t.Fatalf("%s: expected one finding for each form, got flat %+v, nested %+v", tc.name, flat, nested)
+		}
+		if flat[0].Severity != nested[0].Severity {
+			t.Errorf("%s: severity differs between forms: %s vs %s", tc.name, flat[0].Severity, nested[0].Severity)
+		}
+		if strings.Contains(flat[0].Message, "nested-object form") {
+			t.Errorf("%s: the flat form must not carry the nested note: %s", tc.name, flat[0].Message)
+		}
+		if got := strings.Contains(nested[0].Message, "1.136.1 and earlier"); got != tc.note {
+			t.Errorf("%s: nested note present = %v, want %v: %s", tc.name, got, tc.note, nested[0].Message)
+		}
 	}
 }
