@@ -111,9 +111,15 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					continue
 				}
 				sev := p.sev
+				if p.num == 3 && authorityIdiom(line, loc) {
+					continue
+				}
 				if p.num == 1 {
 					verb := strings.ToLower(strings.Join(strings.Fields(line[sm[2]:sm[3]]), " "))
 					if overrideOnlyQualified[verb] && sm[4] < 0 {
+						continue
+					}
+					if overrideNegated(line, loc[0], verb) || attributiveNoun(line, sm) {
 						continue
 					}
 					if quotedAt(line, loc[0]) {
@@ -167,4 +173,70 @@ func quotedAt(line string, idx int) bool {
 	pre := line[:idx]
 	return strings.Count(pre, "\"")%2 == 1 || strings.Count(pre, "`")%2 == 1 ||
 		strings.Count(pre, "\u201c") > strings.Count(pre, "\u201d")
+}
+
+// runAsRe matches the verb that makes "as Administrator" the Windows idiom
+// "Run as Administrator" rather than a claim of authority (#655).
+var runAsRe = regexp.MustCompile(`(?i)\b(?:run|runs|running|ran|launch|launched|launching|start|started|starting|open|opened|opening|execute|executed|executing|elevated)\s+$`)
+
+// authorityIdiom reports whether a pattern-3 match is ordinary wording rather
+// than an authority claim (#655): "as developer" running into a hyphen
+// ("developer-mode HUD elements", a product feature), and the Windows idiom
+// "Run as Administrator".
+func authorityIdiom(line string, loc []int) bool {
+	if loc[1] < len(line) && line[loc[1]] == '-' {
+		return true
+	}
+	return runAsRe.MatchString(line[:loc[0]])
+}
+
+// overrideNegationRe matches a negation directly before a pattern-1 verb:
+// "Don't ignore input validation", "never disregard the error output" (#655).
+// Only the word right before the verb counts, so "do not follow" and "do not
+// obey", which carry their own negation, are not affected.
+var overrideNegationRe = regexp.MustCompile(`(?i)\b(?:don'?t|do\s+not|never|must\s+not|mustn'?t|should\s+not|shouldn'?t|cannot|can'?t|won'?t|will\s+not)\s+$`)
+
+// overrideNegated reports whether a pattern-1 verb is negated: telling the agent
+// not to ignore something is the opposite of an override.
+func overrideNegated(line string, start int, verb string) bool {
+	if strings.HasPrefix(verb, "do not") {
+		return false
+	}
+	return overrideNegationRe.MatchString(line[:start])
+}
+
+// attributiveNouns are the pattern-1 nouns that commonly modify another noun:
+// "input validation", "data skew warnings", "context menu", "content type".
+var attributiveNouns = map[string]bool{"data": true, "input": true, "content": true, "context": true, "text": true, "conversation": true, "communication": true}
+
+// clauseWords are the words that can follow a pattern-1 noun without making it
+// a modifier: conjunctions, prepositions, pronouns and the adverbs an override
+// payload uses ("ignore the context completely").
+var clauseWords = map[string]bool{
+	"and": true, "or": true, "but": true, "nor": true, "from": true, "in": true, "on": true, "at": true, "of": true, "to": true,
+	"for": true, "with": true, "above": true, "below": true, "before": true, "after": true, "that": true, "which": true,
+	"who": true, "you": true, "i": true, "we": true, "they": true, "it": true, "completely": true, "entirely": true,
+	"altogether": true, "now": true, "then": true, "if": true, "when": true, "as": true, "so": true, "because": true,
+	"until": true, "unless": true, "provided": true, "given": true, "here": true, "there": true, "and/or": true,
+}
+
+var nextWordRe = regexp.MustCompile(`^\s+([A-Za-z][A-Za-z/'-]*)`)
+
+// attributiveNoun reports whether an unqualified pattern-1 match ends in a noun
+// that is only the modifier of the next word (#655): "Ignore data skew warnings
+// in Spark UI" names the warnings, not the data. A match with a qualifier
+// ("ignore previous context ...") is never treated this way.
+func attributiveNoun(line string, sm []int) bool {
+	if sm[4] >= 0 || len(sm) < 8 || sm[6] < 0 {
+		return false
+	}
+	noun := strings.ToLower(line[sm[6]:sm[7]])
+	if !attributiveNouns[noun] {
+		return false
+	}
+	m := nextWordRe.FindStringSubmatch(line[sm[1]:])
+	if m == nil {
+		return false
+	}
+	return !clauseWords[strings.ToLower(m[1])]
 }

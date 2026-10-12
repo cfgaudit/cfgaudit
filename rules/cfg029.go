@@ -61,7 +61,62 @@ var forbiddenMarkRe = regexp.MustCompile(`^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*)?\
 // antiPatternHeadRe matches a heading or list lead-in that introduces things not
 // to do without a negation word: "Common failure modes", "Anti-patterns",
 // "Red flags" (#623).
-var antiPatternHeadRe = regexp.MustCompile(`(?i)\b(?:anti-?patterns?|failure\s+modes?|pitfalls?|common\s+mistakes|red\s+flags|what\s+not\s+to\s+do|don'?ts)\b`)
+var antiPatternHeadRe = regexp.MustCompile(`(?i)\b(?:anti-?patterns?|failure\s+modes?|pitfalls?|common\s+mistakes|red\s+flags|what\s+not\s+to\s+do|don'?ts|traps?)\b`)
+
+// labelLeadRe captures the bold label that opens a list item ("- **The
+// "cleanup" trap** — ..."), whose words say what kind of item it is (#655).
+var labelLeadRe = regexp.MustCompile(`^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*([^*]+)\*\*`)
+
+// notPermissionAfterRe matches what turns a confirmation match into something
+// other than a permission prompt (#655): "confirmation bias", and the
+// confirmation of facts ("do not ask for confirmation of information already
+// provided").
+var notPermissionAfterRe = regexp.MustCompile(`(?i)^(?:\s+bias\b|\s+of\s+(?:the\s+)?(?:information|details?|facts?|data|requirements?|inputs?|values?|what)\b)`)
+
+// settingValueAfterRe matches an approval word used as a configuration key
+// with a value ("` + "`auto-approve: false`" + `", "auto_approve = true") rather than
+// as an instruction (#655).
+var settingValueAfterRe = regexp.MustCompile(`^\s*` + "`?" + `\s*[:=]`)
+
+// flagConditionRe matches a clause that makes the match conditional on a
+// command-line flag the user passes ("When ` + "`--yes`" + ` or ` + "`-y`" + `: ... skip
+// confirmations"): the text documents a flag, the choice is the user's (#655).
+var flagConditionRe = regexp.MustCompile(`(?i)\b(?:when|if|with)\b[^.]*?` + "`?" + `--?[a-z][\w-]*`)
+
+// withoutGateRe matches the "without confirmation / approval / prompting"
+// branch. The ask-branch ("without asking for confirmation") names the agent's
+// own question and is not subject to the action check.
+var withoutGateRe = regexp.MustCompile(`(?i)^without\s+(?:confirm|approval|prompt)`)
+
+// continuedFrom returns the previous line when line i continues it: a line that
+// opens in lower case is the second half of a wrapped sentence ("... and make
+// other database changes" / "directly, without asking for confirmation").
+func continuedFrom(lines []string, i int) string {
+	if i == 0 {
+		return ""
+	}
+	t := strings.TrimLeft(lines[i], " \t")
+	if t == "" || t[0] < 'a' || t[0] > 'z' {
+		return ""
+	}
+	return lines[i-1] + " "
+}
+
+// clauseRest returns the text after a match up to the end of its sentence.
+func clauseRest(after string) string {
+	for i := 0; i+1 < len(after); i++ {
+		if (after[i] == '.' || after[i] == ';' || after[i] == '!' || after[i] == '?') && (after[i+1] == ' ' || after[i+1] == '\t') {
+			return after[:i]
+		}
+	}
+	return after
+}
+
+// agentActionRe matches a verb of the kind a permission prompt guards. A
+// "without confirmation / approval / prompting" clause with none of these
+// anywhere in it describes something else ("a behavior shows up consistently
+// without prompting") (#655).
+var agentActionRe = regexp.MustCompile(`(?i)\b(?:run|runs|running|ran|execut\w*|apply|applies|applying|appl\w*|commit\w*|push\w*|merg\w*|deploy\w*|install\w*|delet\w*|remov\w*|modif\w*|edit\w*|writ\w*|overwrit\w*|creat\w*|proceed\w*|continu\w*|mak\w*|chang\w*|call\w*|invok\w*|us(?:e|es|ing)|approv\w*|accept\w*|perform\w*|do|does|doing|act|acts|acting|tak\w*|fix\w*|updat\w*|work\w*|operat\w*|go|goes|going|handl\w*|process\w*|launch\w*|start\w*|send\w*|post\w*|upload\w*|download\w*|mov\w*|renam\w*|refactor\w*|implement\w*|ship\w*|releas\w*|publish\w*|drop\w*|reset\w*|rewrit\w*|tool\w*|command\w*|action\w*|step\w*|task\w*|change\w*|operation\w*)\b`)
 
 // conditionAfterRe matches text after a match that turns it into the name of a
 // condition rather than an instruction: "Destructive action without
@@ -122,6 +177,17 @@ func clauseStart(line string, end int) int {
 func negated(lines []string, i int, loc []int) bool {
 	line := lines[i]
 	match := line[loc[0]:loc[1]]
+	// What follows the match can say it is not a permission prompt at all
+	// (#655), whichever way the match itself is phrased.
+	if notPermissionAfterRe.MatchString(line[loc[1]:]) {
+		return true
+	}
+	// Only a key-shaped word takes a value: "`auto-approve: false`". A colon
+	// after "without confirmation" introduces a list ("Safe to run without
+	// confirmation:"), which is the bypass.
+	if strings.HasPrefix(strings.ToLower(match), "auto") && settingValueAfterRe.MatchString(line[loc[1]:]) {
+		return true
+	}
 	if m := prohibitionRe.FindStringIndex(match); m != nil && m[0] == 0 {
 		return false
 	}
@@ -136,6 +202,15 @@ func negated(lines []string, i int, loc []int) bool {
 		return true
 	}
 	if strings.HasPrefix(strings.ToLower(match), "auto") && modeNameAfterRe.MatchString(line[loc[1]:]) {
+		return true
+	}
+	if flagConditionRe.MatchString(before) {
+		return true
+	}
+	if withoutGateRe.MatchString(match) && !agentActionRe.MatchString(continuedFrom(lines, i)+before+match+clauseRest(line[loc[1]:])) {
+		return true
+	}
+	if m := labelLeadRe.FindStringSubmatch(line); m != nil && antiPatternHeadRe.MatchString(m[1]) {
 		return true
 	}
 	// A command-line flag (terraform apply -auto-approve, --auto-approve) names

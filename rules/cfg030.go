@@ -82,12 +82,28 @@ var concealModalRe = regexp.MustCompile(`(?i)\b(?:would|could|might|may|will|can
 // match that begins with its own negation ("don't tell the user") is the
 // instruction itself and keeps reporting.
 func concealNegated(line string, loc []int) bool {
+	// "Do not tell the user to read X" says what to tell the user, not what to
+	// keep from them (#655).
+	if tellToRe.MatchString(line[loc[1]:]) {
+		return true
+	}
 	if m := prohibitionRe.FindStringIndex(line[loc[0]:loc[1]]); m != nil && m[0] == 0 {
 		return false
 	}
 	before := line[clauseStart(line, loc[0]):loc[0]]
-	if prohibitionRe.MatchString(before) {
+	if prohibitionRe.MatchString(before) || concealDescriptiveRe.MatchString(before) {
 		return true
 	}
 	return concealModalRe.MatchString(before)
 }
+
+// concealDescriptiveRe matches the cues that make a concealment phrase the
+// thing not done (#655): a negated description ("does not silently change the
+// resolved scope") and the rejected alternative ("rather than silently delete
+// it"). Kept out of prohibitionRe, which CFG029 shares, because "this command
+// does not ask for permission" is a bypass there.
+var concealDescriptiveRe = regexp.MustCompile(`(?i)\b(?:does\s+not|doesn'?t|did\s+not|didn'?t|will\s+not|won'?t|should\s+not|shouldn'?t|is\s+not|isn'?t|are\s+not|aren'?t|rather\s+than|instead\s+of)\b`)
+
+// tellToRe matches "to <verb>" right after "tell the user", which turns the
+// phrase into guidance about what the user should be told to do.
+var tellToRe = regexp.MustCompile(`(?i)^\s+to\s+[a-z]`)
