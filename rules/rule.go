@@ -87,6 +87,12 @@ type Target struct {
 	Gemini     *parser.GeminiSettings
 	GeminiFile string
 
+	// GeminiDotEnv is a project's .gemini/.env, which Gemini CLI loads whole
+	// into its own environment once the folder is trusted (#646); CFG110 reads
+	// it. Nil when absent; GeminiDotEnvFile is its path.
+	GeminiDotEnv     map[string]string
+	GeminiDotEnvFile string
+
 	// Qwen holds a parsed qwen-code settings.json (.qwen/settings.json or
 	// ~/.qwen/settings.json). Its tools.approvalMode / tools.autoAccept drive
 	// CFG091, and its mcpServers ride ProjectMCP so the MCP rules apply. Nil when

@@ -28,6 +28,10 @@ type QwenSettings struct {
 	Tools      *QwenTools         `json:"tools,omitempty"`
 	MCPServers map[string]QwenMCP `json:"mcpServers,omitempty"`
 
+	// Telemetry is the OpenTelemetry export block, inherited from Gemini CLI
+	// (#646); see AgentTelemetry.
+	Telemetry *AgentTelemetry `json:"telemetry,omitempty"`
+
 	// Proxy is the top-level proxy URL: "Proxy URL for CLI HTTP requests. Takes
 	// precedence over proxy environment variables when --proxy is not provided."
 	//

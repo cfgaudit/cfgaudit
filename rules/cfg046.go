@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 	"github.com/cfgaudit/cfgaudit/internal/version"
 )
 
@@ -46,7 +47,81 @@ func (r *cfg046) ID() string { return "CFG046" }
 // metadata, so a repo-controlled settings.json redirecting it off-host is an
 // exfiltration channel (the OTEL analogue of CFG005's ANTHROPIC_BASE_URL).
 func (r *cfg046) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil || t.Settings.Env == nil {
+	if t == nil {
+		return nil
+	}
+	var out []finding.Finding
+	if t.Gemini != nil {
+		out = append(out, agentTelemetryFindings(t, t.Gemini.Telemetry, t.GeminiFile, "Gemini CLI", geminiTelemetryGate)...)
+	}
+	if t.Qwen != nil {
+		out = append(out, agentTelemetryFindings(t, t.Qwen.Telemetry, t.QwenFile, "qwen-code", qwenTelemetryGate)...)
+	}
+	return append(out, r.checkClaudeEnv(t)...)
+}
+
+// geminiTelemetryGate and qwenTelemetryGate say what stands between a committed
+// telemetry block and the export, as measured (#646). Gemini CLI 0.63.0 and the
+// 0.65 nightly exported /v1/logs, /v1/metrics and /v1/traces to a project
+// otlpEndpoint once the folder was trusted, and the nightly sent the project's
+// otlpHeaders with them; an untrusted folder did not start headless at all.
+// qwen-code 0.25.1 exported to a project otlpEndpoint with no trust step, since
+// qwen ships folder trust off by default.
+const (
+	geminiTelemetryGate = " Gemini CLI applies it once the folder is trusted, and then every session is exported there."
+	qwenTelemetryGate   = " qwen-code applies it with no prompt, since its folder trust is off by default, so every session in the repository is exported there."
+)
+
+// agentTelemetryFindings reports a Gemini or qwen telemetry.otlpEndpoint that
+// points off the machine. The export carries prompt text unless logPrompts is
+// false (it defaults to true). Severity follows the Claude env case: warn, error
+// for a raw IP. A block that does not itself enable telemetry is info, because
+// the endpoint then waits for a user's own `enabled: true`, which project
+// settings override but do not need to supply.
+func agentTelemetryFindings(t *Target, tel *parser.AgentTelemetry, file, agent, gate string) []finding.Finding {
+	if tel == nil {
+		return nil
+	}
+	v := strings.TrimSpace(tel.OtlpEndpoint)
+	if v == "" || proxyShellRefRe.MatchString(v) || proxyTargetsLoopback(v) {
+		return nil
+	}
+	// Gemini resolves $VAR and ${VAR} in settings.json from the user's
+	// environment (resolveEnvVarsInObject), so a host written as a reference is
+	// the user's own value, not one the repository chose.
+	if strings.Contains(endpointHost(v), "$") {
+		return nil
+	}
+	if tel.Enabled != nil && !*tel.Enabled {
+		return nil
+	}
+	if t.Scope == finding.ScopeUser {
+		gate = "" // the trust gate is about a repository's file
+	}
+	carries := "prompt text, tool calls and usage"
+	if tel.LogPrompts != nil && !*tel.LogPrompts {
+		carries = "tool calls and usage (logPrompts is off)"
+	}
+	sev, detail := finding.Warn, "a non-local collector"
+	if host := endpointHost(v); host != "" && net.ParseIP(host) != nil {
+		sev, detail = finding.Error, "a raw IP, a hardcoded external collector"
+	}
+	msg := "telemetry.otlpEndpoint sends " + agent + " OpenTelemetry logs, metrics and traces (" + carries + ") to \"" + v + "\", " + detail + "." + gate
+	if tel.Enabled == nil {
+		sev = finding.Info
+		msg = "telemetry.otlpEndpoint names " + detail + " (\"" + v + "\") for " + agent + " telemetry, but this file does not set telemetry.enabled, so the export starts only for a user who enables telemetry themselves; for them this file decides where " + carries + " go." + gate
+	}
+	return []finding.Finding{{
+		RuleID:   "CFG046",
+		Severity: sev,
+		Scope:    t.Scope,
+		File:     file,
+		Message:  msg + " Point it at a loopback collector, or leave telemetry configuration to each user" + userScopeNote(t),
+	}}
+}
+
+func (r *cfg046) checkClaudeEnv(t *Target) []finding.Finding {
+	if t.Settings == nil || t.Settings.Env == nil {
 		return nil
 	}
 	keys := make([]string, 0, len(t.Settings.Env))

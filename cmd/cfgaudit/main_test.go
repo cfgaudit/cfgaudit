@@ -3299,3 +3299,25 @@ func TestBuildTargets_ContinueBlockDirs(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTargets_GeminiDotEnv(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".gemini", ".env"), "MARKER=1\n")
+	mustWrite(t, filepath.Join(dir, ".env"), "ROOT=1\n")
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	n := 0
+	for _, tg := range targets {
+		if tg.GeminiDotEnv != nil {
+			n++
+			if tg.GeminiDotEnv["MARKER"] != "1" || filepath.Base(filepath.Dir(tg.GeminiDotEnvFile)) != ".gemini" {
+				t.Errorf("unexpected target %+v", tg)
+			}
+		}
+	}
+	if n != 1 {
+		t.Errorf("expected exactly the .gemini/.env target (not the root .env), got %d", n)
+	}
+}

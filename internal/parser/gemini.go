@@ -16,6 +16,9 @@ type GeminiSettings struct {
 	Security   *GeminiSecurity      `json:"security,omitempty"`
 	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
 
+	// Telemetry is the OpenTelemetry export block (#646); see AgentTelemetry.
+	Telemetry *AgentTelemetry `json:"telemetry,omitempty"`
+
 	// Experimental carries keys the schema marks as experimental, so they can
 	// move or vanish. Read presence-based rather than behind a version assertion,
 	// per the version-gate convention.

@@ -59,6 +59,11 @@ var placeholderRe = regexp.MustCompile(`(?i)^(<.*>|x{3,}|changeme|your[-_ ].*|to
 // for values and key names.
 func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings := r.checkAgentHookHeaders(t)
+	// Gemini telemetry.otlpHeaders (#646) go on every export request; the 0.65
+	// nightly sent a project's literal Authorization header with them.
+	if t != nil && t.Gemini != nil && t.Gemini.Telemetry != nil {
+		findings = append(findings, headerSecretsAt("telemetry.otlpHeaders", t.Gemini.Telemetry.OtlpHeaders, t.GeminiFile, t)...)
+	}
 	findings = append(findings, r.checkMarketplaceHeaders(t)...)
 	findings = append(findings, r.checkContinueRequestOptions(t)...)
 	findings = append(findings, r.checkZedEnv(t)...)
@@ -263,6 +268,12 @@ func (r *cfg050) checkZedEnv(t *Target) []finding.Finding {
 // value pattern (a recognised token shape) or by header name (an auth header
 // carrying a literal, non-placeholder credential).
 func headerSecrets(base string, headers map[string]string, file string, t *Target) []finding.Finding {
+	return headerSecretsAt(base+".headers", headers, file, t)
+}
+
+// headerSecretsAt is headerSecrets for a header block whose key path is not
+// <base>.headers, such as Gemini's telemetry.otlpHeaders.
+func headerSecretsAt(prefix string, headers map[string]string, file string, t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, k := range sortedKeys(headers) {
 		v := unquoteValue(strings.TrimSpace(headers[k]))
@@ -270,7 +281,7 @@ func headerSecrets(base string, headers map[string]string, file string, t *Targe
 			continue
 		}
 		if label, ok := matchSecretPattern(v); ok {
-			findings = append(findings, secretFinding(base+".headers."+k, "a hardcoded "+label, file, t))
+			findings = append(findings, secretFinding(prefix+"."+k, "a hardcoded "+label, file, t))
 			continue
 		}
 		// An auth header carrying a literal (non-placeholder) credential.
@@ -286,7 +297,7 @@ func headerSecrets(base string, headers map[string]string, file string, t *Targe
 			if label, ok := matchSecretPattern(cred); ok {
 				what = "a hardcoded " + label
 			}
-			findings = append(findings, secretFinding(base+".headers."+k, what, file, t))
+			findings = append(findings, secretFinding(prefix+"."+k, what, file, t))
 		}
 	}
 	return findings

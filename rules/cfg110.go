@@ -2,6 +2,7 @@ package rules
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -47,6 +48,9 @@ const shellPrefixVar = "CLAUDE_CODE_SHELL_PREFIX"
 // here, as every rule that reports a dangerous value does (#595): an error in
 // our bundled schema must not silence it.
 func (r *cfg110) Check(t *Target) []finding.Finding {
+	if t != nil && len(t.GeminiDotEnv) > 0 {
+		return geminiDotEnvFindings(t)
+	}
 	if t == nil || t.Settings == nil || len(t.Settings.Env) == 0 {
 		return nil
 	}
@@ -150,4 +154,53 @@ func quoteValue(v string) string {
 		v = string(r[:77]) + "..."
 	}
 	return "\"" + v + "\""
+}
+
+// geminiIDECommandVars are the two variables Gemini CLI reads its IDE companion
+// stdio launch from (getStdioConfigFromEnv in packages/core/src/ide): the command
+// it spawns to reach the IDE, and that command's arguments. Gemini's own
+// DEFAULT_EXCLUDED_ENV_VARS keeps both out of a project's root .env, which is
+// what makes their presence in .gemini/.env, where that filter does not apply,
+// worth naming.
+var geminiIDECommandVars = []string{"GEMINI_CLI_IDE_SERVER_STDIO_COMMAND", "GEMINI_CLI_IDE_SERVER_STDIO_ARGS"}
+
+// geminiDotEnvFindings reports code-execution variables in a project's
+// .gemini/.env (#646). In a trusted folder Gemini CLI loads that file whole into
+// its own process environment (loadEnvironment, settings.ts): the exclusion list
+// applies only to a .env outside .gemini. Every process it starts afterwards, MCP
+// servers, the shell tool and hooks, inherits the values; measured with 0.63.0
+// and the 0.65 nightly, a value from .gemini/.env reached a project MCP server's
+// environment. The classifier is the one CFG110 uses for Claude settings env.
+func geminiDotEnvFindings(t *Target) []finding.Finding {
+	env := t.GeminiDotEnv
+	const reach = ", and Gemini CLI loads .gemini/.env whole into its own environment once the folder is trusted (its exclusion list covers only a root .env), so every MCP server, shell command and hook it starts inherits the value"
+	var findings []finding.Finding
+	for _, hit := range codeExecEnvHits(env, true) {
+		value := strings.TrimSpace(env[hit.Key])
+		f := finding.Finding{
+			RuleID:   "CFG110",
+			Severity: finding.Error,
+			Scope:    t.Scope,
+			File:     t.GeminiDotEnvFile,
+			Message:  hit.Key + " is set: " + hit.Mechanism + reach + "; remove it",
+		}
+		if startupFileVars[strings.ToUpper(hit.Key)] && !hasRepoRelativeEntry(value) {
+			f.Severity = finding.Info
+			f.Message = hit.Key + " is set to " + quoteValue(value) + ": " + hit.Mechanism + reach + ". The path is absolute or home-relative, so it names a file on the machine rather than one in the repository"
+		}
+		findings = append(findings, f)
+	}
+	for _, k := range geminiIDECommandVars {
+		if v := strings.TrimSpace(env[k]); v != "" {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG110",
+				Severity: finding.Error,
+				Scope:    t.Scope,
+				File:     t.GeminiDotEnvFile,
+				Message:  k + " is set to " + quoteValue(v) + ": Gemini CLI builds the command it spawns to reach the IDE companion from this variable" + reach + ". Gemini keeps it out of a root .env for that reason; remove it",
+			})
+		}
+	}
+	sort.Slice(findings, func(i, j int) bool { return findings[i].Message < findings[j].Message })
+	return findings
 }

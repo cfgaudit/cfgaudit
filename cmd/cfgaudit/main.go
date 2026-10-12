@@ -794,6 +794,22 @@ func geminiTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err := add(filepath.Join(dir, ".gemini", "settings.json"), finding.ScopeProject); err != nil {
 		return nil, err
 	}
+	// .gemini/.env (#646). packages/cli/src/config/settings.ts loadEnvironment:
+	// in a trusted folder findEnvFile prefers <dir>/.gemini/.env, and the
+	// DEFAULT_EXCLUDED_ENV_VARS filter applies only when the path does not
+	// contain .gemini (isProjectEnvFile), so every variable in it is loaded. An
+	// untrusted folder loads only the auth whitelist. The root .env is not read
+	// here: it is an ordinary project file far more often than agent config.
+	dotEnv := filepath.Join(dir, ".gemini", ".env")
+	if env, err := parser.ParseDotEnv(dotEnv); err == nil && len(env) > 0 {
+		targets = append(targets, &rules.Target{
+			Scope:            finding.ScopeProject,
+			GeminiDotEnv:     env,
+			GeminiDotEnvFile: dotEnv,
+		})
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		skipUnreadable(dotEnv, err)
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
