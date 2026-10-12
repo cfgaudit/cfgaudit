@@ -17,6 +17,13 @@ type CodexConfig struct {
 	SandboxMode    string              `toml:"sandbox_mode"`
 	MCPServers     map[string]CodexMCP `toml:"mcp_servers"`
 
+	// Plugins is [plugins."<plugin>@<marketplace>"] (#647). Only the MCP approval
+	// overlay is read: plugins.<id>.mcp_servers.<srv>.default_tools_approval_mode
+	// and .tools.<tool>.approval_mode (codex-rs/config/src/types.rs), the same
+	// AppToolApproval values as a top-level [mcp_servers] table. Neither is on the
+	// project-local denylist.
+	Plugins map[string]CodexPlugin `toml:"plugins"`
+
 	// ApprovalsReviewer routes escalated approval requests. "user" (the default)
 	// asks the person; "auto_review" hands the decision to a subagent. Codex still
 	// accepts the legacy spelling "guardian_subagent" as an alias for the same
@@ -79,9 +86,11 @@ type CodexConfig struct {
 	// it configures Codex's own security reviewer, and `features` is not on
 	// PROJECT_LOCAL_CONFIG_DENYLIST, so a committed value crosses. The
 	// project-layer sanitizer removes several keys from inside this table
-	// (respect_system_proxy always; shell_snapshot, network_proxy in its boolean
-	// form, network_proxy.credential_broker and network_proxy.enabled once the
-	// credential broker is configured), but guardianv2 is not among them.
+	// (respect_system_proxy, system_proxy_fallback, credential_masking and
+	// multi_agent_v2.message_board_remote always; shell_snapshot, network_proxy
+	// in its boolean form, network_proxy.credential_broker/credentials and
+	// network_proxy.enabled once the credential broker is configured; loader/mod.rs
+	// at bd27456), but guardianv2 is not among them.
 	Features CodexFeatures `toml:"features"`
 
 	// ShellEnvironmentPolicy is [shell_environment_policy], described upstream as
@@ -424,6 +433,62 @@ type CodexMCP struct {
 	OAuth *CodexMCPOAuth `toml:"oauth"`
 }
 
+// CodexPlugin is one [plugins."<id>"] table; see CodexConfig.Plugins.
+type CodexPlugin struct {
+	MCPServers map[string]CodexPluginMCP `toml:"mcp_servers"`
+}
+
+// CodexPluginMCP is the approval overlay for one MCP server a plugin brings.
+type CodexPluginMCP struct {
+	DefaultToolsApprovalMode string                  `toml:"default_tools_approval_mode"`
+	Tools                    map[string]CodexMCPTool `toml:"tools"`
+}
+
+// CodexPluginApproval is one plugin MCP server whose committed overlay removes
+// the confirmation prompt, for all of its tools (Default) or for the listed
+// ApprovedTools.
+type CodexPluginApproval struct {
+	Plugin, Server string
+	Default        bool
+	ApprovedTools  []string
+}
+
+// PluginMCPApprovals returns the plugin MCP servers whose approval overlay
+// never asks, sorted by plugin and server.
+//
+// Measured with codex 0.162.1 `app-server` config/read: a trusted repository's
+// .codex/config.toml carrying default_tools_approval_mode = "approve" and a
+// per-tool approval_mode = "approve" under plugins."demo@market".mcp_servers.srv
+// came back in the effective config unchanged; the same file in an untrusted
+// directory contributed an empty plugins table.
+func (c *CodexConfig) PluginMCPApprovals() []CodexPluginApproval {
+	if c == nil {
+		return nil
+	}
+	var out []CodexPluginApproval
+	for plugin, p := range c.Plugins {
+		for server, m := range p.MCPServers {
+			a := CodexPluginApproval{Plugin: plugin, Server: server, Default: codexApprovalNeverAsks(m.DefaultToolsApprovalMode)}
+			for tool, cfg := range m.Tools {
+				if codexApprovalNeverAsks(cfg.ApprovalMode) {
+					a.ApprovedTools = append(a.ApprovedTools, tool)
+				}
+			}
+			sort.Strings(a.ApprovedTools)
+			if a.Default || len(a.ApprovedTools) > 0 {
+				out = append(out, a)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Plugin != out[j].Plugin {
+			return out[i].Plugin < out[j].Plugin
+		}
+		return out[i].Server < out[j].Server
+	})
+	return out
+}
+
 // CodexMCPOAuth is the part of an MCP server's oauth table cfgaudit reads.
 type CodexMCPOAuth struct {
 	ClientSecret string `toml:"client_secret"`
@@ -506,7 +571,8 @@ func ParseCodexConfig(path string) (*CodexConfig, error) {
 //	    "experimental_realtime_ws_base_url", "otel",
 //	];
 //
-// plus a single special case that strips features.respect_system_proxy.
+// plus a few keys stripped from inside [features] (see Features), none of which
+// cfgaudit reads.
 //
 // Of those, cfgaudit reads three: notify (a command site) plus chatgpt_base_url
 // and model_providers (CFG071). Reporting them from a project file would be a

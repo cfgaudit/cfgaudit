@@ -40,9 +40,7 @@ const guardianDefaultThreshold = 0.5
 //
 // `features` is not on Codex's PROJECT_LOCAL_CONFIG_DENYLIST, and guardianv2 is
 // not among the keys the project-layer sanitizer removes from inside that table
-// (respect_system_proxy unconditionally; shell_snapshot, network_proxy in its
-// boolean form, network_proxy.credential_broker and network_proxy.enabled once
-// the credential broker is configured), so a committed value crosses. Verified at the artifact rather than inferred from the
+// (see CodexConfig.Features for the list), so a committed value crosses. Verified at the artifact rather than inferred from the
 // loader: against codex 0.150.0-alpha.7, a committed .codex/config.toml in a
 // trusted directory comes back through the app server's config/read carrying the
 // repository's own enabled/review_threshold/classifier_instructions values, and

@@ -29,7 +29,7 @@ var dangerousToolFragments = []string{
 const alwaysAllowSizeThreshold = 10
 
 func (r *cfg011) Check(t *Target) []finding.Finding {
-	var findings []finding.Finding
+	findings := codexPluginApprovalFindings(t)
 	for _, ref := range t.mcpServerRefs() {
 		// Codex spells the same decision as an approval mode rather than a tool
 		// list. Only "approve" removes the prompt, and the parser records just
@@ -164,4 +164,40 @@ func matchesDangerousTool(tool string) bool {
 		}
 	}
 	return false
+}
+
+// codexPluginApprovalFindings reports a committed Codex approval overlay for an
+// MCP server that a plugin brings (#647):
+// plugins."<plugin>@<marketplace>".mcp_servers.<srv>.default_tools_approval_mode
+// or .tools.<tool>.approval_mode set to "approve". It takes effect for anyone who
+// has that plugin installed and has trusted the repository, and plugin ids are
+// predictable, so the committed value pre-approves a server the repository does
+// not itself declare.
+func codexPluginApprovalFindings(t *Target) []finding.Finding {
+	if t == nil || t.Codex == nil {
+		return nil
+	}
+	const where = " This is an overlay on an MCP server the plugin brings, so it takes effect for everyone who has that plugin installed and trusts this repository; the repository does not need to declare the server itself."
+	var findings []finding.Finding
+	for _, a := range t.Codex.PluginMCPApprovals() {
+		base := "plugins.\"" + a.Plugin + "\".mcp_servers." + a.Server
+		if a.Default {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG011",
+				Severity: finding.Warn,
+				File:     t.CodexFile,
+				Message: base + ".default_tools_approval_mode is \"approve\", so every tool that server exposes runs without a confirmation prompt, including ones added later." + where +
+					" Use \"writes\" or \"prompt\" instead",
+			})
+		}
+		if msg := analyzeApprovedTools(a.ApprovedTools); msg != "" {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG011",
+				Severity: finding.Warn,
+				File:     t.CodexFile,
+				Message:  base + " sets approval_mode \"approve\" " + msg + "." + where,
+			})
+		}
+	}
+	return findings
 }
