@@ -1,95 +1,80 @@
-# cfgaudit ↔ OWASP AISVS 1.0 (secondary mapping)
+# cfgaudit ↔ OWASP AISVS 1.01 (secondary mapping)
 
-> **Secondary, provisional lens.** Mapped against the [OWASP AI Security Verification Standard (AISVS) **1.0**](https://owasp.org/www-project-ai-security-verification-standard/) (source: [OWASP/AISVS `1.0/en`](https://github.com/OWASP/AISVS/tree/master/1.0/en)). The [OWASP Top 10 for LLM Applications 2025](https://owasp.org/www-project-top-10-for-large-language-model-applications/) stays cfgaudit's **primary** mapping (one risk per rule, in each rule doc and the README). This AISVS view is a complementary lens for teams who verify against AISVS.
+> **Secondary, provisional lens.** Mapped against the [OWASP AI Security Verification Standard (AISVS) **1.01**](https://owasp.org/www-project-ai-security-verification-standard/) (source: [OWASP/AISVS `1.01/en`](https://github.com/OWASP/AISVS/tree/master/1.01/en), read at `55dc220`, 2026-10-08). The [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) stays cfgaudit's **primary** mapping (one risk per rule, in each rule doc and the README). This AISVS view is a complementary lens for teams who verify against AISVS.
 
-## What this mapping is — and is not
+## What this mapping is, and what it is not
 
-AISVS verifies a **whole AI system at runtime** ("*Verify that* the system does X"). cfgaudit is a static auditor of **committed agent-configuration files** (Claude Code `settings.json` / `CLAUDE.md` / `.mcp.json` / hooks / plugins, and the cross-agent equivalents). So cfgaudit **contributes static-configuration evidence toward** a subset of AISVS requirements — it does not, by itself, *satisfy* them. Where a requirement needs runtime enforcement, cryptographic identity, hardware attestation, or model/dataset provenance, cfgaudit is out of scope and says so below.
+AISVS verifies a **whole AI system at runtime** ("*Verify that* the system does X"). cfgaudit is a static auditor of **committed agent-configuration files** (Claude Code `settings.json` / `CLAUDE.md` / `.mcp.json` / hooks / plugins, and the cross-agent equivalents). So cfgaudit **contributes static-configuration evidence toward** a subset of AISVS requirements; it does not, by itself, *satisfy* them. Where a requirement needs runtime enforcement, cryptographic identity, hardware attestation, or model/dataset provenance, cfgaudit is out of scope and says so below. Each row cites the requirement by its 1.01 number and wording.
 
-Only **C4, C5, C6, C9, C10** have any config-layer overlap; the overlap is concentrated in **C9** (agentic action) and **C10** (MCP). The other nine chapters are out of scope (table at the end).
+AISVS 1.01 has twelve chapters. The overlap is in **C5** (one requirement), **C9** (agentic action) and **C10** (MCP). **C4** and **C6** are adjacent without a requirement match. The other seven chapters are out of scope (table at the end).
+
+### Re-review for 1.01 (#667)
+
+The previous version of this page said "AISVS 1.0" but cited a structure that neither 1.0 nor 1.01 has: C5.4/C5.5, C9.7 to C9.9 and C10.5/C10.6 do not exist, 9.6.3 and 9.6.4 meant something else, and the out-of-scope table listed C13 and C14. It had been written against a pre-1.0 draft. The 1.0 to 1.01 change itself is small for these chapters (C4, C5 and C6 unchanged apart from reference links; C9 adds 9.2.11, 9.3.9 and 9.5.7 and tightens eight texts toward "enforced by the runtime"; C10 removes 10.2.6, adds seventeen runtime requirements and raises 10.3.3 to level 1), so every row below was remapped against the 1.01 text rather than carried over.
 
 ---
 
-## C4 — Infrastructure, Configuration & Deployment
+## C5: Access Control & Identity
 
 | AISVS requirement | cfgaudit (config-layer evidence) |
 |---|---|
-| **C4.1** AI Workload Sandboxing & Validation (4.1.1–4.1.2: isolated execution, restricted egress by default) | **CFG022** — flags a `sandbox` config that weakens or hijacks Claude Code's execution sandbox (`excludedCommands` wildcard/shell, attacker-set `bwrapPath`/`socatPath`). Keeps the committed config from disabling the very isolation C4.1 requires. |
+| **5.2.5** The policy decision point for agent authorization is isolated from the agent's execution environment. | **CFG028** (a command writes to the agent's own trust/config file, which puts the policy within the agent's reach), and the rules that flag permission policy written into instruction text instead of configuration: **CFG026**, **CFG029**, **CFG035**. |
 
-**Out of scope in C4:** model-artifact deserialization allowlists & attestation (4.1.3–4.1.7), AI-hardware/GPU/TEE/HSM security (C4.2), edge/distributed-device security (C4.3) — hardware and model-runtime, not committed agent config.
+**Not mapped in C5:** 5.2.1 (allow-lists and default-deny on AI *resources*: datasets, endpoints, vector collections) is adjacent to cfgaudit's permission rules but concerns data resources, not the agent's tool permissions, which C9.5.1 covers. The rest of C5 is authentication, retrieval authorization, multi-tenant isolation and just-in-time privilege at runtime.
 
-## C5 — Access Control & Identity
+## C9: Orchestration & Agentic Action
 
-cfgaudit audits the Claude Code **permission model**, which is the agent's action-layer access control: an allow/deny list with a default-deny posture. This contributes evidence toward C5.2's *"explicit allow-lists and default-deny policies"* principle, applied to agent tool/command use.
-
-| AISVS requirement | cfgaudit (config-layer evidence) |
-|---|---|
-| **C5.2** AI Resource Authorization (5.2.1: access controls with explicit allow-lists & default-deny) | **CFG001/CFG002/CFG023/CFG040** (no unrestricted `allow` entries), **CFG004** (no `bypassPermissions`/`auto` default mode), **CFG006** (a non-empty `permissions.deny` exists — default-deny), **CFG041–CFG044** (deny covers credential / private-key / cloud / SSH files), **CFG025** (custom org allow/deny policy is honoured), **CFG048** (no blanket tool auto-approve in `.vscode`). |
-
-**Out of scope in C5:** step-up & federated authentication (C5.1), just-in-time privileged access & data-classification taxonomy/propagation (5.2.2–5.2.4), query-time authorization (C5.3), output-entitlement filtering (C5.4), policy-decision-point isolation (C5.5) — runtime identity & enforcement, not config.
-
-## C6 — Supply Chain
-
-**Adjacent, no direct requirement match.** Every C6 requirement targets **ML model/dataset artifacts** (signed origin records, Trojan-layer scanning, dataset poisoning assessment, AI-BOM / CycloneDX-SPDX) — assets cfgaudit does not audit. cfgaudit's config-layer supply-chain hygiene is conceptually adjacent but does not map to a specific C6 control:
-
-- **CFG010** — MCP server uses an unpinned package/image version (`@latest`, `:latest`).
-- **CFG055** — committed settings auto-enable a plugin / register a third-party marketplace (loads third-party hooks/MCP).
-- **CFG014** — command pipes `curl`/`wget` straight into a shell (remote code execution).
-
-## C9 — Orchestration & Agentic Action Security
-
-The strongest overlap. cfgaudit's reason for existing — keeping agent **action policy** in auditable config rather than natural-language prompts, and preserving the human-in-the-loop — lines up with several C9 controls.
+The strongest overlap. cfgaudit's reason for existing, keeping agent **action policy** in auditable config rather than natural-language prompts and preserving the human approval step, lines up with several C9 requirements.
 
 | AISVS requirement | cfgaudit (config-layer evidence) |
 |---|---|
-| **C9.2** High-Impact Action Approval (9.2.1: human-approval gate before privileged/irreversible actions) | **CFG004** (`bypassPermissions`/`auto`), **CFG029** (CLAUDE.md "always approve" / "without asking"), **CFG047** (`.vscode` task auto-runs on folder open), **CFG048** (blanket tool auto-approve) — each removes the approval gate; cfgaudit flags them. |
-| **C9.3** Component Isolation & Safe Integration (9.3.1 least-privilege; 9.3.5 tool manifests declare privileges) | **CFG022** (sandbox integrity), **CFG051** (skill/command/subagent `allowed-tools` not over-broad — least-privilege manifest), **CFG001/CFG023** (least-privilege command grants). |
-| **C9.6.3** Access-control decisions never made by the model; model output cannot override them | **CFG026/CFG029/CFG035/CFG036** — flag CLAUDE.md/injection text that instructs Claude to bypass, override, or self-configure trust. |
-| **C9.6.4** Secrets not exposed in the model-observable context | **CFG007** (`env` secret), **CFG016** (credential helper in project settings), **CFG050/CFG054** (MCP `env`/`headers` secret), **CFG031** (instruction names a secret file), **CFG037/CFG038/CFG078** (commands read / exfiltrate secrets). |
-| **C9.7.1** Pre-execution gates evaluate actions against deny rules & allow-lists | **CFG006**, **CFG041–CFG044**, **CFG025** (the `permissions.deny` / org-policy a gate consults) + the allow-list-hygiene rules above. |
-| **C9.7.3** Writes to persistent external state need approval / policy authorization | **CFG028** (command writes to a Claude trust/config file), **CFG047**, **CFG004**. |
-| **C9.9.3** Tool-execution security policy expressed as versioned, machine-interpretable **config — not natural-language prompts** | cfgaudit's core thesis: flags access-control intent smuggled into CLAUDE.md (**CFG029/CFG026/CFG035/CFG036**) and audits the real `permissions` config instead. |
+| **9.2.1** The agent runtime blocks privileged or irreversible actions until explicit human approval is received. | **CFG004** (`bypassPermissions` / `auto` default mode), **CFG029** (instruction text: "always approve", "without asking"), **CFG047** (a committed task auto-runs on folder open), **CFG048** (blanket tool auto-approve in `.vscode/settings.json`). Each removes the approval step. |
+| **9.2.5** Self-modification (prompt rewriting, tool-list changes, parameter updates) is restricted by boundaries the agent cannot change. | **CFG028** (a command writes to a Claude trust/config file), **CFG035** (instruction text tells the agent to configure or trust an MCP server, a tool-list change). |
+| **9.2.7** The AI-augmented review of high-risk actions is protected against manipulation and cannot be overridden through prompt injection. | **CFG079** (committed `autoMode` weakens Claude Code's auto-mode classifier), **CFG094** (`.cursor/permissions.json` `autoRun.allow_instructions` steers Cursor's auto-review classifier), **CFG103** (committed Codex config turns off, blunts or rewrites Guardian v2). Each lets the repository write the reviewer's instructions. |
+| **9.3.1** Each tool/plugin executes in a least-privilege sandbox or is otherwise isolated. | **CFG022** (Claude Code sandbox weakened or hijacked), **CFG061** (Gemini CLI), **CFG064** (Codex), **CFG095** (Cursor `.cursor/sandbox.json`). |
+| **9.3.3** Tool manifests declare required privileges. | **CFG051** (skill/command/subagent `allowed-tools` not over-broad). |
+| **9.5.1** Agent actions are authorized against fine-grained policies that restrict which tools an agent may invoke and which parameter values it may supply. | **CFG001/CFG002/CFG023/CFG040** (no unrestricted `allow` entries), **CFG006** (a deny list exists), **CFG041–CFG044** (the deny list covers `.env`, private keys, cloud credentials, SSH keys), **CFG101** (a deny rule that argument reordering walks past), **CFG025** (organisation allow/deny policy), **CFG011** (MCP `alwaysAllow` breadth). |
+| **9.5.3** All access control decisions are enforced by application logic or a policy engine, never by the model. | **CFG026/CFG029/CFG035/CFG036**: instruction text that tells the agent to bypass, override, or self-configure trust, which is access-control intent placed where the model decides. |
+| **9.5.4** Secrets required at runtime are not exposed in the model's observable context, including system prompts and tool call parameters. | **CFG031** (an instruction file names a secret file), **CFG037/CFG038/CFG078** (commands read or exfiltrate secrets). Adjacent: **CFG007**, **CFG016**, **CFG050/CFG054** (secrets committed to configuration, which is not model context but is where they leak from). |
+| **9.5.7** Authority derived through delegation never exceeds the delegating agent's current authority. | **CFG085** (subagent frontmatter sets a weaker permission mode than the session). |
 
-**Out of scope in C9:** execution budgets & circuit breakers (C9.1), cryptographic approval binding (9.2.3), agent identity / signing / tamper-evident audit (C9.4), semantic output validation (C9.5), delegation & continuous re-evaluation (most of C9.6), runtime intent/outcome verification (9.7.2/9.7.4), multi-agent/swarm isolation (C9.8), runtime data-flow graph & origin tracking (9.9.1/9.9.2/9.9.4–9.9.8).
+**Out of scope in C9:** execution budgets and kill switches (C9.1, C9.6), approval display, reversibility classification and cryptographic approval binding (9.2.2–9.2.4, 9.2.6, 9.2.8–9.2.11), output schema validation and untrusted-data isolation (9.3.2, 9.3.4–9.3.9), agent identity (C9.4), token propagation, delegation policy and session re-evaluation (9.5.2, 9.5.5, 9.5.6). All are runtime behaviour.
 
-## C10 — Model Context Protocol (MCP) Security
+## C10: Model Context Protocol (MCP) Security
 
 Overlaps cfgaudit's MCP-server rules; see also the **[OWASP MCP Top 10 mapping](../README.md#owasp-mcp-top-10-mapping-secondary)** (#173) for the same rules under the MCP-specific taxonomy.
 
 | AISVS requirement | cfgaudit (config-layer evidence) |
 |---|---|
-| **C10.1** Component Integrity & Supply-Chain Hygiene (10.1.1 trusted/verified components; 10.1.2 allowlisted server identifiers, reject unlisted) | **CFG010** (unpinned version), **CFG003/CFG053** (no blanket auto-approval of all repo servers), **CFG011** (`alwaysAllow` not over-broad), **CFG052** (server-name shadowing across sources). |
-| **C10.2** Authentication & Authorization (secret-hygiene subset) | **CFG050/CFG054** — no hardcoded credentials in MCP `env`/`headers`. |
-| **C10.3** Secure Transport & Network Boundary (10.3.1 encrypted transport / SSE restricted; 10.3.3 DNS-rebinding / Origin-Host validation) | **CFG049** (remote/cleartext `http://`/`ws://` MCP URL), **CFG058** (deprecated `type: "sse"` transport — 10.3.1), **CFG017** (`dangerouslyAllowBrowser` → DNS-rebinding to RCE), **CFG018** (binds to all interfaces — NeighborJack). |
-| **C10.5.1** Outbound access restricted to approved destinations | **CFG021** (`env` routes traffic through a non-local proxy), **CFG020** (dynamic-linker injection). |
-| **C10.6.2** Expose only allow-listed, statically-defined functions | **CFG011** (`alwaysAllow` breadth / least-privilege MCP tools). |
+| **10.1.1** MCP components are obtained only from trusted sources and cryptographically verified. | **CFG010** (unpinned package or image version), **CFG059** (typosquatted package or endpoint). |
+| **10.1.2** Only allow-listed MCP servers are permitted. | **CFG003/CFG053** (blanket approval of every repository server), **CFG052** (a server name shadowed across sources). |
+| **10.3.1** Authenticated, encrypted streamable HTTP is used for remote MCP transport. | **CFG049** (remote or cleartext `http://` / `ws://` URL), **CFG058** (deprecated `type: "sse"`). |
+| **10.3.3** MCP servers validate the Origin and Host headers to prevent DNS rebinding (level 1 since 1.01). | **CFG017** (`dangerouslyAllowBrowser`, the DNS-rebinding path to the server), **CFG018** (server binds to all interfaces). Server-side requirement; these are the committed settings that widen its exposure. |
+| **10.4.7** MCP clients present an explicit consent dialogue upon installation of a local MCP server. | **CFG003/CFG053**: the committed settings that approve every project server and so skip that dialogue. |
 
-**Out of scope in C10:** OAuth 2.1 token flows & session teardown (most of C10.2), protocol-version negotiation & header integrity (10.3.4/10.3.5), tool-response validation & schema-signature provenance (C10.4), fail-closed runtime semantics (C10.6.1) — runtime protocol behaviour, not committed config.
+**Adjacent, no 1.01 requirement:** hardcoded credentials in MCP `env`/`headers` (**CFG050/CFG054**; C10.2 is now OAuth token handling only), outbound proxy and startup-code injection through a server's environment (**CFG020/CFG021**), and per-tool auto-approval breadth (**CFG011**, mapped under 9.5.1).
+
+**Out of scope in C10:** local-server sandboxing (10.1.3), OAuth 2.1 token validation and binding (C10.2), stdio-only-local, protocol-version floors and mirrored headers (10.3.2, 10.3.4–10.3.6), and schema, payload, caching and elicitation validation (the rest of C10.4). All are runtime protocol behaviour of a server or client.
 
 ---
 
-## Out-of-scope chapters
+## Adjacent chapters without a requirement match
 
-These AISVS chapters have no committed-agent-config surface cfgaudit can statically audit — they verify model, data, or runtime behaviour:
+- **C4: Infrastructure.** 4.1.1 asks that *AI models* execute in isolated sandboxes; the rest is model loading, hardware and edge security. cfgaudit's sandbox rules concern the agent's tool execution and are mapped to 9.3.1.
+- **C6: Supply Chain.** Every requirement targets ML model and dataset artifacts (scanning, approved sources, AI BOMs). cfgaudit's configuration-level supply-chain checks (**CFG010**, **CFG055**, **CFG014**) are adjacent and map to 10.1.1 where MCP is concerned.
+
+## Out-of-scope chapters
 
 | Chapter | Why out of scope |
 |---|---|
-| **C1** Training Data Integrity & Traceability | Training-dataset provenance/poisoning — no agent config. |
-| **C2** Input Validation | Runtime prompt/input handling. |
-| **C3** Model Lifecycle Management | Model training/eval/deployment lifecycle. |
-| **C7** Model Behavior | Runtime model output/behaviour. |
-| **C8** Memory, Embeddings & Vector Database | Vector-store/embedding security at runtime. |
-| **C11** Adversarial Robustness | Runtime attack resistance / red-teaming. |
-| **C12** Privacy | Data-handling / PII at runtime. |
-| **C13** Monitoring & Logging | Operational telemetry/audit infrastructure. |
-| **C14** Human Oversight | Operational governance & review processes. |
+| **C1** Training Data Integrity & Traceability | Training-dataset provenance and poisoning. |
+| **C2** Input Validation | Runtime prompt and input handling. |
+| **C3** Model Lifecycle Management | Model training, evaluation and deployment lifecycle. |
+| **C7** Model Behavior | Runtime model output and behaviour. |
+| **C8** Memory, Embeddings & Vector Database | Vector-store and embedding security at runtime. |
+| **C11** Adversarial Robustness | Runtime attack resistance. |
+| **C12** Monitoring & Logging | Operational telemetry and audit infrastructure. |
 
-(The runtime/identity/hardware portions of C4/C5/C6/C9/C10 are out of scope too, as noted per chapter above.)
+## Gap analysis
 
-## Gap analysis (statically-checkable AISVS requirements with no cfgaudit rule yet)
-
-Walking the in-scope chapters, almost every uncovered requirement is **runtime, identity, hardware, or model/dataset** — outside a static config auditor's reach. The genuinely config-checkable requirements are already substantially covered by existing rules. One candidate surfaced and was implemented:
-
-- **C10.3.1 — alternate MCP transports (SSE) restricted to local/controlled use.** cfgaudit's CFG049 flags a *remote/cleartext* MCP URL by scheme and host, but not the deprecated/weaker **`type: "sse"`** transport itself. Now covered by **CFG058**, which keys on the `type` field (statically checkable) — filed as #254, implemented.
-
-No further high-confidence new-rule gaps were found; this is itself a useful result (AISVS's config-checkable surface is largely covered, and the rest is genuinely out of static-config scope).
+Walking the in-scope chapters against 1.01, almost every uncovered requirement is runtime, identity, hardware or model/dataset behaviour, outside a static configuration auditor's reach. The configuration-checkable requirements are covered by existing rules. One earlier candidate was implemented: transport restrictions on MCP (now 10.3.1) led to **CFG058**, which keys on `type: "sse"` (#254). The 1.01 additions (9.2.11, 9.3.9, 9.5.7, the C10.2 and C10.4 runtime requirements) brought no new configuration-checkable gap; 9.5.7 maps to an existing rule.
