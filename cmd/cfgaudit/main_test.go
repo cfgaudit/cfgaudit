@@ -3244,3 +3244,58 @@ func TestBuildTargets_MissingSkillAgentDirs(t *testing.T) {
 		t.Error("expected the Devin skill's permissions block on a Devin target")
 	}
 }
+
+// Continue's .continue/<blockType> folders, JSON MCP files and Markdown rules,
+// prompts and skills, as its loaders read them (#645).
+func TestBuildTargets_ContinueBlockDirs(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".continue", "mcpServers", "srv.yaml"), "name: s\nversion: 0.0.1\nschema: v1\nmcpServers:\n  - name: yamlsrv\n    command: npx\n    args: [\"-y\", \"some-server\"]\n")
+	mustWrite(t, filepath.Join(dir, ".continue", "models", "nested", "m.yml"), "name: m\nversion: 0.0.1\nschema: v1\nmodels:\n  - name: m\n    provider: openai\n    model: gpt\n")
+	mustWrite(t, filepath.Join(dir, ".continue", "agents", "a.yaml"), "name: a\nversion: 0.0.1\nschema: v1\nmcpServers:\n  - name: agentsrv\n    command: uvx\n")
+	mustWrite(t, filepath.Join(dir, ".continue", "mcpServers", "claude.json"), `{"mcpServers": {"jsonsrv": {"command": "node", "args": ["x.js"]}}}`)
+	mustWrite(t, filepath.Join(dir, ".continue", "mcpServers", "sub", "single.json"), `{"command": "python", "args": ["-m", "srv"]}`)
+	mustWrite(t, filepath.Join(dir, ".continue", "mcpServers", "projects.json"), `{"projects": {"/x": {"mcpServers": {"projsrv": {"url": "https://example.com/mcp"}}}}}`)
+	mustWrite(t, filepath.Join(dir, ".continue", "rules", "sub", "r.md"), "Rule.\n")
+	mustWrite(t, filepath.Join(dir, ".continue", "prompts", "p.md"), "Prompt.\n")
+	mustWrite(t, filepath.Join(dir, ".continue", "skills", "s", "SKILL.md"), "---\nname: s\ndescription: d\n---\nSkill.\n")
+	mustWrite(t, filepath.Join(dir, ".continuerules"), "Rules.\n")
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	servers := map[string]string{}
+	instr := map[string]bool{}
+	continueFiles := map[string]bool{}
+	for _, tg := range targets {
+		for name := range tg.ProjectMCP {
+			rel, _ := filepath.Rel(dir, tg.ProjectMCPFile)
+			servers[name] = filepath.ToSlash(rel)
+		}
+		if tg.InstructionFile != "" {
+			rel, _ := filepath.Rel(dir, tg.InstructionFile)
+			instr[filepath.ToSlash(rel)] = true
+		}
+		if tg.Continue != nil {
+			rel, _ := filepath.Rel(dir, tg.ContinueFile)
+			continueFiles[filepath.ToSlash(rel)] = true
+		}
+	}
+	for name, file := range map[string]string{
+		"yamlsrv": ".continue/mcpServers/srv.yaml", "agentsrv": ".continue/agents/a.yaml",
+		"jsonsrv": ".continue/mcpServers/claude.json", "single": ".continue/mcpServers/sub/single.json",
+		"projsrv": ".continue/mcpServers/projects.json",
+	} {
+		if servers[name] != file {
+			t.Errorf("server %s: attributed to %q, want %q", name, servers[name], file)
+		}
+	}
+	if !continueFiles[".continue/models/nested/m.yml"] {
+		t.Error("a nested model block file should be a Continue target")
+	}
+	for _, rel := range []string{".continue/rules/sub/r.md", ".continue/prompts/p.md", ".continue/skills/s/SKILL.md", ".continuerules"} {
+		if !instr[rel] {
+			t.Errorf("%s: expected an instruction target", rel)
+		}
+	}
+}

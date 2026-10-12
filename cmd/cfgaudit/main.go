@@ -584,6 +584,25 @@ func continueTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err := add(filepath.Join(dir, ".continue", "config.yaml"), finding.ScopeProject); err != nil {
 		return nil, err
 	}
+	for _, path := range continueBlockFiles(dir) {
+		if err := add(path, finding.ScopeProject); err != nil {
+			return nil, err
+		}
+	}
+	for _, path := range continueFiles(filepath.Join(dir, ".continue", "mcpServers"), ".json") {
+		servers, err := parser.ParseContinueMCPJSON(path)
+		if err != nil {
+			skipUnreadable(path, err)
+			continue
+		}
+		if len(servers) > 0 {
+			targets = append(targets, &rules.Target{
+				Scope:          finding.ScopeProject,
+				ProjectMCP:     servers,
+				ProjectMCPFile: path,
+			})
+		}
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -594,6 +613,51 @@ func continueTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		}
 	}
 	return targets, nil
+}
+
+// continueBlockDirs are the .continue subfolders Continue reads YAML from (#645).
+// From core/config: loadYaml merges every YAML file under .continue/<blockType>
+// for the BLOCK_TYPES of @continuedev/config-yaml (models, context, data,
+// mcpServers, rules, prompts, docs) into the active config, and
+// loadLocalAssistants reads .continue/{agents,assistants,configs} as whole
+// assistant configs. Both walk the folder recursively (walkDir) and keep .yaml
+// and .yml. A block file has the config.yaml schema, so each one is parsed and
+// judged like config.yaml, as its own target.
+var continueBlockDirs = []string{"models", "context", "data", "mcpServers", "rules", "prompts", "docs", "agents", "assistants", "configs"}
+
+func continueBlockFiles(dir string) []string {
+	var out []string
+	for _, sub := range continueBlockDirs {
+		out = append(out, continueFiles(filepath.Join(dir, ".continue", sub), ".yaml", ".yml")...)
+	}
+	return out
+}
+
+// continueFiles walks root recursively and returns the files with one of the
+// extensions, skipping the directories Continue's walkDir ignores by default.
+func continueFiles(root string, exts ...string) []string {
+	var out []string
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "node_modules":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		for _, e := range exts {
+			if strings.HasSuffix(d.Name(), e) {
+				out = append(out, path)
+				break
+			}
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out
 }
 
 // parseContinueOptional parses a Continue config.yaml, returning (nil, nil) when
@@ -893,6 +957,9 @@ var (
 		// Zed's list, is read by clineRulesFiles because Cline lets it be a
 		// directory.
 		".rules",
+		// Continue's workspace rules dot file (#645): getWorkspaceContinueRuleDotFiles
+		// reads <workspace>/.continuerules whole as a rule.
+		".continuerules",
 		// Claude Code's own project instruction files beyond the repo-root
 		// CLAUDE.md. The 2.1.281 binary carries the two lists verbatim as
 		// ["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"] and
@@ -1491,6 +1558,12 @@ var filteredInstructionDirs = []filteredInstructionDir{
 	// also loads skills from Claude and Codex directories: .claude/skills/,
 	// .codex/skills/", walked recursively like .cursor/skills.
 	{filepath.Join(".codex", "skills"), isSkillFile},
+	// Continue (#645): loadMarkdownRules reads every .md under .continue/rules
+	// and .continue/prompts (recursive walkDir), and loadMarkdownSkills every
+	// SKILL.md under .continue/skills.
+	{filepath.Join(".continue", "rules"), isMarkdown},
+	{filepath.Join(".continue", "prompts"), isMarkdown},
+	{filepath.Join(".continue", "skills"), isSkillFile},
 	{filepath.Join(".opencode", "skill"), isSkillFile},
 	{filepath.Join(".opencode", "skills"), isSkillFile},
 }
