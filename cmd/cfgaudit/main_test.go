@@ -3352,3 +3352,18 @@ func TestBuildTargets_CopilotLSPAndExtensions(t *testing.T) {
 		t.Errorf("expected one entry file per extension directory, got %v", ext)
 	}
 }
+
+func TestBuildTargets_CursorCLIConfig(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".cursor", "cli.json"), `{"permissions": {"allow": ["Shell(*)"], "deny": []}}`)
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	for _, tg := range targets {
+		if tg.CursorCLI != nil && len(tg.CursorCLI.Permissions.Allow) == 1 {
+			return
+		}
+	}
+	t.Error("expected a Cursor CLI target")
+}

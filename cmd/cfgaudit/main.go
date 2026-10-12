@@ -2370,7 +2370,7 @@ func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
 					continue
 				}
 				targets = append(targets, &rules.Target{
-					Scope:        finding.ScopeProject,
+					Scope:     finding.ScopeProject,
 					AgentCode: &rules.AgentCodeFile{Path: m, Kind: cd.kind},
 				})
 			}
@@ -2606,9 +2606,25 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
-	// Cursor .cursor/sandbox.json — the per-repo sandbox profile, merged over a
-	// teammate's own with per-repo taking priority. Project scope only, for the
-	// same reason as permissions.json.
+	// Cursor .cursor/cli.json — the CLI's project permission tokens (#649).
+	cursorCLIPath := filepath.Join(dir, ".cursor", "cli.json")
+	if cc, err := parser.ParseCursorCLIConfig(cursorCLIPath); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			skipUnreadable(cursorCLIPath, err)
+		}
+	} else if cc.Permissions != nil {
+		targets = append(targets, &rules.Target{
+			Scope:         finding.ScopeProject,
+			CursorCLI:     cc,
+			CursorCLIFile: cursorCLIPath,
+		})
+	}
+
+	// Cursor .cursor/sandbox.json — the per-repo sandbox profile. Cursor merges it
+	// with the user's file field by field (#649): paths and network lists are
+	// unioned, a "deny" default and restrictive booleans win, and readBoundary and
+	// additionalReadPaths are taken from the repository. Project scope only, for
+	// the same reason as permissions.json.
 	cursorSandboxPath := filepath.Join(dir, ".cursor", "sandbox.json")
 	cursorSandbox, err := loadCursorSandboxOptional(cursorSandboxPath)
 	if err != nil {

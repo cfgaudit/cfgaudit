@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 
@@ -66,6 +67,9 @@ var shellPrefixCommands = map[string]string{
 // commands, pipes or subshells: that is undocumented, and asserting it would be a
 // guess of the kind that has produced false findings before.
 func (r *cfg093) Check(t *Target) []finding.Finding {
+	if t != nil && t.CursorCLI != nil && t.Scope != finding.ScopeUser {
+		return cursorCLIFindings(t)
+	}
 	if t == nil || t.CursorPermissions == nil || t.Scope == finding.ScopeUser {
 		return nil
 	}
@@ -180,4 +184,148 @@ func quoteList(entries []string) string {
 		quoted = append(quoted, "\""+e+"\"")
 	}
 	return strings.Join(quoted, ", ")
+}
+
+// cursorCLITokenRe splits a Cursor CLI permission token, Kind(argument).
+var cursorCLITokenRe = regexp.MustCompile(`^\s*(Shell|Mcp)\(\s*(.*?)\s*\)\s*$`)
+
+// cursorCLIFindings reports the unbounded allow entries of a committed Cursor
+// .cursor/cli.json (#649). Cursor's CLI reference: "Permissions are set in
+// ~/.cursor/cli-config.json (global) or <project>/.cursor/cli.json
+// (project-specific)", "Only permissions can be configured at the project
+// level", and "Deny rules take precedence over allow rules". Only the CLI
+// (cursor-agent) reads the file, after its workspace trust prompt.
+//
+// Reported, as error:
+//   - Shell(*) and Shell(<base>) where the base exists to run other commands
+//     (shellPrefixCommands): Shell(commandBase) allows that command with any
+//     subcommand or argument, so Shell(bash) covers bash -c '<anything>'.
+//   - Mcp(*:*) and Mcp(<server>:*), every tool of every or of one server.
+//
+// Bounded entries (Shell(git), Mcp(datadog:search)) are not reported here.
+// CFG093 reports them in permissions.json because Cursor documents that file as
+// concatenated with the user's own, so they cannot be taken back; how the CLI
+// merges cli.json with the user's list is not documented.
+func cursorCLIFindings(t *Target) []finding.Finding {
+	p := t.CursorCLI.Permissions
+	if p == nil {
+		return nil
+	}
+	var shellWide, mcpWide []string
+	kinds := map[string]string{}
+	for _, entry := range p.Allow {
+		m := cursorCLITokenRe.FindStringSubmatch(entry)
+		if m == nil {
+			continue
+		}
+		arg := m[2]
+		switch m[1] {
+		case "Shell":
+			base, args := splitCursorShellToken(arg)
+			if base == "*" {
+				shellWide = append(shellWide, strings.TrimSpace(entry))
+				kinds[strings.TrimSpace(entry)] = "every command"
+				continue
+			}
+			if kind, ok := shellPrefixCommands[base]; ok && cursorShellArgsUnbounded(args) {
+				shellWide = append(shellWide, strings.TrimSpace(entry))
+				kinds[strings.TrimSpace(entry)] = kind
+			}
+		case "Mcp":
+			if isWildcardMCPAllow(arg) {
+				mcpWide = append(mcpWide, strings.TrimSpace(entry))
+			}
+		}
+	}
+	sort.Strings(mcpWide)
+	// Shells, launchers and inline-code flags are error; interpreters, package
+	// runners and container runtimes with no argument pattern are warn. On 124
+	// real cli.json files, 53 allowed one of these, overwhelmingly Shell(node),
+	// Shell(npx) or Shell(python3) as everyday tooling; at that rate an error
+	// would describe ordinary use, the call CFG104 made for Devin's bare
+	// interpreters. The grant is still arbitrary code execution, so it is
+	// reported.
+	var shellErr, shellWarn []string
+	for _, e := range shellWide {
+		if k := kinds[e]; k == "every command" || k == "a shell" || k == "a command launcher" || k == "a command evaluator" || k == "a privilege escalator" || k == "a remote executor" || cursorInlineCodeToken(e) {
+			shellErr = append(shellErr, e)
+		} else {
+			shellWarn = append(shellWarn, e)
+		}
+	}
+	sort.Strings(shellErr)
+	sort.Strings(shellWarn)
+	var findings []finding.Finding
+	if len(shellErr) > 0 {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG093",
+			Severity: finding.Error,
+			Scope:    t.Scope,
+			File:     t.CursorCLIFile,
+			Message: "committed .cursor/cli.json permissions.allow grants " + describeKinds(shellErr, kinds) + " (" + quoteList(shellErr) +
+				") — a Shell(commandBase) token allows that command with any arguments, so this lets the Cursor CLI agent run arbitrary commands without a prompt in this repository once its workspace trust prompt is accepted. Allow the specific commands the project needs",
+		})
+	}
+	if len(shellWarn) > 0 {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG093",
+			Severity: finding.Warn,
+			Scope:    t.Scope,
+			File:     t.CursorCLIFile,
+			Message: "committed .cursor/cli.json permissions.allow grants " + describeKinds(shellWarn, kinds) + " with no argument pattern (" + quoteList(shellWarn) +
+				") — Shell(commandBase) allows the command with any arguments, so the Cursor CLI agent can run any script or package through it without a prompt once the workspace is trusted. Add an argument pattern (for example Shell(node:scripts/build.mjs*)) for the invocations the project needs",
+		})
+	}
+	if len(mcpWide) > 0 {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG093",
+			Severity: finding.Error,
+			Scope:    t.Scope,
+			File:     t.CursorCLIFile,
+			Message: "committed .cursor/cli.json permissions.allow auto-approves whole MCP servers (" + quoteList(mcpWide) +
+				") — every tool those servers expose runs without a prompt in the Cursor CLI once the workspace is trusted. Name the specific server:tool pairs",
+		})
+	}
+	return findings
+}
+
+// splitCursorShellToken splits the argument of a Shell(...) token into the base
+// command and its argument pattern. Cursor documents Shell(commandBase) and the
+// base:args form (Shell(curl:*)); real files also write the args after a space
+// (Shell(npx *), Shell(uv run tools/x.py)).
+func splitCursorShellToken(arg string) (base, args string) {
+	arg = strings.TrimSpace(arg)
+	if i := strings.Index(arg, ":"); i >= 0 {
+		return strings.TrimSpace(arg[:i]), strings.TrimSpace(arg[i+1:])
+	}
+	if i := strings.IndexAny(arg, " \t"); i >= 0 {
+		return arg[:i], strings.TrimSpace(arg[i+1:])
+	}
+	return arg, ""
+}
+
+// cursorShellArgsUnbounded reports whether an argument pattern leaves a
+// shell/interpreter/launcher free to run anything: no pattern at all (the base
+// "with any subcommand or argument"), a bare wildcard, or an inline-code flag.
+// A pattern naming a script or subcommand (node:--test*, uv:run tools/x.py) is
+// bounded and not reported.
+func cursorShellArgsUnbounded(args string) bool {
+	a := strings.TrimSpace(args)
+	if a == "" || strings.Trim(a, "* ") == "" {
+		return true
+	}
+	return cursorInlineCodeArgRe.MatchString(a)
+}
+
+var cursorInlineCodeArgRe = regexp.MustCompile(`^(?:-c|-e|--eval|--command|-Command)\b`)
+
+// cursorInlineCodeToken reports whether a Shell token's argument pattern is an
+// inline-code flag (python3:-c*, node:-e*).
+func cursorInlineCodeToken(entry string) bool {
+	m := cursorCLITokenRe.FindStringSubmatch(entry)
+	if m == nil {
+		return false
+	}
+	_, args := splitCursorShellToken(m[2])
+	return cursorInlineCodeArgRe.MatchString(strings.TrimSpace(args))
 }

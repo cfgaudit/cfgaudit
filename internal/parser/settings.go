@@ -268,6 +268,12 @@ type MCPServer struct {
 	// (#616); no JSON shape cfgaudit reads has one.
 	BearerTokenFile string `json:"-"`
 
+	// Auth is Cursor's static OAuth block on a remote server (#649):
+	// {"CLIENT_ID", "CLIENT_SECRET", "scopes"} per Cursor's MCP docs ("Static
+	// OAuth for remote servers"). CLIENT_SECRET is a literal credential unless
+	// written as ${env:...}.
+	Auth *MCPStaticOAuth `json:"auth,omitempty"`
+
 	Command                 string            `json:"command,omitempty"`
 	Args                    []string          `json:"args,omitempty"`
 	AlwaysAllow             []string          `json:"alwaysAllow,omitempty"`
@@ -418,4 +424,9 @@ func ParseSettingsBytes(data []byte, path string) (*Settings, error) {
 		return nil, fmt.Errorf("parse raw %s: %w", path, err)
 	}
 	return &s, nil
+}
+
+// MCPStaticOAuth is the part of a Cursor MCP server's `auth` block cfgaudit reads.
+type MCPStaticOAuth struct {
+	ClientSecret string `json:"CLIENT_SECRET,omitempty"`
 }

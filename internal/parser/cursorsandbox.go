@@ -30,6 +30,13 @@ type CursorSandbox struct {
 	AdditionalReadwritePaths []string `json:"additionalReadwritePaths,omitempty"`
 	AdditionalReadonlyPaths  []string `json:"additionalReadonlyPaths,omitempty"`
 
+	// ReadBoundary ("system" | "workspace", default "system", Cursor 3.23+) and
+	// AdditionalReadPaths (the Read Allowlist, used only with "workspace") are the
+	// two fields Cursor merges as "per-repo replaces per-user" (#649), so a
+	// committed value decides them for a teammate who chose otherwise.
+	ReadBoundary        string   `json:"readBoundary,omitempty"`
+	AdditionalReadPaths []string `json:"additionalReadPaths,omitempty"`
+
 	// DisableTmpWrite removes default write access to /tmp and the system temp
 	// directories. Setting it true makes the sandbox MORE restrictive, so it is
 	// decoded for completeness and deliberately not flagged.
@@ -59,7 +66,7 @@ func (s *CursorSandbox) Empty() bool {
 	if s.Type != "" || s.EnableSharedBuildCache || s.DisableTmpWrite {
 		return false
 	}
-	if len(s.AdditionalReadwritePaths) > 0 || len(s.AdditionalReadonlyPaths) > 0 {
+	if len(s.AdditionalReadwritePaths) > 0 || len(s.AdditionalReadonlyPaths) > 0 || s.ReadBoundary != "" || len(s.AdditionalReadPaths) > 0 {
 		return false
 	}
 	np := s.NetworkPolicy

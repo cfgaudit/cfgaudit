@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 type cfg048 struct{}
@@ -226,6 +227,7 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkURLs(t)...)
 	findings = append(findings, r.checkTerminal(t)...)
 	findings = append(findings, r.checkPromptOverride(t)...)
+	findings = append(findings, r.checkFixedKeys(t)...)
 	return findings
 }
 
@@ -552,5 +554,80 @@ func sortedRawKeys(m map[string]json.RawMessage) []string {
 		out = append(out, k)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// fixedIn11362 qualifies a key VS Code stopped reading from a workspace file in
+// 1.136.2 (2026-09-03): 1.136.1 and earlier read it, and forks that took the
+// settings code before that release may still.
+const fixedIn11362 = " VS Code 1.136.2 and later read this only from user settings, so the value is inert there; 1.136.1 and earlier read it from a committed workspace file, and so may forks that read the same file."
+
+// checkFixedKeys reports workspace values of keys behind three advisories fixed
+// in VS Code 1.136.2 (#649).
+//
+//   - chat.remoteAgentHosts, chat.agentHost.localFilePermissions (CVE-2026-78462,
+//     fix 4321a67 "agentHost: read remote AH from global settings only"): the
+//     host list was read with getValue, which includes workspace values, though
+//     the setting was APPLICATION-scoped; the fix reads global configuration
+//     only and marks the settings restricted. A workspace list connects the
+//     agent to a host the repository chose; a workspace localFilePermissions map
+//     grants such a host files on the machine.
+//   - github.copilot.chat.workspace.prototypeAdoCodeSearchEndpointOverride and
+//     its legacy ...advanced... spelling (CVE-2026-81381, fix f94e10b "Remove
+//     configurable Azure DevOps code search endpoint override"): the Azure DevOps
+//     token was sent to the configured URL; the setting no longer exists.
+//   - terminal.integrated.allowInUntrustedWorkspace in nested-object form: the
+//     key is restricted, so a flat workspace value is ignored exactly in the
+//     untrusted workspace it would matter in, and is not reported; the nested
+//     form skipped that filter up to 1.136.1 (CVE-2026-70334, the advisory's own
+//     example).
+func (r *cfg048) checkFixedKeys(t *Target) []finding.Finding {
+	s := t.VSCodeSettings
+	var findings []finding.Finding
+	add := func(sev finding.Severity, msg string) {
+		findings = append(findings, finding.Finding{RuleID: "CFG048", Severity: sev, Scope: t.Scope, File: t.VSCodeSettingsFile, Message: msg})
+	}
+	if raw, ok := s.ObjectField("chat.agentHost.localFilePermissions"); ok && len(raw) > 0 {
+		add(finding.Warn, "chat.agentHost.localFilePermissions grants remote agent hosts access to files on this machine ("+quoteList(sortedRawKeys(raw))+") — a committed grant hands a host the repository names read or write access outside the workspace (CVE-2026-78462)."+fixedIn11362+" Remove it")
+	}
+	if hosts := vscodeStringItems(s, "chat.remoteAgentHosts"); len(hosts) > 0 {
+		add(finding.Warn, "chat.remoteAgentHosts lists remote agent hosts to connect to ("+quoteList(hosts)+") — the agent then runs against a host the repository chose (CVE-2026-78462)."+fixedIn11362+" Remove it")
+	}
+	for _, key := range []string{"github.copilot.chat.workspace.prototypeAdoCodeSearchEndpointOverride", "github.copilot.chat.advanced.workspace.prototypeAdoCodeSearchEndpointOverride"} {
+		if v, ok := s.StringField(key); ok && strings.TrimSpace(v) != "" {
+			add(finding.Warn, key+" is \""+strings.TrimSpace(v)+"\" — Copilot sent the Azure DevOps access token to this endpoint for code search (CVE-2026-81381). The setting was removed in VS Code 1.136.2, where it does nothing; on 1.136.1 and earlier it applies from this file. Remove it")
+		}
+	}
+	if v, ok := s.BoolField("terminal.integrated.allowInUntrustedWorkspace"); ok && v && s.Nested("terminal.integrated.allowInUntrustedWorkspace") {
+		add(finding.Warn, "terminal.integrated.allowInUntrustedWorkspace is true, written in nested-object form — the setting lets terminals start in an untrusted workspace, and VS Code 1.136.1 and earlier did not run the nested form through the Restricted Mode filter, so a committed file could turn it on before trust (CVE-2026-70334, whose own example this is). From 1.136.2 the value is ignored until the workspace is trusted. Remove it")
+	}
+	return findings
+}
+
+// vscodeStringItems returns the string entries of an array-valued setting,
+// accepting entries that are objects with an "address" field as well.
+func vscodeStringItems(s *parser.VSCodeSettings, key string) []string {
+	raw, ok := s.RawValue(key)
+	if !ok {
+		return nil
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return nil
+	}
+	var out []string
+	for _, it := range items {
+		var str string
+		if json.Unmarshal(it, &str) == nil && strings.TrimSpace(str) != "" {
+			out = append(out, str)
+			continue
+		}
+		var obj struct {
+			Address string `json:"address"`
+		}
+		if json.Unmarshal(it, &obj) == nil && strings.TrimSpace(obj.Address) != "" {
+			out = append(out, obj.Address)
+		}
+	}
 	return out
 }

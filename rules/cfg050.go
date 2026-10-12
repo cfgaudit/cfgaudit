@@ -84,6 +84,14 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 
 		findings = append(findings, headerSecrets(base, ref.Server.Headers, ref.File, t)...)
 
+		// Cursor's static OAuth auth.CLIENT_SECRET on a remote server (#649).
+		// Cursor documents the ${env:...} form as the alternative.
+		if a := ref.Server.Auth; a != nil {
+			if v := unquoteValue(strings.TrimSpace(a.ClientSecret)); v != "" && !isSecretReference(v) && !strings.HasPrefix(v, "${env:") && !placeholderRe.MatchString(v) && !screamingPlaceholderRe.MatchString(v) {
+				findings = append(findings, secretFinding(base+".auth.CLIENT_SECRET", "a hardcoded OAuth client secret", ref.File, t))
+			}
+		}
+
 		// A literal OAuth client secret (#615). Codex has no environment-variable
 		// form for it, so the fix is the user-level config, not a reference.
 		if v := strings.TrimSpace(ref.Server.OAuthClientSecret); v != "" && !isSecretReference(v) && !placeholderRe.MatchString(v) && !screamingPlaceholderRe.MatchString(v) {

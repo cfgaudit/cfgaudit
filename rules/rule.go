@@ -287,6 +287,11 @@ type Target struct {
 	CopilotLSP     map[string]parser.GrokLSPServer
 	CopilotLSPFile string
 
+	// CursorCLI holds a parsed project .cursor/cli.json (#649), whose permission
+	// tokens CFG093 reads. Nil when absent; CursorCLIFile is its path.
+	CursorCLI     *parser.CursorCLIConfig
+	CursorCLIFile string
+
 	// Continue holds a parsed Continue config.yaml (.continue/config.yaml or
 	// ~/.continue/config.yaml). Its mcpServers list rides ProjectMCP so the MCP
 	// rules apply; inline model/MCP apiKey literals drive CFG065. Nil when absent;

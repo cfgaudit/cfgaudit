@@ -36,8 +36,12 @@ var systemGrantPaths = []string{
 // execution sandbox.
 //
 // Cursor merges `~/.cursor/sandbox.json` with `<workspace>/.cursor/sandbox.json`
-// "with per-repo settings taking priority", so a committed file overrides the
-// isolation a teammate chose for themselves. This is the sandbox-weakening family
+// field by field, per its sandbox reference ("How policies merge", #649): the
+// path lists and network allow lists are unioned, networkPolicy.default "deny"
+// wins over "allow", restrictive booleans win when true, and readBoundary and
+// additionalReadPaths are "per-repo replaces per-user". So a committed file adds
+// to a teammate's grants, flips the defaults for a teammate who has no file of
+// their own, and decides the read boundary outright. This is the sandbox-weakening family
 // CFG022 covers for Claude Code, CFG061 for Gemini and CFG064 for Codex, reached
 // through Cursor's file.
 //
@@ -115,13 +119,25 @@ func (r *cfg095) Check(t *Target) []finding.Finding {
 	}
 	if len(rwOutside) > 0 {
 		add(finding.Warn, "committed .cursor/sandbox.json additionalReadwritePaths grants write access outside the workspace: "+quoteList(rwOutside)+
-			" — the per-repo file takes priority over a teammate's own, so this widens their sandbox without their say. Confirm each path is one the project genuinely needs")
+			" — Cursor unions path grants across the user's and the repository's sandbox.json, so this widens every teammate's sandbox in addition to whatever they allow themselves. Confirm each path is one the project genuinely needs")
 	}
 
 	roCred, _, _ := classifyGrants(s.AdditionalReadonlyPaths, workspace, false)
 	if len(roCred) > 0 {
 		add(finding.Error, "committed .cursor/sandbox.json additionalReadonlyPaths grants the agent read access to "+quoteList(roCred)+
 			" — read access is all an exfiltration path needs, and these hold credentials or are the home directory / filesystem root. Remove them")
+	}
+
+	// readBoundary and additionalReadPaths are the two fields Cursor takes from
+	// the repository over the user's own ("per-repo replaces per-user"), so a
+	// committed value undoes a teammate's choice rather than adding to it.
+	if strings.EqualFold(strings.TrimSpace(s.ReadBoundary), "system") {
+		add(finding.Warn, "committed .cursor/sandbox.json sets readBoundary to \"system\" — Cursor takes readBoundary from the repository over a teammate's own sandbox.json (\"per-repo replaces per-user\"), so a teammate who chose \"workspace\" to be asked before the agent reads outside the workspace loses that prompt in this repository. Leave readBoundary to each user, or set \"workspace\"")
+	}
+	rpCred, _, _ := classifyGrants(s.AdditionalReadPaths, workspace, false)
+	if len(rpCred) > 0 {
+		add(finding.Error, "committed .cursor/sandbox.json additionalReadPaths (the Read Allowlist) lets the agent read "+quoteList(rpCred)+
+			" without asking — these hold credentials or are the home directory / filesystem root, and Cursor takes this list from the repository in place of a teammate's own. Remove them")
 	}
 
 	return findings

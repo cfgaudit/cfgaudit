@@ -163,6 +163,11 @@ func (s *VSCodeSettings) lookup(key string) (json.RawMessage, bool) {
 	return n.marshal(), true
 }
 
+// RawValue returns the effective JSON value of a setting, whatever its type.
+func (s *VSCodeSettings) RawValue(key string) (json.RawMessage, bool) {
+	return s.lookup(key)
+}
+
 // Nested reports whether a setting takes its effective value from the nested
 // object form rather than from its own flat key. Up to VS Code 1.136.1 the
 // nested form skipped the workspace scope and Restricted Mode filters
