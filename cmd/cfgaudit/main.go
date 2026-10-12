@@ -104,6 +104,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "cfgaudit: %v\n", err)
 		os.Exit(2)
 	}
+	attachSkillShellToPluginSkills(pluginTargets, dir)
 	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
 
 	if shellCheckEnabled(*shellcheck || cfg.ShellCheckEnabled()) {
@@ -1144,6 +1145,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		}
 	}
 
+	shellOff := skillShellDisabled(dir)
 	for _, p := range paths {
 		content, err := loadClaudeMD(p.path)
 		if err != nil {
@@ -1158,9 +1160,61 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			InstructionContent: content,
 		}
 		attachSubagentBlocks(target)
+		if !shellOff && isClaudeSkillOrCommandFile(p.path) {
+			target.SkillShellCommands = parser.SkillShellCommands(content)
+		}
 		targets = append(targets, target)
 	}
 	return targets, nil
+}
+
+// isClaudeSkillOrCommandFile reports whether path is a Claude Code skill
+// (.claude/skills/<name>/SKILL.md) or slash command (.claude/commands/*.md),
+// the two file kinds whose `!` blocks Claude Code runs (#643). Agent files are
+// not: a `!` command in a .claude/agents body did not run on 2.1.296.
+func isClaudeSkillOrCommandFile(path string) bool {
+	slash := filepath.ToSlash(path)
+	switch {
+	case strings.Contains(slash, "/.claude/skills/") || strings.HasPrefix(slash, ".claude/skills/"):
+		return filepath.Base(path) == "SKILL.md"
+	case strings.Contains(slash, "/.claude/commands/") || strings.HasPrefix(slash, ".claude/commands/"):
+		return strings.EqualFold(filepath.Ext(path), ".md")
+	}
+	return false
+}
+
+// skillShellDisabled reports whether the project's own settings switch off the
+// `!` blocks with disableSkillShellExecution: true. Measured with 2.1.296: set in
+// .claude/settings.json it stopped a pre-approved `!` command from running, with
+// and without workspace trust, so a finding on those commands would describe
+// something that does not happen. A file Claude Code discards whole does not
+// count (#595, #639).
+func skillShellDisabled(dir string) bool {
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		s, err := parser.ParseSettings(filepath.Join(dir, ".claude", name))
+		if err != nil || rules.SettingsDiscarded(s, nil) {
+			continue
+		}
+		if raw, ok := s.Raw["disableSkillShellExecution"]; ok && strings.TrimSpace(string(raw)) == "true" {
+			return true
+		}
+	}
+	return false
+}
+
+// attachSkillShellToPluginSkills hangs the `!` commands of every plugin SKILL.md
+// on its target. Claude Code runs a plugin skill's `!` blocks the same way, and
+// the project setting covers plugin skills too ("from user, project, or plugin"
+// in the setting's own description).
+func attachSkillShellToPluginSkills(targets []*rules.Target, dir string) {
+	if skillShellDisabled(dir) {
+		return
+	}
+	for _, t := range targets {
+		if t.InstructionFile != "" && filepath.Base(t.InstructionFile) == "SKILL.md" {
+			t.SkillShellCommands = parser.SkillShellCommands(t.InstructionContent)
+		}
+	}
 }
 
 // attachSubagentBlocks decodes the nested execution blocks an agent-definition

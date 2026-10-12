@@ -232,6 +232,13 @@ type Target struct {
 	SubagentHooks     map[string][]parser.HookGroup
 	SubagentHooksFile string
 
+	// SkillShellCommands are the `!` shell commands of a Claude Code skill or
+	// slash command file (InstructionFile), which Claude Code runs when the skill
+	// is invoked, by the user or by the model, before the text reaches the model
+	// (#643). They are command sites. Nil when the file is not a skill or command,
+	// or when the project's settings set disableSkillShellExecution.
+	SkillShellCommands []string
+
 	// QwenExecutor holds the qwen-code `executor:` block from a .qwen/agents/*.md
 	// frontmatter (#579) — a qwen-only extension that delegates the subagent's
 	// turn to an external process. Its Command (and Args) are committed and chosen

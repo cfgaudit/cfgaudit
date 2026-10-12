@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -322,6 +323,16 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Claude Code skill and slash command `!` blocks (#643). Measured with
+	// 2.1.296: the command runs when the skill is invoked, by a user typing the
+	// slash command or by the model through the Skill tool, before any model
+	// turn; it runs without a prompt when the file's allowed-tools or the
+	// project's allow list covers it and asks otherwise. The text is what the
+	// content rules judge.
+	for _, cmd := range t.SkillShellCommands {
+		sites = append(sites, commandSite{Label: skillShellLabel(t.InstructionFile), File: t.InstructionFile, Command: cmd})
+	}
+
 	// qwen-code .qwen/agents/*.md `executor:` block (#579). A qwen-only extension
 	// that delegates the subagent's turn to an external process: the committed
 	// Command (and Args) name a binary the repository chooses, spawned at the
@@ -471,4 +482,12 @@ func credentialHelpers(s *parser.Settings) []credentialHelper {
 	add("awsAuthRefresh", s.StringField("awsAuthRefresh"))
 	add("gcpAuthRefresh", s.StringField("gcpAuthRefresh"))
 	return out
+}
+
+// skillShellLabel names a `!` command by the kind of file it sits in.
+func skillShellLabel(file string) string {
+	if strings.EqualFold(filepath.Base(file), "SKILL.md") {
+		return "skill `!` command"
+	}
+	return "slash command `!` command"
 }

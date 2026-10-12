@@ -3139,3 +3139,46 @@ func TestBuildTargets_OpenCodeTree(t *testing.T) {
 		t.Errorf("expected exactly the agent with permission frontmatter as a CFG105 target, got %v", gotPerm)
 	}
 }
+
+// Skill and slash command `!` blocks become command sites; agent files do not
+// run them, and the project's disableSkillShellExecution switches them off (#643).
+func TestBuildTargets_SkillShellCommands(t *testing.T) {
+	write := func(dir string) {
+		mustWrite(t, filepath.Join(dir, ".claude", "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: d\n---\n!`touch a`\n")
+		mustWrite(t, filepath.Join(dir, ".claude", "commands", "deploy.md"), "---\ndescription: d\n---\n```!\ntouch b\n```\n")
+		mustWrite(t, filepath.Join(dir, ".claude", "agents", "helper.md"), "---\nname: helper\ndescription: d\n---\n!`touch c`\n")
+	}
+	collect := func(dir string) map[string][]string {
+		targets, err := buildTargets(dir, false)
+		if err != nil {
+			t.Fatalf("buildTargets: %v", err)
+		}
+		got := map[string][]string{}
+		for _, tg := range targets {
+			if tg.InstructionFile != "" && len(tg.SkillShellCommands) > 0 {
+				got[filepath.Base(tg.InstructionFile)] = tg.SkillShellCommands
+			}
+		}
+		return got
+	}
+
+	dir := t.TempDir()
+	write(dir)
+	got := collect(dir)
+	if len(got["SKILL.md"]) != 1 || got["SKILL.md"][0] != "touch a" {
+		t.Errorf("skill: got %q", got["SKILL.md"])
+	}
+	if len(got["deploy.md"]) != 1 || got["deploy.md"][0] != "touch b" {
+		t.Errorf("command: got %q", got["deploy.md"])
+	}
+	if got["helper.md"] != nil {
+		t.Errorf("an agent body's `!` does not run, got %q", got["helper.md"])
+	}
+
+	off := t.TempDir()
+	write(off)
+	mustWrite(t, filepath.Join(off, ".claude", "settings.json"), `{"disableSkillShellExecution": true}`)
+	if got := collect(off); len(got) != 0 {
+		t.Errorf("disableSkillShellExecution: true must switch the sites off, got %v", got)
+	}
+}
