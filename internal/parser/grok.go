@@ -146,6 +146,24 @@ func ParseGrokLSP(path string) (map[string]GrokLSPServer, error) {
 	return m, nil
 }
 
+// ParseCopilotLSP reads a Copilot CLI .github/lsp.json (#648). The servers sit
+// under an `lspServers` key ("Project config: .github/lsp.json" in the CLI's own
+// /lsp help) and carry the same command/args/env as a Grok entry, so the Grok
+// type is reused.
+func ParseCopilotLSP(path string) (map[string]GrokLSPServer, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		LSPServers map[string]GrokLSPServer `json:"lspServers"`
+	}
+	if err := json.Unmarshal(stripJSONC(data), &doc); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return doc.LSPServers, nil
+}
+
 // ParseGrokConfig reads a .grok/config.toml. A missing key yields a zero value;
 // a malformed file is an error, so a config that is silently not being scanned
 // is reported rather than mistaken for empty.

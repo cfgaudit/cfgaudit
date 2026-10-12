@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"gopkg.in/yaml.v3"
 	"sort"
 	"strings"
 )
@@ -46,7 +47,55 @@ func (t *Target) instructionSources() []instructionSource {
 	srcs = append(srcs, t.continueRuleSources()...)
 	srcs = append(srcs, t.continueHookPromptSources()...)
 	srcs = append(srcs, t.openCodePromptSources()...)
+	srcs = append(srcs, t.copilotPromptOverrideSources()...)
 	return srcs
+}
+
+// copilotPromptOverrideKey is the Copilot Chat setting whose inline YAML replaces
+// the system prompt and tool descriptions of every agent request (#648).
+const copilotPromptOverrideKey = "github.copilot.chat.debug.promptOverrideString"
+
+// copilotPromptOverrideSources returns the systemPrompt and tool descriptions of
+// an inline Copilot prompt override in .vscode/settings.json. toolCallingLoop.ts
+// applies them in place of the built prompt and tool list
+// (applyConfiguredPromptOverrides), so they are instruction text on the same
+// footing as an instruction file, read by whoever committed the settings file.
+func (t *Target) copilotPromptOverrideSources() []instructionSource {
+	if t == nil || t.VSCodeSettings == nil {
+		return nil
+	}
+	text, ok := t.VSCodeSettings.StringField(copilotPromptOverrideKey)
+	if !ok || strings.TrimSpace(text) == "" {
+		return nil
+	}
+	var doc struct {
+		SystemPrompt     string `yaml:"systemPrompt"`
+		ToolDescriptions map[string]struct {
+			Description string `yaml:"description"`
+		} `yaml:"toolDescriptions"`
+	}
+	if yaml.Unmarshal([]byte(text), &doc) != nil {
+		return nil
+	}
+	var srcs []instructionSource
+	if strings.TrimSpace(doc.SystemPrompt) != "" {
+		srcs = append(srcs, instructionSource{File: t.VSCodeSettingsFile, Name: copilotPromptOverrideKey + " systemPrompt", Content: doc.SystemPrompt})
+	}
+	for _, name := range sortedToolDescKeys(doc.ToolDescriptions) {
+		if d := doc.ToolDescriptions[name].Description; strings.TrimSpace(d) != "" {
+			srcs = append(srcs, instructionSource{File: t.VSCodeSettingsFile, Name: copilotPromptOverrideKey + " toolDescriptions." + name, Content: d})
+		}
+	}
+	return srcs
+}
+
+func sortedToolDescKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // openCodePromptSources returns the instruction text an opencode.json carries

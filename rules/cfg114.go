@@ -31,16 +31,25 @@ var openCodeCodeWhen = map[string]string{
 // opening the project is a finding even when it looks innocuous, because a
 // reader has to review it before the first run, not after.
 func (r *cfg114) Check(t *Target) []finding.Finding {
-	if t == nil || t.OpenCodeCode == nil {
+	if t == nil || t.AgentCode == nil {
 		return nil
 	}
-	when := openCodeCodeWhen[t.OpenCodeCode.Kind]
+	if t.AgentCode.Kind == "copilot-extension" {
+		return []finding.Finding{{
+			RuleID:   "CFG114",
+			Severity: finding.Info,
+			Scope:    t.Scope,
+			File:     t.AgentCode.Path,
+			Message:  "committed Copilot CLI project extension " + filepath.Base(filepath.Dir(t.AgentCode.Path)) + " is run with Node.js when the CLI starts in this repository, with the user's own privileges. Two gates stand in front of it: extensions are experimental (`--experimental` or `/experimental on`), and project extensions load only once the folder is trusted. cfgaudit does not analyse the code; review it before turning experimental features on in a clone",
+		}}
+	}
+	when := openCodeCodeWhen[t.AgentCode.Kind]
 	return []finding.Finding{{
 		RuleID:   "CFG114",
 		Severity: finding.Error,
 		Scope:    t.Scope,
-		File:     t.OpenCodeCode.Path,
-		Message: "committed OpenCode " + t.OpenCodeCode.Kind + " " + filepath.Base(t.OpenCodeCode.Path) + " is imported and run " + when +
+		File:     t.AgentCode.Path,
+		Message: "committed OpenCode " + t.AgentCode.Kind + " " + filepath.Base(t.AgentCode.Path) + " is imported and run " + when +
 			". OpenCode has no workspace trust step, so anyone who opens a clone with OpenCode runs this code with their own permissions. cfgaudit does not analyse the code itself; review it before the first run, and keep it out of the repository if it is not meant for every contributor",
 	}}
 }

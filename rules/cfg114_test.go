@@ -10,7 +10,7 @@ import (
 
 func TestCFG114_PluginAndTool(t *testing.T) {
 	for kind, when := range map[string]string{"plugin": "every time OpenCode starts", "tool": "as soon as OpenCode loads an agent"} {
-		f := CFG114.Check(&Target{Scope: finding.ScopeProject, OpenCodeCode: &OpenCodeCodeFile{Path: ".opencode/" + kind + "/x.ts", Kind: kind}})
+		f := CFG114.Check(&Target{Scope: finding.ScopeProject, AgentCode: &AgentCodeFile{Path: ".opencode/" + kind + "/x.ts", Kind: kind}})
 		if len(f) != 1 || f[0].Severity != finding.Error || f[0].File != ".opencode/"+kind+"/x.ts" {
 			t.Fatalf("%s: expected one error on the file, got %+v", kind, f)
 		}

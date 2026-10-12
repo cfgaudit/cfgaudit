@@ -2257,7 +2257,8 @@ func openCodeTargets(dir string) ([]*rules.Target, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(targets, code...), nil
+	targets = append(targets, code...)
+	return append(targets, copilotExtensionTargets(dir)...), nil
 }
 
 // openCodeAgentDirs are where OpenCode reads agent definitions: agents recursively
@@ -2370,12 +2371,44 @@ func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
 				}
 				targets = append(targets, &rules.Target{
 					Scope:        finding.ScopeProject,
-					OpenCodeCode: &rules.OpenCodeCodeFile{Path: m, Kind: cd.kind},
+					AgentCode: &rules.AgentCodeFile{Path: m, Kind: cd.kind},
 				})
 			}
 		}
 	}
 	return targets, nil
+}
+
+// copilotExtensionTargets gives CFG114 one target per Copilot CLI project
+// extension (#648). GitHub's docs: "Each extension lives in its own subdirectory,
+// and that subdirectory must contain an entry file named extension.mjs,
+// extension.cjs, or extension.js ... the CLI runs the entry file directly with
+// Node.js", and the project location is ".github/extensions/NAME/". The 1.0.95
+// bundle loads project extensions only when the experimental EXTENSIONS feature
+// is on and the folder is trusted (or GITHUB_COPILOT_PROMPT_MODE_EXTENSIONS is
+// set for -p).
+func copilotExtensionTargets(dir string) []*rules.Target {
+	var targets []*rules.Target
+	entries, err := os.ReadDir(filepath.Join(dir, ".github", "extensions"))
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		for _, name := range []string{"extension.mjs", "extension.cjs", "extension.js"} {
+			p := filepath.Join(dir, ".github", "extensions", e.Name(), name)
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+				targets = append(targets, &rules.Target{
+					Scope:     finding.ScopeProject,
+					AgentCode: &rules.AgentCodeFile{Path: p, Kind: "copilot-extension"},
+				})
+				break
+			}
+		}
+	}
+	return targets
 }
 
 func loadOpenCodeConfigOptional(path string) (*parser.OpenCodeConfig, error) {
@@ -2819,6 +2852,22 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			Scope:       finding.ScopeProject,
 			GrokLSP:     lsp,
 			GrokLSPFile: grokLSPPath,
+		})
+	}
+
+	// Copilot CLI .github/lsp.json (#648). Measured with Copilot CLI 1.0.95:
+	// `copilot lsp list` in a repository holding one lists its servers as
+	// configured; the CLI's /lsp help names it "Project config: .github/lsp.json".
+	copilotLSPPath := filepath.Join(dir, ".github", "lsp.json")
+	if lsp, err := parser.ParseCopilotLSP(copilotLSPPath); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			skipUnreadable(copilotLSPPath, err)
+		}
+	} else if len(lsp) > 0 {
+		targets = append(targets, &rules.Target{
+			Scope:          finding.ScopeProject,
+			CopilotLSP:     lsp,
+			CopilotLSPFile: copilotLSPPath,
 		})
 	}
 

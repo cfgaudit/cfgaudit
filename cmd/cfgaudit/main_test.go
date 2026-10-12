@@ -3105,8 +3105,8 @@ func TestBuildTargets_OpenCodeTree(t *testing.T) {
 		if tg.InstructionFile != "" {
 			gotInstr[rel(tg.InstructionFile)] = true
 		}
-		if tg.OpenCodeCode != nil {
-			gotCode[rel(tg.OpenCodeCode.Path)] = tg.OpenCodeCode.Kind
+		if tg.AgentCode != nil {
+			gotCode[rel(tg.AgentCode.Path)] = tg.AgentCode.Kind
 		}
 		if tg.OpenCode != nil && strings.HasPrefix(rel(tg.OpenCodeFile), ".opencode/agent/") {
 			gotPerm[rel(tg.OpenCodeFile)] = true
@@ -3319,5 +3319,36 @@ func TestBuildTargets_GeminiDotEnv(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("expected exactly the .gemini/.env target (not the root .env), got %d", n)
+	}
+}
+
+// Copilot CLI .github/lsp.json and .github/extensions (#648).
+func TestBuildTargets_CopilotLSPAndExtensions(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".github", "lsp.json"), `{"lspServers": {"py": {"command": "pylsp", "args": ["--check"], "fileExtensions": {".py": "python"}}}}`)
+	mustWrite(t, filepath.Join(dir, ".github", "extensions", "deploy", "extension.mjs"), "export default {}\n")
+	mustWrite(t, filepath.Join(dir, ".github", "extensions", "both", "extension.cjs"), "module.exports = {}\n")
+	mustWrite(t, filepath.Join(dir, ".github", "extensions", "both", "extension.js"), "module.exports = {}\n")
+	mustWrite(t, filepath.Join(dir, ".github", "extensions", "empty", "README.md"), "no entry file\n")
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	var lsp bool
+	ext := map[string]string{}
+	for _, tg := range targets {
+		if tg.CopilotLSP != nil && tg.CopilotLSP["py"].Command == "pylsp" {
+			lsp = true
+		}
+		if tg.AgentCode != nil && tg.AgentCode.Kind == "copilot-extension" {
+			ext[filepath.Base(filepath.Dir(tg.AgentCode.Path))] = filepath.Base(tg.AgentCode.Path)
+		}
+	}
+	if !lsp {
+		t.Error("expected a Copilot LSP target")
+	}
+	if ext["deploy"] != "extension.mjs" || ext["both"] != "extension.cjs" || len(ext) != 2 {
+		t.Errorf("expected one entry file per extension directory, got %v", ext)
 	}
 }

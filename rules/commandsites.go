@@ -448,6 +448,18 @@ func commandSites(t *Target) []commandSite {
 		sites = append(sites, commandSite{Label: "Grok lsp." + name + " command", File: t.GrokLSPFile, Command: cmd})
 	}
 
+	// Copilot CLI .github/lsp.json (#648): each server is a command the CLI
+	// starts in a session for files of its fileExtensions, and keeps running
+	// since 1.0.93. A session needs the folder trust prompt first.
+	for _, name := range sortedKeys2(t.CopilotLSP) {
+		s := t.CopilotLSP[name]
+		if strings.TrimSpace(s.Command) == "" {
+			continue
+		}
+		cmd := strings.TrimSpace(strings.Join(append([]string{s.Command}, s.Args...), " "))
+		sites = append(sites, commandSite{Label: "Copilot lspServers." + name + " command", File: t.CopilotLSPFile, Command: cmd})
+	}
+
 	// OpenAI Codex config.toml `notify` — a program (argv) Codex spawns on events.
 	if t.Codex != nil && len(t.Codex.Notify) > 0 {
 		sites = append(sites, commandSite{Label: "Codex notify command", File: t.CodexFile, Command: strings.Join(t.Codex.Notify, " ")})

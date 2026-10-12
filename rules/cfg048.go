@@ -225,8 +225,44 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkEdits(t)...)
 	findings = append(findings, r.checkURLs(t)...)
 	findings = append(findings, r.checkTerminal(t)...)
+	findings = append(findings, r.checkPromptOverride(t)...)
 	return findings
 }
+
+// checkPromptOverride reports the two Copilot Chat debug settings that replace
+// the agent's prompt (#648). Both are registered in the Copilot extension's
+// package.json with no scope, so they take WINDOW and apply from a workspace
+// file, and neither is `restricted`; the extension declares no
+// untrustedWorkspaces capability, so VS Code runs it only once the workspace is
+// trusted. toolCallingLoop.ts hands both to applyConfiguredPromptOverrides, which
+// replaces the built system prompt and tool descriptions with the YAML's
+// systemPrompt and toolDescriptions. The inline text is also scanned by the
+// instruction-content rules (copilotPromptOverrideSources).
+func (r *cfg048) checkPromptOverride(t *Target) []finding.Finding {
+	var findings []finding.Finding
+	if v, ok := t.VSCodeSettings.StringField(copilotPromptOverrideKey); ok && strings.TrimSpace(v) != "" {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG048",
+			Severity: finding.Warn,
+			Scope:    t.Scope,
+			File:     t.VSCodeSettingsFile,
+			Message:  copilotPromptOverrideKey + " is set: Copilot Chat replaces the system prompt and tool descriptions of every agent request with this YAML's systemPrompt and toolDescriptions, so the repository writes the agent's instructions and can redescribe what each tool does. It is a debug setting, applies from a workspace file, and takes effect once the workspace is trusted. Remove it",
+		})
+	}
+	if v, ok := t.VSCodeSettings.StringField(copilotPromptOverrideFileKey); ok && strings.TrimSpace(v) != "" {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG048",
+			Severity: finding.Warn,
+			Scope:    t.Scope,
+			File:     t.VSCodeSettingsFile,
+			Message:  copilotPromptOverrideFileKey + " is \"" + strings.TrimSpace(v) + "\": Copilot Chat reads a YAML file from that path and replaces the system prompt and tool descriptions of every agent request with it. The path is read as a file path on the machine (URI.file), not resolved against the repository, so cfgaudit cannot see what it contains. It is a debug setting and takes effect once the workspace is trusted. Remove it",
+		})
+	}
+	return findings
+}
+
+// copilotPromptOverrideFileKey is the file form of copilotPromptOverrideKey.
+const copilotPromptOverrideFileKey = "github.copilot.chat.debug.promptOverrideFile"
 
 // checkPermissionLevel inspects chat.permissions.default, which decides the
 // permission mode every new chat session starts in. A committed "autoApprove" or
