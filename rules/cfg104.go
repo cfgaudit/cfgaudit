@@ -27,6 +27,13 @@ var devinRuleRe = regexp.MustCompile(`^\s*(Read|Write|Exec|Fetch)\(\s*([^)]*)\s*
 // and the home-rooted spellings of the same.
 var devinWildcardRe = regexp.MustCompile(`^(?:\*{1,2}|/\*{1,2}|~/\*{1,2}|\*{1,2}/\*{1,2})$`)
 
+// devinWholeToolGrants are the bare tool names that allow a whole tool (#644).
+// Devin's permission reference, "Tool-Based Permissions: Match by tool name to
+// control entire tools", lists read, edit, grep, glob and exec. The three listed
+// here are the bare equivalents of the patterns this rule already reports
+// (Read(**), Write(**), Exec(*)); grep and glob only search.
+var devinWholeToolGrants = map[string]bool{"exec": true, "edit": true, "read": true}
+
 // devinPrivilegedBinaries are the commands whose bare prefix auto-approves an
 // action a reviewer would want to see. Deliberately short: each one is either a
 // privilege change or an irreversible write, and each was found in real
@@ -62,6 +69,10 @@ func (r *cfg104) Check(t *Target) []finding.Finding {
 	}
 	var wildcards, privileged []string
 	for _, rule := range t.Devin.Permissions.Allow {
+		if devinWholeToolGrants[strings.TrimSpace(rule)] {
+			wildcards = append(wildcards, strings.TrimSpace(rule))
+			continue
+		}
 		m := devinRuleRe.FindStringSubmatch(rule)
 		if m == nil {
 			continue

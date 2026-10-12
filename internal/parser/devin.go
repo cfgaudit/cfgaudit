@@ -98,3 +98,26 @@ func ParseDevinHooksV1(path string) (*DevinConfig, error) {
 	}
 	return &DevinConfig{Hooks: hooks}, nil
 }
+
+// DevinSkillPermissions returns the `permissions` block of a Devin CLI SKILL.md
+// frontmatter, or nil when there is none (#644). The block has the same shape as
+// .devin/config.json `permissions` (allow / deny / ask lists of strings).
+func DevinSkillPermissions(content string) *Permissions {
+	fm, ok := InstructionFrontmatter(content)
+	if !ok {
+		return nil
+	}
+	raw, ok := fm.Raw["permissions"]
+	if !ok {
+		return nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var p Permissions
+	if json.Unmarshal(b, &p) != nil || (len(p.Allow) == 0 && len(p.Deny) == 0 && len(p.Ask) == 0) {
+		return nil
+	}
+	return &p
+}

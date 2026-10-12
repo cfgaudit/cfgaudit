@@ -947,6 +947,29 @@ var (
 		// Cursor custom subagents (#617): "Project subagents | .cursor/agents/ |
 		// Current project only", a Markdown file whose body is the prompt.
 		filepath.Join(".cursor", "agents", "*.md"),
+		// Cursor's Codex-compatibility subagents (#644): "Project subagents ...
+		// .codex/agents/ | Current project only (Codex compatibility)". Single
+		// level, like .cursor/agents above.
+		filepath.Join(".codex", "agents", "*.md"),
+		// Cline (#644). Its config docs list .cline/{rules,workflows,skills,
+		// hooks,agents,plugins} and say "Commit .cline/ files you want to share
+		// with your team". From sdk/packages/shared/src/storage/paths.ts and the
+		// loaders: workflows are Markdown files (.md, .markdown, .txt) directly in
+		// the folder; agents are .yml/.yaml files with a ----fenced frontmatter
+		// and a body (apps/cli loadAgentConfigItems); a skill is SKILL.md in the
+		// skills folder or one directory below it (discoverSkillFiles). Hooks and
+		// plugins are executables, not instruction text, and are not read here.
+		filepath.Join(".cline", "workflows", "*.md"),
+		filepath.Join(".cline", "workflows", "*.markdown"),
+		filepath.Join(".cline", "workflows", "*.txt"),
+		filepath.Join(".cline", "agents", "*.yml"),
+		filepath.Join(".cline", "agents", "*.yaml"),
+		filepath.Join(".cline", "skills", "SKILL.md"),
+		filepath.Join(".cline", "skills", "*", "SKILL.md"),
+		// Devin CLI custom subagents, flat layout (#644): ".devin/agents/<name>.md
+		// ... the same convention used by Claude Code, Cursor, and other tools".
+		// The directory layout is read by devinAgentDirFiles.
+		filepath.Join(".devin", "agents", "*.md"),
 		// OpenCode modes (#642), read as agents: .opencode/mode/m1.md resolved
 		// as an agent under opencode 1.18.18. Single-level, unlike its agents.
 		filepath.Join(".opencode", "mode", "*.md"),
@@ -1064,6 +1087,12 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	for _, m := range filtered {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	for _, m := range kimiSkillFiles(dir) {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	for _, m := range devinAgentDirFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	projSkills, err := agentSkillsFiles(dir, projectSkillsDirs)
@@ -1458,6 +1487,10 @@ var filteredInstructionDirs = []filteredInstructionDir{
 	{filepath.Join(".opencode", "agents"), isMarkdown},
 	{filepath.Join(".opencode", "command"), isMarkdown},
 	{filepath.Join(".opencode", "commands"), isMarkdown},
+	// Cursor's Codex-compatibility skills (#644): "For compatibility, Cursor
+	// also loads skills from Claude and Codex directories: .claude/skills/,
+	// .codex/skills/", walked recursively like .cursor/skills.
+	{filepath.Join(".codex", "skills"), isSkillFile},
 	{filepath.Join(".opencode", "skill"), isSkillFile},
 	{filepath.Join(".opencode", "skills"), isSkillFile},
 }
@@ -1490,6 +1523,89 @@ func filteredInstructionFiles(base string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// kimiSkillFiles returns the skills Kimi Code reads from a project beyond what
+// the shared skills walk already covers (#644). From
+// packages/agent-core-v2/src/features/skill/catalog in MoonshotAI/kimi-code:
+// skillRoots.ts lists PROJECT_BRAND_DIRS = ['.kimi-code/skills'] beside the
+// generic .agents/skills, and fileSkillDiscovery.ts walks a root for <dir>/SKILL.md
+// down to MAX_SKILL_SCAN_DEPTH (8) and, at the top level of the root only, also
+// registers a plain <name>.md as a skill unless a <name>/ directory there holds a
+// SKILL.md. So this returns every SKILL.md under .kimi-code/skills, plus the
+// top-level plain Markdown skills of both roots. .agents/skills SKILL.md files
+// are already read through projectSkillsDirs.
+func kimiSkillFiles(base string) []string {
+	var out []string
+	brand := filepath.Join(base, ".kimi-code", "skills")
+	_ = filepath.WalkDir(brand, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "node_modules":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == "SKILL.md" {
+			out = append(out, path)
+		}
+		return nil
+	})
+	for _, root := range []string{brand, filepath.Join(base, ".agents", "skills")} {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || name == "SKILL.md" || !strings.HasSuffix(name, ".md") {
+				continue
+			}
+			if info, err := os.Stat(filepath.Join(root, strings.TrimSuffix(name, ".md"), "SKILL.md")); err == nil && !info.IsDir() {
+				continue
+			}
+			out = append(out, filepath.Join(root, name))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// devinAgentFileNames are the names Devin CLI accepts for a directory-layout
+// subagent, in precedence order: "agents/<name>/AGENT.md ... AGENTS.md, agent.md,
+// and agents.md are also accepted as the file name (if multiple are present,
+// AGENT.md takes precedence, then AGENTS.md, agent.md, agents.md)".
+var devinAgentFileNames = []string{"AGENT.md", "AGENTS.md", "agent.md", "agents.md"}
+
+// devinAgentDirFiles returns the definition file of each directory-layout Devin
+// CLI subagent under .devin/agents (#644), the one Devin loads when several are
+// present. Custom subagents are marked experimental in Devin's docs; the body is
+// the subagent's system prompt either way. .agents/agents, which Devin also
+// reads, is already walked for Kimi.
+func devinAgentDirFiles(base string) []string {
+	root := filepath.Join(base, ".devin", "agents")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		for _, name := range devinAgentFileNames {
+			p := filepath.Join(root, e.Name(), name)
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+				out = append(out, p)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // agentRulesFiles returns every *.md file under each of <base>/<dir>, discovered
@@ -2462,6 +2578,27 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			Devin:     hc,
 			DevinFile: hooksV1,
 		})
+	}
+
+	// Devin CLI skills carry a permission block of their own (#644): "Skills can
+	// define their own permission scope using the same syntax as the main
+	// permissions config ... allow — These scopes are auto-approved during skill
+	// execution", additive to the session's permissions. Each .devin/skills
+	// SKILL.md with one rides a Devin target, so CFG104 judges it like the block
+	// in .devin/config.json.
+	skillFiles, _ := filepath.Glob(filepath.Join(dir, ".devin", "skills", "*", "SKILL.md"))
+	for _, path := range skillFiles {
+		data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+		if err != nil {
+			continue
+		}
+		if perms := parser.DevinSkillPermissions(string(data)); perms != nil {
+			targets = append(targets, &rules.Target{
+				Scope:     finding.ScopeProject,
+				Devin:     &parser.DevinConfig{Permissions: perms},
+				DevinFile: path,
+			})
+		}
 	}
 
 	// The dedicated MCP files carry only mcpServers, so they contribute a

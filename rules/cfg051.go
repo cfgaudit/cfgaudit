@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -22,7 +23,7 @@ func (r *cfg051) ID() string { return "CFG051" }
 // permission-breadth rules (CFG002/CFG006). A grant cancelled by disallowed-tools
 // is not flagged.
 func (r *cfg051) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" {
+	if t == nil || t.InstructionContent == "" || isDevinAgentProfile(t.InstructionFile) {
 		return nil
 	}
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
@@ -68,14 +69,30 @@ func analyzeAllowedTools(allowed, disallowed []string) (finding.Severity, string
 			if !cancelled(tool) {
 				return finding.Error, "grants all tools (\"" + tool + "\") — unrestricted tool access"
 			}
-		case low == "bash" || low == "bash(*)" || low == "shell" || low == "execute":
+		// "exec" is Devin CLI's command tool (#644): its skill docs list the tool
+		// names read, edit, grep, glob and exec, and say allowed-tools entries
+		// are "auto-approved (no permission prompt) while the skill runs", so a
+		// bare exec is unrestricted shell. "exec(*)" is the same grant.
+		case low == "bash" || low == "bash(*)" || low == "shell" || low == "execute" || low == "exec" || low == "exec(*)":
 			// Unrestricted shell: broad and worth review, but a common, often
 			// legitimate declaration for skills that genuinely need a shell — warn,
 			// not error (which is reserved for total */all access above).
 			if !cancelled(tool) {
-				return finding.Warn, "grants unrestricted shell access (\"" + tool + "\") — scope it to specific commands (e.g. Bash(npm test)) if possible"
+				example := "Bash(npm test)"
+				if strings.HasPrefix(low, "exec") {
+					example = "Exec(npm test)"
+				}
+				return finding.Warn, "grants unrestricted shell access (\"" + tool + "\") — scope it to specific commands (e.g. " + example + ") if possible"
 			}
 		}
 	}
 	return "", ""
+}
+
+// isDevinAgentProfile reports whether path is a Devin CLI custom subagent
+// profile under .devin/agents. There allowed-tools is the opposite of a grant:
+// "On a subagent profile, allowed-tools restricts the tool set; on a skill, it
+// does not" (Devin CLI skill docs), so reporting it as broad would be wrong.
+func isDevinAgentProfile(path string) bool {
+	return strings.Contains(filepath.ToSlash(path), "/.devin/agents/") || strings.HasPrefix(filepath.ToSlash(path), ".devin/agents/")
 }

@@ -3182,3 +3182,65 @@ func TestBuildTargets_SkillShellCommands(t *testing.T) {
 		t.Errorf("disableSkillShellExecution: true must switch the sites off, got %v", got)
 	}
 }
+
+// Skill, agent and workflow directories of Kimi, Cursor (Codex compatibility),
+// Cline and Devin, each as its own loader discovers them (#644).
+func TestBuildTargets_MissingSkillAgentDirs(t *testing.T) {
+	dir := t.TempDir()
+	scanned := []string{
+		".kimi-code/skills/a/SKILL.md",
+		".kimi-code/skills/deep/x/y/SKILL.md",
+		".kimi-code/skills/flat.md",
+		".agents/skills/flat.md",
+		".codex/skills/a/b/SKILL.md",
+		".codex/agents/reviewer.md",
+		".cline/workflows/release.md",
+		".cline/workflows/notes.txt",
+		".cline/agents/helper.yml",
+		".cline/skills/SKILL.md",
+		".cline/skills/one/SKILL.md",
+		".devin/agents/reviewer.md",
+		".devin/agents/researcher/AGENT.md",
+	}
+	skipped := []string{
+		".kimi-code/skills/sub/flat.md",      // plain .md counts only at the top level
+		".kimi-code/skills/a.md",             // a/ holds a SKILL.md, so a.md is shadowed
+		".codex/agents/sub/x.md",             // single level
+		".cline/skills/one/two/SKILL.md",     // one directory below the skills folder at most
+		".cline/agents/readme.md",            // agents are YAML
+		".devin/agents/researcher/agents.md", // AGENT.md takes precedence
+	}
+	for _, rel := range append(append([]string{}, scanned...), skipped...) {
+		mustWrite(t, filepath.Join(dir, filepath.FromSlash(rel)), "---\nname: x\ndescription: d\n---\nSome instruction.\n")
+	}
+	mustWrite(t, filepath.Join(dir, ".devin", "skills", "deploy", "SKILL.md"), "---\nname: deploy\ndescription: d\npermissions:\n  allow:\n    - exec\n---\nDeploy.\n")
+
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	got := map[string]int{}
+	devinSkill := false
+	for _, tg := range targets {
+		if tg.InstructionFile != "" {
+			rel, _ := filepath.Rel(dir, tg.InstructionFile)
+			got[filepath.ToSlash(rel)]++
+		}
+		if tg.Devin != nil && tg.Devin.Permissions != nil && strings.HasSuffix(tg.DevinFile, filepath.Join(".devin", "skills", "deploy", "SKILL.md")) {
+			devinSkill = len(tg.Devin.Permissions.Allow) == 1 && tg.Devin.Permissions.Allow[0] == "exec"
+		}
+	}
+	for _, rel := range scanned {
+		if got[rel] != 1 {
+			t.Errorf("%s: scanned %d times, want once", rel, got[rel])
+		}
+	}
+	for _, rel := range skipped {
+		if got[rel] != 0 {
+			t.Errorf("%s: should not be scanned", rel)
+		}
+	}
+	if !devinSkill {
+		t.Error("expected the Devin skill's permissions block on a Devin target")
+	}
+}

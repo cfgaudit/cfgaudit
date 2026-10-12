@@ -66,3 +66,17 @@ func TestCFG051_NoContent_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding for empty target, got %+v", f)
 	}
 }
+
+// Devin's command tool is "exec"; on a skill, allowed-tools auto-approves it.
+// On a Devin subagent profile allowed-tools restricts instead, so it is not a
+// grant to report (#644).
+func TestCFG051_DevinExec(t *testing.T) {
+	skill := &Target{InstructionFile: ".devin/skills/deploy/SKILL.md", InstructionContent: "---\nname: deploy\nallowed-tools:\n  - read\n  - exec\n---\nbody\n"}
+	if f := CFG051.Check(skill); len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, `"exec"`) || !strings.Contains(f[0].Message, "Exec(npm test)") {
+		t.Fatalf("expected a warn for exec, got %+v", f)
+	}
+	profile := &Target{InstructionFile: "repo/.devin/agents/runner.md", InstructionContent: "---\nname: runner\nallowed-tools:\n  - exec\n---\nbody\n"}
+	if f := CFG051.Check(profile); len(f) != 0 {
+		t.Errorf("a Devin agent profile's allowed-tools restricts, expected no finding, got %+v", f)
+	}
+}

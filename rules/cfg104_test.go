@@ -89,3 +89,12 @@ func TestCFG104_MessageStatesTheDenyLimit(t *testing.T) {
 		}
 	}
 }
+
+// A bare tool name allows the whole tool (#644).
+func TestCFG104_BareToolNames(t *testing.T) {
+	tg := &Target{Devin: &parser.DevinConfig{Permissions: &parser.Permissions{Allow: []string{"exec", "grep", "glob", "mcp__github__list_issues"}}}, DevinFile: ".devin/config.json"}
+	f := CFG104.Check(tg)
+	if len(f) != 1 || !strings.Contains(f[0].Message, "grants exec") {
+		t.Fatalf("expected one finding for the bare exec only, got %+v", f)
+	}
+}
