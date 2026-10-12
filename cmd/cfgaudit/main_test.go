@@ -3367,3 +3367,35 @@ func TestBuildTargets_CursorCLIConfig(t *testing.T) {
 	}
 	t.Error("expected a Cursor CLI target")
 }
+
+// Slash commands in subdirectories are namespaced commands (/sub:deploy) and
+// load like top-level ones, `!` blocks included (#658).
+func TestBuildTargets_NestedClaudeCommands(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".claude", "commands", "top.md"), "---\ndescription: d\n---\n!`echo top`\n")
+	mustWrite(t, filepath.Join(dir, ".claude", "commands", "sub", "deploy.md"), "---\ndescription: d\n---\n!`echo sub`\n")
+	mustWrite(t, filepath.Join(dir, ".claude", "commands", "a", "b", "deep.md"), "---\ndescription: d\n---\n!`echo deep`\n")
+	targets, err := buildTargets(dir, false)
+	if err != nil {
+		t.Fatalf("buildTargets: %v", err)
+	}
+	got := map[string][]string{}
+	for _, tg := range targets {
+		if tg.InstructionFile != "" {
+			rel, _ := filepath.Rel(dir, tg.InstructionFile)
+			got[filepath.ToSlash(rel)] = tg.SkillShellCommands
+		}
+	}
+	for rel, cmd := range map[string]string{
+		".claude/commands/top.md": "echo top", ".claude/commands/sub/deploy.md": "echo sub", ".claude/commands/a/b/deep.md": "echo deep",
+	} {
+		c, ok := got[rel]
+		if !ok {
+			t.Errorf("%s: expected an instruction target", rel)
+			continue
+		}
+		if len(c) != 1 || c[0] != cmd {
+			t.Errorf("%s: shell commands %q, want %q", rel, c, cmd)
+		}
+	}
+}

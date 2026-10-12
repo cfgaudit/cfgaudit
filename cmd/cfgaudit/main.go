@@ -1082,8 +1082,8 @@ var (
 		// Claude Code custom subagents, slash commands, and skills — Markdown with a
 		// YAML frontmatter (description trigger, allowed-tools) read as trusted
 		// context. Skills live one directory deep: .claude/skills/<name>/SKILL.md.
+		// .claude/commands is walked recursively (recursiveInstructionDirs, #658).
 		filepath.Join(".claude", "agents", "*.md"),
-		filepath.Join(".claude", "commands", "*.md"),
 		filepath.Join(".claude", "skills", "*", "SKILL.md"),
 		// .claude/rules/ is NOT listed here: Claude Code discovers it recursively
 		// (subdirectories allowed), which the single-level filepath.Glob above can't
@@ -1119,7 +1119,6 @@ var (
 	// user-global subagents, slash commands, and skills apply to every project.
 	userInstructionGlobs = []string{
 		filepath.Join(".claude", "agents", "*.md"),
-		filepath.Join(".claude", "commands", "*.md"),
 		filepath.Join(".claude", "skills", "*", "SKILL.md"),
 		filepath.Join(".gemini", "GEMINI.md"), // Gemini CLI user-global instruction file
 		filepath.Join(".qwen", "QWEN.md"),     // qwen-code user-global instruction file
@@ -1514,8 +1513,15 @@ func geminiAgentFiles(base string) ([]string, error) {
 //     is recursive here even though qwen's equivalent directory is single-level
 //     and sits in agentInstructionGlobs instead (#564).
 //
+//   - `.claude/commands` holds slash commands, and a subdirectory namespaces
+//     them: measured on 2.1.296, .claude/commands/sub/deploy.md loads as
+//     /sub:deploy, .claude/commands/a/b/deep.md as /a:b:deep, and the user-level
+//     ~/.claude/commands/sub/udeploy.md and .../sub/deeper/udeep.md the same way,
+//     each running its `!` command when invoked (#658).
+//
 // All are scanned in project scope and, with --user, under $HOME.
 var recursiveInstructionDirs = []string{
+	filepath.Join(".claude", "commands"),
 	filepath.Join(".claude", "output-styles"),
 	filepath.Join(".claude", "rules"),
 	filepath.Join(".qwen", "rules"),
