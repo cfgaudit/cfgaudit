@@ -27,8 +27,11 @@ var (
 // Measured with 2.1.296 (`claude -p "/demo"`, and a model-invoked skill through
 // a scripted Skill tool call): both forms run when the command is pre-approved,
 // mid-line too, and also inside an ordinary ``` fence or an HTML comment, which
-// is why nothing is skipped here. "word!`cmd`" (no whitespace before the bang)
-// and "!``cmd``" do not run.
+// is why nothing is skipped here. Two spellings do not run, a bang with no
+// whitespace before it and a double-backtick span:
+//
+//	word!`cmd`
+//	!``cmd``
 func SkillShellCommands(content string) []string {
 	var out []string
 	for _, m := range skillShellFencedRe.FindAllStringSubmatch(content, -1) {

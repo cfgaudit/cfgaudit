@@ -33,7 +33,7 @@ func (r *cfg058) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG058",
 			Severity: finding.Warn,
 			File:     ref.File,
-			Message: "mcpServers." + ref.Name + " uses the deprecated MCP transport type \"sse\" — the spec has superseded standalone HTTP+SSE with Streamable HTTP, which has stronger transport guarantees (SSE lacks resumability and shares the DNS-rebinding/Origin-validation pitfalls of HTTP MCP). Switch to type \"http\" (Streamable HTTP); keep any remaining SSE server on a loopback / tightly-controlled channel",
+			Message:  "mcpServers." + ref.Name + " uses the deprecated MCP transport type \"sse\" — the spec has superseded standalone HTTP+SSE with Streamable HTTP, which has stronger transport guarantees (SSE lacks resumability and shares the DNS-rebinding/Origin-validation pitfalls of HTTP MCP). Switch to type \"http\" (Streamable HTTP); keep any remaining SSE server on a loopback / tightly-controlled channel",
 		})
 	}
 	return findings

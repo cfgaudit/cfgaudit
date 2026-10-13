@@ -54,13 +54,13 @@ func TestCFG073_Mnemonic24Words_Error(t *testing.T) {
 
 func TestCFG073_Benign_NoFinding(t *testing.T) {
 	for _, cfg := range []string{
-		`{"env":{"PRIVATE_KEY":"0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff"}}`,    // 62 hex — wrong length
-		`{"env":{"HASH":"ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"}}`,            // 64 hex, no 0x prefix (digest-shaped)
-		`{"env":{"KEY":"$WALLET_KEY"}}`,                                                                  // shell reference
-		`{"env":{"KEY":"${SEED}"}}`,                                                                      // shell reference
-		`{"env":{"NOTE":"the quick brown fox jumps over the lazy dog while you watch them all run"}}`,    // 14 English words, not all BIP-39, wrong count
-		`{"env":{"MSG":"abandon ability able about above absent absorb abstract absurd abuse access"}}`,  // 11 BIP-39 words — not a valid length
-		`{"env":{"PLAIN":"hello world"}}`,                                                                // short
+		`{"env":{"PRIVATE_KEY":"0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff"}}`, // 62 hex — wrong length
+		`{"env":{"HASH":"ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"}}`,        // 64 hex, no 0x prefix (digest-shaped)
+		`{"env":{"KEY":"$WALLET_KEY"}}`, // shell reference
+		`{"env":{"KEY":"${SEED}"}}`,     // shell reference
+		`{"env":{"NOTE":"the quick brown fox jumps over the lazy dog while you watch them all run"}}`,   // 14 English words, not all BIP-39, wrong count
+		`{"env":{"MSG":"abandon ability able about above absent absorb abstract absurd abuse access"}}`, // 11 BIP-39 words — not a valid length
+		`{"env":{"PLAIN":"hello world"}}`, // short
 	} {
 		if f := CFG073.Check(settingsTarget(t, cfg)); len(f) != 0 {
 			t.Errorf("expected no finding for %q, got %+v", cfg, f)

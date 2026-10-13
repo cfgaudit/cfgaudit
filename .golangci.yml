@@ -16,5 +16,10 @@ linters:
         - name: package-comments
           disabled: true
 
+# Reported by the Lint job like any linter finding; `golangci-lint fmt` applies it.
+formatters:
+  enable:
+    - gofmt
+
 run:
   timeout: 5m

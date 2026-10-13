@@ -1497,6 +1497,7 @@ func geminiAgentFiles(base string) ([]string, error) {
 //   - `.claude/rules` is read at the same priority as CLAUDE.md: unconditional
 //     files at launch and conditional ones (carrying a `paths:` frontmatter) when
 //     a matching file is read (#325).
+//
 //   - `.qwen/rules` is the same shape, added upstream on 2026-08-24
 //     (packages/core/src/config/rulesDiscovery.ts). Its header states the split
 //     verbatim: "Rules WITHOUT `paths:` always load at session start (baseline
@@ -1506,6 +1507,7 @@ func geminiAgentFiles(base string) ([]string, error) {
 //     ~/.qwen/rules and, for a trusted folder, <projectRoot>/.qwen/rules. qwen
 //     ships folder trust off by default, which is the same backdrop CFG099
 //     records, so the project directory applies to a fresh clone (#565).
+//
 //   - `.claude/output-styles` holds files whose body is appended to the system
 //     prompt verbatim under a `# Output Style: <name>` heading when
 //     `settings.json` `outputStyle` names one. Claude Code reads the directory

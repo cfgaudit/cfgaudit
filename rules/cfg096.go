@@ -58,7 +58,7 @@ func (r *cfg096) Check(t *Target) []finding.Finding {
 			Severity: finding.Error,
 			Scope:    t.Scope,
 			File:     ref.File,
-			Message: "mcpServers." + ref.Name + " is declared trust: true — every tool that server exposes then runs with no confirmation prompt once the folder is trusted, so a committed declaration makes that decision for whoever opens the repo. Remove the flag and approve the server's tools when they are actually used" + userScopeNote(t),
+			Message:  "mcpServers." + ref.Name + " is declared trust: true — every tool that server exposes then runs with no confirmation prompt once the folder is trusted, so a committed declaration makes that decision for whoever opens the repo. Remove the flag and approve the server's tools when they are actually used" + userScopeNote(t),
 		})
 	}
 	return findings
