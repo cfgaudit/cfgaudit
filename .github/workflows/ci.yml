@@ -204,11 +204,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Run the composite action from this checkout against the repo itself.
+      # Run this repository's composite action against the repo itself. `$/`
+      # loads action.yml from the commit under test, not from the workspace,
+      # so no earlier step can change which action runs (#693). The checkout
+      # above is still needed: it is what the action scans and where it writes
+      # the SARIF. Needs runner 2.336.0 or newer.
       # Pin to :latest, not the action's default image tag — that default points
       # at the next release, whose image isn't built until the tag is pushed.
       - id: scan
-        uses: ./
+        uses: $/
         with:
           format: sarif
           output: cfgaudit.sarif
