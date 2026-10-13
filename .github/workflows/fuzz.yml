@@ -1,0 +1,75 @@
+name: Fuzz
+
+# cfgaudit parses files from repositories its user did not write, so a crafted
+# file that panics a parser, a rule or an encoder aborts the scan and hides every
+# other finding. Each fuzz target runs briefly on every pull request and for
+# longer once a week, with the corpus it has built kept in the Actions cache.
+#
+# A crash fails the job and uploads the reproducer. To replay it locally, copy
+# the uploaded file into the same testdata/fuzz/<Target>/ path in the repo and
+# run `go test` on that package: the file then stays as a regression case.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "41 4 * * 0" # 04:41 UTC every Sunday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { pkg: ./internal/parser, target: FuzzPathParsers }
+          - { pkg: ./internal/parser, target: FuzzStripJSONC }
+          - { pkg: ./internal/parser, target: FuzzMarkdownInstructions }
+          - { pkg: ./internal/parser, target: FuzzTerminalBase }
+          - { pkg: ./cmd/cfgaudit, target: FuzzScan }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod verify
+
+      # The generated corpus lives under $GOCACHE/fuzz. Every run saves under a
+      # fresh key and restores the newest earlier one, so the corpus keeps
+      # growing across runs instead of starting over.
+      - id: gocache
+        run: echo "dir=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.gocache.outputs.dir }}/fuzz/github.com/cfgaudit/cfgaudit/**/${{ matrix.target }}
+          key: fuzz-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-${{ matrix.target }}-
+
+      # -fuzzminimizetime: Go spends up to 60s shrinking each new corpus entry
+      # by default, and execution stalls meanwhile. Measured on FuzzScan, that
+      # cut the entries found from 1082 in 60s to 55 in 180s, so a 45s run would
+      # do little but minimize. 5s still shrinks a crasher to a readable size.
+      - name: Fuzz
+        env:
+          PKG: ${{ matrix.pkg }}
+          TARGET: ${{ matrix.target }}
+          FUZZTIME: ${{ github.event_name == 'schedule' && '10m' || '45s' }}
+        run: go test "$PKG" -run '^$' -fuzz "^${TARGET}\$" -fuzztime "$FUZZTIME" -fuzzminimizetime 5s
+
+      - name: Upload the crashing input
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: "**/testdata/fuzz/${{ matrix.target }}/"
+          if-no-files-found: ignore
