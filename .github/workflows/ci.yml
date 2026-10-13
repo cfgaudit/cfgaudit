@@ -236,6 +236,12 @@ jobs:
         # (GHSA-f42p-wjw5-97qh), fixed in 1.28.0. This job passes GITHUB_TOKEN,
         # so an unpinned install could pull the leaking version and print the
         # token into the public Actions log.
-        run: pip install zizmor==1.28.0
+        #
+        # Installed by hash (#677), so a file replaced on PyPI under the same
+        # version fails the install. --only-binary keeps pip on the wheel:
+        # without it, a wheel that fails its hash makes pip fall back to building
+        # the sdist instead of stopping.
+        run: |
+          pip install --only-binary :all: --require-hashes -r .github/tools/zizmor/requirements.txt
       - name: Run zizmor
         run: zizmor --gh-token "${{ secrets.GITHUB_TOKEN }}" .github/workflows/

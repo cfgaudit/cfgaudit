@@ -1,4 +1,9 @@
-FROM golang:1.27-alpine AS builder
+# Both base images are pinned by the digest of their multi-arch index (#677),
+# so a tag repointed upstream cannot change what is built. Dependabot's docker
+# ecosystem updates tag and digest together. The runtime stage's packages are
+# not frozen by the pin: `apk upgrade` below fetches the current patch level at
+# build time, and the Trivy gate in ci.yml checks the result.
+FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
 ARG VERSION=dev
 WORKDIR /build
 COPY go.mod ./
@@ -8,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.cfgauditVersion=${VERSION}" \
     -o cfgaudit ./cmd/cfgaudit
 
-FROM alpine:3.24
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 # Alpine's repos serve only the current patch of a package, so an exact version
 # pin breaks the build the moment upstream bumps it — and would fight the Trivy
 # base-image freshness gate in ci.yml, which exists to force those bumps.

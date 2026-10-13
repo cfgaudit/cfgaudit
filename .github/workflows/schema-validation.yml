@@ -31,9 +31,14 @@ jobs:
           persist-credentials: false
 
       - name: Install ajv-cli
-        # Dev-only JSON-schema validator tooling for this CI job; an ad-hoc global
-        # install is intentional here (no project lockfile pins it).
-        run: npm install -g ajv-cli ajv-formats # zizmor: ignore[adhoc-packages]
+        # From .github/tools/ajv's lockfile with npm ci (#677): versions and
+        # integrity hashes are fixed and Dependabot updates them. Install
+        # scripts are skipped; ajv-cli needs none. ajv-formats used to be
+        # installed here too, but ajv-cli never loads it, so it was dropped
+        # without a change in what is validated.
+        run: |
+          npm ci --prefix .github/tools/ajv --ignore-scripts --no-audit --no-fund
+          echo "$GITHUB_WORKSPACE/.github/tools/ajv/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Fetch Claude Code settings schema
         run: |

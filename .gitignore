@@ -3,3 +3,6 @@
 
 # GoReleaser build output.
 dist/
+
+# npm ci target of the schema validation job (#677)
+.github/tools/ajv/node_modules/

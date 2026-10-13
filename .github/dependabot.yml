@@ -29,3 +29,21 @@ updates:
     open-pull-requests-limit: 5
     cooldown:
       default-days: 7
+
+  # CI tool pins (#677): zizmor by hash for the zizmor job, ajv-cli from a
+  # lockfile for the schema validation job.
+  - package-ecosystem: pip
+    directory: /.github/tools/zizmor
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: npm
+    directory: /.github/tools/ajv
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
