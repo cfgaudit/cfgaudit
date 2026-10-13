@@ -2,15 +2,15 @@
 # Kept at >= 1.28.0: 1.27.0 logs a passed --gh-token in cleartext
 # (GHSA-f42p-wjw5-97qh), and that job passes GITHUB_TOKEN. One hash per
 # file PyPI serves for the release; zizmor has no dependencies.
-zizmor==1.28.0 \
-    --hash=sha256:0949f57a6d20deeb9c509705afce8de233c166475e25be305985a1fe553c6e0d \
-    --hash=sha256:149dba59a8bd2897960ee54c40ae8b5801a71293bad71c8d2913c74ab66a294c \
-    --hash=sha256:354e6cb98a15a88593a6f7ac6236b092b83a2aad5c4768ee750f9b3262f668d9 \
-    --hash=sha256:6897f02b0d02fd709f5ebc13cd37d97ad464219e0ba86a03f6d86f7777b7b102 \
-    --hash=sha256:6d5a300b80bf4c12e9cbe78ffd3874ec3f94b65bea78c994ec18157e2846ece0 \
-    --hash=sha256:7b00018cf2cc948c3b3e010c1a1f30fdc001f0d062640469f17e0ef006e74eb7 \
-    --hash=sha256:833c360ba5a9c74ca45007b8c79939826fca0c5ed65144fa08f63a7009cef096 \
-    --hash=sha256:9819f91f0ef486e4af98a6aacfed23c6b4067fabcecb88d49231228a3d43f821 \
-    --hash=sha256:ae2cab67ce713e760e0d1b61ad749d374693ea2b310337aab11cd446748267f3 \
-    --hash=sha256:c93b30d211b0b0c38905a8803cc2653fff37de03eb77105302a02f709773bd4a \
-    --hash=sha256:ef69d198dcf6835c9b6eea8673cbc5c36f10b3f1b98b51d28266b7e01c3704d4
+zizmor==1.30.1 \
+    --hash=sha256:06e039fae8e185e2a1a8b002f2d95a6f5c3b548048bdd79e004dcb501fcd0868 \
+    --hash=sha256:15679642e8c4f825ba3f22537c698b1bbbad19ead23640f62ec45ebbe7abc803 \
+    --hash=sha256:17fda74e15fe41a6aa354ea4cf71fc7ff3cd025cda6584bb6d7466b3f1d00fe6 \
+    --hash=sha256:42512bb4a1bce4c787d221d1572ff6b691fa52a3d129b2910be8afaf860c5871 \
+    --hash=sha256:4a5ef2fa4fbd2984f794cfc2f95790bd03fa0bae801487ed550e044675874e60 \
+    --hash=sha256:5e8a3d54c3d9d51307371f4d1d49f8f9e56de00205c6cc660c6846a95ad4e135 \
+    --hash=sha256:92906f448365672ebb657fb50d36f997290a3aaba8cac723214741ea9054845d \
+    --hash=sha256:bf63099a27ef3bf1329dbab44bb9d1027124855c71bd0eca864d5c8e1c5c0db1 \
+    --hash=sha256:cbb7e5cb2fec471066d5c326bcaa69ed3eefdcf6a76d7ad38335b924acf86c07 \
+    --hash=sha256:eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e \
+    --hash=sha256:f9eb092f089e35fa9fb3b70aeec0a19eca7dacf2ab161f1d50b18351895f085c
