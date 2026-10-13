@@ -62,6 +62,9 @@ jobs:
           lychee --no-progress --config lychee.toml --format markdown \
             --output lychee-report.md "${files[@]}"
           status=$?
+          # In the log as well as the summary, so a failure can be read from
+          # the CLI (gh run view --log) and not only in the browser.
+          cat lychee-report.md
           cat lychee-report.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
