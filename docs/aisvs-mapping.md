@@ -1,6 +1,6 @@
 # cfgaudit ↔ OWASP AISVS 1.01 (secondary mapping)
 
-> **Secondary, provisional lens.** Mapped against the [OWASP AI Security Verification Standard (AISVS) **1.01**](https://owasp.org/www-project-ai-security-verification-standard/) (source: [OWASP/AISVS `1.01/en`](https://github.com/OWASP/AISVS/tree/master/1.01/en), read at `55dc220`, 2026-10-08). The [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) stays cfgaudit's **primary** mapping (one risk per rule, in each rule doc and the README). This AISVS view is a complementary lens for teams who verify against AISVS.
+> **Secondary, provisional lens.** Mapped against the [OWASP AI Security Verification Standard (AISVS) **1.01**](https://owasp.org/projects/artificial-intelligence-security-verification-standard-aisvs-docs) (source: [OWASP/AISVS `1.01/en`](https://github.com/OWASP/AISVS/tree/master/1.01/en), read at `55dc220`, 2026-10-08). The [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) stays cfgaudit's **primary** mapping (one risk per rule, in each rule doc and the README). This AISVS view is a complementary lens for teams who verify against AISVS.
 
 ## What this mapping is, and what it is not
 

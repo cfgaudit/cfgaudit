@@ -1,0 +1,21 @@
+# Link check configuration, read by the Link check workflow (#673).
+#
+# lychee skips URLs inside code spans and fenced blocks, which is where the rule
+# docs keep their example and attacker hosts, so those need no entry here. Each
+# exclusion below is a link that is correct but cannot pass an automated check.
+
+exclude = [
+  # Answers 403 to any non-browser client, whatever the page's state.
+  '^https://4sysops\.com/',
+]
+
+# Retry before reporting, so one slow response does not open an issue.
+max_retries = 3
+retry_wait_time = 5
+timeout = 30
+
+# 429 (rate limited) and 503 (overloaded) say nothing about whether a page
+# exists. In 10 local runs one failed on a github.com page answering 503 after
+# every retry; counting that as dead would fail about one PR in ten for no
+# reason. A dead page answers 404 or 410, which still fails.
+accept = ["100..=103", "200..=299", "429", "503"]

@@ -1,0 +1,105 @@
+name: Link check
+
+# Checks every link in the repository's Markdown files (#673). A pull request
+# that touches a Markdown file fails on a dead link. The weekly run catches a
+# page that disappeared upstream without any change here, and opens an issue
+# instead of failing silently, the way check-framework-versions.yml reports.
+#
+# Exclusions live in lychee.toml, so they are reviewed like code.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - lychee.toml
+      - .github/workflows/linkcheck.yml
+  schedule:
+    - cron: "17 6 * * 3" # 06:17 UTC every Wednesday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # lychee is installed from its release and checked against this digest
+  # rather than through lychee-action, which downloads the binary without
+  # verifying it. Bump both together.
+  LYCHEE_VERSION: "0.24.2"
+  LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+
+jobs:
+  check:
+    name: Check links
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install lychee
+        run: |
+          set -euo pipefail
+          archive=lychee-x86_64-unknown-linux-gnu.tar.gz
+          curl -sSfLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/$archive"
+          echo "$LYCHEE_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/lychee"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/lychee"
+          bin=$(find "$RUNNER_TEMP/lychee" -name lychee -type f)
+          "$bin" --version
+          dirname "$bin" >> "$GITHUB_PATH"
+
+      - name: Check links
+        env:
+          # Raises GitHub's rate limit for github.com links; read-only use.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          mapfile -d '' files < <(git ls-files -z '*.md')
+          lychee --no-progress --config lychee.toml --format markdown \
+            --output lychee-report.md "${files[@]}"
+          status=$?
+          cat lychee-report.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Keep the report for the issue
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lychee-report
+          path: lychee-report.md
+
+  # Separate so that only the weekly run, and only after a failed check, holds
+  # a token that can write issues.
+  report:
+    name: Report dead links
+    needs: check
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: lychee-report
+      - name: Open an issue unless one is open
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          title="Docs: dead links found by the weekly link check"
+          if [ "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')" != "0" ]; then
+            echo "an open issue already exists: $title"
+            exit 0
+          fi
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          {
+            echo "The weekly link check found links that no longer resolve: $run_url"
+            echo
+            cat lychee-report.md
+          } > issue.md
+          gh issue create --title "$title" --label docs --body-file issue.md
