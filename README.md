@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="https://app.codecov.io/gh/cfgaudit/cfgaudit"><img src="https://codecov.io/gh/cfgaudit/cfgaudit/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/cfgaudit/cfgaudit"><img src="https://api.scorecard.dev/projects/github.com/cfgaudit/cfgaudit/badge" alt="OpenSSF Scorecard"></a>
 </p>
 
 # cfgaudit
