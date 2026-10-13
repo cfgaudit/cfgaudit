@@ -68,6 +68,20 @@ cosign verify "ghcr.io/cfgaudit/cfgaudit@$DIGEST" \
 
 Attestations and the image signature are published from **v1.8.0** onward, the first release built by the signing pipeline; `checksums.txt` is covered from the same release.
 
+**Without the GitHub API** — from the first release after v1.16.0, the same attestation is also attached to the release as two assets: `cfgaudit_<version>.sigstore.json`, the Sigstore bundle with the signature, signing certificate and transparency log entry, and `cfgaudit_<version>.intoto.jsonl`, the signed SLSA provenance on its own. One bundle covers all six archives and `checksums.txt`. Verify a download against it with cosign:
+
+```sh
+VERSION=<version>   # e.g. the release you downloaded, without the leading v
+cosign verify-blob-attestation \
+  --bundle "cfgaudit_${VERSION}.sigstore.json" \
+  --type slsaprovenance1 \
+  --certificate-identity-regexp '^https://github\.com/cfgaudit/cfgaudit/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  "cfgaudit_${VERSION}_linux_amd64.tar.gz"
+```
+
+The identity pins the signer to this repository's release workflow running on a tag, so a bundle signed by any other workflow or repository fails, as does a file whose digest is not in the provenance.
+
 ### A note on SBOMs
 
 The container image carries its SBOM as a signed attestation. The per-archive `.sbom.json` files, by contrast, are published as **plain release assets, not attestations** — deliberately.
