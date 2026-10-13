@@ -38,7 +38,37 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go mod verify
-      - run: go test -race -coverprofile=coverage.out ./...
+      # pipefail is set by hand: a run step without an explicit shell gets
+      # `bash -e` only, and a failing go test would then pass through tee.
+      - run: |
+          set -o pipefail
+          go test -race -coverprofile=coverage.out ./... | tee test-output.txt
+      # Shows the total and per-package coverage on the run's summary page and
+      # fails below COVERAGE_FLOOR (#674). Raise the floor in a PR when the
+      # total has moved up; it was 87.2% when the floor was set.
+      - name: Coverage
+        env:
+          COVERAGE_FLOOR: "86.0"
+        run: |
+          set -euo pipefail
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub("%", "", $NF); print $NF }')
+          {
+            echo "## Coverage: ${total}% (floor ${COVERAGE_FLOOR}%)"
+            echo
+            echo "| Package | Coverage |"
+            echo "|---|---|"
+            awk '/coverage:/ {
+              pkg = ($1 == "ok") ? $2 : $1
+              for (i = 1; i <= NF; i++) if ($i == "coverage:") pct = $(i + 1)
+              sub("^github.com/cfgaudit/cfgaudit/?", "", pkg)
+              printf "| `%s` | %s |\n", (pkg == "" ? "(root)" : pkg), pct
+            }' test-output.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+          if awk -v t="$total" -v f="$COVERAGE_FLOOR" 'BEGIN { exit !(t < f) }'; then
+            echo "::error::Total coverage ${total}% is below the floor of ${COVERAGE_FLOOR}%"
+            exit 1
+          fi
+          echo "Total coverage ${total}% (floor ${COVERAGE_FLOOR}%)"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage
