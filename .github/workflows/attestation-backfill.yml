@@ -1,0 +1,155 @@
+name: Attestation backfill
+
+# Repair tool, not part of the release path, like sbom-backfill.yml (#690).
+# Since #676 the release job attaches its attestation to the release as
+# cfgaudit_<version>.sigstore.json and cfgaudit_<version>.intoto.jsonl. Releases
+# cut before that carry the attestation only in the GitHub attestations API;
+# this attaches it to them.
+#
+# Nothing is signed. Each bundle is the one the release run created, fetched by
+# the digest of the release's own linux_amd64 archive. Before anything is
+# uploaded, every requested tag must pass: the archive matches the release's
+# checksums.txt, the API holds exactly one attestation for it, and cosign
+# verifies that bundle against both the archive and checksums.txt with the
+# signer pinned to release.yml on that exact tag. One failing tag stops the
+# run before the upload job starts.
+#
+# Run it with upload unchecked first: the verify job then reports what it would
+# attach and stops. A tag that already has the assets is skipped, and the
+# upload does not use --clobber, so nothing published is replaced.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Release tags, space-separated (attestations exist from v1.8.0)'
+        required: true
+        type: string
+      upload:
+        description: 'Upload the verified files (unchecked: verify only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Fetch and verify the attestations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # download release assets
+      attestations: read # read the attestations API
+    steps:
+      # Egress audit, see the goreleaser job in release.yml (#672).
+      - uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Fetch and verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          set -euo pipefail
+          mkdir -p out work
+          : > out/tags.txt
+          for tag in $TAGS; do
+            if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::'$tag' is not a release tag of the form vX.Y.Z"
+              exit 1
+            fi
+            version="${tag#v}"
+            archive="cfgaudit_${version}_linux_amd64.tar.gz"
+            bundle="out/cfgaudit_${version}.sigstore.json"
+            dir="work/$tag"
+            mkdir -p "$dir"
+
+            existing=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets \
+              --jq '[.assets[].name | select(endswith(".sigstore.json") or endswith(".intoto.jsonl"))] | length')
+            if [ "$existing" != "0" ]; then
+              echo "$tag: already has attestation assets, skipped"
+              continue
+            fi
+
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$dir" \
+              --pattern "$archive" --pattern checksums.txt
+            (cd "$dir" && grep -E "  ${archive}\$" checksums.txt | sha256sum -c -)
+
+            digest=$(sha256sum "$dir/$archive" | cut -d' ' -f1)
+            if ! gh api "repos/$GITHUB_REPOSITORY/attestations/sha256:$digest" > "$dir/attestations.json"; then
+              echo "::error::$tag: no attestation for $archive (sha256:$digest)"
+              exit 1
+            fi
+            count=$(jq '.attestations | length' "$dir/attestations.json")
+            if [ "$count" != "1" ]; then
+              echo "::error::$tag: expected exactly one attestation for $archive, found $count"
+              exit 1
+            fi
+            jq -c '.attestations[0].bundle' "$dir/attestations.json" > "$bundle"
+
+            for file in "$archive" checksums.txt; do
+              cosign verify-blob-attestation \
+                --bundle "$bundle" \
+                --type slsaprovenance1 \
+                --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/tags/$tag" \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                "$dir/$file"
+            done
+
+            jq -c .dsseEnvelope "$bundle" > "out/cfgaudit_${version}.intoto.jsonl"
+            echo "$tag" >> out/tags.txt
+            echo "$tag: verified, ready to attach"
+          done
+
+          {
+            echo "## Attestation backfill"
+            echo
+            if [ -s out/tags.txt ]; then
+              echo "Verified and ready to attach: $(tr '\n' ' ' < out/tags.txt)"
+            else
+              echo "Nothing to attach."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verified-attestations
+          path: out/
+          if-no-files-found: error
+
+  # Separate so that only an explicitly requested upload, after every tag has
+  # passed verification, holds a token that can write to releases.
+  upload:
+    name: Attach to the releases
+    needs: verify
+    if: inputs.upload
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload release assets
+    steps:
+      # Egress audit, see the goreleaser job in release.yml (#672).
+      - uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-attestations
+          path: out
+
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            version="${tag#v}"
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" \
+              "out/cfgaudit_${version}.sigstore.json" "out/cfgaudit_${version}.intoto.jsonl"
+            echo "$tag: attached"
+          done < out/tags.txt
