@@ -344,3 +344,152 @@ func TestCFG050_CodexOAuthClientSecret(t *testing.T) {
 		}
 	}
 }
+
+// zedTarget parses body as a committed .zed/settings.json, through the same
+// JSONC parser the CLI uses.
+func zedTarget(t *testing.T, body string) *Target {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	z, err := parser.ParseZedSettings(path)
+	if err != nil {
+		t.Fatalf("bad test settings: %v", err)
+	}
+	return &Target{Scope: finding.ScopeProject, ZedSettings: z, ZedSettingsFile: ".zed/settings.json"}
+}
+
+// Each environment block Zed passes to a program it launches is checked, by
+// value pattern and by secret-like name, and the finding names the block.
+func TestCFG050_ZedEnvBlocks(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings string
+		loc      string
+		what     string
+	}{
+		{
+			name:     "terminal.env, token shape",
+			settings: `{"terminal": {"env": {"GH": "ghp_abcdefghij0123456789ABCDEF"}}}`,
+			loc:      "Zed terminal.env.GH",
+			what:     "GitHub token",
+		},
+		{
+			// The shape of the real config the rule cites.
+			name:     "terminal.env, secret-like name",
+			settings: `{"terminal": {"env": {"SURREALDB_PASSWORD": "hunter2hunter2"}}}`,
+			loc:      "Zed terminal.env.SURREALDB_PASSWORD",
+			what:     "secret-like name",
+		},
+		{
+			// With a shell override the site's label is terminal.shell, and its
+			// env is still checked.
+			name:     "terminal.env next to a shell override",
+			settings: `{"terminal": {"shell": {"program": "zsh"}, "env": {"DB_PASSWORD": "hunter2hunter2"}}}`,
+			loc:      "Zed terminal.shell.env.DB_PASSWORD",
+			what:     "secret-like name",
+		},
+		{
+			name:     "lsp binary env",
+			settings: `{"lsp": {"rust-analyzer": {"binary": {"path": "/usr/bin/rust-analyzer", "env": {"API_KEY": "sk-ant-abcdef1234567890"}}}}}`,
+			loc:      "Zed lsp.rust-analyzer.binary.env.API_KEY",
+			what:     "Anthropic API key",
+		},
+		{
+			// An env with no path still reaches the server Zed downloads itself.
+			name:     "lsp binary env without a path",
+			settings: `{"lsp": {"pyright": {"binary": {"env": {"PYPI_TOKEN": "s3cr3tvalue123"}}}}}`,
+			loc:      "Zed lsp.pyright.binary.env.PYPI_TOKEN",
+			what:     "secret-like name",
+		},
+		{
+			name:     "dap env",
+			settings: `{"dap": {"CodeLLDB": {"binary": "/opt/codelldb", "env": {"SLACK": "xoxb-1234567890-abcdefghijkl"}}}}`,
+			loc:      "Zed dap.CodeLLDB.env.SLACK",
+			what:     "Slack token",
+		},
+		{
+			// JSONC, as Zed writes it: a comment and a trailing comma.
+			name: "JSONC settings",
+			settings: `{
+				// project terminal
+				"terminal": {"env": {"DB_PASSWORD": "hunter2hunter2",},},
+			}`,
+			loc:  "Zed terminal.env.DB_PASSWORD",
+			what: "secret-like name",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := onlyFinding(t, CFG050.Check(zedTarget(t, tt.settings)), finding.Error)
+			if !strings.HasPrefix(got.Message, tt.loc+" contains") {
+				t.Errorf("message %q does not start with the location %q", got.Message, tt.loc)
+			}
+			if !strings.Contains(got.Message, tt.what) {
+				t.Errorf("message %q does not name %q", got.Message, tt.what)
+			}
+			if got.File != ".zed/settings.json" {
+				t.Errorf("finding file %q, want .zed/settings.json", got.File)
+			}
+		})
+	}
+}
+
+func TestCFG050_ZedEnvNotFlagged(t *testing.T) {
+	cases := map[string]string{
+		"shell reference":       `{"terminal": {"env": {"API_TOKEN": "${API_TOKEN}"}}}`,
+		"template reference":    `{"terminal": {"env": {"API_TOKEN": "{{API_TOKEN}}"}}}`,
+		"placeholder":           `{"lsp": {"x": {"binary": {"path": "x", "env": {"OPENAI_API_KEY": "YOUR_API_KEY_HERE"}}}}}`,
+		"empty value":           `{"dap": {"d": {"binary": "d", "env": {"DB_PASSWORD": ""}}}}`,
+		"whitespace value":      `{"dap": {"d": {"binary": "d", "env": {"DB_PASSWORD": "   "}}}}`,
+		"ordinary variable":     `{"terminal": {"env": {"EDITOR": "vim", "RUST_LOG": "debug"}}}`,
+		"no environment blocks": `{"terminal": {"shell": {"program": "zsh"}}, "lsp": {"x": {"settings": {"token": "abc"}}}}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if f := CFG050.Check(zedTarget(t, body)); len(f) != 0 {
+				t.Errorf("expected no finding, got %+v", f)
+			}
+		})
+	}
+}
+
+// Every environment block is reported, in the order CommandSites gives:
+// terminal, then lsp and dap entries sorted by name, keys sorted within each.
+func TestCFG050_ZedEnvAllBlocksInOrder(t *testing.T) {
+	f := CFG050.Check(zedTarget(t, `{
+		"terminal": {"env": {"B_PASSWORD": "hunter2hunter2", "A_PASSWORD": "hunter2hunter2"}},
+		"lsp": {
+			"zls": {"binary": {"path": "zls", "env": {"Z_TOKEN": "s3cr3tvalue123"}}},
+			"gopls": {"binary": {"path": "gopls", "env": {"G_TOKEN": "s3cr3tvalue123"}}}
+		},
+		"dap": {"d": {"binary": "d", "env": {"D_SECRET": "s3cr3tvalue123"}}}
+	}`))
+	want := []string{
+		"Zed terminal.env.A_PASSWORD",
+		"Zed terminal.env.B_PASSWORD",
+		"Zed lsp.gopls.binary.env.G_TOKEN",
+		"Zed lsp.zls.binary.env.Z_TOKEN",
+		"Zed dap.d.env.D_SECRET",
+	}
+	if len(f) != len(want) {
+		t.Fatalf("got %d findings, want %d: %+v", len(f), len(want), f)
+	}
+	for i, loc := range want {
+		if !strings.HasPrefix(f[i].Message, loc+" contains") {
+			t.Errorf("finding %d: %q, want location %q", i, f[i].Message, loc)
+		}
+	}
+}
+
+// A user-scope Zed settings file carries the user-scope note, like every other
+// CFG050 site.
+func TestCFG050_ZedEnvUserScope(t *testing.T) {
+	tgt := zedTarget(t, `{"terminal": {"env": {"DB_PASSWORD": "hunter2hunter2"}}}`)
+	tgt.Scope = finding.ScopeUser
+	got := onlyFinding(t, CFG050.Check(tgt), finding.Error)
+	if !strings.HasSuffix(got.Message, userScopeNote(tgt)) || userScopeNote(tgt) == "" {
+		t.Errorf("user-scope message lacks the user-scope note: %q", got.Message)
+	}
+}
