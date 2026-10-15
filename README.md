@@ -68,7 +68,7 @@ cosign verify "ghcr.io/cfgaudit/cfgaudit@$DIGEST" \
 
 Attestations and the image signature are published from **v1.8.0** onward, the first release built by the signing pipeline; `checksums.txt` is covered from the same release.
 
-**Without the GitHub API** — from the first release after v1.16.0, the same attestation is also attached to the release as two assets: `cfgaudit_<version>.sigstore.json`, the Sigstore bundle with the signature, signing certificate and transparency log entry, and `cfgaudit_<version>.intoto.jsonl`, the signed SLSA provenance on its own. One bundle covers all six archives and `checksums.txt`. Verify a download against it with cosign:
+**Without the GitHub API**: from v1.8.0 onward, the same attestation is also attached to each release as two assets: `cfgaudit_<version>.sigstore.json`, the Sigstore bundle with the signature, signing certificate and transparency log entry, and `cfgaudit_<version>.intoto.jsonl`, the signed SLSA provenance on its own. One bundle covers all six archives and `checksums.txt`. Verify a download against it with cosign:
 
 ```sh
 VERSION=<version>   # e.g. the release you downloaded, without the leading v
