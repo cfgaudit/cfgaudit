@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -26,65 +27,82 @@ import (
 var cfgauditVersion = "dev"
 
 func main() {
+	os.Exit(run(os.Args, os.Stdin, os.Stdout, os.Stderr))
+}
+
+// run is the whole CLI: args is the full command line including the program
+// name, as in os.Args, and the return value is the process exit code. Kept
+// apart from main so the flag handling and exit codes are testable (#707).
+// Helpers it calls still write their own notices to os.Stderr.
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Subcommands are dispatched before flag parsing so their args (e.g. a rule
 	// ID) aren't mistaken for the scan directory.
-	if len(os.Args) >= 2 {
-		switch os.Args[1] {
+	if len(args) >= 2 {
+		switch args[1] {
 		case "explain":
-			out, code := explainOutput(os.Args[2:])
-			fmt.Print(out)
-			os.Exit(code)
+			out, code := explainOutput(args[2:])
+			_, _ = fmt.Fprint(stdout, out)
+			return code
 		case "list":
-			out, code := listOutput(os.Args[2:])
-			fmt.Print(out)
-			os.Exit(code)
+			out, code := listOutput(args[2:])
+			_, _ = fmt.Fprint(stdout, out)
+			return code
 		case "policy":
-			out, code := policyOutput(os.Args[2:])
-			fmt.Print(out)
-			os.Exit(code)
+			out, code := policyOutput(args[2:])
+			_, _ = fmt.Fprint(stdout, out)
+			return code
 		case "init":
-			out, code := initOutput(os.Args[2:], os.Stdin)
-			fmt.Print(out)
-			os.Exit(code)
+			out, code := initOutput(args[2:], stdin)
+			_, _ = fmt.Fprint(stdout, out)
+			return code
 		}
 	}
 
-	format := flag.String("format", "auto", "output format: auto (table on a TTY, text otherwise), text, table, json, sarif, codeclimate")
-	user := flag.Bool("user", false, "also scan ~/.claude/settings.json")
-	claudeVersion := flag.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
-	configPath := flag.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
-	plugins := flag.String("plugins", "", "also scan a Claude Code plugin/skill package directory (SKILL.md, hooks, MCP servers)")
-	strict := flag.Bool("strict", false, "treat warn findings as errors for the exit code (also: strict: true in .cfgaudit.yml)")
-	shellcheck := flag.Bool("shellcheck", false, "run shellcheck on hook/helper commands (requires the shellcheck binary; also: shellcheck: true in .cfgaudit.yml)")
-	showVersion := flag.Bool("version", false, "print cfgaudit version and exit")
+	fset := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	fset.SetOutput(stderr)
+	format := fset.String("format", "auto", "output format: auto (table on a TTY, text otherwise), text, table, json, sarif, codeclimate")
+	user := fset.Bool("user", false, "also scan ~/.claude/settings.json")
+	claudeVersion := fset.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
+	configPath := fset.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
+	plugins := fset.String("plugins", "", "also scan a Claude Code plugin/skill package directory (SKILL.md, hooks, MCP servers)")
+	strict := fset.Bool("strict", false, "treat warn findings as errors for the exit code (also: strict: true in .cfgaudit.yml)")
+	shellcheck := fset.Bool("shellcheck", false, "run shellcheck on hook/helper commands (requires the shellcheck binary; also: shellcheck: true in .cfgaudit.yml)")
+	showVersion := fset.Bool("version", false, "print cfgaudit version and exit")
 
 	var only, skip ruleSet
-	flag.Var(&only, "only", "run only these rule IDs (comma-separated; flag may be repeated)")
-	flag.Var(&skip, "skip", "skip these rule IDs (comma-separated; flag may be repeated)")
+	fset.Var(&only, "only", "run only these rule IDs (comma-separated; flag may be repeated)")
+	fset.Var(&skip, "skip", "skip these rule IDs (comma-separated; flag may be repeated)")
 
-	flag.Parse()
+	// Same exit codes as the flag package's ExitOnError: 0 for -h, 2 for a
+	// bad flag. The error and the usage are already on stderr.
+	if err := fset.Parse(args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
 
 	if *showVersion {
-		fmt.Printf("cfgaudit %s\n", cfgauditVersion)
-		return
+		_, _ = fmt.Fprintf(stdout, "cfgaudit %s\n", cfgauditVersion)
+		return 0
 	}
 
 	if unknown := unknownRuleIDs(only, skip, rules.All); len(unknown) > 0 {
-		fmt.Fprintf(os.Stderr, "cfgaudit: --only/--skip references unknown rule(s): %s\n", strings.Join(unknown, ", "))
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: --only/--skip references unknown rule(s): %s\n", strings.Join(unknown, ", "))
 	}
 
 	dir := "."
-	if flag.NArg() > 0 {
-		dir = flag.Arg(0)
+	if fset.NArg() > 0 {
+		dir = fset.Arg(0)
 	}
 
 	cfg, cfgPath, err := loadConfig(*configPath, dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cfgaudit: %v\n", err)
-		os.Exit(2)
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
 	}
 	if cfgPath != "" {
-		fmt.Fprintf(os.Stderr, "cfgaudit: using config %s\n", cfgPath)
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: using config %s\n", cfgPath)
 	}
 	cfg = withStrict(cfg, *strict)
 
@@ -94,15 +112,15 @@ func main() {
 
 	targets, err := buildTargets(dir, *user)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cfgaudit: %v\n", err)
-		os.Exit(2)
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
 	}
 	attachPolicy(targets, cfg)
 
 	pluginTargets, err := buildPluginTargets(dir, *plugins, *user)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cfgaudit: %v\n", err)
-		os.Exit(2)
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
 	}
 	attachSkillShellToPluginSkills(pluginTargets, dir)
 	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
@@ -119,33 +137,32 @@ func main() {
 	}
 	all = cfg.PostProcess(all, dir)
 
-	switch resolveFormat(*format, isTTY(os.Stdout)) {
+	stdoutFile, _ := stdout.(*os.File)
+	switch resolveFormat(*format, stdoutFile != nil && isTTY(stdoutFile)) {
 	case "json":
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(withTaxonomy(all))
 	case "sarif":
-		if err := encodeSARIF(os.Stdout, all, cfgauditVersion, rules.All); err != nil {
-			fmt.Fprintf(os.Stderr, "cfgaudit: sarif encode: %v\n", err)
-			os.Exit(2)
+		if err := encodeSARIF(stdout, all, cfgauditVersion, rules.All); err != nil {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: sarif encode: %v\n", err)
+			return 2
 		}
 	case "codeclimate", "codequality":
-		if err := encodeCodeClimate(os.Stdout, all, dir); err != nil {
-			fmt.Fprintf(os.Stderr, "cfgaudit: codeclimate encode: %v\n", err)
-			os.Exit(2)
+		if err := encodeCodeClimate(stdout, all, dir); err != nil {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: codeclimate encode: %v\n", err)
+			return 2
 		}
 	case "table":
-		renderTable(os.Stdout, all, cfgauditVersion)
+		renderTable(stdout, all, cfgauditVersion)
 	default:
 		for _, f := range all {
-			fmt.Println(f)
+			_, _ = fmt.Fprintln(stdout, f)
 		}
-		fmt.Printf("\ncfgaudit %s — %d %s\n", cfgauditVersion, len(all), pluralize("finding", len(all)))
+		_, _ = fmt.Fprintf(stdout, "\ncfgaudit %s — %d %s\n", cfgauditVersion, len(all), pluralize("finding", len(all)))
 	}
 
-	if exitCode := cfg.ExitCode(all); exitCode != 0 {
-		os.Exit(exitCode)
-	}
+	return cfg.ExitCode(all)
 }
 
 // loadConfig resolves the .cfgaudit.yml to use: an explicit --config path (error

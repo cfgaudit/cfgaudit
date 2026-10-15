@@ -15,6 +15,15 @@ linters:
           disabled: true
         - name: package-comments
           disabled: true
+  exclusions:
+    rules:
+      # G703 traces the scan and --plugins directories from the command line
+      # into the filepath.WalkDir and os.Stat calls that discover config files.
+      # Reading the directories the user names is what cfgaudit does; it became
+      # visible to the taint analysis once run() took args explicitly (#707).
+      - path: cmd/cfgaudit/(main|plugins)\.go
+        linters: [gosec]
+        text: "G703:"
 
 # Reported by the Lint job like any linter finding; `golangci-lint fmt` applies it.
 formatters:
