@@ -38,17 +38,17 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go mod verify
-      # pipefail is set by hand: a run step without an explicit shell gets
-      # `bash -e` only, and a failing go test would then pass through tee.
-      - run: |
-          set -o pipefail
-          go test -race -coverprofile=coverage.out ./... | tee test-output.txt
+      # -coverpkg=./... counts a statement as covered when any package's tests
+      # run it, not only its own package's (#706). Parser code is mostly
+      # exercised by the rule tests, which assert on the findings it feeds;
+      # without the flag it reads as untested.
+      - run: go test -race -coverpkg=./... -coverprofile=coverage.out ./...
       # Shows the total and per-package coverage on the run's summary page and
       # fails below COVERAGE_FLOOR (#674). Raise the floor in a PR when the
-      # total has moved up; it was 87.2% when the floor was set.
+      # total has moved up; it was 91.5% when the floor was last set (#706).
       - name: Coverage
         env:
-          COVERAGE_FLOOR: "86.0"
+          COVERAGE_FLOOR: "90.0"
         run: |
           set -euo pipefail
           total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub("%", "", $NF); print $NF }')
@@ -57,12 +57,25 @@ jobs:
             echo
             echo "| Package | Coverage |"
             echo "|---|---|"
-            awk '/coverage:/ {
-              pkg = ($1 == "ok") ? $2 : $1
-              for (i = 1; i <= NF; i++) if ($i == "coverage:") pct = $(i + 1)
-              sub("^github.com/cfgaudit/cfgaudit/?", "", pkg)
-              printf "| `%s` | %s |\n", (pkg == "" ? "(root)" : pkg), pct
-            }' test-output.txt
+            # Built from the profile, not from go test's output: with
+            # -coverpkg each test binary reports its coverage of all packages.
+            # Every test binary writes each block once; a block counts as
+            # covered when any of them ran it.
+            awk 'NR > 1 {
+              if ($3 > 0) hit[$1] = 1
+              stmts[$1] = $2
+            }
+            END {
+              for (b in stmts) {
+                pkg = b
+                sub(/\/[^\/]*:.*$/, "", pkg)
+                sub("^github.com/cfgaudit/cfgaudit/?", "", pkg)
+                if (pkg == "") pkg = "(root)"
+                total[pkg] += stmts[b]
+                if (b in hit) covered[pkg] += stmts[b]
+              }
+              for (p in total) printf "| `%s` | %.1f%% |\n", p, 100 * covered[p] / total[p]
+            }' coverage.out | sort
           } >> "$GITHUB_STEP_SUMMARY"
           if awk -v t="$total" -v f="$COVERAGE_FLOOR" 'BEGIN { exit !(t < f) }'; then
             echo "::error::Total coverage ${total}% is below the floor of ${COVERAGE_FLOOR}%"
