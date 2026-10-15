@@ -30,7 +30,7 @@ updates:
     cooldown:
       default-days: 7
 
-  # CI tool pins (#677): zizmor by hash for the zizmor job, ajv-cli from a
+  # CI tool pins (#677): zizmor by hash for the zizmor job, ajv from a
   # lockfile for the schema validation job.
   - package-ecosystem: pip
     directory: /.github/tools/zizmor

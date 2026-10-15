@@ -1,8 +1,8 @@
 {
   "name": "cfgaudit-ci-ajv",
   "private": true,
-  "description": "ajv-cli for the Schema validation workflow, installed with npm ci from the lockfile (#677).",
+  "description": "ajv for the Schema validation workflow's validate.js, installed with npm ci from the lockfile (#677, #701).",
   "dependencies": {
-    "ajv-cli": "5.0.0"
+    "ajv": "8.20.0"
   }
 }

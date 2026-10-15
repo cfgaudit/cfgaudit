@@ -7,7 +7,7 @@ cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.j
 ## Development environment
 
 - **Go**: 1.24 or newer (the project pins `go 1.24.3` in `go.mod`).
-- **Optional**: Docker (for the release image), `zizmor` for workflow linting, `ajv-cli` if you want to run the SchemaStore fixture validator locally.
+- **Optional**: Docker (for the release image), `zizmor` for workflow linting, Node.js if you want to run the SchemaStore fixture validator locally (`npm ci --prefix .github/tools/ajv`, then `node .github/tools/ajv/validate.js <schema> testdata/settings/valid/*.json`).
 
 Clone and build:
 

@@ -6,11 +6,13 @@ on:
     paths:
       - 'testdata/settings/**'
       - '.github/workflows/schema-validation.yml'
+      - '.github/tools/ajv/**'
   pull_request:
     branches: [main]
     paths:
       - 'testdata/settings/**'
       - '.github/workflows/schema-validation.yml'
+      - '.github/tools/ajv/**'
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
@@ -30,15 +32,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install ajv-cli
+      - name: Install ajv
         # From .github/tools/ajv's lockfile with npm ci (#677): versions and
         # integrity hashes are fixed and Dependabot updates them. Install
-        # scripts are skipped; ajv-cli needs none. ajv-formats used to be
-        # installed here too, but ajv-cli never loads it, so it was dropped
-        # without a change in what is validated.
-        run: |
-          npm ci --prefix .github/tools/ajv --ignore-scripts --no-audit --no-fund
-          echo "$GITHUB_WORKSPACE/.github/tools/ajv/node_modules/.bin" >> "$GITHUB_PATH"
+        # scripts are skipped; ajv needs none. The validation runs through
+        # .github/tools/ajv/validate.js, not ajv-cli: ajv-cli's own
+        # dependencies carry advisories no release of it fixes (#701).
+        run: npm ci --prefix .github/tools/ajv --ignore-scripts --no-audit --no-fund
 
       - name: Fetch Claude Code settings schema
         run: |
@@ -48,10 +48,8 @@ jobs:
       - name: Validate valid fixtures
         run: |
           set -e
-          for f in testdata/settings/valid/*.json; do
-            echo "Validating $f"
-            ajv validate -s /tmp/claude-code-settings.schema.json -d "$f" --strict=false
-          done
+          node .github/tools/ajv/validate.js /tmp/claude-code-settings.schema.json \
+            testdata/settings/valid/*.json
 
       - name: Check invalid fixtures are structurally parseable
         run: |
