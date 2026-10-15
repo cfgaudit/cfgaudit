@@ -208,7 +208,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 |------|---------|
 | `0` | No findings, or only `warn`/`info` (without `--strict`) |
 | `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
-| `2` | Tool error (file not found, parse error) |
+| `2` | Usage or tool error: the scan path or the `--plugins` path is not a directory, the `--config` file is missing, or `.cfgaudit.yml` does not parse |
 
 **Suppressing a finding**
 

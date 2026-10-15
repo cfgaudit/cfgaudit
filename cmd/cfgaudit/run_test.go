@@ -218,10 +218,49 @@ func TestRun_Subcommands(t *testing.T) {
 	}
 	// A subcommand name is only a subcommand in first position; after a flag
 	// it is the scan directory.
-	root := runFixture(t, nil)
+	root := runFixture(t, map[string]string{"list/README.md": "not a config file"})
 	t.Chdir(root)
 	_, stdout, _ = runCLI(t, "--claude-version", "2.1.0", "--format", "text", "list")
 	if strings.Contains(stdout, "CFG001") || !strings.Contains(stdout, "0 findings") {
 		t.Errorf("`list` after a flag was not scanned as a directory:\n%s", stdout)
+	}
+}
+
+func TestRun_ScanPathMustBeADirectory(t *testing.T) {
+	root := runFixture(t, map[string]string{".claude/settings.json": warnSettings})
+	file := filepath.Join(root, ".claude", "settings.json")
+	missing := filepath.Join(root, "no-such-dir")
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "scan path missing", args: []string{missing}, want: missing + ": no such directory"},
+		{name: "scan path is a file", args: []string{file}, want: file + ": not a directory"},
+		{name: "--plugins missing", args: []string{"--plugins", missing, root}, want: missing + ": no such directory"},
+		{name: "--plugins is a file", args: []string{"--plugins", file, root}, want: file + ": not a directory"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, stdout, stderr := runCLI(t, append([]string{"--claude-version", "2.1.0"}, tt.args...)...)
+			if code != 2 {
+				t.Errorf("exit code %d, want 2", code)
+			}
+			if !strings.Contains(stderr, "cfgaudit: "+tt.want) {
+				t.Errorf("stderr %q does not contain %q", stderr, tt.want)
+			}
+			if stdout != "" {
+				t.Errorf("a refused scan wrote to stdout:\n%s", stdout)
+			}
+		})
+	}
+
+	// An existing directory, given explicitly or as the default ".", scans.
+	if code, _, _ := runCLI(t, "--claude-version", "2.1.0", root); code != 0 {
+		t.Errorf("scan of an existing directory exited %d, want 0", code)
+	}
+	t.Chdir(root)
+	if code, _, _ := runCLI(t, "--claude-version", "2.1.0"); code != 0 {
+		t.Errorf("scan of the default directory exited %d, want 0", code)
 	}
 }

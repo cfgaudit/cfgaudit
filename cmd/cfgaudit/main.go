@@ -95,6 +95,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if fset.NArg() > 0 {
 		dir = fset.Arg(0)
 	}
+	// A path that is not a directory would otherwise scan nothing and exit 0,
+	// so a mistyped path in CI passes without auditing anything (#710).
+	for _, p := range []string{dir, *plugins} {
+		if p == "" {
+			continue
+		}
+		if err := requireDir(p); err != nil {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+			return 2
+		}
+	}
 
 	cfg, cfgPath, err := loadConfig(*configPath, dir)
 	if err != nil {
@@ -163,6 +174,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	return cfg.ExitCode(all)
+}
+
+// requireDir returns an error naming path unless it is an existing directory.
+func requireDir(path string) error {
+	info, err := os.Stat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("%s: no such directory", path)
+	case err != nil:
+		return err
+	case !info.IsDir():
+		return fmt.Errorf("%s: not a directory", path)
+	}
+	return nil
 }
 
 // loadConfig resolves the .cfgaudit.yml to use: an explicit --config path (error
