@@ -2,6 +2,10 @@
   <img src="assets/cfgaudit.png" alt="cfgaudit" width="460">
 </p>
 
+<p align="center">
+  <a href="https://app.codecov.io/gh/cfgaudit/cfgaudit"><img src="https://codecov.io/gh/cfgaudit/cfgaudit/graph/badge.svg" alt="Coverage"></a>
+</p>
+
 # cfgaudit
 
 Security auditor for AI-agent configuration files.
