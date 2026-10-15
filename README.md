@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://app.codecov.io/gh/cfgaudit/cfgaudit"><img src="https://codecov.io/gh/cfgaudit/cfgaudit/graph/badge.svg" alt="Coverage"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/cfgaudit/cfgaudit"><img src="https://api.scorecard.dev/projects/github.com/cfgaudit/cfgaudit/badge" alt="OpenSSF Scorecard"></a>
+  <a href="#verifying-a-release"><img src="https://slsa.dev/images/gh-badge-level2.svg" alt="SLSA Build Level 2"></a>
 </p>
 
 # cfgaudit
