@@ -42,6 +42,8 @@ Container image:
 docker run --rm -v "$PWD:/work" -w /work ghcr.io/cfgaudit/cfgaudit:latest .
 ```
 
+The image includes [ShellCheck](https://www.shellcheck.net/), so `--shellcheck` ([CFG045](docs/rules/CFG045.md)) works there and in the GitHub Action and GitLab components, which run the same image.
+
 The image runs unprivileged as uid `65532`, so the files you mount must be readable by that uid (normal `644`/`755` permissions are fine). cfgaudit only reads them — write the report with a shell redirection on the host (`> report.sarif`) rather than into the mount.
 
 ---

@@ -28,8 +28,12 @@ FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cab
 # repo's state at build time, which is true, and is the point: the unpinned
 # `apk add` in the same command already has that property, and the Trivy gate is what turns a
 # stale package set into a failing build rather than a silent one.
+#
+# shellcheck is there for CFG045 (#716). It stays opt-in (--shellcheck or
+# `shellcheck: true`), but without the binary in the image the GitHub Action
+# and the GitLab components, which both run this image, could never use it.
 # hadolint ignore=DL3018,DL3017
-RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates shellcheck
 COPY --from=builder /build/cfgaudit /usr/local/bin/cfgaudit
 
 # Static identity labels only. The release build passes docker/metadata-action's
