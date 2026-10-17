@@ -139,6 +139,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if shellCheckEnabled(*shellcheck || cfg.ShellCheckEnabled()) {
 		for _, t := range targets {
 			t.ShellCheck = true
+			t.ShellCheckExclude = cfg.ShellCheckExcludes()
 		}
 	}
 

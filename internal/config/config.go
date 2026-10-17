@@ -28,12 +28,43 @@ type Config struct {
 	ExcludePaths []string              `yaml:"exclude-paths"`
 	Policy       Policy                `yaml:"policy"`
 	ShellCheck   bool                  `yaml:"shellcheck"`
+	// ShellCheckExclude lists ShellCheck codes CFG045 never reports, passed to
+	// shellcheck as --exclude. parse normalizes each entry to "SC" plus four
+	// digits and rejects anything else (#717).
+	ShellCheckExclude []string `yaml:"shellcheck-exclude"`
 }
 
 // ShellCheckEnabled reports whether shellcheck analysis is requested via config.
 // Safe on a nil *Config.
 func (c *Config) ShellCheckEnabled() bool {
 	return c != nil && c.ShellCheck
+}
+
+// ShellCheckExcludes returns the normalized shellcheck-exclude codes. Safe on a
+// nil *Config.
+func (c *Config) ShellCheckExcludes() []string {
+	if c == nil {
+		return nil
+	}
+	return c.ShellCheckExclude
+}
+
+// shellCheckCodeRe matches a ShellCheck code with or without its SC prefix, in
+// either case: SC2086, sc2086, 2086.
+var shellCheckCodeRe = regexp.MustCompile(`^(?i:SC)?([0-9]{4})$`)
+
+// normalizeShellCheckCodes rewrites each code as "SC" plus its four digits,
+// the spelling shellcheck --exclude accepts (it rejects a lowercase "sc").
+func normalizeShellCheckCodes(codes []string) ([]string, error) {
+	out := make([]string, 0, len(codes))
+	for _, code := range codes {
+		m := shellCheckCodeRe.FindStringSubmatch(strings.TrimSpace(code))
+		if m == nil {
+			return nil, fmt.Errorf("shellcheck-exclude: %q is not a ShellCheck code (SC followed by four digits, e.g. SC2086)", code)
+		}
+		out = append(out, "SC"+m[1])
+	}
+	return out, nil
 }
 
 // Policy is the organisation's custom permission policy (evaluated by CFG025):
@@ -116,6 +147,11 @@ func parse(data []byte, path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	codes, err := normalizeShellCheckCodes(c.ShellCheckExclude)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	c.ShellCheckExclude = codes
 	return &c, nil
 }
 

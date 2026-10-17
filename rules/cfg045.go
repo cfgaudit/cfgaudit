@@ -36,7 +36,7 @@ func (r *cfg045) Check(t *Target) []finding.Finding {
 	}
 	var findings []finding.Finding
 	for _, site := range commandSites(t) {
-		out, err := runShellcheck(site.Command)
+		out, err := runShellcheck(site.Command, t.ShellCheckExclude)
 		if err != nil {
 			continue // exec error (e.g. binary vanished) — gated/handled by the CLI
 		}
@@ -56,8 +56,8 @@ func (r *cfg045) Check(t *Target) []finding.Finding {
 // runShellcheck pipes a hook command (wrapped as a bash script) to
 // `shellcheck --format=json -` and returns its JSON output. ShellCheck exits
 // non-zero when it reports findings, which is not an execution error.
-func runShellcheck(command string) ([]byte, error) {
-	cmd := exec.Command("shellcheck", "--shell=bash", "--format=json", "-") // #nosec G204 -- fixed argv; the command is fed via stdin, not the shell
+func runShellcheck(command string, exclude []string) ([]byte, error) {
+	cmd := exec.Command("shellcheck", shellcheckArgs(exclude)...) // #nosec G204 -- fixed argv plus validated SC codes; the command is fed via stdin, not the shell
 	cmd.Stdin = strings.NewReader("#!/bin/bash\n" + command + "\n")
 	out, err := cmd.Output()
 	if err != nil {
@@ -67,6 +67,16 @@ func runShellcheck(command string) ([]byte, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// shellcheckArgs is the shellcheck argv for one command site. exclude holds
+// codes already normalized to "SC2086" by the config loader.
+func shellcheckArgs(exclude []string) []string {
+	args := []string{"--shell=bash", "--format=json"}
+	if len(exclude) > 0 {
+		args = append(args, "--exclude="+strings.Join(exclude, ","))
+	}
+	return append(args, "-")
 }
 
 func parseShellcheck(out []byte) []scComment {

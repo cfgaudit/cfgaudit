@@ -246,6 +246,8 @@ no-exit-codes: false
 
 # Run shellcheck on hook/helper commands (CFG045; needs the shellcheck binary)
 shellcheck: false
+# ShellCheck codes CFG045 never reports (with or without the SC prefix)
+shellcheck-exclude: [SC2086]
 
 # Path globs (relative to the scanned dir) whose findings are excluded.
 # Supports *, ** and a trailing / for directory prefixes.

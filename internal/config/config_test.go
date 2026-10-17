@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -138,5 +139,42 @@ func TestPolicy_Parse(t *testing.T) {
 func TestPolicy_AbsentNotConfigured(t *testing.T) {
 	if parseT(t, "min-severity: warn\n").Policy.Configured() {
 		t.Error("policy should be unconfigured when absent")
+	}
+}
+
+func TestShellCheckExclude_Normalized(t *testing.T) {
+	c := parseT(t, "shellcheck: true\nshellcheck-exclude: [SC2086, sc2034, \" 1090 \"]\n")
+	want := []string{"SC2086", "SC2034", "SC1090"}
+	got := c.ShellCheckExcludes()
+	if len(got) != len(want) {
+		t.Fatalf("ShellCheckExcludes() = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("ShellCheckExcludes()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestShellCheckExclude_RejectsNonCodes(t *testing.T) {
+	for _, code := range []string{"2086x", "SC208", "SC20860", "CFG045", "SC-2086", ""} {
+		_, err := parse([]byte("shellcheck-exclude: [\""+code+"\"]\n"), "test.yml")
+		if err == nil {
+			t.Errorf("shellcheck-exclude %q was accepted", code)
+			continue
+		}
+		if !strings.Contains(err.Error(), "test.yml") || !strings.Contains(err.Error(), "shellcheck-exclude") {
+			t.Errorf("error for %q does not name the file and key: %v", code, err)
+		}
+	}
+}
+
+func TestShellCheckExclude_AbsentOrNil(t *testing.T) {
+	if got := parseT(t, "shellcheck: true\n").ShellCheckExcludes(); len(got) != 0 {
+		t.Errorf("no shellcheck-exclude key gave %q", got)
+	}
+	var c *Config
+	if got := c.ShellCheckExcludes(); got != nil {
+		t.Errorf("nil config gave %q", got)
 	}
 }

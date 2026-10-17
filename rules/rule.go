@@ -310,6 +310,9 @@ type Target struct {
 	// sites). Set by the CLI when --shellcheck / config requests it and the
 	// binary is available.
 	ShellCheck bool
+	// ShellCheckExclude holds ShellCheck codes ("SC2086") CFG045 passes to
+	// shellcheck as --exclude, from shellcheck-exclude in .cfgaudit.yml.
+	ShellCheckExclude []string
 
 	// UnreadableFile is a committed agent config file cfgaudit could not parse,
 	// and UnreadableReason is the parser's own message. A target carrying them

@@ -264,3 +264,11 @@ func TestRun_ScanPathMustBeADirectory(t *testing.T) {
 		t.Errorf("scan of the default directory exited %d, want 0", code)
 	}
 }
+
+func TestRun_InvalidShellCheckExcludeIsAConfigError(t *testing.T) {
+	root := runFixture(t, map[string]string{".cfgaudit.yml": "shellcheck: true\nshellcheck-exclude: [SC20x6]\n"})
+	code, _, stderr := runCLI(t, "--claude-version", "2.1.0", root)
+	if code != 2 || !strings.Contains(stderr, `"SC20x6" is not a ShellCheck code`) {
+		t.Errorf("invalid shellcheck-exclude = (%d, %q), want exit 2 naming the code", code, stderr)
+	}
+}
