@@ -1,0 +1,92 @@
+name: Check AVE ids
+
+# Weekly: every AVE id cfgaudit emits (the aveByRule entries in cmd/cfgaudit/avemap.go)
+# must still be an active record in aveproject/ave's published records. When one is
+# missing or not active, an issue is opened so the mapping can be re-reviewed.
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the alerts instead of opening issues"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check AVE id status
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check AVE id status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          # Open a tracking issue unless an open one with the same title exists.
+          alert() { # title body
+            local title="$1" body="$2"
+            if [ "${DRY_RUN:-}" = "true" ]; then
+              echo "[dry-run] would open: $title"
+              return
+            fi
+            if [ "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')" != "0" ]; then
+              echo "an open issue already exists: $title"
+              return
+            fi
+            gh issue create --title "$title" --label enhancement --body "$body"
+            echo "opened issue: $title"
+          }
+
+          # --- Extract map entries only: cmd/cfgaudit/avemap.go's comments also
+          # name ids that aren't emitted (e.g. AVE-2026-00066, 00068, 00082,
+          # 00083), so a naive grep for ids would raise false alerts.
+          pairs=$( { grep -oE '"CFG[0-9]+":[[:space:]]*"AVE-[0-9]{4}-[0-9]{5}"' cmd/cfgaudit/avemap.go || true; } \
+            | sed -E 's/"(CFG[0-9]+)":[[:space:]]*"(AVE-[0-9]{4}-[0-9]{5})"/\1 \2/')
+          if [ -z "$pairs" ]; then
+            echo "::error::no aveByRule entries found in cmd/cfgaudit/avemap.go; the file layout may have changed"
+            exit 1
+          fi
+
+          # --- Read the records once.
+          records=$(gh api repos/aveproject/ave/contents/dist/ave-records-latest.json -H "Accept: application/vnd.github.raw")
+          if [ "$(printf '%s' "$records" | jq -r 'if type == "array" and length > 0 then "ok" else "bad" end')" != "ok" ]; then
+            echo "::error::dist/ave-records-latest.json from aveproject/ave is not a non-empty JSON array; the upstream layout may have changed"
+            exit 1
+          fi
+
+          # --- For each unique id, status + the rules that emit it.
+          ids=$(printf '%s\n' "$pairs" | awk '{print $2}' | sort -u)
+          for id in $ids; do
+            rules=$(printf '%s\n' "$pairs" | awk -v i="$id" '$2 == i {print $1}' | paste -sd, - | sed 's/,/, /g')
+            status=$(printf '%s' "$records" | jq -r --arg id "$id" '(map(select(.ave_id == $id)) | .[0].status) // "missing"')
+            echo "$id: status=$status rules=$rules"
+            if [ "$status" != "active" ]; then
+              title="AVE update: $id is $status"
+              body="\`$id\` is \`$status\` in aveproject/ave's published records, emitted by: $rules.
+
+          Re-review the mapping in \`cmd/cfgaudit/avemap.go\` as \`docs/cfgaudit-to-ave.md\` does on each AVE release (its own closing line: \"Re-check on the next AVE release\"). Move the rules to a successor record if one exists, or drop them and record a gap row in that document if none does.
+
+          AVE does not yet publish a machine-readable successor field (see aveproject/ave#104), so if \`$id\` has a successor, it has to be found by reading the record: https://github.com/aveproject/ave/blob/main/records/$id.json
+
+          Run: $RUN_URL"
+              alert "$title" "$body"
+            fi
+          done
+
+          echo "AVE id check complete."
