@@ -51,14 +51,29 @@ checksum:
 sboms:
   - artifacts: archive
 
+# Release notes grouped by commit type: one line per squash-merged PR, without
+# its SHA and without the feat:/fix: prefix the group heading already says (the
+# title carries the issue and PR numbers). Dependency bumps and repo maintenance
+# are left out (#721).
 changelog:
   sort: asc
+  format: '{{ trimprefix (trimprefix .Message "feat: ") "fix: " }}'
   filters:
     exclude:
       - "^docs:"
       - "^test:"
       - "^chore:"
       - "^ci:"
+      - '^build\(deps\):'
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:'
+      order: 0
+    - title: Bug fixes
+      regexp: '^fix(\(.+\))?!?:'
+      order: 1
+    - title: Other changes
+      order: 999
 
 # Homebrew tap (cask — the supported form for pre-built binaries; `brews` is
 # deprecated). Installs the same way: `brew install cfgaudit/tap/cfgaudit`.
