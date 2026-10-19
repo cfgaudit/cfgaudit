@@ -170,6 +170,25 @@ jobs:
           cache: true
       - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
 
+  # Checks the dependencies a pull request adds or changes, in every manifest
+  # the dependency graph reads (go.mod, the CI tool lock files, the workflows'
+  # actions), against the GitHub Advisory Database and the license policy in
+  # SECURITY.md (#737). govulncheck above covers reachable Go vulnerabilities;
+  # this covers what a change brings in. Pull requests only: there is no diff
+  # to review on a push.
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          allow-licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest
