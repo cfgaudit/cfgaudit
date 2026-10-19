@@ -306,7 +306,7 @@ For GitLab pipelines, include the component (published to the [CI/CD Catalog](ht
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.16.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.17.0
     inputs:
       path: .
       format: text
@@ -318,7 +318,7 @@ To surface findings **inline in merge requests** via the Code Quality widget, us
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.16.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.17.0
     inputs:
       path: .
 ```
