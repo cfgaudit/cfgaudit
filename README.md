@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://app.codecov.io/gh/cfgaudit/cfgaudit"><img src="https://codecov.io/gh/cfgaudit/cfgaudit/graph/badge.svg" alt="Coverage"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/cfgaudit/cfgaudit"><img src="https://api.scorecard.dev/projects/github.com/cfgaudit/cfgaudit/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://www.bestpractices.dev/projects/15618"><img src="https://www.bestpractices.dev/projects/15618/badge" alt="OpenSSF Best Practices"></a>
   <a href="#verifying-a-release"><img src="https://slsa.dev/images/gh-badge-level2.svg" alt="SLSA Build Level 2"></a>
   <a href="https://github.com/marketplace/actions/cfgaudit"><img src="https://img.shields.io/badge/GitHub_Marketplace-cfgaudit-2088FF?logo=githubactions&logoColor=white" alt="GitHub Marketplace"></a>
   <a href="https://gitlab.com/explore/catalog/cfgaudit/cfgaudit"><img src="https://img.shields.io/badge/GitLab_CI%2FCD_Catalog-cfgaudit-FC6D26?logo=gitlab&logoColor=white" alt="GitLab CI/CD Catalog"></a>
