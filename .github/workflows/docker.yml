@@ -77,4 +77,4 @@ jobs:
       packages: write # push the image to ghcr
       id-token: write # keyless signing via Sigstore (cosign + attestations)
       attestations: write # write provenance/SBOM attestations to the GitHub attestations API
-    uses: ./.github/workflows/build-image.yml
+    uses: $/.github/workflows/build-image.yml
