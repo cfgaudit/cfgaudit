@@ -46,6 +46,24 @@ The scanner makes no network connections.
 
 How to verify a download is in the README under [Verifying a release](../README.md#verifying-a-release).
 
+## Attack surface
+
+Every way data or control reaches cfgaudit, and what an attacker controls there:
+
+| Entry point | Who controls it | Exposure |
+|---|---|---|
+| Files in the scanned directory: JSON (with comments), JSONC, TOML, YAML, Markdown with front matter, `.env`, `.gitignore`, `.claudeignore` | **Attacker** (whoever wrote the repository) | Parsers and rules; crafted structure, size, encoding, invisible characters, symbolic links. Threats 1 to 4 and 7 below. |
+| File and directory names in the scanned directory | Attacker | Discovery and the paths quoted in reports. |
+| `.cfgaudit.yml` in the scanned directory | Attacker | Can turn rules off or set `no-exit-codes`. cfgaudit announces the file on stderr; a CI job that scans untrusted changes should pass `--config` with its own file. |
+| Command-line flags and `--config`, `--plugins`, `--user` paths | User | Trusted. |
+| User-scope files (`--user`) | User | Trusted as the user's own configuration. |
+| `claude` and `shellcheck` on `PATH` | Whoever controls the machine | Threat 8. |
+| Release downloads by the plugin wrapper (`bin/cfgaudit`) | GitHub release assets | Threat 6. |
+| CI inputs: pull request contents, `workflow_dispatch` inputs | Contributors, the maintainer | Workflows never interpolate inputs into scripts, validate dispatch inputs (tag and digest formats), and run pull requests with a read-only token and no secrets. |
+| Build dependencies: Go modules, actions, base images, CI tools | Their maintainers | Threat 5. |
+
+cfgaudit opens no network connection and no listening socket, so the attack surface of the scanner is the files it reads and the binaries it starts.
+
 ## Threat model
 
 Assessed for the scanner and its distribution. Ordered by how likely and how damaging each problem is.

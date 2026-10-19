@@ -1,0 +1,9 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/cfgaudit/cfgaudit/blob/main/.vex/cfgaudit.openvex.json",
+  "author": "cfgaudit maintainers",
+  "role": "Document Creator",
+  "timestamp": "2026-10-19T00:00:00Z",
+  "version": 1,
+  "statements": []
+}

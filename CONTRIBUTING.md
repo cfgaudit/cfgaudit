@@ -113,6 +113,10 @@ Settings expose typed fields (`Permissions`, `Env`, `Hooks`, `MCPServers`) plus 
 
 ### 4. Tests
 
+Every change in behaviour comes with tests: a new rule, a new scanned file or surface, a fix, a new flag or output. A fix adds a test that fails without it. A change that only moves code keeps the existing tests passing unchanged. CI fails when total statement coverage drops below the floor in `ci.yml`.
+
+For a rule, that means:
+
 `rules/cfgNNN_test.go`:
 
 ```go

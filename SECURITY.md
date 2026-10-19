@@ -41,4 +41,24 @@ Every release is signed and carries build provenance. See [Verifying a release](
 
 ## Supported versions
 
-Fixes land on the latest release. There are no long-term support branches.
+Only the latest release is supported. Bug fixes and security fixes ship in a new release on the current minor line (for example 1.17.1 after 1.17.0); there are no long-term support branches and no backports.
+
+A release stops receiving security updates on the day the next release is published. Upgrading is the fix. A new release can add findings (new rules or newly scanned files), and any change that can turn a passing pipeline red is called out at the top of the release notes. The moving `v1` tag used by the GitHub Action always points to the latest supported release.
+
+## Vulnerability and license findings
+
+What the automated checks report, and what has to happen before a merge or a release:
+
+| Source | Finding | Threshold |
+|---|---|---|
+| govulncheck (CI, required) | A known vulnerability in Go code cfgaudit actually calls | Blocks the pull request. Fixed by upgrading the module, or recorded in the [VEX document](.vex/cfgaudit.openvex.json) if it cannot affect cfgaudit. |
+| Dependency review (CI, pull requests) | An advisory of severity moderate or higher in a dependency the change adds or updates, in any manifest (Go modules, the CI tool locks, workflow actions) | Blocks the pull request. |
+| Dependency review | A dependency whose license is not Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC or 0BSD | Blocks the pull request. Another license needs a decision on the pull request and a change to this list. |
+| Dependabot alerts | An advisory in an existing dependency | Critical and high: fixed within 7 days. Moderate: within 30 days. Low: with the next release. |
+| Trivy (CI, image) | A fixable critical or high vulnerability in the container image's OS packages | Fails CI, so no image is released until the base image or package is updated. |
+| golangci-lint with gosec and staticcheck (CI, required) | Any finding | Blocks the pull request. A false positive is suppressed in the code or `.golangci.yml` with the reason next to it. |
+| CodeQL (code scanning) | An alert | Critical and high: fixed before the next release. Medium and lower: triaged within 30 days, then fixed or dismissed with a reason. |
+
+**Before a release** nothing above may be open above its threshold. The release workflows enforce part of it: they build only a commit whose CI passed on `main`, which includes govulncheck, golangci-lint and Trivy. The maintainer checks the open Dependabot and code scanning alerts before tagging.
+
+**Not affected** is recorded, not ignored: a vulnerability that a scanner reports but that cannot affect cfgaudit (for example in a code path cfgaudit never calls, or in an image package it never uses) is added to [`.vex/cfgaudit.openvex.json`](.vex/cfgaudit.openvex.json), an [OpenVEX](https://github.com/openvex/spec) document, with the justification, in a pull request.

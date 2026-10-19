@@ -24,6 +24,24 @@ Release signing uses no long-lived key: archives and the image are signed keyles
 - Decisions on scope, new rules and severities are the maintainer's, made in the open on the issue or pull request.
 - Releases are cut by the maintainer by tagging a commit whose CI passed on `main`; the release workflows refuse any other commit.
 
+## Granting access
+
+Write access, merge rights, release rights or access to a secret are granted only to someone who:
+
+- has contributed to cfgaudit for at least three months, with merged pull requests and reviews that show judgement on security-relevant changes;
+- is known by a stable identity: a GitHub account with history beyond this project, and a confirmed real name or long-standing public handle;
+- has two-factor authentication on, which the organization enforces.
+
+Access is granted in steps, starting with triage, then review and merge, and only then release or secrets, each through a pull request to this file that the existing maintainers approve. Access that is no longer used is removed, and all access is removed when someone steps down.
+
+## Secrets and credentials
+
+- **Prefer no secret.** Signing, provenance and the Codecov upload use GitHub's short-lived OIDC tokens, and workflows use the per-run `GITHUB_TOKEN` with the least permissions each job needs. No signing key exists.
+- **The one stored secret** is `HOMEBREW_TAP_TOKEN`, a GitHub Actions repository secret scoped to writing the cask in `cfgaudit/homebrew-tap`. Only the release build job reads it, and that job runs with an egress allowlist. Only the maintainers can read or change repository secrets.
+- **The GitLab push token** is created by the maintainer when needed, with the narrowest scope that pushes to `gitlab.com/cfgaudit/cfgaudit`, and is not stored in either repository, in CI, or in git configuration.
+- **Rotation.** Stored tokens are given an expiry of at most one year and are rotated before it, and at once when a token may have been exposed (pasted somewhere, a compromised machine, a maintainer leaving). A rotation replaces the secret, then revokes the old token.
+- **Never in the repository.** Secrets are not committed; GitHub secret scanning with push protection blocks the common formats. The fake secrets under `testdata/` exist to test the rules that find real ones.
+
 ## Changes to this document
 
 Adding a maintainer or changing access is done through a pull request to this file, so the list stays the record of who holds what.
