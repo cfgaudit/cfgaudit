@@ -25,7 +25,7 @@ func (r *cfg059) ID() string { return "CFG059" }
 // never flagged; a homoglyph substitution (0→o, 1→l, …) that folds onto an
 // official identifier, or a single-character edit, is an error; a two-character
 // edit or an official server name carried under a non-official npm scope is a
-// warning. Residual false positives are suppressible via .cfgaudit-ignore.
+// warning. Residual false positives can be excluded with exclude-paths in .cfgaudit.yml.
 func (r *cfg059) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
@@ -39,7 +39,7 @@ func (r *cfg059) Check(t *Target) []finding.Finding {
 						Severity: m.severity,
 						File:     ref.File,
 						Message: "mcpServers." + ref.Name + " package \"" + npmPackageName(spec) + "\" is suspiciously similar to the official \"" + m.official +
-							"\" (" + m.reason + ") — a typosquatted MCP package runs arbitrary code on server start. Verify the exact package name; suppress via .cfgaudit-ignore if intentional",
+							"\" (" + m.reason + ") — a typosquatted MCP package runs arbitrary code on server start. Verify the exact package name; if it is intentional, exclude the file with exclude-paths in .cfgaudit.yml",
 					})
 					continue // one finding per server
 				}
@@ -54,7 +54,7 @@ func (r *cfg059) Check(t *Target) []finding.Finding {
 					Severity: m.severity,
 					File:     ref.File,
 					Message: "mcpServers." + ref.Name + " endpoint host \"" + host + "\" is suspiciously similar to \"" + m.official +
-						"\" (" + m.reason + ") — a lookalike MCP endpoint can intercept the agent's context and credentials. Verify the host; suppress via .cfgaudit-ignore if intentional",
+						"\" (" + m.reason + ") — a lookalike MCP endpoint can intercept the agent's context and credentials. Verify the host; if it is intentional, exclude the file with exclude-paths in .cfgaudit.yml",
 				})
 			}
 		}
@@ -77,7 +77,7 @@ func (r *cfg059) Check(t *Target) []finding.Finding {
 					Severity: m.severity,
 					File:     site.File,
 					Message: site.Label + " runs npm package \"" + name + "\" which is suspiciously similar to \"" + m.official +
-						"\" (" + m.reason + ") — a typosquatted package runs arbitrary code the moment the hook fires. Verify the exact package name; suppress via .cfgaudit-ignore if intentional" + userScopeNote(t),
+						"\" (" + m.reason + ") — a typosquatted package runs arbitrary code the moment the hook fires. Verify the exact package name; if it is intentional, exclude the file with exclude-paths in .cfgaudit.yml" + userScopeNote(t),
 				})
 			}
 		}

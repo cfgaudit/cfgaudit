@@ -224,11 +224,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 
 **Suppressing a finding**
 
-Add a comment on the same line or the line above in the relevant config file:
-
-```json
-// cfgaudit:ignore CFG001 -- intentional for local dev sandbox
-```
+Suppression lives in `.cfgaudit.yml` (below), not in the scanned files: turn a rule off for the project with `rules: { CFG001: off }`, or drop every finding in a file or directory with `exclude-paths`. There is no inline suppression comment, so a scanned file cannot hide its own findings. Since a repository's own `.cfgaudit.yml` can do both, see [scanning a repository you do not trust](#untrusted-repositories).
 
 **Configuration file (`.cfgaudit.yml`)**
 
