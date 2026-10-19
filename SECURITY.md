@@ -4,9 +4,23 @@
 
 Report security issues through [GitHub's private vulnerability reporting](https://github.com/cfgaudit/cfgaudit/security/advisories/new) rather than a public issue.
 
-Please include the cfgaudit version, the config input that triggers the problem (redacted if it carries real secrets), and what you expected to happen. We aim to acknowledge within a few days.
+Please include the cfgaudit version, the config input that triggers the problem (redacted if it carries real secrets), and what you expected to happen.
+
+## Coordinated disclosure
+
+- **Acknowledgement** within 7 days of the report.
+- **Initial assessment** within 14 days: whether it is in scope (see the trust boundary below), how severe it is, and the planned fix.
+- **Fix and advisory** within 90 days of the report. The fix ships in a patch release, and the advisory is published at the same time.
+
+Please keep the report private until the advisory is published, or until 90 days have passed, whichever comes first. If a fix needs longer, we say so and agree a date with you. Reporters are credited in the advisory unless they ask not to be.
+
+## Published vulnerabilities
+
+Vulnerabilities in cfgaudit are published as [GitHub Security Advisories](https://github.com/cfgaudit/cfgaudit/security/advisories), with a CVE where one is assigned, the affected and fixed versions, and the workaround or upgrade path. They also reach the GitHub Advisory Database, OSV and the Go vulnerability database, so tools such as Dependabot and govulncheck report them. The release notes of the fixing release link the advisory.
 
 ## Trust boundary
+
+The design, the actors and the threat model behind this boundary are in [docs/design.md](docs/design.md).
 
 cfgaudit's job is to read configuration files that it assumes are **hostile**: a `CLAUDE.md`, `.mcp.json`, `settings.json` or hook definition that arrived with a cloned repository is exactly the untrusted input this tool exists to inspect.
 

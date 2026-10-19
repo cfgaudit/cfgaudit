@@ -1,6 +1,6 @@
 # Contributing to cfgaudit
 
-cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.json`, MCP configs, hooks, …). This document covers reporting a bug, local setup, the test loop, and the step-by-step recipe for adding a new rule.
+cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.json`, MCP configs, hooks, …). This document covers reporting a bug, local setup, the test loop, dependencies, and the step-by-step recipe for adding a new rule. Who maintains the project and holds which access is in [GOVERNANCE.md](GOVERNANCE.md); how cfgaudit is built and what it defends against is in [docs/design.md](docs/design.md).
 
 ---
 
@@ -21,7 +21,7 @@ Vulnerabilities in cfgaudit itself go through private reporting instead, see [SE
 
 ## Development environment
 
-- **Go**: 1.24 or newer (the project pins `go 1.24.3` in `go.mod`).
+- **Go**: 1.24 or newer (`go.mod` declares `go 1.24`; CI and releases build with that version).
 - **Optional**: Docker (for the release image), `zizmor` for workflow linting, Node.js if you want to run the SchemaStore fixture validator locally (`npm ci --prefix .github/tools/ajv`, then `node .github/tools/ajv/validate.js <schema> testdata/settings/valid/*.json`).
 
 Clone and build:
@@ -180,6 +180,18 @@ The reverse-consistency test fails if you mention `CFGNNN` in the README without
 - **Commit messages**: one short imperative line (`feat: add CFG013 rule (...)`). No `Co-Authored-By` trailer.
 - **PR body**: short Summary section + Test plan checklist. Note deviations from the issue's acceptance criteria.
 - **Merging**: squash-merge, delete branch.
+
+---
+
+## Dependencies
+
+cfgaudit keeps its dependencies few, because every one of them runs inside a tool whose input is hostile.
+
+- **Go modules.** Dependencies are declared in `go.mod` and pinned by hash in `go.sum`; CI runs `go mod verify` before building. The binary has two direct dependencies, `gopkg.in/yaml.v3` and `github.com/BurntSushi/toml`, besides the standard library.
+- **Adding one.** A new dependency needs a reason in its pull request: what the standard library cannot do, who maintains the module, and how much code it pulls in. A parser for a config format an agent reads is the usual case; a convenience library is not.
+- **CI tools and actions.** GitHub Actions are pinned by commit SHA with the version in a comment, container images by digest, and the Python and Node tools CI installs (zizmor, the schema validator) by a hashed lock file under `.github/tools/`.
+- **Updates.** Dependabot proposes updates for Go modules, GitHub Actions, Docker images and the pip and npm tool locks, each held back for 7 days after release so a compromised or yanked version is noticed before it lands; security updates skip that wait. Updates go through the same pull request checks as any change.
+- **Tracking.** `govulncheck` runs in CI on every pull request and on `main`; Dependabot security alerts and OpenSSF Scorecard cover the rest. Release archives and the container image carry an SBOM listing what went into them.
 
 ---
 
