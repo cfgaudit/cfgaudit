@@ -1,6 +1,21 @@
 # Contributing to cfgaudit
 
-cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.json`, MCP configs, hooks, …). This document covers local setup, the test loop, and the step-by-step recipe for adding a new rule.
+cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.json`, MCP configs, hooks, …). This document covers reporting a bug, local setup, the test loop, and the step-by-step recipe for adding a new rule.
+
+---
+
+## Reporting a bug
+
+Open an issue at https://github.com/cfgaudit/cfgaudit/issues. A missed detection, a finding on config that is fine, a crash or a wrong exit code are all bugs. Please include:
+
+- the cfgaudit version (`cfgaudit --version`) and how you installed it (release binary, `go install`, Homebrew, container image, GitHub Action, GitLab component);
+- the command you ran, with its flags, and your `.cfgaudit.yml` if there is one;
+- the smallest config file that shows the problem, with real secrets, hostnames and tokens replaced;
+- the findings you expected and the findings you got (`--format json` output is easiest to compare).
+
+For a false positive or a missed detection, name the agent and its version (e.g. Claude Code 2.1.x, Codex 0.15x) if the behaviour you expected depends on how that agent loads the file.
+
+Vulnerabilities in cfgaudit itself go through private reporting instead, see [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -50,7 +65,7 @@ The repo has a few cross-cutting checks (`rules/consistency_test.go`, `rules/fix
 
 ### 1. Pick the ID
 
-Use the next free `CFG###` identifier (currently `CFG013` is next). Open an issue describing the rule, severity, and which OWASP LLM Top 10 category it falls under.
+Use the next free `CFG###` identifier: one above the highest `rules/cfgNNN.go` (`ls rules/cfg[0-9]*.go | grep -v _test | sort -V | tail -1`). Open an issue describing the rule, severity, and which OWASP LLM Top 10 category it falls under.
 
 ### 2. Implement the rule
 
@@ -165,6 +180,18 @@ The reverse-consistency test fails if you mention `CFGNNN` in the README without
 - **Commit messages**: one short imperative line (`feat: add CFG013 rule (...)`). No `Co-Authored-By` trailer.
 - **PR body**: short Summary section + Test plan checklist. Note deviations from the issue's acceptance criteria.
 - **Merging**: squash-merge, delete branch.
+
+---
+
+## Repositories
+
+The project lives in three repositories. Only the first takes contributions; the other two are written by the release process.
+
+| Repository | What it is | How it is updated |
+|---|---|---|
+| [github.com/cfgaudit/cfgaudit](https://github.com/cfgaudit/cfgaudit) | The source, issues, pull requests, releases and the container image. Authoritative. | Pull requests. |
+| [github.com/cfgaudit/homebrew-tap](https://github.com/cfgaudit/homebrew-tap) | The Homebrew cask behind `brew install cfgaudit/tap/cfgaudit`. | GoReleaser writes the cask on each release. |
+| [gitlab.com/cfgaudit/cfgaudit](https://gitlab.com/cfgaudit/cfgaudit) | A copy of this repository that publishes the GitLab CI/CD Catalog components. | The maintainer pushes `main` and the release tags after each release. |
 
 ---
 
