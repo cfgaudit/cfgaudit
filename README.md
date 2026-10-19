@@ -53,16 +53,20 @@ The image runs unprivileged as uid `65532`, so the files you mount must be reada
 
 Every release is built by a GitHub Actions workflow that publishes [build provenance](https://slsa.dev/), and the container image is additionally signed with [cosign](https://github.com/sigstore/cosign). Both are keyless — the signing identity *is* the workflow, so a verified artifact provably came from this repository's release pipeline.
 
+From **v1.17.0** on, the release archives and the container image meet [SLSA](https://slsa.dev/spec/v1.0/levels) **Build Level 3**: they are built in reusable workflows (`build-release.yml`, `build-image.yml`) that the tag-triggered workflows only call, so the build workflow signs the provenance. That is the isolation GitHub documents as [SLSA v1 Build Level 3 for artifact attestations](https://docs.github.com/actions/security-guides/using-artifact-attestations-and-reusable-workflows-to-achieve-slsa-v1-build-level-3). Releases v1.8.0 to v1.16.0 meet Build Level 2: their provenance is signed by `release.yml` and `docker.yml` themselves. `--signer-workflow` below requires the build workflow; drop it for releases before v1.17.0.
+
 **Release archive** — provenance for the archive you downloaded:
 
 ```sh
-gh attestation verify cfgaudit_1.16.0_linux_amd64.tar.gz -R cfgaudit/cfgaudit
+gh attestation verify cfgaudit_1.17.0_linux_amd64.tar.gz -R cfgaudit/cfgaudit \
+  --signer-workflow cfgaudit/cfgaudit/.github/workflows/build-release.yml
 ```
 
 **`checksums.txt`** — verify this too if you check downloads against it (the plugin wrapper in `bin/cfgaudit` does):
 
 ```sh
-gh attestation verify checksums.txt -R cfgaudit/cfgaudit
+gh attestation verify checksums.txt -R cfgaudit/cfgaudit \
+  --signer-workflow cfgaudit/cfgaudit/.github/workflows/build-release.yml
 ```
 
 **Container image** — provenance and signature, both bound to the image digest rather than a tag, since a tag can be repointed later:
@@ -70,7 +74,8 @@ gh attestation verify checksums.txt -R cfgaudit/cfgaudit
 ```sh
 DIGEST=$(docker buildx imagetools inspect ghcr.io/cfgaudit/cfgaudit:latest --format '{{.Manifest.Digest}}')
 
-gh attestation verify "oci://ghcr.io/cfgaudit/cfgaudit@$DIGEST" -R cfgaudit/cfgaudit
+gh attestation verify "oci://ghcr.io/cfgaudit/cfgaudit@$DIGEST" -R cfgaudit/cfgaudit \
+  --signer-workflow cfgaudit/cfgaudit/.github/workflows/build-image.yml
 
 cosign verify "ghcr.io/cfgaudit/cfgaudit@$DIGEST" \
   --certificate-identity-regexp '^https://github.com/cfgaudit/cfgaudit/' \
@@ -86,12 +91,12 @@ VERSION=<version>   # e.g. the release you downloaded, without the leading v
 cosign verify-blob-attestation \
   --bundle "cfgaudit_${VERSION}.sigstore.json" \
   --type slsaprovenance1 \
-  --certificate-identity-regexp '^https://github\.com/cfgaudit/cfgaudit/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-identity-regexp '^https://github\.com/cfgaudit/cfgaudit/\.github/workflows/(build-)?release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   "cfgaudit_${VERSION}_linux_amd64.tar.gz"
 ```
 
-The identity pins the signer to this repository's release workflow running on a tag, so a bundle signed by any other workflow or repository fails, as does a file whose digest is not in the provenance.
+The identity pins the signer to this repository's release workflow running on a tag, so a bundle signed by any other workflow or repository fails, as does a file whose digest is not in the provenance. The regex accepts `release.yml`, which signed releases before v1.17.0, and `build-release.yml`, which signs them from v1.17.0 on; use only the latter to require Build Level 3.
 
 ### A note on SBOMs
 

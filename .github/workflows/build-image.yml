@@ -1,0 +1,121 @@
+name: Build image
+
+# Builds and pushes the container image, attests its provenance and SBOM and
+# signs it with cosign. Only docker.yml calls it, after its green-CI gate.
+#
+# Running the build in a reusable workflow makes this file, not the workflow a
+# tag push triggers, the signer of the provenance and the image signature: the
+# signing certificate names .github/workflows/build-image.yml. That isolation is
+# what GitHub documents as SLSA v1 Build Level 3 for artifact attestations
+# (#724). Verify with
+#   gh attestation verify oci://ghcr.io/cfgaudit/cfgaudit@<digest> -R cfgaudit/cfgaudit \
+#     --signer-workflow cfgaudit/cfgaudit/.github/workflows/build-image.yml
+
+on:
+  workflow_call:
+
+# Default-deny; the job grants only what it needs.
+permissions: {}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cfgaudit/cfgaudit
+
+jobs:
+  build-and-push:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+      packages: write # push the image to ghcr
+      id-token: write # keyless signing via Sigstore (cosign + attestations)
+      attestations: write # write provenance/SBOM attestations to the GitHub attestations API
+    steps:
+      # Egress audit, see the goreleaser job in build-release.yml (#672).
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+
+      # Everything below binds to the immutable digest, never a tag: a tag can be
+      # repointed after the fact, so an attestation or signature attached to one
+      # would not prove anything about the artifact a user actually pulls.
+
+      # Provenance: proves this digest was built by this workflow from this repo
+      # at this commit. Verify with:
+      #   gh attestation verify oci://ghcr.io/cfgaudit/cfgaudit@<digest> -R cfgaudit/cfgaudit \
+      #     --signer-workflow cfgaudit/cfgaudit/.github/workflows/build-image.yml
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # Keyless signature (Sigstore/Fulcio, identity = this workflow). Verify with:
+      #   cosign verify ghcr.io/cfgaudit/cfgaudit@<digest> \
+      #     --certificate-identity-regexp '^https://github.com/cfgaudit/cfgaudit/' \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Sign image
+        env:
+          IMAGE_DIGEST: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE_DIGEST"
+
+      # upload-release-assets is off deliberately. The action defaults it to true
+      # and then attaches the SBOM to the GitHub Release, which needs
+      # contents: write — a permission this job has no other use for, and which
+      # the workflow's default-deny stance exists to avoid handing out.
+      #
+      # It went unnoticed until v1.11.0 because the upload only happens when a
+      # Release object already exists. Through v1.10.0 the Release workflow was
+      # still running when this step fired, so the action skipped it silently;
+      # at v1.11.0 the Release published seven seconds earlier and the step
+      # failed, taking the SBOM attestation below down with it. The SBOM lives
+      # on as an attestation bound to the digest, which is the durable form.
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-release-assets: false
+
+      - name: Attest image SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true

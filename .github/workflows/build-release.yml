@@ -1,0 +1,110 @@
+name: Build release
+
+# Builds the release archives with GoReleaser, attests them and attaches the
+# attestation to the GitHub release. Only release.yml calls it, after its
+# green-CI gate.
+#
+# Running the build in a reusable workflow makes this file, not the workflow a
+# tag push triggers, the signer of the provenance: the signing certificate names
+# .github/workflows/build-release.yml. That isolation is what GitHub documents as
+# SLSA v1 Build Level 3 for artifact attestations (#724). Verify with
+#   gh attestation verify <archive> -R cfgaudit/cfgaudit \
+#     --signer-workflow cfgaudit/cfgaudit/.github/workflows/build-release.yml
+
+on:
+  workflow_call:
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        description: PAT with contents:write on cfgaudit/homebrew-tap
+        required: true
+
+# Default-deny; the job grants only what it needs.
+permissions: {}
+
+jobs:
+  goreleaser:
+    name: GoReleaser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release and upload archives/checksums
+      id-token: write # keyless signing of the provenance via Sigstore
+      attestations: write # write the attestation to the GitHub attestations API
+    steps:
+      # Records every outbound connection this job makes (#672). It holds write
+      # tokens, so a compromised dependency or tool here could send them
+      # anywhere without the log showing it. Audit mode only records; the
+      # endpoints seen on a real run become the allowlist for egress-policy:
+      # block. The record is on the run's summary page.
+      #
+      # Audit mode sends the job's network, process and file events to the
+      # StepSecurity API, and cannot be told not to: disable-telemetry is only
+      # accepted with egress-policy: block. Switching to block sets it, which
+      # ends that.
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # GoReleaser needs full history + tags for the changelog
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false # release builds published artifacts; avoid cache poisoning
+
+      # Provides the syft binary the `sboms:` block in .goreleaser.yml shells out
+      # to; without it GoReleaser fails the release rather than skipping SBOMs.
+      - name: Install syft (for SBOM generation)
+        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with contents:write on cfgaudit/homebrew-tap so the cask can be
+          # pushed there (the default GITHUB_TOKEN is scoped to this repo only).
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      # Provenance for the release archives — proves each archive was built by
+      # this workflow from this repo at this commit. Runs after GoReleaser so
+      # dist/ is populated. Verify a downloaded archive with:
+      #   gh attestation verify cfgaudit_<ver>_<os>_<arch>.tar.gz -R cfgaudit/cfgaudit \
+      #     --signer-workflow cfgaudit/cfgaudit/.github/workflows/build-release.yml
+      - name: Attest release artifacts
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          # checksums.txt is attested too, not just the archives: bin/cfgaudit
+          # (the plugin wrapper) downloads it and verifies every binary against
+          # it, so for anyone installing without a Go toolchain it *is* the
+          # integrity anchor — and it needs one of its own.
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+
+      # Attach the attestation to the release itself (#676). It already lives in
+      # the GitHub attestations API, but tools that look at release assets,
+      # OpenSSF Scorecard among them, never see it there, and a user without
+      # the API cannot fetch it. Nothing is signed again: both files are the
+      # attestation above, one bundle whose provenance names all seven files.
+      #   .sigstore.json  the Sigstore bundle: signature, signing certificate and
+      #                   transparency log entry, verifiable offline with
+      #                   cosign verify-blob-attestation (see README)
+      #   .intoto.jsonl   its DSSE envelope, the signed SLSA provenance statement,
+      #                   in the layout SLSA tooling uses
+      - name: Attach the attestation to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          base="cfgaudit_${TAG#v}"
+          cp "$BUNDLE" "$RUNNER_TEMP/$base.sigstore.json"
+          jq -c .dsseEnvelope "$BUNDLE" > "$RUNNER_TEMP/$base.intoto.jsonl"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "$RUNNER_TEMP/$base.sigstore.json" "$RUNNER_TEMP/$base.intoto.jsonl"

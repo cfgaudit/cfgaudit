@@ -37,7 +37,7 @@ jobs:
       id-token: write # keyless signing via Sigstore
       attestations: write # write the SBOM attestation to the GitHub attestations API
     steps:
-      # Egress audit, see the goreleaser job in release.yml (#672).
+      # Egress audit, see the goreleaser job in build-release.yml (#672).
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
