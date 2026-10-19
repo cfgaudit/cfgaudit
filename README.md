@@ -234,6 +234,14 @@ Add a comment on the same line or the line above in the relevant config file:
 
 cfgaudit auto-discovers a `.cfgaudit.yml` (or `.cfgaudit.yaml`) in the scanned directory; `--config <path>` overrides discovery. CLI flags take precedence over the file.
 
+<a id="untrusted-repositories"></a>**Scanning a repository you do not trust.** The discovered file belongs to the repository being scanned, and it decides which rules run and whether findings fail the exit code. A hostile repository can ship one that turns the relevant rules off or sets `no-exit-codes: true`; cfgaudit only names the file it uses on stderr. When you audit a repository before trusting it, such as a fresh clone before you open it with an agent, do not let it configure its own audit:
+
+```sh
+cfgaudit --config /dev/null path/to/repo     # an empty config; use NUL on Windows
+```
+
+In CI the same applies to changes from people you do not fully trust. Both the [GitHub Action](#github-action) and the [GitLab components](#gitlab-cicd-component) take a `config` that the change cannot edit. That protects the scan as far as the pipeline definition is not part of the change too: a pull request that can edit `.cfgaudit.yml` can usually edit the workflow, so review changes to either like code, and use required workflows or protected pipeline configuration where the scan must hold against the change itself.
+
 ```yaml
 # Per-rule overrides
 rules:
@@ -295,7 +303,21 @@ Upload findings to GitHub Code Scanning via SARIF (add `permissions: security-ev
     sarif_file: cfgaudit.sarif
 ```
 
-**Inputs:** `path` (default `.`), `format` (`text`/`json`/`sarif`), `strict`, `user`, `config`, `plugins`, `output`, `fail-on` (`error`/`never`), `image`.
+For pull requests, take the config from the base branch so the change cannot rewrite it ([why](#untrusted-repositories)). A path outside the workspace, such as one under `$RUNNER_TEMP`, is mounted read-only into the scan:
+
+```yaml
+- name: cfgaudit config from the base branch
+  env:
+    BASE_REF: ${{ github.base_ref }}
+  run: |
+    git fetch --depth=1 origin "$BASE_REF"
+    git show FETCH_HEAD:.cfgaudit.yml > "$RUNNER_TEMP/cfgaudit.yml" 2>/dev/null || : > "$RUNNER_TEMP/cfgaudit.yml"
+- uses: cfgaudit/cfgaudit@v1
+  with:
+    config: ${{ runner.temp }}/cfgaudit.yml
+```
+
+**Inputs:** `path` (default `.`), `format` (`text`/`json`/`sarif`), `strict`, `user`, `config` (replaces the scanned directory's `.cfgaudit.yml`; relative to the workspace, or an absolute path outside it), `plugins`, `output`, `fail-on` (`error`/`never`), `image`.
 **Outputs:** `exit-code`, `output-file`. By default the step fails on findings at or above the configured threshold; set `fail-on: never` for advisory mode.
 
 ---
@@ -312,7 +334,16 @@ include:
       format: text
 ```
 
-Inputs: `stage`, `path`, `format`, `version` (pinned ghcr.io image tag), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`.
+Inputs: `stage`, `path`, `format`, `config`, `version` (pinned ghcr.io image tag), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`.
+
+`config` replaces the scanned directory's `.cfgaudit.yml`. For merge requests, keep the config out of the repository, for example in a File-type CI/CD variable, so the merge request cannot change it ([why](#untrusted-repositories)):
+
+```yaml
+include:
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.17.1
+    inputs:
+      config: $CFGAUDIT_CONFIG     # File-type CI/CD variable holding the .cfgaudit.yml
+```
 
 To surface findings **inline in merge requests** via the Code Quality widget, use the second component (emits a GitLab Code Quality report):
 

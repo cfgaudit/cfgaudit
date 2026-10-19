@@ -300,6 +300,28 @@ jobs:
           test -f cfgaudit.sarif
           jq -e '.version == "2.1.0" and .runs[0].tool.driver.name == "cfgaudit"' cfgaudit.sarif > /dev/null
           echo "action exit-code=$EXIT_CODE, output-file=$OUTPUT_FILE"
+      # A config outside the workspace replaces the scanned project's own
+      # .cfgaudit.yml (#740): the fixture's file turns CFG004 off, the runner's
+      # empty one does not, so CFG004 must be reported.
+      - name: Fixture whose own .cfgaudit.yml silences CFG004
+        shell: bash
+        run: |
+          mkdir -p config-fixture/.claude
+          echo '{"permissions":{"defaultMode":"bypassPermissions"}}' > config-fixture/.claude/settings.json
+          printf 'rules:\n  CFG004: off\n' > config-fixture/.cfgaudit.yml
+          : > "$RUNNER_TEMP/cfgaudit.yml"
+      - id: scan-config
+        uses: $/
+        with:
+          path: config-fixture
+          config: ${{ runner.temp }}/cfgaudit.yml
+          format: json
+          output: config-fixture.json
+          fail-on: never
+          image: ghcr.io/cfgaudit/cfgaudit:latest
+      - name: The project's own config was not used
+        shell: bash
+        run: jq -e 'any(.[]; .RuleID == "CFG004")' config-fixture.json > /dev/null
 
   zizmor:
     name: Security (zizmor)

@@ -23,7 +23,11 @@ inputs:
     required: false
     default: "false"
   config:
-    description: Path to a .cfgaudit.yml config file (relative to the repo). Optional.
+    description: >-
+      Path to a .cfgaudit.yml config file, used instead of the one in the scanned
+      directory. Relative paths are inside the workspace; an absolute path outside
+      it (e.g. under $RUNNER_TEMP) is mounted read-only, so a pull request cannot
+      change it. Optional.
     required: false
     default: ""
   plugins:
@@ -77,7 +81,24 @@ runs:
         args=( --format "$IN_FORMAT" )
         if [ "$IN_STRICT" = "true" ]; then args+=( --strict ); fi
         if [ "$IN_USER" = "true" ]; then args+=( --user ); fi
-        if [ -n "$IN_CONFIG" ]; then args+=( --config "$IN_CONFIG" ); fi
+        # A config outside the workspace (e.g. the base branch's copy written to
+        # $RUNNER_TEMP) is mounted read-only into the container, so the change
+        # being scanned cannot edit how it is scanned (#740).
+        mounts=( -v "$GITHUB_WORKSPACE:/github/workspace" )
+        if [ -n "$IN_CONFIG" ]; then
+          case "$IN_CONFIG" in
+            "$GITHUB_WORKSPACE"/*) args+=( --config "/github/workspace/${IN_CONFIG#"$GITHUB_WORKSPACE"/}" ) ;;
+            /*)
+              if [ ! -f "$IN_CONFIG" ]; then
+                echo "::error::config file $IN_CONFIG does not exist"
+                exit 2
+              fi
+              mounts+=( -v "$IN_CONFIG:/cfgaudit-config.yml:ro" )
+              args+=( --config /cfgaudit-config.yml )
+              ;;
+            *) args+=( --config "$IN_CONFIG" ) ;;
+          esac
+        fi
         if [ -n "$IN_PLUGINS" ]; then args+=( --plugins "$IN_PLUGINS" ); fi
         args+=( "$IN_PATH" )
 
@@ -85,10 +106,10 @@ runs:
 
         set +e
         if [ -n "$IN_OUTPUT" ]; then
-          docker run --rm -v "$GITHUB_WORKSPACE:/github/workspace" -w /github/workspace \
+          docker run --rm "${mounts[@]}" -w /github/workspace \
             "$IN_IMAGE" "${args[@]}" > "$IN_OUTPUT"
         else
-          docker run --rm -v "$GITHUB_WORKSPACE:/github/workspace" -w /github/workspace \
+          docker run --rm "${mounts[@]}" -w /github/workspace \
             "$IN_IMAGE" "${args[@]}"
         fi
         rc=$?

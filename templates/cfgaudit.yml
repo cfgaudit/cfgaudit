@@ -16,6 +16,12 @@ spec:
     path:
       default: "."
       description: Directory to scan.
+    config:
+      default: ""
+      description: >-
+        .cfgaudit.yml to use instead of the one in the scanned directory. For merge
+        requests from people you do not fully trust, point it at a file the merge
+        request cannot change, such as a File-type CI/CD variable ($CFGAUDIT_CONFIG).
     format:
       default: text
       description: Output format — text, json, or sarif.
@@ -35,7 +41,8 @@ cfgaudit:
   script:
     # Preserve cfgaudit's exit code (a bare `| tee` would mask it and the
     # pipeline would never fail on error findings).
-    - cfgaudit --format "$[[ inputs.format ]]" "$[[ inputs.path ]]" > cfgaudit.out; rc=$?; cat cfgaudit.out; exit $rc
+    - set -- ; if [ -n "$[[ inputs.config ]]" ]; then set -- --config "$[[ inputs.config ]]"; fi
+    - cfgaudit --format "$[[ inputs.format ]]" "$@" "$[[ inputs.path ]]" > cfgaudit.out; rc=$?; cat cfgaudit.out; exit $rc
   allow_failure: $[[ inputs.allow_failure ]]
   artifacts:
     paths:
