@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // CopilotSettings is the subset of GitHub Copilot's repository-level
@@ -156,7 +156,7 @@ func (s CopilotMarketplaceSource) Location() string {
 // yields a zero value; a malformed file is an error, so a settings file that is
 // silently not being scanned is reported rather than mistaken for an empty one.
 func ParseCopilotSettings(path string) (*CopilotSettings, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

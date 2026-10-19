@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -50,7 +51,7 @@ func SkillNameCollisions(root string) (map[string][]SkillFileEntry, error) {
 			continue
 		}
 		path := filepath.Join(root, e.Name(), "SKILL.md")
-		data, err := os.ReadFile(path) // #nosec G304 -- path is derived from a user-supplied scan directory
+		data, err := scanroot.ReadFile(path)
 		if err != nil {
 			continue
 		}

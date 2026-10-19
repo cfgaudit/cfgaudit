@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"sort"
 	"strings"
 )
@@ -210,7 +210,7 @@ func (c *OpenCodeConfig) MCPServerMap() map[string]MCPServer {
 // commas, and decoding them strictly turned an ordinary config into a scan error
 // rather than auditing it.
 func ParseOpenCodeConfig(path string) (*OpenCodeConfig, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

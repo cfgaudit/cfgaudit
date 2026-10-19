@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"sort"
 	"strings"
 )
@@ -350,7 +350,7 @@ type MCPConfig struct {
 // normalizeMcpServerConfiguration turns into servers. Returns nil when the file
 // is absent, wrapped, or holds no such entry.
 func UnwrappedMCPServers(path string) (map[string]MCPServer, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +382,7 @@ func UnwrappedMCPServers(path string) (map[string]MCPServer, error) {
 }
 
 func ParseMCPConfig(path string) (*MCPConfig, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -406,7 +406,7 @@ func ParseMCPConfig(path string) (*MCPConfig, error) {
 
 // ParseSettings reads and decodes a settings.json file.
 func ParseSettings(path string) (*Settings, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

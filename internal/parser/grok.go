@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"sort"
 	"strings"
 
@@ -135,7 +135,7 @@ type GrokLSPServer struct {
 // lsp.json" and uses no servers, so a malformed file is reported as an error
 // (CFG109) rather than read.
 func ParseGrokLSP(path string) (map[string]GrokLSPServer, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func ParseGrokLSP(path string) (map[string]GrokLSPServer, error) {
 // /lsp help) and carry the same command/args/env as a Grok entry, so the Grok
 // type is reused.
 func ParseCopilotLSP(path string) (map[string]GrokLSPServer, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -168,8 +168,12 @@ func ParseCopilotLSP(path string) (map[string]GrokLSPServer, error) {
 // a malformed file is an error, so a config that is silently not being scanned
 // is reported rather than mistaken for empty.
 func ParseGrokConfig(path string) (*GrokConfig, error) {
+	data, err := scanroot.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
 	var c GrokConfig
-	if _, err := toml.DecodeFile(path, &c); err != nil {
+	if _, err := toml.Decode(string(data), &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &c, nil
@@ -189,7 +193,7 @@ type GrokHooks struct {
 // ParseGrokHooks reads a .grok/hooks/*.json file. A malformed file is an error,
 // so a hook file that is silently not being scanned is reported.
 func ParseGrokHooks(path string) (*GrokHooks, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

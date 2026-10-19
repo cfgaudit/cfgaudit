@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // CursorCLIConfig is a project .cursor/cli.json (#649). Cursor's CLI reference:
@@ -18,7 +18,7 @@ type CursorCLIConfig struct {
 
 // ParseCursorCLIConfig reads a .cursor/cli.json.
 func ParseCursorCLIConfig(path string) (*CursorCLIConfig, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

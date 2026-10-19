@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"strings"
 )
 
@@ -102,7 +102,7 @@ func (z *ZedDebug) Empty() bool { return z == nil || len(z.Scenarios) == 0 }
 // ParseZedDebug reads and decodes a .zed/debug.json. Like tasks.json it is
 // JSONC and the top level is an array.
 func ParseZedDebug(path string) (*ZedDebug, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

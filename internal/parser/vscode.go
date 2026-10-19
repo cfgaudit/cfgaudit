@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"reflect"
 	"sort"
 	"strings"
@@ -41,7 +41,7 @@ type VSCodePresentation struct {
 // is JSONC (JSON with comments and trailing commas), so comments and trailing
 // commas are stripped before decoding.
 func ParseVSCodeTasks(path string) (*VSCodeTasks, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -241,7 +241,7 @@ func (s *VSCodeSettings) ObjectField(key string) (map[string]json.RawMessage, bo
 // ParseVSCodeSettings reads and decodes a .vscode/settings.json file. Like
 // tasks.json it is JSONC, so comments and trailing commas are stripped first.
 func ParseVSCodeSettings(path string) (*VSCodeSettings, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

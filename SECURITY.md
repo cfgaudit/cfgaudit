@@ -14,7 +14,7 @@ What that means concretely:
 
 - **cfgaudit reads config; it never executes it.** Hook commands, MCP server launch lines and credential-helper scripts are parsed and pattern-matched as text. cfgaudit does not run them, spawn the servers, or resolve their environment.
 - **It makes no network calls.** The scanner is fully offline: no telemetry, no rule-feed fetches, no registry lookups. (`bin/cfgaudit`, the Claude Code plugin wrapper, is the one exception — it downloads a release binary when none is on `PATH`, verified against the published checksums.)
-- **It only reads files under the scanned directory**, plus `~/.claude/settings.json` when `--user` is passed, and an explicit `--config` / `--plugins` path.
+- **It only reads files under the scanned directory**, plus `~/.claude/settings.json` when `--user` is passed, and an explicit `--config` / `--plugins` path. A committed symbolic link under the scanned directory that resolves outside it is not followed; it is reported as [CFG115](docs/rules/CFG115.md) (before v1.17.1 it was followed, see [GHSA-x9h6-c6v9-v699](https://github.com/cfgaudit/cfgaudit/security/advisories/GHSA-x9h6-c6v9-v699)).
 - **`--shellcheck` is opt-in and shells out.** With that flag, hook and helper command strings are passed to the `shellcheck` binary for static analysis. ShellCheck does not execute the script either, but this is the only path where a third-party tool sees the config content.
 
 Therefore, in scope for a report: anything that makes cfgaudit execute scanned content, escape the paths above, leak file contents off the machine, or crash/hang on a crafted config (a scanner that dies on hostile input fails open).

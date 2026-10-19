@@ -3,6 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"os"
 	"strings"
 )
@@ -61,7 +62,7 @@ func (t ScheduledTask) Actionable() bool {
 // yields (nil, nil) so no empty target is built; a present-but-unparseable file
 // is an error, like the other JSON config loaders.
 func ParseScheduledTasks(path string) (*ScheduledTasks, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

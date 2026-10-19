@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // CursorSandbox is a partial representation of a Cursor `.cursor/sandbox.json`
@@ -77,7 +77,7 @@ func (s *CursorSandbox) Empty() bool {
 // its config files with JSONC examples, so comments and trailing commas are
 // stripped before decoding, as for .cursor/permissions.json.
 func ParseCursorSandbox(path string) (*CursorSandbox, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

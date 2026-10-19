@@ -306,7 +306,7 @@ For GitLab pipelines, include the component (published to the [CI/CD Catalog](ht
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.17.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.17.1
     inputs:
       path: .
       format: text
@@ -318,7 +318,7 @@ To surface findings **inline in merge requests** via the Code Quality widget, us
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.17.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.17.1
     inputs:
       path: .
 ```
@@ -720,6 +720,7 @@ Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `Sessio
 | [CFG110](docs/rules/CFG110.md) | error/warn/info | a Claude Code settings `env` block sets an interpreter, linker, JVM, .NET or git variable that runs code (`BASH_ENV`, `LD_PRELOAD`, `DOTNET_STARTUP_HOOKS`, `JAVA_TOOL_OPTIONS` with `-javaagent`, a non-ssh `GIT_SSH_COMMAND`, a live `GIT_CONFIG_KEY_<n>` naming a command), or `CLAUDE_CODE_SHELL_PREFIX`: the block reaches every hook and Bash tool call. The same variables, plus Gemini's IDE stdio command, in a project `.gemini/.env`, which Gemini CLI loads unfiltered once the folder is trusted. `error` when the repository controls the value, `warn` for a committed git credential helper, `info` for a startup file outside the repository or a prefix in user settings | LLM03 |
 | [CFG111](docs/rules/CFG111.md) | error/info | a `permissions.deny` / `ask` entry or hook `matcher` holds an invisible character (zero-width, bidi control, NUL, soft hyphen, Tags block): Claude Code matches the text exactly, so the rule blocks nothing, the prompt never comes, or the hook never runs, with no warning, while the entry reads as correct in review. An allow rule with one only grants less (info). Line breaks and emoji joiners in saved rules are exempt | LLM03 |
 | [CFG114](docs/rules/CFG114.md) | error/info | committed Copilot CLI project extension `.github/extensions/<name>/extension.{mjs,cjs,js}` (`info`: experimental and trust-gated), or committed OpenCode plugin or tool code: `.opencode/{plugin,plugins,tool,tools}/*.{ts,js}`. Measured on opencode 1.18.18, plugins run during any startup (a bare `opencode debug config`) and tools as soon as an agent loads, with no prompt, and OpenCode has no workspace trust step. cfgaudit does not analyse the code; the finding is the trigger, as for CFG047 and CFG086 | LLM04 |
+| [CFG115](docs/rules/CFG115.md) | warn | a config path in the scanned repository is a symbolic link, or runs through a linked directory, to a location outside it: the agent loads a file from the machine that checked the repository out. cfgaudit reports the link and does not read the target | LLM02 |
 
 Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated shell, not a committed escalation), `"auto-edit"` is stricter than that default, and `tools.autoAccept` is vestigial (no consumer in the approval path).
 
@@ -762,7 +763,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM01_PromptInjection.md) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092, CFG113 |
-| LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088, CFG099, CFG112 |
+| LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088, CFG099, CFG112, CFG115 |
 | LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG110, CFG111 |
 | LLM04 | [Supply Chain](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM04_SupplyChain.md) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089, CFG098, CFG100, CFG102, CFG114 |
 

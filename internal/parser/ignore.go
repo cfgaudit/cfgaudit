@@ -3,6 +3,7 @@ package parser
 import (
 	"bufio"
 	"fmt"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"os"
 	"strings"
 )
@@ -16,7 +17,7 @@ type IgnoreLine struct {
 // ParseIgnore reads a .claudeignore file and returns its effective pattern lines.
 // Returns an empty slice (not an error) when the file does not exist.
 func ParseIgnore(path string) ([]IgnoreLine, error) {
-	f, err := os.Open(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	f, err := scanroot.Open(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}

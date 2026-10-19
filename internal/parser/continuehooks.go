@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // continueHookEvents are the event names Continue's CLI declares
@@ -59,7 +59,7 @@ func (h *ContinueHooks) Empty() bool {
 // decodes to an empty result rather than an error, because these settings files
 // carry unrelated keys too.
 func ParseContinueHooks(path string) (*ContinueHooks, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

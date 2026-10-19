@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // DevinConfig is the subset of Devin CLI's project config that cfgaudit reads.
@@ -45,7 +45,7 @@ type DevinConfig struct {
 // shared MCP rules see one field, and nothing downstream has to know the
 // difference.
 func ParseDevinConfig(path string) (*DevinConfig, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -69,7 +69,7 @@ func ParseDevinConfig(path string) (*DevinConfig, error) {
 // groups map itself, in the same shape as the hooks key of .devin/config.json,
 // and it is returned as a DevinConfig carrying only Hooks.
 func ParseDevinHooksV1(path string) (*DevinConfig, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

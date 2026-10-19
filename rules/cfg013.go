@@ -2,6 +2,7 @@ package rules
 
 import (
 	"errors"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -68,7 +69,7 @@ type gitignoreRule struct {
 }
 
 func loadGitignoreRules(path string) ([]gitignoreRule, bool) {
-	data, err := os.ReadFile(path) //nolint:gosec // G304: project-relative .gitignore lookup
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false

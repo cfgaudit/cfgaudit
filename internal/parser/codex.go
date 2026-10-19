@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"sort"
 	"strings"
 
@@ -547,8 +548,12 @@ func (c *CodexConfig) MCPServerMap() map[string]MCPServer {
 
 // ParseCodexConfig reads and decodes a Codex CLI config.toml file.
 func ParseCodexConfig(path string) (*CodexConfig, error) {
+	data, err := scanroot.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
 	var c CodexConfig
-	if _, err := toml.DecodeFile(path, &c); err != nil {
+	if _, err := toml.Decode(string(data), &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &c, nil

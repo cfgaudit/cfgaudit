@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,7 +132,7 @@ func PluginRootOf(manifestPath string) string {
 
 // ParsePluginManifest reads and decodes a plugin.json.
 func ParsePluginManifest(path string) (*PluginManifest, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied plugin tree
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"strings"
 )
 
@@ -126,7 +126,7 @@ func (m *Marketplace) ExternalSources() []NamedMarketplaceSource {
 
 // ParseMarketplace reads and decodes a .claude-plugin/marketplace.json.
 func ParseMarketplace(path string) (*Marketplace, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied plugin tree
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

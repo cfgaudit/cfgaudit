@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -126,7 +127,7 @@ func Load(path string) (*Config, error) {
 func Discover(dir string) (*Config, string, error) {
 	for _, name := range FileNames {
 		p := filepath.Join(dir, name)
-		data, err := os.ReadFile(p) // #nosec G304 -- path resolved from the scanned dir
+		data, err := scanroot.ReadFile(p)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue

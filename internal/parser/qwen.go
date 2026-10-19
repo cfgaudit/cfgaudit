@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"strings"
 )
 
@@ -214,7 +214,7 @@ func (s *QwenSettings) MCPServerMap() map[string]MCPServer {
 // .qwen/settings.json carrying tools.approvalMode "yolo", where the parse error
 // took the whole project scan down with it and hid a CFG091 error.
 func ParseQwenSettings(path string) (*QwenSettings, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

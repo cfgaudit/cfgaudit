@@ -2,7 +2,7 @@ package parser
 
 import (
 	"encoding/json"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"path/filepath"
 	"strings"
 )
@@ -21,7 +21,7 @@ import (
 // into the folder are picked up. The file is JSONC. A file matching none of the
 // shapes yields no servers, as Continue reports it and moves on.
 func ParseContinueMCPJSON(path string) (map[string]MCPServer, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

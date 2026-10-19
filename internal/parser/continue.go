@@ -2,7 +2,7 @@ package parser
 
 import (
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"strconv"
 	"strings"
 
@@ -145,7 +145,7 @@ func (c *ContinueConfig) MCPServerMap() map[string]MCPServer {
 
 // ParseContinueConfig reads and decodes a Continue config.yaml file.
 func ParseContinueConfig(path string) (*ContinueConfig, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

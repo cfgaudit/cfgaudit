@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // KimiPluginManifest is a partial representation of a Kimi Code plugin's
@@ -38,7 +38,7 @@ func (m *KimiPluginManifest) Empty() bool {
 
 // ParseKimiPluginManifest reads and decodes a kimi.plugin.json.
 func ParseKimiPluginManifest(path string) (*KimiPluginManifest, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied plugin tree
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

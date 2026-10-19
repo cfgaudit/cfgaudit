@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // GeminiSettings is a partial representation of a Gemini CLI settings.json
@@ -120,7 +120,7 @@ const DefaultGeminiExtensionRegistry = "https://geminicli.com/extensions.json"
 // which is the code qwen-code forked. A commented settings.json is valid input to
 // the agent, so it must not fail the scan here.
 func ParseGeminiSettings(path string) (*GeminiSettings, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

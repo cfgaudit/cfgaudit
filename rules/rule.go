@@ -323,6 +323,14 @@ type Target struct {
 	UnreadableFile   string
 	UnreadableReason string
 
+	// EscapedLink is a path under the scanned directory that is, or passes
+	// through, a symbolic link resolving outside it, and EscapedTarget is the
+	// committed link text. cfgaudit does not read such a file (it would be a file
+	// on the scanning machine, not in the repository); CFG115 reports the link
+	// and every other rule ignores the target.
+	EscapedLink   string
+	EscapedTarget string
+
 	// ScheduledTasks holds a parsed .claude/scheduled_tasks.json — Claude Code's
 	// cron-scheduler store. A committed file with a non-empty tasks array is
 	// committed autonomous scheduling: a bare entry (no session identity)

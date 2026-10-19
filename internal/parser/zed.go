@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"sort"
 	"strings"
 )
@@ -175,7 +175,7 @@ func (a *ZedAdapter) CommandLine() string {
 // stripped before decoding. A file without any of the modelled keys yields a
 // zero-valued struct and no error.
 func ParseZedSettings(path string) (*ZedSettings, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

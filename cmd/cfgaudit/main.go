@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"io"
 	"io/fs"
 	"os"
@@ -107,6 +108,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}
 
+	// Reads of repository content stay inside dir: a committed symlink to a
+	// file elsewhere on this machine is reported by CFG115, not read
+	// (GHSA-x9h6-c6v9-v699).
+	if err := scanroot.Set(dir); err != nil {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
+	}
+	defer func() { _ = scanroot.Set("") }()
+
 	cfg, cfgPath, err := loadConfig(*configPath, dir)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
@@ -135,6 +145,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	attachSkillShellToPluginSkills(pluginTargets, dir)
 	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
+	targets = append(targets, escapedLinkTargets()...)
 
 	if shellCheckEnabled(*shellcheck || cfg.ShellCheckEnabled()) {
 		for _, t := range targets {
@@ -346,6 +357,20 @@ func unreadableTargets(dir string) []*rules.Target {
 			Scope:            scope,
 			UnreadableFile:   u.path,
 			UnreadableReason: u.reason,
+		})
+	}
+	return out
+}
+
+// escapedLinkTargets turns the symlinks scanroot refused to follow into one
+// target each, so CFG115 reports them and every other rule ignores them.
+func escapedLinkTargets() []*rules.Target {
+	var out []*rules.Target
+	for _, e := range scanroot.Escapes() {
+		out = append(out, &rules.Target{
+			Scope:         finding.ScopeProject,
+			EscapedLink:   e.Path,
+			EscapedTarget: e.Link,
 		})
 	}
 	return out
@@ -1947,7 +1972,7 @@ func agentRulesFiles(base string, dirs []string) ([]string, error) {
 // text is returned otherwise. CLAUDE.md is free-form Markdown, so unlike
 // settings.json there is no parse step that can fail.
 func loadClaudeMD(path string) (string, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
@@ -2342,7 +2367,7 @@ func openCodeAgentPermissionTargets(dir string) ([]*rules.Target, error) {
 			return nil, err
 		}
 		for _, path := range files {
-			data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+			data, err := scanroot.ReadFile(path)
 			if err != nil {
 				return nil, err
 			}
@@ -2777,7 +2802,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// in .devin/config.json.
 	skillFiles, _ := filepath.Glob(filepath.Join(dir, ".devin", "skills", "*", "SKILL.md"))
 	for _, path := range skillFiles {
-		data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+		data, err := scanroot.ReadFile(path)
 		if err != nil {
 			continue
 		}

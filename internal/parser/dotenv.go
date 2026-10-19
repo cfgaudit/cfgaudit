@@ -2,7 +2,7 @@ package parser
 
 import (
 	"bufio"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"strings"
 )
 
@@ -12,7 +12,7 @@ import (
 // A later key wins, as in dotenv.parse. Multi-line quoted values are not
 // modelled; their first line is kept.
 func ParseDotEnv(path string) (map[string]string, error) {
-	f, err := os.Open(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	f, err := scanroot.Open(path)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"strings"
 )
 
@@ -74,7 +74,7 @@ func (z *ZedTasks) Empty() bool {
 //
 // The top level is an array, unlike VS Code's object with a "tasks" key.
 func ParseZedTasks(path string) (*ZedTasks, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

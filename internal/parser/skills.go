@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // SkillsLock is a partial representation of a skills-lock.json file written by the
@@ -41,7 +41,7 @@ type SkillEntry struct {
 // (including os.ErrNotExist) is returned unwrapped so callers can test it with
 // errors.Is; a malformed body is reported as a parse error.
 func ParseSkillsLock(path string) (*SkillsLock, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

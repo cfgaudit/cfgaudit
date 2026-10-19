@@ -3,7 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // AgentHook is one hook entry in Cursor's .cursor/hooks.json or Copilot's
@@ -114,7 +114,7 @@ func (h *AgentHooks) decodeHooks() {
 // the same top-level shape. A malformed file is an error, so a hooks file that is
 // silently not being scanned is reported rather than treated as absent.
 func ParseAgentHooks(path string) (*AgentHooks, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is resolved by the CLI from a user-supplied directory
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

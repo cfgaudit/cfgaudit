@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -125,7 +126,7 @@ func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unr
 				return nil
 			}
 			seen[path] = true
-			content, err := os.ReadFile(path) // #nosec G304,G122 -- local audit tool reading a repository-supplied plugin tree
+			content, err := scanroot.ReadFile(path)
 			if err != nil {
 				unreadable(path, err)
 				return nil
@@ -359,7 +360,7 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 		}
 		switch d.Name() {
 		case "SKILL.md":
-			content, err := os.ReadFile(path) // #nosec G304,G122 -- local audit tool reading a user-supplied plugin tree; symlink TOCTOU is not in scope
+			content, err := scanroot.ReadFile(path)
 			if err != nil {
 				return err
 			}
@@ -466,7 +467,7 @@ func kimiPluginTargets(path string) ([]*rules.Target, error) {
 	}
 	if rel := strings.TrimSpace(manifest.SystemPromptPath); rel != "" {
 		promptPath := filepath.Join(filepath.Dir(path), filepath.FromSlash(rel))
-		content, err := os.ReadFile(promptPath) // #nosec G304 -- path from the user-supplied plugin tree
+		content, err := scanroot.ReadFile(promptPath)
 		switch {
 		case err == nil:
 			if strings.TrimSpace(string(content)) != "" {
@@ -486,7 +487,7 @@ func kimiPluginTargets(path string) ([]*rules.Target, error) {
 // hooks (no Raw), so the command-content rules fire but settings-shape rules
 // (schema, deny-absent, …) stay inert.
 func pluginHooksTarget(path string) (*rules.Target, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path from the user-supplied plugin dir
+	data, err := scanroot.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
