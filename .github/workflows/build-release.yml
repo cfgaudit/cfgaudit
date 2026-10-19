@@ -30,19 +30,49 @@ jobs:
       id-token: write # keyless signing of the provenance via Sigstore
       attestations: write # write the attestation to the GitHub attestations API
     steps:
-      # Records every outbound connection this job makes (#672). It holds write
-      # tokens, so a compromised dependency or tool here could send them
-      # anywhere without the log showing it. Audit mode only records; the
-      # endpoints seen on a real run become the allowlist for egress-policy:
-      # block. The record is on the run's summary page.
-      #
-      # Audit mode sends the job's network, process and file events to the
-      # StepSecurity API, and cannot be told not to: disable-telemetry is only
-      # accepted with egress-policy: block. Switching to block sets it, which
-      # ends that.
+      # Allows only the hosts this job needs; anything else is blocked, so a
+      # compromised dependency or tool cannot send the job's write tokens or
+      # HOMEBREW_TAP_TOKEN elsewhere (#672). The list is what the v1.17.0
+      # release run connected to in audit mode. A release that needs a new host
+      # fails here: add the host, then re-run.
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-telemetry: true
+          # *.actions.githubusercontent.com and the productionresultssa hosts
+          # (GitHub's job results storage) change from run to run.
+          allowed-endpoints: >
+            api.github.com:443
+            uploads.github.com:443
+            github.com:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            *.actions.githubusercontent.com:443
+            proxy.golang.org:443
+            goreleaser.com:443
+            toolbox-data.anchore.io:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            productionresultssa0.blob.core.windows.net:443
+            productionresultssa1.blob.core.windows.net:443
+            productionresultssa2.blob.core.windows.net:443
+            productionresultssa3.blob.core.windows.net:443
+            productionresultssa4.blob.core.windows.net:443
+            productionresultssa5.blob.core.windows.net:443
+            productionresultssa6.blob.core.windows.net:443
+            productionresultssa7.blob.core.windows.net:443
+            productionresultssa8.blob.core.windows.net:443
+            productionresultssa9.blob.core.windows.net:443
+            productionresultssa10.blob.core.windows.net:443
+            productionresultssa11.blob.core.windows.net:443
+            productionresultssa12.blob.core.windows.net:443
+            productionresultssa13.blob.core.windows.net:443
+            productionresultssa14.blob.core.windows.net:443
+            productionresultssa15.blob.core.windows.net:443
+            productionresultssa16.blob.core.windows.net:443
+            productionresultssa17.blob.core.windows.net:443
+            productionresultssa18.blob.core.windows.net:443
+            productionresultssa19.blob.core.windows.net:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # GoReleaser needs full history + tags for the changelog
