@@ -59,9 +59,11 @@ jobs:
         run: |
           set -uo pipefail
           mapfile -d '' files < <(git ls-files -z '*.md')
+          # Steps run under bash -e, so a bare failing lychee would end the
+          # script here and the report below would never be printed (#727).
+          status=0
           lychee --no-progress --config lychee.toml --format markdown \
-            --output lychee-report.md "${files[@]}"
-          status=$?
+            --output lychee-report.md "${files[@]}" || status=$?
           # In the log as well as the summary, so a failure can be read from
           # the CLI (gh run view --log) and not only in the browser.
           cat lychee-report.md
