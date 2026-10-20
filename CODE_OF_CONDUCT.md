@@ -60,10 +60,11 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement, the maintainers
-listed in [GOVERNANCE.md](GOVERNANCE.md). Report privately through GitHub's
-[report content](https://docs.github.com/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam)
-function on the comment, issue or pull request, or by contacting a maintainer
-directly. All complaints will be reviewed and investigated promptly and fairly.
+listed in [GOVERNANCE.md](GOVERNANCE.md). Report it privately with GitHub's
+[Report content](https://docs.github.com/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam)
+function on the comment, issue or pull request, which this repository forwards
+to the maintainers. All complaints will be reviewed and investigated promptly
+and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
