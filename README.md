@@ -98,6 +98,18 @@ cosign verify-blob-attestation \
 
 The identity pins the signer to this repository's release workflow running on a tag, so a bundle signed by any other workflow or repository fails, as does a file whose digest is not in the provenance. The regex accepts `release.yml`, which signed releases before v1.17.0, and `build-release.yml`, which signs them from v1.17.0 on; use only the latter to require Build Level 3.
 
+**Rebuilding a release**: the binaries are reproducible. Building the tag with the Go version recorded in the release binary and the release flags gives a byte-identical binary, so you can check a download without trusting the pipeline at all. For example, for the Linux amd64 binary of v1.17.1:
+
+```sh
+go version -m cfgaudit | head -1        # the Go version the release used, e.g. go1.24.13
+git clone --branch v1.17.1 https://github.com/cfgaudit/cfgaudit.git cfgaudit-src && cd cfgaudit-src
+GOTOOLCHAIN=go1.24.13 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -trimpath -ldflags "-s -w -X main.cfgauditVersion=1.17.1" -o cfgaudit-rebuilt ./cmd/cfgaudit
+sha256sum cfgaudit-rebuilt ../cfgaudit   # the binary from the release archive
+```
+
+Build from a fresh clone of the tag: Go records the commit and whether the working tree is clean in the binary, so a modified checkout or a `git worktree` gives a different hash.
+
 ### A note on SBOMs
 
 The container image carries its SBOM as a signed attestation. The per-archive `.sbom.json` files, by contrast, are published as **plain release assets, not attestations** — deliberately.
@@ -824,7 +836,7 @@ A separate workflow (`.github/workflows/schema-validation.yml`) validates every 
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, the test loop, and the step-by-step recipe for adding a new rule.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, the test loop, and the step-by-step recipe for adding a new rule. Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md); what is planned next is in the [roadmap](ROADMAP.md).
 
 ---
 

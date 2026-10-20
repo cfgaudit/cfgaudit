@@ -80,3 +80,35 @@ Assessed for the scanner and its distribution. Ordered by how likely and how dam
 | 8 | **A tampered `claude` or `shellcheck` on `PATH`.** | Whatever that binary does. | Out of scope: whoever controls `PATH` already controls the machine. Neither is looked up in the scanned repository. `--claude-version` avoids running `claude` at all. |
 
 This assessment is revisited when a feature adds a new actor, a new process cfgaudit starts, or a new release channel.
+
+## Assurance case
+
+The claim: scanning a hostile repository with cfgaudit does not execute its content, does not read or disclose files outside the scanned directory, and does not let it change the result without the user seeing it; and a release that verifies as described in the README was built from this repository by its release workflow. The argument rests on the trust boundary in [SECURITY.md](../SECURITY.md#trust-boundary), the threat model above, the design principles below and the countermeasures for common weaknesses.
+
+### Secure design principles
+
+| Principle | How cfgaudit applies it |
+|---|---|
+| **Economy of mechanism** | One static binary with two dependencies (`gopkg.in/yaml.v3`, `github.com/BurntSushi/toml`). Rules are plain functions from a parsed target to findings; there is no plugin loading, scripting or network code. |
+| **Fail-safe defaults** | A file the agent would refuse to load is a finding (CFG109), not a silent skip. A link leaving the scan directory is not followed (CFG115). The exit code is 1 when an error finding remains; turning that off takes an explicit `no-exit-codes`. |
+| **Complete mediation** | Every read of repository content goes through `internal/scanroot`, which checks the file's real location on each read, not once per scan. |
+| **Open design** | The source, rules, threat model and release pipeline are public; nothing depends on a secret except the Homebrew tap token, which only publishes the cask. |
+| **Separation of privilege** | Releases need a tag on a commit whose CI passed on `main`, and `main` accepts only pull requests that passed the required checks. The build runs in a reusable workflow separate from the tag-triggered one, which is what makes the provenance SLSA Build Level 3. |
+| **Least privilege** | The scanner only reads files and writes to stdout. Each workflow job gets the narrowest `GITHUB_TOKEN` permissions it needs, pull request jobs run without secrets, and release jobs can reach only an allowlist of hosts. |
+| **Least common mechanism** | Scans share no state: no cache, no daemon, no files written outside the explicit `init` and `policy` subcommands. |
+| **Psychological acceptability** | Safe use is the default use: `cfgaudit` in a checkout scans everything it supports. A repository's own `.cfgaudit.yml` is announced on stderr, and the README says how to ignore it with `--config`. |
+
+### Common weaknesses and how they are countered
+
+| Weakness | Where it could arise | Countermeasure |
+|---|---|---|
+| Path traversal and link following (CWE-22, CWE-59) | Committed symbolic links, linked directories, paths in config values | `internal/scanroot` resolves the real path and refuses anything outside the scan directory; paths found inside config values are matched as text and never opened. |
+| OS command and code injection (CWE-78, CWE-94) | Hook commands, MCP server commands, scripts in the repository | Nothing from the repository is executed, sourced or evaluated. The two processes cfgaudit starts have fixed arguments and no shell: `claude --version`, and `shellcheck`, which receives commands on stdin. |
+| Memory safety (CWE-787, CWE-125, CWE-416) | Parsers handling crafted input | Go without cgo or `unsafe`. |
+| Unsafe deserialization (CWE-502) | JSON, TOML and YAML from the repository | Decoding fills plain maps, slices and structs; no type is chosen by the input and no code runs during decoding. |
+| Uncontrolled resource use and crashes (CWE-400, CWE-674) | Deeply nested or malformed files | Native Go fuzzing of parsers, rules and encoders in CI; a crash or hang on any input is in scope for a security report. |
+| Exposure of sensitive information (CWE-200, CWE-532) | Secrets that rules detect, reports uploaded as CI artifacts | Rule messages name the key and the file, not the value; files outside the scan directory are not read. |
+| Download of code without integrity check (CWE-494) | The plugin wrapper fetching a release | The wrapper verifies the archive against `checksums.txt`, which carries signed provenance. |
+| Vulnerable or malicious dependencies (CWE-1395) | Go modules, actions, base images, CI tools | Dependency policy, SHA- and digest-pinned actions and images, Dependabot, govulncheck and dependency review on every pull request, a cooldown before adopting new versions. |
+
+The static analysis that checks these properties on every change is gosec, CodeQL, staticcheck and govulncheck; zizmor checks the workflows.
