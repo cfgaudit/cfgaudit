@@ -1,6 +1,11 @@
 package parser
 
-import "testing"
+import (
+	"encoding/json"
+	"path/filepath"
+	"reflect"
+	"testing"
+)
 
 func mustVSCode(t *testing.T, js string) *VSCodeSettings {
 	t.Helper()
@@ -65,5 +70,85 @@ func TestVSCodeSettings_FromRawOnly(t *testing.T) {
 	s := &VSCodeSettings{Raw: mustVSCode(t, `{"chat": {"permissions": {"default": "autopilot"}}}`).Raw}
 	if v, ok := s.StringField("chat.permissions.default"); !ok || v != "autopilot" {
 		t.Fatalf("StringField = %q, %v", v, ok)
+	}
+}
+
+// Typed accessors report present=false for a missing key and for a value of
+// the wrong type, and a nil settings value answers nothing.
+func TestVSCodeSettings_TypedAccessorsMismatch(t *testing.T) {
+	s := mustVSCode(t, `{"a.str": "x", "a.num": 3, "a.obj": {"k": 1}}`)
+	if v, ok := s.StringField("a.str"); !ok || v != "x" {
+		t.Errorf("StringField(a.str) = %q, %v", v, ok)
+	}
+	if _, ok := s.StringField("a.num"); ok {
+		t.Error("a number is not a string")
+	}
+	if _, ok := s.StringField("a.missing"); ok {
+		t.Error("a missing key is not present")
+	}
+	if _, ok := s.ObjectField("a.str"); ok {
+		t.Error("a string is not an object")
+	}
+	if _, ok := s.ObjectField("b"); ok {
+		t.Error("a missing key is not present")
+	}
+	if raw, ok := s.RawValue("a.num"); !ok || string(raw) != "3" {
+		t.Errorf("RawValue(a.num) = %s, %v", raw, ok)
+	}
+	var nilSettings *VSCodeSettings
+	if _, ok := nilSettings.RawValue("a.str"); ok {
+		t.Error("nil settings must answer nothing")
+	}
+}
+
+func TestParseVSCodeFiles_MissingFile(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.json")
+	if _, err := ParseVSCodeSettings(missing); err == nil {
+		t.Error("ParseVSCodeSettings: expected an error for a missing file")
+	}
+	if _, err := ParseVSCodeTasks(missing); err == nil {
+		t.Error("ParseVSCodeTasks: expected an error for a missing file")
+	}
+}
+
+func TestJSONEqual(t *testing.T) {
+	if !jsonEqual(json.RawMessage(`{"a": [1, 2]}`), json.RawMessage(`{"a":[1,2]}`)) {
+		t.Error("whitespace must not matter")
+	}
+	if jsonEqual(json.RawMessage(`{`), json.RawMessage(`{`)) {
+		t.Error("undecodable values are never equal")
+	}
+}
+
+// A repeated key keeps its first position; anything that is not a well-formed
+// object yields no order.
+func TestTopLevelKeyOrder(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want []string
+	}{
+		{`{"b": 1, "a": {"x": 2}, "b": 3}`, []string{"b", "a"}},
+		{`[1, 2]`, nil},
+		{``, nil},
+		{`{1: 2}`, nil},
+		{`{"a": }`, nil},
+	} {
+		if got := topLevelKeyOrder([]byte(tc.in)); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%q: got %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// A trailing comma is dropped together with the whitespace after it, CRLF
+// included, and a closing bracket with nothing before it is left alone.
+func TestStripJSONC_TrailingCommaEdges(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"{\"a\": 1,\r\n}", "{\"a\": 1}"},
+		{"}", "}"},
+		{"[1, 2 ,\t]", "[1, 2 ]"},
+	} {
+		if got := string(stripJSONC([]byte(tc.in))); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }

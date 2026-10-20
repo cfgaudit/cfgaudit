@@ -1,6 +1,9 @@
 package parser
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestInstructionFrontmatter_ListAndString(t *testing.T) {
 	fm, ok := InstructionFrontmatter("---\ndescription: hi\nallowed-tools: Bash, Read\ndisable-model-invocation: true\n---\nbody\n")
@@ -62,5 +65,34 @@ func TestInstructionFrontmatter_None(t *testing.T) {
 func TestInstructionFrontmatter_BOMTolerated(t *testing.T) {
 	if _, ok := InstructionFrontmatter("\ufeff---\nallowed-tools: Bash\n---\n"); !ok {
 		t.Error("expected frontmatter parse despite leading BOM")
+	}
+}
+
+// List elements that are not strings, or are blank, are dropped; a nil
+// frontmatter answers every accessor with the zero value.
+func TestFrontmatter_LooseValues(t *testing.T) {
+	fm, ok := InstructionFrontmatter("---\ntools: [Bash, 3, \"  \", Read]\ntriggers: [deploy, true, \"\"]\nscalar: \"a,  ,b\"\nlist: \"Bash,\\r,Read\"\n---\n")
+	if !ok {
+		t.Fatal("expected frontmatter to parse")
+	}
+	if got := fm.StringList("tools"); !reflect.DeepEqual(got, []string{"Bash", "Read"}) {
+		t.Errorf("StringList(tools) = %v", got)
+	}
+	if got := fm.StringList("list"); !reflect.DeepEqual(got, []string{"Bash", "Read"}) {
+		t.Errorf("a blank field after trimming is dropped, got %v", got)
+	}
+	if got := fm.Phrases("triggers"); !reflect.DeepEqual(got, []string{"deploy"}) {
+		t.Errorf("Phrases(triggers) = %v", got)
+	}
+	if got := fm.Phrases("scalar"); !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Errorf("Phrases(scalar) = %v", got)
+	}
+	if fm.StringList("missing") != nil || fm.Phrases("missing") != nil {
+		t.Error("a missing key yields nil")
+	}
+
+	var nilFM *Frontmatter
+	if nilFM.StringList("tools") != nil || nilFM.Phrases("tools") != nil || nilFM.Bool("x") || nilFM.String("x") != "" {
+		t.Error("a nil frontmatter answers nothing")
 	}
 }

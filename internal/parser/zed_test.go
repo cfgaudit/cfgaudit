@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -185,5 +186,41 @@ func TestZedSettings_NoCommandSites(t *testing.T) {
 	zed, _ := ParseZedSettings(path)
 	if zed.HasCommandSites() {
 		t.Errorf("expected no command sites, got %+v", zed.CommandSites())
+	}
+}
+
+// An environment applies even when the entry names no program, so it is a site
+// on its own; a blank program names nothing.
+func TestZedSettings_EnvOnlySites(t *testing.T) {
+	path := writeZed(t, `{
+      "terminal": {"shell": {"program": "  "}, "env": {"T": "1"}},
+      "lsp": {"a": {"binary": {"env": {"L": "2"}}}, "b": {"binary": {"path": " "}}},
+      "dap": {"d": {"env": {"D": "3"}}, "e": {"binary": "  "}}
+    }`)
+	zed, err := ParseZedSettings(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var labels []string
+	for _, s := range zed.CommandSites() {
+		if s.Command != "" {
+			t.Errorf("%s: expected no command, got %q", s.Label, s.Command)
+		}
+		labels = append(labels, s.Label)
+	}
+	if want := []string{"terminal", "lsp.a.binary", "dap.d"}; !reflect.DeepEqual(labels, want) {
+		t.Errorf("labels = %v, want %v", labels, want)
+	}
+
+	var nilZed *ZedSettings
+	if nilZed.CommandSites() != nil || nilZed.VersionCheckWaivers() != nil {
+		t.Error("a nil settings value has no sites")
+	}
+}
+
+// A terminal shell that is neither a string nor an object is a decode error.
+func TestParseZedSettings_ShellWrongType(t *testing.T) {
+	if _, err := ParseZedSettings(writeZed(t, `{"terminal": {"shell": 5}}`)); err == nil {
+		t.Error("expected an error for a numeric shell")
 	}
 }

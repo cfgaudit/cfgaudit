@@ -53,6 +53,7 @@ CI additionally runs:
 - `golangci-lint` (latest)
 - `govulncheck` against the module
 - `zizmor` against `.github/workflows/`
+- Branch coverage with `gobco` (see [Tests](#4-tests))
 - Schema validation of `testdata/settings/valid/*.json` against the live SchemaStore schema (push, PR, and nightly)
 
 If you change anything under `.github/workflows/`, run `zizmor .github/workflows/` locally — actions must be pinned to commit SHAs and `persist-credentials: false` must stay on `actions/checkout`.
@@ -113,7 +114,15 @@ Settings expose typed fields (`Permissions`, `Env`, `Hooks`, `MCPServers`) plus 
 
 ### 4. Tests
 
-Every change in behaviour comes with tests: a new rule, a new scanned file or surface, a fix, a new flag or output. A fix adds a test that fails without it. A change that only moves code keeps the existing tests passing unchanged. CI fails when total statement coverage drops below the floor in `ci.yml`.
+Every change in behaviour comes with tests: a new rule, a new scanned file or surface, a fix, a new flag or output. A fix adds a test that fails without it. A change that only moves code keeps the existing tests passing unchanged. CI fails when total statement coverage drops below the floor in `ci.yml`, or when branch coverage drops below 80%.
+
+Branch coverage is measured with [gobco](https://github.com/rillig/gobco), which counts a branch as covered only when the package's own tests take it. To see the uncovered branches of a package, build gobco from the pinned module and run it on a copy of the checkout with the dependencies vendored (gobco cannot resolve them from the module cache; do not commit the `vendor/` directory):
+
+```sh
+(cd .github/tools/gobco && go build -o "$HOME/go/bin/gobco" github.com/rillig/gobco)
+git clone --quiet . /tmp/cfgaudit-cov && cd /tmp/cfgaudit-cov && go mod vendor
+gobco -branch ./internal/parser   # lists each branch that was never taken, then the total
+```
 
 For a rule, that means:
 

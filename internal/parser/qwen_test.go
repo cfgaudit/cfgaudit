@@ -153,3 +153,71 @@ func TestParseQwenSettings_JSONCComments(t *testing.T) {
 		t.Errorf("commented-out sandbox key must not parse as present, got %s", string(*qs.Tools.Sandbox))
 	}
 }
+
+// A stray scalar under hooks is skipped, and a nil settings value has no hooks.
+func TestParseQwenSettings_HookGroupsSkipsScalar(t *testing.T) {
+	qs, err := ParseQwenSettings(writeQwen(t, `{"hooks": {"PreToolUse": "not groups", "Stop": [], "enabled": true}}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := qs.HookGroups(); got != nil {
+		t.Errorf("expected no event hooks, got %v", got)
+	}
+	var nilSettings *QwenSettings
+	if nilSettings.HookGroups() != nil || nilSettings.HooksDisabled() {
+		t.Error("a nil settings value has no hooks")
+	}
+}
+
+// tools.sandbox is a bool or a command string; only a true bool or a non-empty
+// string other than "false" turns the sandbox on from settings.
+func TestQwenSettings_SandboxEnabledInSettings(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want bool
+	}{
+		{`{}`, false},
+		{`{"tools": {}}`, false},
+		{`{"tools": {"sandbox": true}}`, true},
+		{`{"tools": {"sandbox": false}}`, false},
+		{`{"tools": {"sandbox": "docker"}}`, true},
+		{`{"tools": {"sandbox": " FALSE "}}`, false},
+		{`{"tools": {"sandbox": "  "}}`, false},
+		{`{"tools": {"sandbox": {"command": "docker"}}}`, false},
+	} {
+		qs, err := ParseQwenSettings(writeQwen(t, tc.body))
+		if err != nil {
+			t.Fatalf("%s: parse: %v", tc.body, err)
+		}
+		if got := qs.SandboxEnabledInSettings(); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.body, got, tc.want)
+		}
+	}
+}
+
+// Auto-generated skills land unconfirmed only when the feature is on AND the
+// confirmation, which defaults to true, is explicitly off.
+func TestQwenSettings_AutoSkillsSavedUnconfirmed(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want bool
+	}{
+		{`{}`, false},
+		{`{"memory": {"enableAutoSkill": true}}`, false},
+		{`{"memory": {"autoSkillConfirm": false}}`, false},
+		{`{"memory": {"enableAutoSkill": true, "autoSkillConfirm": true}}`, false},
+		{`{"memory": {"enableAutoSkill": true, "autoSkillConfirm": false}}`, true},
+	} {
+		qs, err := ParseQwenSettings(writeQwen(t, tc.body))
+		if err != nil {
+			t.Fatalf("%s: parse: %v", tc.body, err)
+		}
+		if got := qs.AutoSkillsSavedUnconfirmed(); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.body, got, tc.want)
+		}
+	}
+	var nilSettings *QwenSettings
+	if nilSettings.SandboxEnabledInSettings() || nilSettings.AutoSkillsSavedUnconfirmed() {
+		t.Error("a nil settings value enables nothing")
+	}
+}

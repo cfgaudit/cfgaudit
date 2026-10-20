@@ -1,8 +1,10 @@
 package parser
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -226,5 +228,178 @@ func TestParseOpenCodeConfig_V1PermissionStillLoads(t *testing.T) {
 	c, _ := ParseOpenCodeConfig(writeOpenCode(t, `{"permission": {"edit": "deny"}}`))
 	if len(c.Permission) == 0 {
 		t.Error("v1 permission must still be read")
+	}
+}
+
+// lsp and formatter are `boolean | Record<string, Entry>`. Only enabled entries
+// that declare a command are command sites, returned in name order.
+func TestOpenCodeConfig_ToolEntries(t *testing.T) {
+	c, err := ParseOpenCodeConfig(writeOpenCode(t, `{
+      "lsp": {
+        "zls":   {"command": ["zls"], "env": {"A": "1"}},
+        "gopls": {"command": ["gopls", "serve"]},
+        "off":   {"command": ["x"], "disabled": true},
+        "empty": {}
+      },
+      "formatter": true
+    }`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	lsp := c.LSPEntries()
+	if len(lsp) != 2 || lsp[0].Name != "gopls" || lsp[1].Name != "zls" {
+		t.Fatalf("lsp entries = %+v, want gopls then zls", lsp)
+	}
+	if lsp[1].Entry.Env["A"] != "1" || lsp[0].Entry.Command[1] != "serve" {
+		t.Errorf("entry fields not decoded: %+v", lsp)
+	}
+	if got := c.FormatterEntries(); got != nil {
+		t.Errorf(`"formatter": true declares no command, got %+v`, got)
+	}
+
+	c, _ = ParseOpenCodeConfig(writeOpenCode(t, `{"formatter": {"prettier": {"command": ["npx", "prettier"]}}}`))
+	if got := c.FormatterEntries(); len(got) != 1 || got[0].Name != "prettier" {
+		t.Errorf("formatter entries = %+v", got)
+	}
+	if got := c.LSPEntries(); got != nil {
+		t.Errorf("absent lsp block must yield nothing, got %+v", got)
+	}
+
+	var nilCfg *OpenCodeConfig
+	if nilCfg.LSPEntries() != nil || nilCfg.FormatterEntries() != nil || nilCfg.PermissionBlocks() != nil {
+		t.Error("a nil config yields nothing")
+	}
+}
+
+func TestParseOpenCodeConfig_Errors(t *testing.T) {
+	if _, err := ParseOpenCodeConfig(filepath.Join(t.TempDir(), "missing.json")); err == nil {
+		t.Error("expected an error for a missing file")
+	}
+	// Valid JSON whose field has the wrong type fails the typed decode.
+	if _, err := ParseOpenCodeConfig(writeOpenCode(t, `{"shell": 5}`)); err == nil {
+		t.Error("expected an error for a mistyped field")
+	}
+}
+
+// A config whose every mcp entry is disabled maps to no servers at all.
+func TestParseOpenCodeConfig_AllDisabled(t *testing.T) {
+	c, _ := ParseOpenCodeConfig(writeOpenCode(t, `{"mcp": {"a": {"type": "local", "command": ["a"], "disabled": true}}}`))
+	if m := c.MCPServerMap(); m != nil {
+		t.Errorf("expected nil, got %v", m)
+	}
+}
+
+// v2 `commands` and `agents` fold onto an empty v1 config, and a v2 key whose
+// value is not an object is ignored rather than failing the file.
+func TestParseOpenCodeConfig_V2FoldsOntoEmpty(t *testing.T) {
+	c, err := ParseOpenCodeConfig(writeOpenCode(t, `{
+      "commands": {"c": {"template": "run it"}},
+      "agent": {"a": {"prompt": "v1 wins"}},
+      "agents": {"a": {"system": "v2 loses"}, "b": {"system": "from v2"}}
+    }`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if c.Command["c"].Template != "run it" {
+		t.Errorf("v2 command not folded: %+v", c.Command)
+	}
+	if c.Agent["a"].Prompt != "v1 wins" || c.Agent["b"].Prompt != "from v2" {
+		t.Errorf("agents fold = %+v", c.Agent)
+	}
+
+	c, err = ParseOpenCodeConfig(writeOpenCode(t, `{"agents": 5, "commands": {}}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if c.Agent != nil || c.Command != nil {
+		t.Errorf("non-object or empty v2 blocks must fold nothing, got %+v %+v", c.Agent, c.Command)
+	}
+}
+
+func TestLowerOpenCodeMCP(t *testing.T) {
+	if got := lowerOpenCodeMCP(json.RawMessage(`5`)); got != nil {
+		t.Errorf("a non-object mcp block yields nothing, got %v", got)
+	}
+	if got := lowerOpenCodeMCP(json.RawMessage(`{"bad": 5}`)); got != nil {
+		t.Errorf("an entry that is not a server is skipped, got %v", got)
+	}
+	got := lowerOpenCodeMCP(json.RawMessage(`{"servers": {"bad": 5, "ok": {"type": "local", "command": ["x"]}}}`))
+	if len(got) != 1 || got["ok"].Command[0] != "x" {
+		t.Errorf("envelope entries that are not servers are skipped, got %v", got)
+	}
+}
+
+// mcp.servers is the v2 envelope unless a `type` or `enabled` key holds a
+// non-object value, in which case it is itself a server named "servers".
+func TestOpenCodeIsDirectServer(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want bool
+	}{
+		{`{"type": "local", "command": ["x"]}`, true},
+		{`{"enabled": false}`, true},
+		{`{"type": null}`, true},
+		{`{"type": {"command": ["x"]}}`, false},
+		{`{"probe": {"type": "local"}}`, false},
+		{`[1]`, false},
+	} {
+		if got := openCodeIsDirectServer(json.RawMessage(tc.raw)); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.raw, got, tc.want)
+		}
+	}
+}
+
+// The permission value is a union: a bare action, or an object whose values
+// are an action or a nested pattern object. Anything else contributes nothing.
+func TestDecodeOpenCodePermission(t *testing.T) {
+	r := func(a, res, e string) OpenCodePermissionRule {
+		return OpenCodePermissionRule{Action: a, Resource: res, Effect: e}
+	}
+	for _, tc := range []struct {
+		name, raw string
+		want      []OpenCodePermissionRule
+	}{
+		{"empty", "  ", nil},
+		{"bare action", `" Deny "`, []OpenCodePermissionRule{r("*", "*", "deny")}},
+		{"unknown bare string", `"maybe"`, nil},
+		{"number", `5`, nil},
+		{"array", `["allow"]`, nil},
+		{"object", `{"edit": "ask", "bash": {"git *": "allow", "rm *": "deny", "x": 1}, "webfetch": 5}`,
+			[]OpenCodePermissionRule{r("edit", "*", "ask"), r("bash", "git *", "allow"), r("bash", "rm *", "deny")}},
+		{"truncated object", `{"edit": `, nil},
+		{"broken token", `}`, nil},
+	} {
+		got := decodeOpenCodePermission(json.RawMessage(tc.raw))
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: got %+v, want %+v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Agent blocks follow the top-level one in name order; an agent with no
+// permission contributes no block.
+func TestOpenCodeConfig_PermissionBlocks(t *testing.T) {
+	c, err := ParseOpenCodeConfig(writeOpenCode(t, `{
+      "permission": "allow",
+      "agent": {
+        "zeta":  {"permission": {"bash": "allow"}},
+        "alpha": {"permission": {"edit": "deny"}},
+        "quiet": {"prompt": "no permission here"}
+      }
+    }`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	blocks := c.PermissionBlocks()
+	var where []string
+	for _, b := range blocks {
+		where = append(where, b.Where)
+	}
+	want := []string{"permission", "agent.alpha.permission", "agent.zeta.permission"}
+	if !reflect.DeepEqual(where, want) {
+		t.Errorf("blocks = %v, want %v", where, want)
+	}
+	if blocks[0].Rules[0].Effect != "allow" || blocks[1].Rules[0].Effect != "deny" {
+		t.Errorf("rules = %+v", blocks)
 	}
 }

@@ -127,3 +127,39 @@ func TestReadFile_NoRootSetChecksNothing(t *testing.T) {
 		t.Errorf("with no scan root set, ReadFile must behave like os.ReadFile: %v", err)
 	}
 }
+
+func TestSet_MissingDirectory(t *testing.T) {
+	t.Cleanup(func() { _ = Set("") })
+	if err := Set(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Error("Set of a directory that does not exist must fail")
+	}
+}
+
+func TestOpen(t *testing.T) {
+	base := t.TempDir()
+	scan := filepath.Join(base, "repo")
+	write(t, filepath.Join(scan, "CLAUDE.md"), "x")
+	write(t, filepath.Join(base, "secret"), "s")
+	if err := Set(scan); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+
+	f, err := Open(filepath.Join(scan, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("Open of a file in the scan: %v", err)
+	}
+	_ = f.Close()
+
+	// The scan root itself is inside the scan.
+	d, err := Open(scan)
+	if err != nil {
+		t.Fatalf("Open of the scan root: %v", err)
+	}
+	_ = d.Close()
+
+	symlink(t, filepath.Join(base, "secret"), filepath.Join(scan, "link"))
+	if _, err := Open(filepath.Join(scan, "link")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Open through a link leaving the scan: err = %v, want not-exist", err)
+	}
+}

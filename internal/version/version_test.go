@@ -1,6 +1,12 @@
 package version
 
-import "testing"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
 
 func TestParse(t *testing.T) {
 	cases := []struct {
@@ -58,4 +64,47 @@ func TestString(t *testing.T) {
 	if got := v.String(); got != "2.1.148" {
 		t.Errorf("String() = %q, want %q", got, "2.1.148")
 	}
+}
+
+// fakeClaude puts a `claude` shell script printing out and exiting with code
+// first on PATH. Shell scripts do not run on Windows, so the test skips there.
+func fakeClaude(t *testing.T, out string, code int) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	dir := t.TempDir()
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s' '%s'\nexit %d\n", out, code)
+	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o700); err != nil { // #nosec G306 -- the test needs an executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+func TestDetect(t *testing.T) {
+	t.Run("version", func(t *testing.T) {
+		fakeClaude(t, "2.1.150 (Claude Code)", 0)
+		v, ok, err := Detect()
+		if err != nil || !ok || v != (Version{2, 1, 150}) {
+			t.Errorf("Detect() = %v, %v, %v; want 2.1.150, true, nil", v, ok, err)
+		}
+	})
+	t.Run("not installed", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		if _, ok, err := Detect(); ok || err != nil {
+			t.Errorf("Detect() without claude = %v, %v; want false, nil", ok, err)
+		}
+	})
+	t.Run("fails", func(t *testing.T) {
+		fakeClaude(t, "", 3)
+		if _, ok, err := Detect(); ok || err == nil {
+			t.Errorf("Detect() with a failing claude = %v, %v; want false and an error", ok, err)
+		}
+	})
+	t.Run("no version in output", func(t *testing.T) {
+		fakeClaude(t, "unknown", 0)
+		if _, ok, err := Detect(); ok || err == nil {
+			t.Errorf("Detect() with unparseable output = %v, %v; want false and an error", ok, err)
+		}
+	})
 }

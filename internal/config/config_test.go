@@ -178,3 +178,100 @@ func TestShellCheckExclude_AbsentOrNil(t *testing.T) {
 		t.Errorf("nil config gave %q", got)
 	}
 }
+
+func TestRuleConfig_RejectsOtherNodeKinds(t *testing.T) {
+	for _, yml := range []string{
+		"rules:\n  CFG004: [off]\n",
+		"rules:\n  CFG004:\n    off: [true]\n",
+	} {
+		if _, err := parse([]byte(yml), "test"); err == nil {
+			t.Errorf("parse(%q): expected an error", yml)
+		}
+	}
+}
+
+func TestParse_InvalidYAML(t *testing.T) {
+	_, err := parse([]byte("rules: [\n"), "bad.yml")
+	if err == nil || !strings.Contains(err.Error(), "bad.yml") {
+		t.Fatalf("expected a parse error naming the file, got %v", err)
+	}
+}
+
+func TestLoad(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "custom.yml")
+	if err := writeFile(p, "strict: true\n"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil || c == nil || !c.Strict {
+		t.Fatalf("Load(%s) = %+v, %v; want strict config", p, c, err)
+	}
+	if _, err := Load(filepath.Join(dir, "missing.yml")); err == nil {
+		t.Error("Load of a missing file must fail")
+	}
+}
+
+func TestDiscover_Errors(t *testing.T) {
+	// A directory where the config file is expected is a read error, not "no config".
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".cfgaudit.yml"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Discover(dir); err == nil {
+		t.Error("expected an error when .cfgaudit.yml is a directory")
+	}
+
+	dir = t.TempDir()
+	if err := writeFile(filepath.Join(dir, ".cfgaudit.yml"), "rules: [\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Discover(dir); err == nil {
+		t.Error("expected an error for an unparseable .cfgaudit.yml")
+	}
+}
+
+func TestPostProcess_SeverityOverrides(t *testing.T) {
+	c := parseT(t, "rules:\n  A: error\n  B: loud\n")
+	out := c.PostProcess([]finding.Finding{
+		{RuleID: "A", Severity: finding.Info},
+		{RuleID: "B", Severity: finding.Warn},
+	}, ".")
+	if out[0].Severity != finding.Error {
+		t.Errorf("A: want error, got %s", out[0].Severity)
+	}
+	if out[1].Severity != finding.Warn {
+		t.Errorf("B: an unknown severity must leave the finding unchanged, got %s", out[1].Severity)
+	}
+}
+
+func TestExcludePaths_RelativeFileOutsideDir(t *testing.T) {
+	// filepath.Rel cannot relate a relative file to an absolute dir; the file
+	// path is then matched as given.
+	c := parseT(t, "exclude-paths:\n  - \"docs/*.json\"\n")
+	out := c.PostProcess([]finding.Finding{{RuleID: "A", File: "docs/a.json"}}, "/proj")
+	if len(out) != 0 {
+		t.Fatalf("expected the finding excluded, got %+v", out)
+	}
+}
+
+func TestMatchGlob(t *testing.T) {
+	cases := []struct {
+		pattern, path string
+		want          bool
+	}{
+		{"a?c.json", "abc.json", true},
+		{"a?c.json", "a/c.json", false},
+		{"**", "x/y/z", true},
+		{"src/**.json", "src/a/b.json", true},
+		{"src/**/b.json", "src/a/b.json", true},
+		{"*.json", "a/b.json", false},
+		{"vendor/", "vendor", true},
+		{"vendor/", "vendored/x", false},
+	}
+	for _, c := range cases {
+		if got := matchGlob(c.pattern, c.path); got != c.want {
+			t.Errorf("matchGlob(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
+		}
+	}
+}

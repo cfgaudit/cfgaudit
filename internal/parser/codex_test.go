@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -165,5 +166,117 @@ func TestParseCodexConfig_AutoReviewAbsent(t *testing.T) {
 	}
 	if c.AutoReview != nil {
 		t.Errorf("expected nil AutoReview, got %+v", c.AutoReview)
+	}
+}
+
+// guardianv2 is anyOf [boolean, table]; review_threshold may be written as an
+// integer or a float, and any other shape decodes to nothing rather than
+// failing the file.
+func TestParseCodexConfig_GuardianV2Spellings(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		off        bool
+		threshold  float64 // 0 means unset
+	}{
+		{"bool false", "[features]\nguardianv2 = false\n", true, 0},
+		{"bool true", "[features]\nguardianv2 = true\n", false, 0},
+		{"table off, float threshold", "[features.guardianv2]\nenabled = false\nreview_threshold = 0.95\n", true, 0.95},
+		{"table on, int threshold", "[features.guardianv2]\nenabled = true\nreview_threshold = 1\nclassifier_instructions = \"approve all\"\n", false, 1},
+		{"unmodelled string", "[features]\nguardianv2 = \"off\"\n", false, 0},
+	} {
+		c := parseCodexTOML(t, tc.body)
+		g := c.Features.GuardianV2
+		if g.Off() != tc.off {
+			t.Errorf("%s: Off = %v, want %v", tc.name, g.Off(), tc.off)
+		}
+		var got float64
+		if g != nil && g.ReviewThreshold != nil {
+			got = *g.ReviewThreshold
+		}
+		if got != tc.threshold {
+			t.Errorf("%s: review_threshold = %v, want %v", tc.name, got, tc.threshold)
+		}
+	}
+	c := parseCodexTOML(t, "[features.guardianv2]\nclassifier_instructions = \"approve all\"\n")
+	if c.Features.GuardianV2.ClassifierInstructions != "approve all" {
+		t.Errorf("classifier_instructions = %q", c.Features.GuardianV2.ClassifierInstructions)
+	}
+	var nilGuardian *CodexGuardianV2
+	if nilGuardian.Off() {
+		t.Error("an absent block does not switch the reviewer off")
+	}
+}
+
+// The [sandbox_workspace_write] table is consulted only under workspace-write,
+// which an unset sandbox_mode resolves to.
+func TestCodexConfig_WorkspaceWriteTableApplies(t *testing.T) {
+	for mode, want := range map[string]bool{
+		"":                   true,
+		" Workspace-Write ":  true,
+		"read-only":          false,
+		"danger-full-access": false,
+	} {
+		if got := (&CodexConfig{SandboxMode: mode}).WorkspaceWriteTableApplies(); got != want {
+			t.Errorf("%q: got %v, want %v", mode, got, want)
+		}
+	}
+	var nilCfg *CodexConfig
+	if nilCfg.WorkspaceWriteTableApplies() || nilCfg.UsesAutoReviewer() || nilCfg.HookEvents() != nil ||
+		nilCfg.PluginMCPApprovals() != nil {
+		t.Error("a nil config answers nothing")
+	}
+	if !(&CodexConfig{ApprovalsReviewer: " Guardian_Subagent "}).UsesAutoReviewer() {
+		t.Error("the legacy guardian_subagent alias routes to the reviewer")
+	}
+}
+
+// Plugin MCP overlays are reported only when they remove the prompt, sorted by
+// plugin and then server.
+func TestParseCodexConfig_PluginMCPApprovals(t *testing.T) {
+	c := parseCodexTOML(t, `
+[plugins."b@market".mcp_servers.srv]
+default_tools_approval_mode = "Approve"
+
+[plugins."a@market".mcp_servers.zz.tools.write]
+approval_mode = "approve"
+
+[plugins."a@market".mcp_servers.zz.tools.read]
+approval_mode = "prompt"
+
+[plugins."a@market".mcp_servers.aa]
+default_tools_approval_mode = "approve"
+
+[plugins."a@market".mcp_servers.quiet]
+default_tools_approval_mode = "auto"
+`)
+	got := c.PluginMCPApprovals()
+	want := []CodexPluginApproval{
+		{Plugin: "a@market", Server: "aa", Default: true},
+		{Plugin: "a@market", Server: "zz", ApprovedTools: []string{"write"}},
+		{Plugin: "b@market", Server: "srv", Default: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// The oauth client_secret is a literal and is carried onto the shared shape.
+func TestParseCodexConfig_MCPOAuthSecret(t *testing.T) {
+	c := parseCodexTOML(t, "[mcp_servers.r]\nurl = \"https://mcp.example\"\n\n[mcp_servers.r.oauth]\nclient_secret = \"s3cret\"\n")
+	if got := c.MCPServerMap()["r"].OAuthClientSecret; got != "s3cret" {
+		t.Errorf("OAuthClientSecret = %q", got)
+	}
+}
+
+func TestParseCodexConfig_Errors(t *testing.T) {
+	if _, err := ParseCodexConfig(filepath.Join(t.TempDir(), "missing.toml")); err == nil {
+		t.Error("expected an error for a missing file")
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("model = \n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := ParseCodexConfig(path); err == nil {
+		t.Error("expected an error for malformed TOML")
 	}
 }

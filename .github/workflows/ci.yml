@@ -114,6 +114,56 @@ jobs:
           use_oidc: true
           fail_ci_if_error: false
 
+  # Branch coverage measured with gobco (#756), the number the OpenSSF Best
+  # Practices gold level asks for. gobco instruments one package at a time and
+  # credits only that package's own tests, so it reads lower than the
+  # statement coverage above. Fails below BRANCH_FLOOR.
+  branch-coverage:
+    name: Branch coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod verify
+      # Built from .github/tools/gobco, whose go.sum pins the version.
+      - name: Build gobco
+        working-directory: .github/tools/gobco
+        run: go build -o "$RUNNER_TEMP/gobco" github.com/rillig/gobco
+      - name: Branch coverage
+        env:
+          BRANCH_FLOOR: "80.0"
+        run: |
+          set -euo pipefail
+          # gobco copies each package to a temporary module that cannot resolve
+          # the dependencies from the module cache; a vendor directory carries them.
+          go mod vendor
+          {
+            echo "## Branch coverage (gobco)"
+            echo
+            echo "| Package | Covered | Branches |"
+            echo "|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          covered=0 branches=0
+          for pkg in $(go list -f '{{.Dir}}' ./... | sed "s|^$PWD|.|"); do
+            line=$("$RUNNER_TEMP/gobco" -branch "$pkg" | grep '^Branch coverage: ')
+            c=${line#Branch coverage: }
+            echo "| \`$pkg\` | ${c%/*} | ${c#*/} |" >> "$GITHUB_STEP_SUMMARY"
+            covered=$((covered + ${c%/*})) branches=$((branches + ${c#*/}))
+          done
+          total=$(awk -v c="$covered" -v b="$branches" 'BEGIN { printf "%.1f", 100 * c / b }')
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "Total: ${covered}/${branches} = ${total}% (floor ${BRANCH_FLOOR}%)" >> "$GITHUB_STEP_SUMMARY"
+          if awk -v t="$total" -v f="$BRANCH_FLOOR" 'BEGIN { exit !(t < f) }'; then
+            echo "::error::Branch coverage ${total}% is below the floor of ${BRANCH_FLOOR}%"
+            exit 1
+          fi
+          echo "Branch coverage ${covered}/${branches} = ${total}% (floor ${BRANCH_FLOOR}%)"
+
   # cfgaudit ships macOS and Windows binaries but the required Test job above runs
   # Linux only. This non-required leg exercises the OS-sensitive code (filepath /
   # glob discovery, case-sensitivity, line endings) on the other two platforms.

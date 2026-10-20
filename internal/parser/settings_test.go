@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -138,5 +139,98 @@ func TestUnwrappedMCPServers(t *testing.T) {
 		if got, err := UnwrappedMCPServers(write(body)); err != nil || got != nil {
 			t.Errorf("%s: expected nothing, got %v (%v)", body, got, err)
 		}
+	}
+}
+
+// The accessors are type-tolerant: a missing key and a mistyped value both
+// yield the zero value, so one bad key never aborts the parse.
+func TestSettings_TolerantAccessors(t *testing.T) {
+	s, err := ParseSettingsBytes([]byte(`{
+      "apiKeyHelper": "./key.sh",
+      "awsAuthRefresh": 5,
+      "statusLine": {"type": "command", "command": "./status.sh"},
+      "fileSuggestion": "not an object",
+      "sandbox": {"excludedCommands": ["docker"], "network": {"allowAllUnixSockets": true}}
+    }`), "settings.json")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	for key, want := range map[string]string{"apiKeyHelper": "./key.sh", "awsAuthRefresh": "", "missing": ""} {
+		if got := s.StringField(key); got != want {
+			t.Errorf("StringField(%s) = %q, want %q", key, got, want)
+		}
+	}
+	for key, want := range map[string]string{"statusLine": "./status.sh", "fileSuggestion": "", "missing": ""} {
+		if got := s.CommandHelperField(key); got != want {
+			t.Errorf("CommandHelperField(%s) = %q, want %q", key, got, want)
+		}
+	}
+	sb := s.Sandbox()
+	if sb == nil || len(sb.ExcludedCommands) != 1 || sb.Network == nil || !sb.Network.AllowAllUnixSockets {
+		t.Errorf("sandbox not decoded: %+v", sb)
+	}
+
+	s, _ = ParseSettingsBytes([]byte(`{"sandbox": true}`), "settings.json")
+	if s.Sandbox() != nil {
+		t.Error("a mistyped sandbox value yields nil")
+	}
+	s, _ = ParseSettingsBytes([]byte(`{}`), "settings.json")
+	if s.Sandbox() != nil {
+		t.Error("an absent sandbox yields nil")
+	}
+}
+
+// The canonical key wins over the alias when a file carries both, and entries
+// come back in name order.
+func TestSettings_MarketplaceEntries(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, key string
+		names           []string
+	}{
+		{"canonical", `{"extraKnownMarketplaces": {"z": {"source": {"source": "github", "repo": "o/z"}}, "a": {"headersHelper": "./h.sh"}}}`,
+			MarketplacesKey, []string{"a", "z"}},
+		{"alias only", `{"additionalMarketplaces": {"m": {}}}`, MarketplacesAliasKey, []string{"m"}},
+		{"both", `{"additionalMarketplaces": {"alias": {}}, "extraKnownMarketplaces": {"canon": {}}}`,
+			MarketplacesKey, []string{"canon"}},
+		{"absent", `{}`, "", nil},
+		// A value that does not decode still names the key it was written under.
+		{"undecodable", `{"extraKnownMarketplaces": ["x"]}`, MarketplacesKey, nil},
+	} {
+		s, err := ParseSettingsBytes([]byte(tc.body), "settings.json")
+		if err != nil {
+			t.Fatalf("%s: parse: %v", tc.name, err)
+		}
+		entries, key := s.MarketplaceEntries()
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name)
+		}
+		if key != tc.key || !reflect.DeepEqual(names, tc.names) {
+			t.Errorf("%s: got %v under %q, want %v under %q", tc.name, names, key, tc.names, tc.key)
+		}
+	}
+	var nilSettings *Settings
+	if raw, key := nilSettings.Marketplaces(); raw != nil || key != "" {
+		t.Errorf("nil settings: got %s %q", raw, key)
+	}
+}
+
+func TestSettingsParsers_ReadAndDecodeErrors(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.json")
+	if _, err := ParseSettings(missing); err == nil {
+		t.Error("ParseSettings: expected an error for a missing file")
+	}
+	if _, err := ParseMCPConfig(missing); err == nil {
+		t.Error("ParseMCPConfig: expected an error for a missing file")
+	}
+	if _, err := UnwrappedMCPServers(missing); err == nil {
+		t.Error("UnwrappedMCPServers: expected an error for a missing file")
+	}
+	bad := writeTemp(t, `{"a": `)
+	if _, err := UnwrappedMCPServers(bad); err == nil {
+		t.Error("UnwrappedMCPServers: expected an error for a malformed file")
+	}
+	if _, err := ParseSettingsBytes([]byte(`[1]`), "settings.json"); err == nil {
+		t.Error("ParseSettingsBytes: a non-object document must fail")
 	}
 }
