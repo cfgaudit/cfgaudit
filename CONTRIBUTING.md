@@ -60,6 +60,29 @@ If you change anything under `.github/workflows/`, run `zizmor .github/workflows
 
 ---
 
+## Pull request review
+
+Every change starts with an issue and lands through a pull request against `main`. The maintainer reviews the pull request; direct pushes to `main` are blocked. The required checks must pass before a pull request can merge: build, tests, lint, `govulncheck`, dependency review where applicable, workflow security checks, and the repository's other required CI jobs.
+
+### What reviewers check
+
+- The change matches the linked issue and its acceptance criteria, and the pull request explains any deviation.
+- Tests cover every behavior change. A bug fix includes a test that fails without the fix; rule changes include trigger and negative coverage.
+- Rule changes include the rule documentation, trigger fixture, valid-fixture review, and README table update.
+- Scanned content remains data: the scanner does not execute it or add network access, and every read of scanned repository content goes through `internal/scanroot`.
+- Workflow changes keep actions pinned to commit SHAs, container images pinned by digest, job permissions minimal, checkout credentials disabled, and `zizmor` clean.
+- New dependencies follow the [dependency policy](#dependencies): the pull request explains why the standard library is insufficient, who maintains the dependency, and its size; hashes and lock files are updated as required.
+- Findings and messages do not quote secret values or disclose scanned file contents.
+- Security-sensitive changes are consistent with the [security policy](SECURITY.md) and [trust boundary](SECURITY.md#trust-boundary). Suspected vulnerabilities are reported privately, not discussed in a public issue.
+
+### Acceptance and merge
+
+A change is acceptable when the required checks are green, review comments are resolved, and the scope is agreed with the maintainer. Use a conventional commit-style title with the issue number, for example `docs: describe PR review (#757)`, and include `Closes #N` in the pull request body. The maintainer squash-merges accepted pull requests and deletes the branch.
+
+Small, self-contained issues suitable for a first contribution are listed by the repository's [`good first issue` label](https://github.com/cfgaudit/cfgaudit/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Current examples are [#746](https://github.com/cfgaudit/cfgaudit/issues/746) and [#762](https://github.com/cfgaudit/cfgaudit/issues/762); read each issue's acceptance criteria before starting.
+
+---
+
 ## Adding a new rule
 
 The repo has a few cross-cutting checks (`rules/consistency_test.go`, `rules/fixtures_test.go`) that fail fast if any step below is skipped — follow them in order and the tests will keep you honest.
