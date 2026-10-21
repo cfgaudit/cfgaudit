@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
 # cfgaudit Claude Code plugin wrapper.
 #
 # The plugin prepends this bin/ directory to PATH, so a hook or skill calling

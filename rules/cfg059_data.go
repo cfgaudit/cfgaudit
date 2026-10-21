@@ -1,3 +1,6 @@
+// Copyright the cfgaudit contributors
+// SPDX-License-Identifier: Apache-2.0
+
 package rules
 
 // Known-good MCP identifiers CFG059 compares config entries against to detect

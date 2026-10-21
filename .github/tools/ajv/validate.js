@@ -1,3 +1,6 @@
+// Copyright the cfgaudit contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Validates JSON files against a JSON Schema for the schema validation
 // workflow. Replaces ajv-cli (#701), whose own dependencies carry advisories
 // that no ajv-cli release fixes. Built the way `ajv validate --strict=false`

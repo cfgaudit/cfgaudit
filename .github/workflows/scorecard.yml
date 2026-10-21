@@ -1,3 +1,6 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
 name: Scorecard
 
 # OpenSSF Scorecard (#675). Results go to code scanning, so a check that

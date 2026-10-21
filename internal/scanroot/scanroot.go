@@ -1,3 +1,6 @@
+// Copyright the cfgaudit contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Package scanroot keeps reads of repository content inside the scanned
 // directory.
 //

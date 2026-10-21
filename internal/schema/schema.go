@@ -1,3 +1,6 @@
+// Copyright the cfgaudit contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Package schema embeds a snapshot of the upstream SchemaStore "Claude Code
 // settings" schema and exposes the bare-minimum structural data that the
 // CFG012 rule needs: the set of top-level property names and, for each, the

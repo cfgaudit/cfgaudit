@@ -1,3 +1,6 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
 name: Build image
 
 # Builds and pushes the container image, attests its provenance and SBOM and

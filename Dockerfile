@@ -1,3 +1,6 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Both base images are pinned by the digest of their multi-arch index (#677),
 # so a tag repointed upstream cannot change what is built. Dependabot's docker
 # ecosystem updates tag and digest together. The runtime stage's packages are
