@@ -1,3 +1,6 @@
+// Copyright the cfgaudit contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Package version handles detection and comparison of Claude Code releases.
 // The CLI uses Detect to ask the installed `claude` binary for its version
 // and rules use Version.AtLeast to gate themselves on a minimum release.

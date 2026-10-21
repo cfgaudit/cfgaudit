@@ -1,3 +1,6 @@
+// Copyright the cfgaudit contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Package config loads the optional .cfgaudit.yml project configuration:
 // per-rule severity overrides and disables, a minimum severity to report,
 // strict / no-exit-code behaviour, and path globs to exclude from results.

@@ -1,3 +1,6 @@
+// Copyright the cfgaudit contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Package cfgaudit embeds the per-rule documentation so the `cfgaudit explain`
 // subcommand can render it offline, keeping docs/rules/*.md the single source.
 package cfgaudit
