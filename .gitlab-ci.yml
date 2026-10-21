@@ -1,3 +1,6 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # GitLab pipeline for the cfgaudit CI/CD Catalog mirror (gitlab.com/cfgaudit/cfgaudit).
 # Harmless on GitHub (only GitLab reads this file). It self-tests the component
 # and, on a tag, publishes a release so the templates/ components are cataloged.

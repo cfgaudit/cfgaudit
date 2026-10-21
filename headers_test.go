@@ -55,7 +55,8 @@ func ownedSource(path, root string) bool {
 	case ".go", ".sh", ".py":
 		return true
 	case ".yml", ".yaml":
-		return strings.HasPrefix(filepath.ToSlash(rel), ".github/workflows/")
+		rel = filepath.ToSlash(rel)
+		return strings.HasPrefix(rel, ".github/workflows/") || rel == ".gitlab-ci.yml" || strings.HasPrefix(rel, "templates/")
 	default:
 		return false
 	}
