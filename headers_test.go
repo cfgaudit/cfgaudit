@@ -15,6 +15,11 @@ import (
 // copyright and license lines (#758). Fixtures under testdata are scanned input
 // and stay byte-exact.
 func TestSourceHeaders(t *testing.T) {
+	// Only a checkout holds the whole tree. Tools that copy the package
+	// elsewhere to run its tests (gobco in the Branch coverage job) do not.
+	if _, err := os.Stat(".git"); err != nil {
+		t.Skip("not a git checkout")
+	}
 	repo := os.DirFS(".")
 	err := fs.WalkDir(repo, ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -38,8 +43,9 @@ func TestSourceHeaders(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		// The header comes first, after a shebang line if there is one.
-		lines := strings.SplitN(string(b), "\n", 4)
+		// The header comes first, after a shebang line if there is one. A
+		// Windows checkout may have converted line endings to CRLF.
+		lines := strings.SplitN(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n", 4)
 		if strings.HasPrefix(lines[0], "#!") {
 			lines = lines[1:]
 		}
