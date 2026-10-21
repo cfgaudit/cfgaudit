@@ -1,6 +1,6 @@
 # Contributing to cfgaudit
 
-cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.json`, MCP configs, hooks, …). This document covers reporting a bug, local setup, the test loop, dependencies, and the step-by-step recipe for adding a new rule. Who maintains the project and holds which access is in [GOVERNANCE.md](GOVERNANCE.md); how cfgaudit is built and what it defends against is in [docs/design.md](docs/design.md). Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md); what is planned is in the [roadmap](ROADMAP.md).
+cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.json`, MCP configs, hooks, …). This document covers reporting a bug, local setup, the test loop, code review, dependencies, and the step-by-step recipe for adding a new rule. Who maintains the project and holds which access is in [GOVERNANCE.md](GOVERNANCE.md); how cfgaudit is built and what it defends against is in [docs/design.md](docs/design.md). Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md); what is planned is in the [roadmap](ROADMAP.md).
 
 ---
 
@@ -193,6 +193,28 @@ The reverse-consistency test fails if you mention `CFGNNN` in the README without
 - **Commit messages**: one short imperative line (`feat: add CFG013 rule (...)`). No `Co-Authored-By` trailer.
 - **PR body**: short Summary section + Test plan checklist. Note deviations from the issue's acceptance criteria.
 - **Merging**: squash-merge, delete branch.
+
+---
+
+## Code review
+
+Every change, including the maintainer's own, lands through a pull request; nothing is pushed to `main` directly.
+
+**How review happens.** The maintainer reviews every pull request from a contributor; a second maintainer reviews the maintainer's once there is one (see [GOVERNANCE.md](GOVERNANCE.md)). Review starts when the required checks pass. Comments go on the pull request, and the author answers each one with a change or a reason.
+
+**What the reviewer checks:**
+
+- **Scope.** The change does what its issue asks and nothing unrelated; a change in behaviour has an issue.
+- **Tests.** The tests cover the change, and a fix adds a test that fails without it (see [Tests](#4-tests)). Coverage stays above both floors.
+- **Rules.** A new or changed rule has its doc page, fixtures and README row, follows the agent's real loader (measured, not assumed), and its message names keys and files, never a secret value.
+- **The trust boundary.** Scanned content is still never executed or evaluated, every read of repository content still goes through `internal/scanroot`, and the scanner opens no network connection. A change that adds a process, a network call or a new kind of input updates [docs/design.md](docs/design.md).
+- **Dependencies.** A new or updated dependency follows [Dependencies](#dependencies).
+- **Workflows.** Actions are pinned to commit SHAs, permissions are the least the job needs, no input is interpolated into a script, and zizmor passes.
+- **Docs and style.** README, rule docs and CONTRIBUTING.md match the change.
+
+**What makes a change acceptable:** all required checks pass, every review comment is resolved, and the title is a conventional commit line that references the issue. The pull request is then squash-merged.
+
+**New contributors** can start with an issue labelled [`good first issue`](https://github.com/cfgaudit/cfgaudit/labels/good%20first%20issue): small, self-contained changes with the expected result spelled out.
 
 ---
 
