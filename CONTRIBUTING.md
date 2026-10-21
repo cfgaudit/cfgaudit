@@ -79,7 +79,7 @@ Every change starts with an issue and lands through a pull request against `main
 
 A change is acceptable when the required checks are green, review comments are resolved, and the scope is agreed with the maintainer. Use a conventional commit-style title with the issue number, for example `docs: describe PR review (#757)`, and include `Closes #N` in the pull request body. The maintainer squash-merges accepted pull requests and deletes the branch.
 
-Small, self-contained issues suitable for a first contribution are listed by the repository's [`good first issue` label](https://github.com/cfgaudit/cfgaudit/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Current examples are [#746](https://github.com/cfgaudit/cfgaudit/issues/746) and [#762](https://github.com/cfgaudit/cfgaudit/issues/762); read each issue's acceptance criteria before starting.
+Small, self-contained issues suitable for a first contribution are listed by the repository's [`good first issue` label](https://github.com/cfgaudit/cfgaudit/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Maintainers should apply it only after checking that an issue is genuinely self-contained; read the issue's acceptance criteria before starting.
 
 ---
 
