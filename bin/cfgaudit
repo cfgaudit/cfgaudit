@@ -8,8 +8,9 @@
 # Go toolchain, in order of preference:
 #   1. an installed cfgaudit already on PATH (Homebrew, go install, manual),
 #   2. a previously downloaded copy in the cache,
-#   3. the prebuilt release binary for this OS/arch — downloaded once and
-#      verified against the release checksums.
+#   3. the prebuilt release binary for this OS/arch, downloaded once and
+#      verified against the release checksums. A download that cannot be
+#      verified (no SHA-256 tool, no checksum entry) is refused.
 # If none of those work, it prints a clear install hint. No platform binaries
 # are committed to the repo.
 set -eu
@@ -82,17 +83,21 @@ if ! fetch "$base/$asset" "$tmp/$asset" || ! fetch "$base/checksums.txt" "$tmp/c
   install_hint "could not download the prebuilt binary (need curl or wget and network access)."
 fi
 
-# verify the download against the published checksums when a hashing tool exists
-want=$(grep " $asset\$" "$tmp/checksums.txt" 2>/dev/null | awk '{print $1}')
+# verify the download against the published checksums; anything that cannot be
+# verified is refused, never run (#768)
+want=$(grep " $asset\$" "$tmp/checksums.txt" 2>/dev/null | awk '{print $1}') || true
+if [ -z "$want" ]; then
+  install_hint "checksums.txt has no entry for $asset, refusing to run the download."
+fi
 if command -v sha256sum >/dev/null 2>&1; then
   got=$(sha256sum "$tmp/$asset" | awk '{print $1}')
 elif command -v shasum >/dev/null 2>&1; then
   got=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
 else
-  got=""
+  install_hint "neither sha256sum nor shasum is available to verify $asset, refusing to run the download."
 fi
-if [ -n "$got" ] && [ -n "$want" ] && [ "$got" != "$want" ]; then
-  install_hint "checksum mismatch for $asset — refusing to run the download."
+if [ "$got" != "$want" ]; then
+  install_hint "checksum mismatch for $asset, refusing to run the download."
 fi
 
 if ! tar -xzf "$tmp/$asset" -C "$tmp" cfgaudit 2>/dev/null; then
