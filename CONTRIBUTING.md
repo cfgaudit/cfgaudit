@@ -21,7 +21,7 @@ Vulnerabilities in cfgaudit itself go through private reporting instead, see [SE
 
 ## Development environment
 
-- **Go**: 1.26 or newer (`go.mod` declares `go 1.26.0`; CI and releases build with the newest 1.26 patch).
+- **Go**: 1.26 or newer (`go.mod` declares `go 1.26`; CI and releases build with the newest 1.26 patch).
 - **Optional**: Docker (for the release image), `zizmor` for workflow linting, Node.js if you want to run the SchemaStore fixture validator locally (`npm ci --prefix .github/tools/ajv`, then `node .github/tools/ajv/validate.js <schema> testdata/settings/valid/*.json`).
 
 Clone and build:
