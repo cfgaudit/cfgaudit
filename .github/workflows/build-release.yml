@@ -84,6 +84,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # The runner's preinstalled Go can lag the newest patch; a release is
+          # built with the newest one, like the govulncheck job checks (#775).
+          check-latest: true
           cache: false # release builds published artifacts; avoid cache poisoning
 
       # Provides the syft binary the `sboms:` block in .goreleaser.yml shells out
