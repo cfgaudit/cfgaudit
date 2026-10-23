@@ -1,6 +1,6 @@
 # Contributing to cfgaudit
 
-cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.json`, MCP configs, hooks, …). This document covers reporting a bug, local setup, the test loop, code review, dependencies, and the step-by-step recipe for adding a new rule. Who maintains the project and holds which access is in [GOVERNANCE.md](GOVERNANCE.md); how cfgaudit is built and what it defends against is in [docs/design.md](docs/design.md). Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md); what is planned is in the [roadmap](ROADMAP.md).
+cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.json`, MCP configs, hooks, …). This document covers reporting a bug, local setup, the test loop, code review, AI-assisted contributions, dependencies, and the step-by-step recipe for adding a new rule. Who maintains the project and holds which access is in [GOVERNANCE.md](GOVERNANCE.md); how cfgaudit is built and what it defends against is in [docs/design.md](docs/design.md). Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md); what is planned is in the [roadmap](ROADMAP.md).
 
 ---
 
@@ -191,7 +191,7 @@ The reverse-consistency test fails if you mention `CFGNNN` in the README without
 
 - **Branch names**: `<type>/<short-slug>`, e.g. `feat/cfg013-…`, `docs/contributing`, `chore/dependabot`, `ci/<name>`. No issue number required, but include it in the PR body via `Closes #N`.
 - **Commit messages**: one short imperative line (`feat: add CFG013 rule (...)`). No `Co-Authored-By` trailer.
-- **PR body**: short Summary section + Test plan checklist. Note deviations from the issue's acceptance criteria.
+- **PR body**: the [pull request template](.github/pull_request_template.md) fills it in: short Summary section, Test plan, a checklist and a field for AI use. Note deviations from the issue's acceptance criteria.
 - **Merging**: squash-merge, delete branch.
 
 ---
@@ -218,11 +218,23 @@ Every change, including the maintainer's own, lands through a pull request; noth
 
 ---
 
+## AI-assisted contributions
+
+You can use AI tools. What counts is the change itself and that you stand behind it:
+
+- Say in the pull request whether you used one and what it did. The template has a field for it.
+- Read and understand every line before you open the pull request. Review questions are answered by you, not by the tool.
+- Don't take a tool's word for how an agent behaves. Setting names, load order, trust prompts and version boundaries change often and are easy to get wrong. Back each such claim with the changelog line, the source file or a run of the agent, and name the version.
+- Run the checks from the [test loop](#test-loop) where you can, and say which ones you couldn't run.
+- Keep a pull request to one issue. Pull requests that look generated in bulk, touch unrelated code, or describe something the diff doesn't do are closed.
+
+---
+
 ## Dependencies
 
 cfgaudit keeps its dependencies few, because every one of them runs inside a tool whose input is hostile.
 
-- **Go modules.** Dependencies are declared in `go.mod` and pinned by hash in `go.sum`; CI runs `go mod verify` before building. The binary has two direct dependencies, `gopkg.in/yaml.v3` and `github.com/BurntSushi/toml`, besides the standard library.
+- **Go modules.** Dependencies are declared in `go.mod` and pinned by hash in `go.sum`; CI runs `go mod verify` before building and fails if `go mod tidy` would change `go.mod` or `go.sum`. The binary has two direct dependencies, `gopkg.in/yaml.v3` and `github.com/BurntSushi/toml`, besides the standard library.
 - **Adding one.** A new dependency needs a reason in its pull request: what the standard library cannot do, who maintains the module, and how much code it pulls in. A parser for a config format an agent reads is the usual case; a convenience library is not.
 - **CI tools and actions.** GitHub Actions are pinned by commit SHA with the version in a comment, container images by digest, and the Python and Node tools CI installs (zizmor, the schema validator) by a hashed lock file under `.github/tools/`.
 - **Updates.** Dependabot proposes updates for Go modules, GitHub Actions, Docker images and the pip and npm tool locks, each held back for 7 days after release so a compromised or yanked version is noticed before it lands; security updates skip that wait. Updates go through the same pull request checks as any change.
