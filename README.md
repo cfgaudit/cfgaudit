@@ -9,6 +9,7 @@
   <a href="#verifying-a-release"><img src="https://slsa.dev/images/gh-badge-level3.svg" alt="SLSA Build Level 3"></a>
   <a href="https://github.com/marketplace/actions/cfgaudit"><img src="https://img.shields.io/badge/GitHub_Marketplace-cfgaudit-2088FF?logo=githubactions&logoColor=white" alt="GitHub Marketplace"></a>
   <a href="https://gitlab.com/explore/catalog/cfgaudit/cfgaudit"><img src="https://img.shields.io/badge/GitLab_CI%2FCD_Catalog-cfgaudit-FC6D26?logo=gitlab&logoColor=white" alt="GitLab CI/CD Catalog"></a>
+  <a href="#badge"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cfgaudit/cfgaudit/main/assets/badge/v1.json" alt="agent security: cfgaudit"></a>
 </p>
 
 # cfgaudit
