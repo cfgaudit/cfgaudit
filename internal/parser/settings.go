@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -395,6 +396,13 @@ func ParseMCPConfig(path string) (*MCPConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	// VS Code reads .vscode/mcp.json as JSON with comments, like its other
+	// workspace files (#829). The other MCP files stay strict: with a comment
+	// in .mcp.json, Claude Code 2.1.310 lists "[Failed to parse] Project config"
+	// and loads no server from it, so there it is a real CFG109.
+	if isVSCodeWorkspaceFile(path) {
+		data = stripJSONC(data)
+	}
 	var c MCPConfig
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
@@ -411,6 +419,11 @@ func ParseMCPConfig(path string) (*MCPConfig, error) {
 		c.Servers = nil
 	}
 	return &c, nil
+}
+
+// isVSCodeWorkspaceFile reports whether path is a file in a .vscode directory.
+func isVSCodeWorkspaceFile(path string) bool {
+	return filepath.Base(filepath.Dir(path)) == ".vscode"
 }
 
 // ParseSettings reads and decodes a settings.json file.
