@@ -133,6 +133,13 @@ func concealNegated(line string, loc []int) bool {
 	if tellToRe.MatchString(line[loc[1]:]) {
 		return true
 	}
+	// "Do not tell the user it's impossible" forbids a false claim, and "can
+	// never tell the user opened it" is about finding out, not hiding (#853).
+	if m := strings.ToLower(line[loc[0]:loc[1]]); strings.Contains(m, "tell") {
+		if tellClaimRe.MatchString(line[loc[1]:]) || concealModalRe.MatchString(line[:loc[0]]) {
+			return true
+		}
+	}
 	if m := prohibitionRe.FindStringIndex(line[loc[0]:loc[1]]); m != nil && m[0] == 0 {
 		return false
 	}
@@ -149,6 +156,17 @@ func concealNegated(line string, loc []int) bool {
 // it"). Kept out of prohibitionRe, which CFG029 shares, because "this command
 // does not ask for permission" is a bypass there.
 var concealDescriptiveRe = regexp.MustCompile(`(?i)\b(?:does\s+not|doesn'?t|did\s+not|didn'?t|will\s+not|won'?t|should\s+not|shouldn'?t|is\s+not|isn'?t|are\s+not|aren'?t|rather\s+than|instead\s+of)\b`)
+
+// tellClaimRe matches a status claim right after "tell the user": "a shot is
+// done", "it's impossible", "an API is healthy", "the integration is
+// unavailable", "it works". Forbidding that claim is an honesty rule, not
+// concealment (#853). The status words are a closed list: "do not tell the
+// user the file was modified" hides a fact and keeps reporting, and so do
+// "that you ...", "about ...", "anything" and the bare phrase.
+var tellClaimRe = regexp.MustCompile(`(?i)^\s+(?:that\s+)?` +
+	`(?:it|this|that|there|they|(?:a|an|the|this|that|these|those|its|their|your|our|any|every)\s+[\w.\-/]+(?:\s+[\w.\-/]+){0,3})` +
+	`(?:'s|'re|\s+(?:is|are|was|were|has\s+been|have\s+been|will\s+be|looks|seems))?\s+(?:not\s+|now\s+|fully\s+)?` +
+	`(?:done|complete|completed|finished|fixed|working|works|worked|healthy|ready|impossible|unavailable|available|possible|broken|successful|succeeded|passed|failed|live|deployed|resolved|supported|unsupported|safe|secure)\b`)
 
 // tellToRe matches "to <verb>" right after "tell the user", which turns the
 // phrase into guidance about what the user should be told to do.
