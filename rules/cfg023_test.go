@@ -157,3 +157,25 @@ func TestCFG023_WindowsLOLBinsAndShells(t *testing.T) {
 		}
 	}
 }
+
+// npx and bunx with a named package and open arguments can only run that
+// package's program; the package position open is still reported (#850).
+func TestCFG023_RunnerPinnedPackage(t *testing.T) {
+	for _, entry := range []string{
+		"Bash(npx tsc:*)", "Bash(npx eslint *)", "Bash(npx playwright test:*)",
+		"Bash(npx -y prettier *)", "Bash(bunx commitlint:*)", "Bash(bunx --bun vitest run:*)",
+		"Bash(npx @scope/tool:*)",
+	} {
+		if f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["`+entry+`"]}}`)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", entry, f)
+		}
+	}
+	for _, entry := range []string{
+		"Bash(npx:*)", "Bash(npx *)", "Bash(bunx:*)", "Bash(npx tsc*)", "Bash(npx @claude-flow*)",
+		"Bash(npx -p evil *)", "Bash(npx --package=evil tsc *)", "Bash(npx -y *)",
+	} {
+		if f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["`+entry+`"]}}`)); len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for %s, got %+v", entry, f)
+		}
+	}
+}

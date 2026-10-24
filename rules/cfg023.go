@@ -123,6 +123,42 @@ func gitAllowEntry(inner string) (string, allowCat, bool) {
 	return "git " + sub, allowCat{finding.Warn, "exec-capable through its own arguments (" + vector + ")"}, true
 }
 
+// runnerHarmlessFlags are npx/bunx options that do not choose what runs.
+var runnerHarmlessFlags = map[string]bool{
+	"-y": true, "--yes": true, "--no": true, "--no-install": true,
+	"-q": true, "--quiet": true, "--silent": true, "--bun": true,
+}
+
+// runnerPackagePinned reports whether a Bash(npx …*) / Bash(bunx …*) entry
+// names its package, so the wildcard covers only that package's arguments.
+// Measured with npx 11.12.1 and bun 1.4.3: everything after the package name
+// goes to the package's program ("npx tsc --package=cowsay" is a tsc error),
+// so "npx tsc:*" can only run tsc, the same reasoning as a pinned git
+// subcommand. The package position stays open for the bare runner ("npx:*",
+// "npx *"), for an option before the package that picks it ("npx -p x *",
+// "npx --call ..."), and for a wildcard glued to the name ("npx tsc*" also
+// matches "npx tsc-evil").
+func runnerPackagePinned(inner string) bool {
+	fields := strings.Fields(inner)
+	if len(fields) == 0 {
+		return false
+	}
+	for _, f := range fields[1:] {
+		f = strings.TrimSuffix(f, ":*")
+		switch {
+		case f == "" || strings.Contains(f, "*"):
+			return false
+		case strings.HasPrefix(f, "-"):
+			if !runnerHarmlessFlags[f] {
+				return false
+			}
+		default:
+			return true
+		}
+	}
+	return false
+}
+
 // Check flags permissions.allow entries that grant a command which — when allowed
 // with open-ended arguments — yields arbitrary code execution, unrestricted
 // network access, privilege escalation, or lateral movement. Exactly-pinned
@@ -173,6 +209,11 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 	// of git's exec vectors the entry can still reach.
 	if tok == "git" {
 		return gitAllowEntry(inner)
+	}
+	// npx and bunx are judged by whether the package position is open: the
+	// arguments after a named package go to that package's program (#850).
+	if (tok == "npx" || tok == "bunx") && runnerPackagePinned(inner) {
+		return "", allowCat{}, false
 	}
 	if cat, ok := dangerousAllowLookup[tok]; ok {
 		return tok, cat, true
