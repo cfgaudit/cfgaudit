@@ -82,9 +82,10 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 // hidden Unicode controls (CFG024), pseudo system tags and control tokens
 // (CFG032), encoded payloads (CFG057) and directives in HTML comments
 // (CFG080). On 7,494 README, top-level and docs/ Markdown files from 149
-// public repositories they reported 4 findings (two CFG032 on a `<ROOT>`
-// placeholder, two CFG024 on a zero-width character in an emoji sequence and
-// in text documenting one); the phrase rules reported 343 on the same files.
+// public repositories they reported 4 findings: two CFG032 on a `<ROOT>`
+// placeholder, which CFG032 no longer reports (#806), and two CFG024 on a
+// stray zero-width joiner after an emoji and a zero-width space in text
+// documenting one. The phrase rules reported 343 on the same files.
 var ContentPathRules = map[string]bool{
 	"CFG024": true,
 	"CFG032": true,
