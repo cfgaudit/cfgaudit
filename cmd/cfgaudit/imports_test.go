@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -79,6 +80,12 @@ func TestImportTargets_MatchesClaudeCode(t *testing.T) {
 	want := []string{
 		".claude/only.md", "a.md", "abs.md", "d1.md", "d2.md", "d3.md", "d4.md",
 		"dot.md", "frag.md", "loc.md", "pkg.json", "sp ace.md", "sub/s1.md", "sub/x.md", "up.md",
+	}
+	if runtime.GOOS == "windows" {
+		// Windows drops trailing dots from a file name, so "t.md." opens t.md
+		// there. The probe ran on Linux, where "t.md." is a different, absent
+		// file.
+		want = append(want[:len(want)-1], "t.md.", "up.md")
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("imported files:\n got %q\nwant %q", got, want)
