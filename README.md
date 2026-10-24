@@ -241,7 +241,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 
 Suppression lives in `.cfgaudit.yml` (below), not in the scanned files: turn a rule off for the project with `rules: { CFG001: off }`, or drop every finding in a file or directory with `exclude-paths`. There is no inline suppression comment, so a scanned file cannot hide its own findings. Since a repository's own `.cfgaudit.yml` can do both, see [scanning a repository you do not trust](#untrusted-repositories).
 
-**Configuration file (`.cfgaudit.yml`)**
+<a id="configuration-file-cfgaudityml"></a>**Configuration file (`.cfgaudit.yml`)**
 
 cfgaudit auto-discovers a `.cfgaudit.yml` (or `.cfgaudit.yaml`) in the scanned directory; `--config <path>` overrides discovery. CLI flags take precedence over the file.
 
@@ -813,9 +813,9 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM01_PromptInjection.md) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092, CFG113, CFG116 |
-| LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG072, CFG073, CFG075, CFG078, CFG088, CFG099, CFG112, CFG115 |
-| LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG076, CFG077, CFG079, CFG087, CFG090, CFG091, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG110, CFG111 |
-| LLM04 | [Supply Chain](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM04_SupplyChain.md) | CFG010, CFG014, CFG052, CFG055, CFG074, CFG086, CFG089, CFG098, CFG100, CFG102, CFG114 |
+| LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG058, CFG065, CFG068, CFG069, CFG071, CFG072, CFG073, CFG075, CFG078, CFG082, CFG088, CFG097, CFG099, CFG112, CFG115 |
+| LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG060, CFG061, CFG063, CFG064, CFG066, CFG076, CFG077, CFG079, CFG083, CFG085, CFG087, CFG090, CFG091, CFG093, CFG094, CFG095, CFG096, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG108, CFG109, CFG110, CFG111 |
+| LLM04 | [Supply Chain](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM04_SupplyChain.md) | CFG010, CFG014, CFG052, CFG055, CFG059, CFG062, CFG067, CFG070, CFG074, CFG084, CFG086, CFG089, CFG098, CFG100, CFG102, CFG114 |
 
 The 2026 edition renumbered the list (#619): Excessive Agency moved from LLM06 to **LLM03** and Supply Chain from LLM03 to **LLM04**, while Prompt Injection and Sensitive Information Disclosure kept their numbers. LLM04:2026 also narrowed: it covers the model and data supply chain and refers agentic supply chain, *"including MCP servers and tool registries"*, to **ASI04 Agentic Supply Chain Vulnerabilities** in the [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/). The supply-chain rules keep LLM04 as their primary id and name ASI04 on an `**OWASP Agentic:**` line in their docs.
 

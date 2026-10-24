@@ -4,10 +4,12 @@
 package rules
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -290,4 +292,69 @@ func loadFile(t *testing.T, path string) string {
 		t.Fatalf("could not read %s: %v", path, err)
 	}
 	return string(data)
+}
+
+var (
+	readmeLLMRowRe = regexp.MustCompile(`(?m)^\|\s*(LLM\d{2})\s*\|[^|]*\|([^|]*)\|`)
+	cfgRangeRe     = regexp.MustCompile(`CFG(\d{3})\s*[–-]\s*CFG(\d{3})`)
+)
+
+// TestLLMMappingTableConsistency keeps the README "OWASP mapping" table in sync
+// with the rules table (#804): every rule is listed in the row of each LLM
+// category its rules-table row maps it to, and no row lists a rule that is
+// mapped elsewhere. Ranges such as CFG001–CFG004 count every ID in them.
+func TestLLMMappingTableConsistency(t *testing.T) {
+	readme := loadFile(t, filepath.Join("..", "README.md"))
+	// Only the "Covered" table: the "Not covered" rows may point at rules of
+	// another category on purpose.
+	covered := readme
+	if i := strings.Index(covered, "**Covered**"); i >= 0 {
+		covered = covered[i:]
+	}
+	if i := strings.Index(covered, "**Not covered**"); i >= 0 {
+		covered = covered[:i]
+	}
+	rows := map[string]map[string]bool{}
+	for _, m := range readmeLLMRowRe.FindAllStringSubmatch(covered, -1) {
+		ids := map[string]bool{}
+		cell := m[2]
+		for _, r := range cfgRangeRe.FindAllStringSubmatch(cell, -1) {
+			from, to := atoi(r[1]), atoi(r[2])
+			for i := from; i <= to; i++ {
+				ids[fmt.Sprintf("CFG%03d", i)] = true
+			}
+		}
+		for _, id := range cfgIDRe.FindAllString(cfgRangeRe.ReplaceAllString(cell, ""), -1) {
+			ids[id] = true
+		}
+		rows[m[1]] = ids
+	}
+	if len(rows) == 0 {
+		t.Fatal("no OWASP mapping rows found in README.md")
+	}
+
+	mapped := map[string]map[string]bool{}
+	for _, r := range All {
+		cells := strings.Split(strings.Trim(strings.TrimSpace(readmeRuleRow(readme, r.ID())), "|"), "|")
+		cats := map[string]bool{}
+		for _, llm := range llmRe.FindAllString(cells[len(cells)-1], -1) {
+			cats[llm] = true
+			if row, ok := rows[llm]; ok && !row[r.ID()] {
+				t.Errorf("%s maps to %s in the rules table but is missing from the %s row of the OWASP mapping table", r.ID(), llm, llm)
+			}
+		}
+		mapped[r.ID()] = cats
+	}
+	for llm, ids := range rows {
+		for id := range ids {
+			if cats, ok := mapped[id]; ok && !cats[llm] {
+				t.Errorf("the %s row of the OWASP mapping table lists %s, which the rules table maps to %v", llm, id, sevList(cats))
+			}
+		}
+	}
+}
+
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
 }
