@@ -2,33 +2,87 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # GitLab pipeline for the cfgaudit CI/CD Catalog mirror (gitlab.com/cfgaudit/cfgaudit).
-# Harmless on GitHub (only GitLab reads this file). It self-tests the component
-# and, on a tag, publishes a release so the templates/ components are cataloged.
+# Harmless on GitHub (only GitLab reads this file). It lints the pipeline and
+# the components, runs both components against a fixture, and on a tag
+# publishes a release so the templates/ components are cataloged.
+
+# The mirror gets pushes of main and the release tags only; no pipelines for
+# merge requests or anything else (#796).
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
 stages:
+  - lint
   - test
   - release
 
-# Self-test: run the component against this repo on every pipeline. Advisory so a
-# stray finding in the repo itself never blocks the catalog release.
+# Security lint of this file and both components, before anything else runs.
+# Fails on error findings (#796).
+glsec:
+  stage: lint
+  image:
+    name: ghcr.io/glsec/glsec:1.21.0@sha256:b13466b64ce32cf44f792c296ad94c37692da3436b645986c6510ea8fb0040f8
+    entrypoint: [""]
+  script:
+    - glsec .gitlab-ci.yml templates/cfgaudit.yml templates/cfgaudit-code-quality.yml
+
+# Run both components against a fixture with a known CFG023 finding. They exit
+# 1 on it, so they are allowed to fail; the check jobs below fail instead when
+# the finding is missing from their output, which is what a broken component
+# (wrong image, script error, config error) looks like (#796).
 include:
   - local: templates/cfgaudit.yml
     inputs:
+      path: testdata/gitlab-component
+      format: json
       allow_failure: true
+  - local: templates/cfgaudit-code-quality.yml
+    inputs:
+      path: testdata/gitlab-component
+
+# Any image with sh and grep would do; this pin is not bumped with releases.
+.check:
+  stage: test
+  image:
+    name: ghcr.io/cfgaudit/cfgaudit:1.17.1@sha256:02480e6d3082e6c698666ced4da2db5d3c3e939ae57edf2908d2ce099ea6c7c3
+    entrypoint: [""]
+
+check-cfgaudit:
+  extends: .check
+  needs: [cfgaudit]
+  script:
+    - |
+      grep -q '"RuleID": "CFG023"' cfgaudit.out
+
+check-code-quality:
+  extends: .check
+  needs: [cfgaudit-code-quality]
+  script:
+    - |
+      grep -q '"check_name": "CFG023"' gl-code-quality-report.json
 
 # Publish a CI/CD Catalog release for each vX.Y.Z tag (mirrored from GitHub).
 # Requires the project to be marked as a catalog resource in GitLab settings.
 # The rule matches semver tags ONLY: the moving major-alias tag `v1` is
 # re-pointed every release and its pipeline would otherwise try to create a
-# GitLab Release for tag `v1` — which already exists (releases are immutable
-# per tag) — and fail the `create-release` job on every release. Restricting to
-# vX.Y.Z skips `v1`/`v2`, so the alias-tag pipeline runs only the (green) test.
+# GitLab Release for tag `v1`, which already exists (releases are immutable
+# per tag), and fail the `create-release` job on every release. Restricting to
+# vX.Y.Z skips `v1`/`v2`, so the alias-tag pipeline runs only the tests.
+#
+# The release: keyword runs glab from this image; release-cli is deprecated
+# since GitLab 18.0 (#796). The hosted runner tag keeps the publishing job off
+# any self-hosted runner, and the resource group runs one release at a time.
 create-release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:v1.123.0@sha256:825b089e4a02ea31c52b71fd483427518bf673d114fa5f402b070ca6993459d6
+  tags: [saas-linux-small-amd64]
+  resource_group: release
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   script:
     - echo "Publishing cfgaudit $CI_COMMIT_TAG to the CI/CD Catalog"
   release:
     tag_name: $CI_COMMIT_TAG
-    description: "cfgaudit $CI_COMMIT_TAG — https://github.com/cfgaudit/cfgaudit/releases/tag/$CI_COMMIT_TAG"
+    description: "cfgaudit $CI_COMMIT_TAG: https://github.com/cfgaudit/cfgaudit/releases/tag/$CI_COMMIT_TAG"
