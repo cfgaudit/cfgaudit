@@ -404,6 +404,29 @@ jobs:
         # checkout as safe and reuse skips the files .gitignore excludes.
         run: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" cfgaudit-reuse lint
 
+  # The repository's own agent config and the Claude Code plugin, which users
+  # install from main, scanned by the released action (#813). Not the code of
+  # the pull request: a change that weakens a rule must not pass its own check
+  # with it. Dependabot moves the pin with each release.
+  cfgaudit:
+    name: Security (cfgaudit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # An empty config written after checkout, so a .cfgaudit.yml in the pull
+      # request cannot turn rules off. v1.17.1 resolves `config` inside the
+      # workspace; rm -f drops a file or symlink the pull request put here.
+      - run: rm -f .cfgaudit-ci.yml && touch .cfgaudit-ci.yml
+      - name: Scan agent instructions, settings and the plugin package
+        uses: cfgaudit/cfgaudit@ce428d4b49264a46bc4f62cebb6d16ac95d30298 # v1.17.1
+        with:
+          plugins: .
+          config: .cfgaudit-ci.yml
+          # No image override: the pinned action names its own release image, so
+          # a Dependabot bump moves both together.
+
   zizmor:
     name: Security (zizmor)
     runs-on: ubuntu-latest
