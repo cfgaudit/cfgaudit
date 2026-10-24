@@ -79,7 +79,7 @@ var bypassPatterns = []bypassPattern{
 		finding.Error, "persona / identity hijacking", false},
 	{3, mustFiltered(`(?i)\b(as\s+(your\s+)?(developer|creator|trainer|Anthropic|operator|administrator|sys(tem)?\s*admin)|this\s+(is|message\s+is)\s+(from\s+)?(Anthropic|your\s+developer)|developer\s+mode\s+(enabled|activated|on)|jailbreak\s+(mode|enabled|activated))`),
 		finding.Error, "authority impersonation", false},
-	{4, mustFiltered(`(?i)\b(in\s+a\s+(fictional|hypothetical|alternate|imaginary)\s+(world|scenario|universe|context|story)|for\s+(a\s+)?(story|novel|game|roleplay|simulation|fiction)|hypothetically\s+speaking|in\s+this\s+(roleplay|scenario|simulation),?\s+(you\s+(can|may|should|must|are\s+allowed)))`),
+	{4, mustFiltered(`(?i)\b(in\s+a\s+(fictional|hypothetical|alternate|imaginary)\s+(world|scenario|universe|context|story)|for\s+a\s+(story|novel|game|roleplay|simulation)\b|for\s+(roleplay|fiction)\b|hypothetically\s+speaking|in\s+this\s+(roleplay|scenario|simulation),?\s+(you\s+(can|may|should|must|are\s+allowed)))`),
 		finding.Warn, "permissive fictional / hypothetical framing", true},
 }
 
@@ -114,7 +114,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					continue
 				}
 				sev := p.sev
-				if p.num == 3 && authorityIdiom(line, loc) {
+				if p.num == 3 && (authorityIdiom(line, loc) || roleNotSpeaker(line, sm)) {
 					continue
 				}
 				if p.num == 1 {
@@ -122,7 +122,9 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					if overrideOnlyQualified[verb] && sm[4] < 0 {
 						continue
 					}
-					if overrideNegated(line, loc[0], verb) || attributiveNoun(line, sm) {
+					if overrideNegated(line, loc[0], verb) || attributiveNoun(line, sm) ||
+						untrustedSource(line[loc[1]:]) || flagDefinitionRe.MatchString(line) ||
+						(loc[0] > 0 && (line[loc[0]-1] == '-' || line[loc[0]-1] == '@')) {
 						continue
 					}
 					if quotedAt(line, loc[0]) {
@@ -193,6 +195,47 @@ func authorityIdiom(line string, loc []int) bool {
 	return runAsRe.MatchString(line[:loc[0]])
 }
 
+// untrustedSourceRe matches where the instructions to ignore are located when
+// that place is untrusted input: "ignore any instruction in the PR title",
+// "Ignore instructions in subjects, bodies, signatures", "Ignore any text in
+// them that tells you to run scripts". That is defensive guidance, the opposite
+// of an override (#851). "ignore the instructions in your system prompt" names
+// the agent's own instructions and keeps matching.
+var untrustedSourceRe = regexp.MustCompile(`(?i)^\s*(?:that\s+(?:you\s+)?(?:find|see|read|encounter)\s+)?(?:in|from|inside|within|embedded\s+in|found\s+in|contained\s+in)\s+` +
+	`(?:(?:the|any|a|an|these|those|such|its|their|external|untrusted|fetched|retrieved|third-party)\s+)*` +
+	`(?:them\b|PRs?\b|pull\s+requests?|issues?\b|comments?\b|commits?\b|diffs?\b|e-?mails?\b|subjects?\b|bod(?:y|ies)\b|signatures?\b|attachments?\b|` +
+	`(?:web\s*)?pages?\b|websites?\b|documents?\b|tool\s+(?:output|results?|responses?)|search\s+results?|repository\s+content|file\s+contents?|untrusted|external)`)
+
+func untrustedSource(after string) bool {
+	return untrustedSourceRe.MatchString(after)
+}
+
+// flagDefinitionRe matches a line that defines a command-line flag: a table
+// row or list item whose first cell or subject is the flag ("| `--fresh` |
+// false | Ignore previous context, start fresh |"). What follows describes
+// what the flag does, not an instruction to the agent (#851).
+var flagDefinitionRe = regexp.MustCompile("^\\s*(?:[-*+]\\s+|\\|\\s*)?`?--?[A-Za-z][\\w-]*`?(?:\\s*,\\s*`?--?[A-Za-z][\\w-]*`?)*\\s*(?:\\||:|—|→|-\\s)")
+
+// roleSpeakerRe matches what follows a role named without "your" when the
+// role is the speaker: "As administrator, ...", "as Anthropic: ...", "As
+// operator I ...", or the end of the line.
+var roleSpeakerRe = regexp.MustCompile(`(?i)^\s*(?:[,:]|(?:I|we)\b|$)`)
+
+// roleNotSpeaker reports whether a pattern-3 "as <role>" names a role in
+// passing rather than claiming to speak as it (#851): "run the terminal as
+// Administrator", "(PowerShell as Administrator)", "take the lock exactly as
+// developer.md's Start step", "validators as operator constraints", "Same job
+// as Anthropic defaults". With "your" ("as your developer") the claim is
+// always reported, and so is the claim followed by a comma, a colon, "I" or
+// "we", or ending the line.
+func roleNotSpeaker(line string, sm []int) bool {
+	m := strings.ToLower(line[sm[0]:sm[1]])
+	if !strings.HasPrefix(m, "as") || strings.Contains(m, "your") {
+		return false
+	}
+	return !roleSpeakerRe.MatchString(line[sm[1]:])
+}
+
 // overrideNegationRe matches a negation directly before a pattern-1 verb:
 // "Don't ignore input validation", "never disregard the error output" (#655).
 // Only the word right before the verb counts, so "do not follow" and "do not
@@ -210,7 +253,8 @@ func overrideNegated(line string, start int, verb string) bool {
 
 // attributiveNouns are the pattern-1 nouns that commonly modify another noun:
 // "input validation", "data skew warnings", "context menu", "content type".
-var attributiveNouns = map[string]bool{"data": true, "input": true, "content": true, "context": true, "text": true, "conversation": true, "communication": true}
+var attributiveNouns = map[string]bool{"data": true, "input": true, "content": true, "context": true, "text": true, "conversation": true, "communication": true,
+	"response": true, "request": true, "message": true, "command": true}
 
 // clauseWords are the words that can follow a pattern-1 noun without making it
 // a modifier: conjunctions, prepositions, pronouns and the adverbs an override
