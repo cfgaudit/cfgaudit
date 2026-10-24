@@ -52,6 +52,14 @@ updates:
     cooldown:
       default-days: 7
 
+  - package-ecosystem: docker
+    directory: /.github/tools/reuse
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: npm
     directory: /.github/tools/ajv
     schedule:

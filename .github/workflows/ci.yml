@@ -387,6 +387,23 @@ jobs:
         shell: bash
         run: jq -e 'any(.[]; .RuleID == "CFG004")' config-fixture.json > /dev/null
 
+  # Every file has a copyright and license, from its own header or REUSE.toml,
+  # and the license texts are in LICENSES/ (#789).
+  reuse:
+    name: REUSE
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the reuse image
+        # The image is pinned by digest in .github/tools/reuse/Dockerfile.
+        run: docker build -q -t cfgaudit-reuse .github/tools/reuse
+      - name: reuse lint
+        # Run as the runner user, so git inside the container accepts the
+        # checkout as safe and reuse skips the files .gitignore excludes.
+        run: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/data" cfgaudit-reuse lint
+
   zizmor:
     name: Security (zizmor)
     runs-on: ubuntu-latest

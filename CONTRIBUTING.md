@@ -193,6 +193,7 @@ The reverse-consistency test fails if you mention `CFGNNN` in the README without
 - **Commit messages**: one short imperative line (`feat: add CFG013 rule (...)`). No `Co-Authored-By` trailer.
 - **PR body**: the [pull request template](.github/pull_request_template.md) fills it in: short Summary section, Test plan, a checklist and a field for AI use. Note deviations from the issue's acceptance criteria.
 - **Merging**: squash-merge, delete branch.
+- **License headers**: new `.go` files, scripts, workflows and the `Dockerfile` start with `Copyright the cfgaudit contributors` and `SPDX-License-Identifier: Apache-2.0` (after the `#!` line in a script); `TestSourceHeaders` checks that. Every other file, such as Markdown, fixtures and images, gets the same license from `REUSE.toml`, so the repository follows the [REUSE specification](https://reuse.software/) and CI runs `reuse lint`. That rule assumes the file was written for cfgaudit: a file copied from another project keeps its own license and needs its own entry in `REUSE.toml`, with the license text in `LICENSES/`.
 
 ---
 
@@ -236,7 +237,7 @@ cfgaudit keeps its dependencies few, because every one of them runs inside a too
 
 - **Go modules.** Dependencies are declared in `go.mod` and pinned by hash in `go.sum`; CI runs `go mod verify` before building and fails if `go mod tidy` would change `go.mod` or `go.sum`. The binary has two direct dependencies, `gopkg.in/yaml.v3` and `github.com/BurntSushi/toml`, besides the standard library.
 - **Adding one.** A new dependency needs a reason in its pull request: what the standard library cannot do, who maintains the module, and how much code it pulls in. A parser for a config format an agent reads is the usual case; a convenience library is not.
-- **CI tools and actions.** GitHub Actions are pinned by commit SHA with the version in a comment, container images by digest, and the Python and Node tools CI installs (zizmor, the schema validator) by a hashed lock file under `.github/tools/`.
+- **CI tools and actions.** GitHub Actions are pinned by commit SHA with the version in a comment, container images by digest (including the reuse image under `.github/tools/reuse/`), and the Python and Node tools CI installs (zizmor, the schema validator) by a hashed lock file under `.github/tools/`.
 - **Updates.** Dependabot proposes updates for Go modules, GitHub Actions, Docker images and the pip and npm tool locks, each held back for 7 days after release so a compromised or yanked version is noticed before it lands; security updates skip that wait. Updates go through the same pull request checks as any change.
 - **Tracking.** `govulncheck` runs in CI on every pull request and on `main`; Dependabot security alerts and OpenSSF Scorecard cover the rest. Release archives and the container image carry an SBOM listing what went into them.
 

@@ -842,4 +842,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, the test loop, and the ste
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0, see [LICENSE](LICENSE). The repository follows the [REUSE specification](https://reuse.software/): every file carries or is assigned its copyright and license, and `reuse lint` passes.

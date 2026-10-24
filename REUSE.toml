@@ -1,0 +1,12 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
+version = 1
+
+# Files without their own header (Markdown, fixtures, JSON, images) share the
+# project license. A header in the file itself takes precedence (#789).
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "the cfgaudit contributors"
+SPDX-License-Identifier = "Apache-2.0"

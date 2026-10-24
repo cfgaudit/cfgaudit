@@ -38,11 +38,15 @@ func TestSourceHeaders(t *testing.T) {
 		if strings.HasPrefix(lines[0], "#!") {
 			lines = lines[1:]
 		}
+		// The expected lines are strings here, not this file's header; the
+		// markers keep reuse lint from reading them as one (#789).
+		// REUSE-IgnoreStart
 		if len(lines) < 2 ||
 			lines[0] != prefix+" Copyright the cfgaudit contributors" ||
 			lines[1] != prefix+" SPDX-License-Identifier: Apache-2.0" {
 			t.Errorf("%s does not start with the copyright and SPDX lines:\n%s Copyright the cfgaudit contributors\n%s SPDX-License-Identifier: Apache-2.0", name, prefix, prefix)
 		}
+		// REUSE-IgnoreEnd
 	}
 }
 
