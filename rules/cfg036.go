@@ -32,6 +32,20 @@ var (
 	// Auto-execution directive (Patterns B and C; Part C narrows it further, see
 	// partCDirective).
 	autoExecRe = regexp.MustCompile(`(?i)(?:before\s+(?:each|every|any)\s+(?:task|session|request|command|run|step)|always\s+(?:run|execute|do)|at\s+(?:startup|session\s+start|the\s+start)|automatically\s+(?:run|execute))`)
+	// A directive tied to a condition the agent meets in normal work (#791):
+	// "Whenever you review a pull request, first run …", "When you start
+	// working on this repository, run: …". It counts for Part B only, with
+	// conditionalRunRe in the rest of the line or on the next one: on its own,
+	// "When you change code, run the tests" is ordinary guidance, and of 21
+	// such lines in 1,727 instruction files none had a network command nearby.
+	conditionalRe    = regexp.MustCompile(`(?i)\b(?:whenever|each\s+time|every\s+time)\s+you\b|\bwhen\s+you\s+(?:start|open|begin|review|clone|enter|first|check\s+out|work\s+on)\b|\bafter\s+(?:every|each)\s+\w+`)
+	conditionalRunRe = regexp.MustCompile(`(?i)\b(?:run|execute)\b`)
+	// A download piped into a shell or run through one (Part D, #791):
+	// curl … https://… | sh, bash <(curl …), sh -c "$(curl …)", and the same
+	// into python reading its script from stdin (no arguments, or "-"; not
+	// python3 -m json.tool). The URL is required, so prose like "no
+	// curl|bash installers" is not one.
+	pipeShellRe = regexp.MustCompile(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b`)
 	// Network exfiltration command (Pattern B).
 	netExfilRe = regexp.MustCompile(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
 
@@ -112,9 +126,10 @@ func sensitiveSubstitution(line string) []int {
 
 // Check flags CLAUDE.md text that makes Claude run shell commands on the
 // attacker's behalf. A: command substitution reading a credential path (error,
-// independent). B: an auto-execution directive co-occurring with a network
-// exfiltration command within 3 lines (error). C: an auto-execution directive
-// alone (warn). Matches inside fenced code blocks are still reported.
+// independent). B: an auto-execution or conditional directive co-occurring with
+// a network command within 3 lines (error). C: an auto-execution directive
+// alone (warn). D: a download piped into a shell, without a directive (warn).
+// Matches inside fenced code blocks are still reported.
 func (r *cfg036) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -125,7 +140,9 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 		n := len(lines)
 
 		directive := make([][]int, n)
+		conditional := make([][]int, n)
 		network := make([]bool, n)
+		pipeShell := make([]bool, n)
 
 		var srcFindings []finding.Finding
 		add := func(line, col int, sev finding.Severity, msg string) {
@@ -138,7 +155,17 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 
 		for i, line := range lines {
 			directive[i] = autoExecRe.FindStringIndex(line)
-			network[i] = netExfilRe.MatchString(line)
+			if loc := conditionalRe.FindStringIndex(line); loc != nil {
+				next := ""
+				if i+1 < n {
+					next = lines[i+1]
+				}
+				if conditionalRunRe.MatchString(line[loc[1]:] + "\n" + next) {
+					conditional[i] = loc
+				}
+			}
+			pipeShell[i] = pipeShellRe.MatchString(line)
+			network[i] = netExfilRe.MatchString(line) || pipeShell[i]
 			if loc := sensitiveSubstitution(line); loc != nil {
 				add(i, loc[0], finding.Error, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
 			}
@@ -148,8 +175,13 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 		// line (end of its command block) and at most 3 lines ahead. Looking only
 		// forward avoids associating a directive with an unrelated earlier command.
 		covered := make(map[int]bool)
+		pipeCovered := make(map[int]bool)
 		for i := range lines {
-			if directive[i] == nil {
+			loc := directive[i]
+			if loc == nil {
+				loc = conditional[i]
+			}
+			if loc == nil {
 				continue
 			}
 			for j := i; j <= min(n-1, i+3); j++ {
@@ -157,10 +189,18 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 					break
 				}
 				if network[j] {
-					add(i, directive[i][0], finding.Error, "combines an auto-execution directive with a network-exfiltration command (Part B) — instructs the agent to run a command that sends data to a remote host. Remove it")
+					add(i, loc[0], finding.Error, "combines an auto-execution directive with a network-exfiltration command (Part B) — instructs the agent to run a command that sends data to a remote host. Remove it")
 					covered[i] = true
+					pipeCovered[j] = true
 					break
 				}
+			}
+		}
+
+		for i := range lines {
+			if pipeShell[i] && !pipeCovered[i] {
+				loc := pipeShellRe.FindStringIndex(lines[i])
+				add(i, loc[0], finding.Warn, "pipes a download into a shell (Part D) — the agent runs whatever the server returns at that moment. If this is install documentation, point to a pinned, checksummed download or to the tool's own install docs instead")
 			}
 		}
 
