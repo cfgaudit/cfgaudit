@@ -510,6 +510,9 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	targets = append(targets, instr...)
+	// Files the project's Claude Code instruction files pull in with @path
+	// imports (#794).
+	targets = append(targets, importTargets(dir, targets)...)
 
 	// Other agents' MCP config files (Cursor, VS Code, Windsurf, Cline). MCP is a
 	// shared standard, so the MCP rules apply unchanged; each config becomes its

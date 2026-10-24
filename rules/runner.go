@@ -5,6 +5,7 @@ package rules
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/version"
@@ -57,6 +58,9 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 		for i := range results {
 			if results[i].Scope == "" {
 				results[i].Scope = target.Scope
+			}
+			if len(target.ImportChain) > 0 && results[i].File == target.InstructionFile {
+				results[i].Message += "; Claude Code loads this file through @-imports: " + strings.Join(target.ImportChain, " -> ")
 			}
 		}
 		out = append(out, results...)
