@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -100,6 +101,60 @@ var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|
 // around text with no backtick in it.
 var inlineCodeSpanRe = regexp.MustCompile("`[^`\n]+`")
 
+// readOutCommands are the programs that print, copy or send a file's content.
+var readOutCommands = map[string]bool{
+	"cat": true, "head": true, "tail": true, "less": true, "more": true, "bat": true,
+	"strings": true, "xxd": true, "od": true, "hexdump": true, "base64": true,
+	"scp": true, "rsync": true, "curl": true, "wget": true, "nc": true, "ncat": true,
+	"netcat": true, "gpg": true, "tar": true, "zip": true, "openssl": true,
+	"python": true, "python3": true, "node": true, "ruby": true, "perl": true,
+	"type": true, "Get-Content": true, "gc": true,
+}
+
+// readsOut reports whether one of the commands in span runs a program from
+// readOutCommands. Leading VAR=value assignments and sudo/env are skipped.
+func readsOut(span string) bool {
+	for _, cmd := range splitCommands(span) {
+		for _, w := range strings.Fields(cmd) {
+			if strings.Contains(w, "=") && !strings.HasPrefix(w, "-") && !strings.Contains(w, "`") {
+				continue
+			}
+			if w == "sudo" || w == "env" {
+				continue
+			}
+			w = strings.TrimLeft(w, "`(\"'")
+			if readOutCommands[w] || readOutCommands[filepath.Base(w)] {
+				return true
+			}
+			break
+		}
+	}
+	return false
+}
+
+// splitCommands splits a command line at ;, | and & outside quotes, so the
+// alternatives of a quoted search pattern ("a|b|@scope/node") stay one word.
+func splitCommands(s string) []string {
+	var out []string
+	var quote byte
+	start := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == ';' || c == '|' || c == '&':
+			out = append(out, s[start:i])
+			start = i + 1
+		}
+	}
+	return append(out, s[start:])
+}
+
 // dollarSubstRe is a $( ) substitution, to its closing parenthesis or the end
 // of the line.
 var dollarSubstRe = regexp.MustCompile(`\$\([^)]*\)?`)
@@ -110,7 +165,16 @@ var dollarSubstRe = regexp.MustCompile(`\$\([^)]*\)?`)
 // between a closing backtick and the next opening one as a substitution, which
 // turned ".env file `chmod 600`" and "`npm run test` (locally, .env loaded)"
 // into findings (#623).
-func sensitiveSubstitution(line string) []int {
+//
+// Outside a fenced code block a backtick span is Markdown code formatting: it
+// names a command. Such a span counts only when one of its commands reads the
+// file out or sends it ("`scp ~/.claude/.credentials.json host:`", "`cat
+// ~/.ssh/id_rsa`"), not when it loads the file into a process ("`dotenvx run -f
+// .env.test -- vitest`", "`tsx watch --env-file=../../.env`", "`set -a; .
+// ./.env`"), searches for a pattern, or is a log line or a code expression. In
+// a fence, where the text is a shell example, every span keeps its shell
+// meaning (#849).
+func sensitiveSubstitution(line string, inFence bool) []int {
 	check := func(span string) bool {
 		cleaned := substTemplateRe.ReplaceAllString(span, "")
 		return cmdSubstSensitiveRe.MatchString(cleaned)
@@ -121,6 +185,9 @@ func sensitiveSubstitution(line string) []int {
 		}
 	}
 	for _, loc := range inlineCodeSpanRe.FindAllStringIndex(line, -1) {
+		if !inFence && !readsOut(line[loc[0]+1:loc[1]-1]) {
+			continue
+		}
 		if check(line[loc[0]:loc[1]]) {
 			return loc
 		}
@@ -141,6 +208,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
 		lines := strings.Split(src.Content, "\n")
+		fenced := fencedLines(src.Content)
 		n := len(lines)
 
 		directive := make([][]int, n)
@@ -170,7 +238,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 			}
 			pipeShell[i] = pipeShellRe.MatchString(line)
 			network[i] = netExfilRe.MatchString(line) || pipeShell[i]
-			if loc := sensitiveSubstitution(line); loc != nil {
+			if loc := sensitiveSubstitution(line, fenced[i+1]); loc != nil {
 				add(i, loc[0], finding.Error, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
 			}
 		}
