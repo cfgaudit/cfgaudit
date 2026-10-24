@@ -54,14 +54,22 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 			})
 		} else {
 			// A root found in the repository reports a broken file (CFG109) and
-			// goes on; a path named with --plugins still stops the scan (#825).
-			var unreadable func(path string, err error)
-			if root != explicit {
-				unreadable = func(path string, err error) {
-					all = append(all, unreadablePluginTarget(dir, path, err))
+			// goes on. A path named with --plugins still stops the scan when one
+			// of that plugin's own files is broken (#825), but not for a file
+			// deeper in its tree, such as a deliberately malformed test fixture
+			// (#848).
+			var fatal error
+			unreadable := func(path string, err error) {
+				if root == explicit && fatal == nil && ownPluginFile(root, path) {
+					fatal = err
+					return
 				}
+				all = append(all, unreadablePluginTarget(dir, path, err))
 			}
 			ts, err = scanPluginRoot(root, unreadable)
+			if err == nil {
+				err = fatal
+			}
 		}
 		if err != nil {
 			return nil, err
@@ -437,6 +445,21 @@ func scanPluginRoot(root string, unreadable func(path string, err error)) ([]*ru
 func isPluginHooksFile(path string) bool {
 	dir := filepath.Dir(path)
 	return filepath.Base(dir) == "hooks" && filepath.Base(filepath.Dir(dir)) != ".claude"
+}
+
+// ownPluginFile reports whether path is one of the files that make up the
+// plugin at root itself: its manifests at the root or in .claude-plugin/, and
+// its hooks/hooks.json. Anything deeper belongs to something else in the tree.
+func ownPluginFile(root, path string) bool {
+	rel, err := filepath.Rel(root, filepath.Dir(path))
+	if err != nil {
+		return false
+	}
+	switch filepath.ToSlash(rel) {
+	case ".", claudePluginDir, "hooks":
+		return true
+	}
+	return false
 }
 
 // kimiPluginManifest is the file a Kimi Code plugin declares itself with, at its
