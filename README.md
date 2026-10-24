@@ -845,6 +845,23 @@ A separate workflow (`.github/workflows/schema-validation.yml`) validates every 
 
 ---
 
+## Badge
+
+Using cfgaudit on your project? Show it in your README:
+
+[![agent security: cfgaudit](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cfgaudit/cfgaudit/main/assets/badge/v1.json)](https://github.com/cfgaudit/cfgaudit)
+
+```markdown
+[![agent security: cfgaudit](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cfgaudit/cfgaudit/main/assets/badge/v1.json)](https://github.com/cfgaudit/cfgaudit)
+```
+
+To show it on a GitLab project page, add it under **Settings → General → Badges** with:
+
+- **Link**: `https://github.com/cfgaudit/cfgaudit`
+- **Badge image URL**: `https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cfgaudit/cfgaudit/main/assets/badge/v1.json`
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, the test loop, and the step-by-step recipe for adding a new rule. Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md); what is planned next is in the [roadmap](ROADMAP.md).
