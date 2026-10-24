@@ -36,7 +36,7 @@ func (r *cfg030) ID() string { return "CFG030" }
 // class: in a corpus seeded on the phrase, 112 of 112 bare uses were UI or
 // tooling ("hide it via CSS", "hide it from git blame", "hide it behind a
 // flag") (#623).
-var concealRe = regexp.MustCompile(`(?i)(` +
+var concealRe = mustFiltered(`(?i)(` +
 	`(?:don'?t|do\s+not|never)\s+(?:tell|inform|mention|notify|reveal|disclose|show)` +
 	`(?:\s+(?:this|that|it|these|those|anything|everything|any\s+of\s+(?:this|that|it)))?` +
 	`(?:\s+(?:to|about))?\s+(?:the\s+)?(?:user|caller)s?\b` +

@@ -4,7 +4,6 @@
 package rules
 
 import (
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -56,7 +55,7 @@ const internalNetworkTarget = `(?:` +
 	`|(?:open\s+|listening\s+|running\s+|live\s+|exposed\s+)?(?:hosts?|ports?|services?|machines?)\s+on\s+(?:the\s+)?(?:internal\s+|local\s+|corporate\s+|private\s+)?(?:network|subnet|lan\b|vlan|host|machine)` +
 	`)`
 
-var networkReconRe = regexp.MustCompile(`(?i)(?:` +
+var networkReconRe = mustFiltered(`(?i)(?:` +
 	// (a) recon verb + internal target
 	`\b(?:scan|enumerate|probe|sweep|fingerprint|discover|map|list|find)\s+(?:\w+\s+){0,4}?` + internalNetworkTarget +
 	`|` +

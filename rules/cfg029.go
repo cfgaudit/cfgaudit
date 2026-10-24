@@ -34,7 +34,7 @@ func (r *cfg029) ID() string { return "CFG029" }
 // pending PR automatically" is ordinary review workflow, not a permission
 // bypass — so the postfix form additionally requires a permission-specific
 // object between the verb and the adverb.
-var permissionBypassRe = regexp.MustCompile(`(?i)(` +
+var permissionBypassRe = mustFiltered(`(?i)(` +
 	`(?:always|automatically)\s+approve` +
 	`|auto-?approve\b` +
 	`|approve\b[^.\n]{0,30}?\b(?:permission|approval|confirmation|prompt)s?\b[^.\n]{0,25}?\b(?:automatically|without\s+asking|by\s+default)` +

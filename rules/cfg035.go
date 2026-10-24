@@ -4,7 +4,6 @@
 package rules
 
 import (
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -25,16 +24,16 @@ func (r *cfg035) ID() string { return "CFG035" }
 // setup skills legitimately show them, so they are warn and are skipped inside a
 // fenced/inline code block (a documented command example, not an instruction).
 type mcpInstrPattern struct {
-	re       *regexp.Regexp
+	re       filteredRegexp
 	sev      finding.Severity
 	skipCode bool
 }
 
 var mcpInstructionPatterns = []mcpInstrPattern{
-	{regexp.MustCompile(`(?i)claude\s+mcp\s+add\b`), finding.Warn, true},
-	{regexp.MustCompile(`(?i)(?:add|install|configure|register|enable|connect)\s+(?:the\s+)?(?:mcp|model\s+context\s+protocol)\s+(?:server|tool|integration)`), finding.Warn, true},
-	{regexp.MustCompile(`(?i)(?:alwaysAllow|trust|whitelist|allowlist)\s+.*\bmcp\b`), finding.Error, false},
-	{regexp.MustCompile(`(?i)\bmcp\b.*\b(?:alwaysAllow|trusted|allow\s+all)`), finding.Error, false},
+	{mustFiltered(`(?i)claude\s+mcp\s+add\b`), finding.Warn, true},
+	{mustFiltered(`(?i)(?:add|install|configure|register|enable|connect)\s+(?:the\s+)?(?:mcp|model\s+context\s+protocol)\s+(?:server|tool|integration)`), finding.Warn, true},
+	{mustFiltered(`(?i)(?:alwaysAllow|trust|whitelist|allowlist)\s+.*\bmcp\b`), finding.Error, false},
+	{mustFiltered(`(?i)\bmcp\b.*\b(?:alwaysAllow|trusted|allow\s+all)`), finding.Error, false},
 }
 
 // Check flags instruction-file content that installs or trusts an MCP server. A

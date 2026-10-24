@@ -23,7 +23,7 @@ func (r *cfg057) ID() string { return "CFG057" }
 var (
 	// dataURIRe matches a real data: URI (mediatype + payload), which has no place
 	// in a trusted instruction file and can smuggle a hidden/encoded payload.
-	dataURIRe = regexp.MustCompile(`(?i)\bdata:[a-z]+/[a-z0-9.+-]+[a-z0-9;=-]*,[^\s"')]{16,}`)
+	dataURIRe = mustFiltered(`(?i)\bdata:[a-z]+/[a-z0-9.+-]+[a-z0-9;=-]*,[^\s"')]{16,}`)
 	// base64RunRe matches a base64 run that could carry an encoded payload. The
 	// length floor only bounds decode attempts; the malicious-content gate (not
 	// length) is what keeps false positives low, so a modest floor is fine.

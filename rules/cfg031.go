@@ -55,7 +55,7 @@ func (r *cfg031) ID() string { return "CFG031" }
 // rejected, because a path-less `.key` with an action verb on the line is not a
 // cleaner signal either: of the four such lines in the census, three were the
 // Keynote and Gradle false positives.
-var sensitivePathRe = regexp.MustCompile(`(?i)(` +
+var sensitivePathRe = mustFiltered(`(?i)(` +
 	`\.ssh/(?:id_rsa|id_ed25519|id_dsa|id_ecdsa|known_hosts|config)\b` +
 	`|\.aws/(?:credentials|config)\b` +
 	`|\.config/gcloud/` +

@@ -4,7 +4,6 @@
 package rules
 
 import (
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -27,7 +26,7 @@ func (r *cfg081) ID() string { return "CFG081" }
 // verb applied to an instruction noun *across a compaction/summarization/session
 // boundary*. Ordinary emphasis ("always follow these rules") lacks that clause
 // and does not match.
-var compactionSurvivalRe = regexp.MustCompile(`(?i)\b` +
+var compactionSurvivalRe = mustFiltered(`(?i)\b` +
 	// persistence verb
 	`(?:never\s+forget|do\s+not\s+(?:remove|drop|discard|forget|delete)|don'?t\s+(?:remove|drop|discard|forget|delete)|preserve|retain|keep|maintain|persist|remember|carry\s+(?:over|forward)|re-?inject|re-?add)\s+` +
 	// optional determiner

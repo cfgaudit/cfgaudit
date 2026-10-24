@@ -28,26 +28,26 @@ var (
 	// settings.json) and the bare word "credentials" are deliberately NOT listed:
 	// skills legitimately run their own .claude/ scripts and mention "credentials"
 	// in prose — only real secret files belong here (credentials.json is anchored).
-	cmdSubstSensitiveRe = regexp.MustCompile("(?i)(?:\\$\\(|`)[^)`]*\\s[^)`]*(?:~/\\.ssh|~/\\.aws|~/\\.gcp|~/\\.config/gcloud|/etc/passwd|/etc/shadow|\\.env\\b|id_rsa|id_ed25519|credentials\\.json)")
+	cmdSubstSensitiveRe = mustFiltered("(?i)(?:\\$\\(|`)[^)`]*\\s[^)`]*(?:~/\\.ssh|~/\\.aws|~/\\.gcp|~/\\.config/gcloud|/etc/passwd|/etc/shadow|\\.env\\b|id_rsa|id_ed25519|credentials\\.json)")
 	// Auto-execution directive (Patterns B and C; Part C narrows it further, see
 	// partCDirective).
-	autoExecRe = regexp.MustCompile(`(?i)(?:before\s+(?:each|every|any)\s+(?:task|session|request|command|run|step)|always\s+(?:run|execute|do)|at\s+(?:startup|session\s+start|the\s+start)|automatically\s+(?:run|execute))`)
+	autoExecRe = mustFiltered(`(?i)(?:before\s+(?:each|every|any)\s+(?:task|session|request|command|run|step)|always\s+(?:run|execute|do)|at\s+(?:startup|session\s+start|the\s+start)|automatically\s+(?:run|execute))`)
 	// A directive tied to a condition the agent meets in normal work (#791):
 	// "Whenever you review a pull request, first run …", "When you start
 	// working on this repository, run: …". It counts for Part B only, with
 	// conditionalRunRe in the rest of the line or on the next one: on its own,
 	// "When you change code, run the tests" is ordinary guidance, and of 21
 	// such lines in 1,727 instruction files none had a network command nearby.
-	conditionalRe    = regexp.MustCompile(`(?i)\b(?:whenever|each\s+time|every\s+time)\s+you\b|\bwhen\s+you\s+(?:start|open|begin|review|clone|enter|first|check\s+out|work\s+on)\b|\bafter\s+(?:every|each)\s+\w+`)
+	conditionalRe    = mustFiltered(`(?i)\b(?:whenever|each\s+time|every\s+time)\s+you\b|\bwhen\s+you\s+(?:start|open|begin|review|clone|enter|first|check\s+out|work\s+on)\b|\bafter\s+(?:every|each)\s+\w+`)
 	conditionalRunRe = regexp.MustCompile(`(?i)\b(?:run|execute)\b`)
 	// A download piped into a shell or run through one (Part D, #791):
 	// curl … https://… | sh, bash <(curl …), sh -c "$(curl …)", and the same
 	// into python reading its script from stdin (no arguments, or "-"; not
 	// python3 -m json.tool). The URL is required, so prose like "no
 	// curl|bash installers" is not one.
-	pipeShellRe = regexp.MustCompile(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b`)
+	pipeShellRe = mustFiltered(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b`)
 	// Network exfiltration command (Pattern B).
-	netExfilRe = regexp.MustCompile(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
+	netExfilRe = mustFiltered(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
 
 	// Part C only: which "at …" phrases are an order to the agent rather than
 	// prose about something else starting. Measured over 390 real CLAUDE.md files
@@ -100,6 +100,10 @@ var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|
 // around text with no backtick in it.
 var inlineCodeSpanRe = regexp.MustCompile("`[^`\n]+`")
 
+// dollarSubstRe is a $( ) substitution, to its closing parenthesis or the end
+// of the line.
+var dollarSubstRe = regexp.MustCompile(`\$\([^)]*\)?`)
+
 // sensitiveSubstitution returns the location of a command substitution that
 // reads a secret path: $( ... ) or a backtick span with a command and a path.
 // Backtick spans are taken as pairs. Matching from any backtick read the text
@@ -111,7 +115,7 @@ func sensitiveSubstitution(line string) []int {
 		cleaned := substTemplateRe.ReplaceAllString(span, "")
 		return cmdSubstSensitiveRe.MatchString(cleaned)
 	}
-	for _, loc := range regexp.MustCompile(`\$\([^)]*\)?`).FindAllStringIndex(line, -1) {
+	for _, loc := range dollarSubstRe.FindAllStringIndex(line, -1) {
 		if check(line[loc[0]:loc[1]]) {
 			return loc
 		}

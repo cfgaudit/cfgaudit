@@ -46,8 +46,8 @@ var (
 	allCapsTagRe = regexp.MustCompile(`<([A-Z][A-Z_]{2,})>`)
 	turnBoundary = regexp.MustCompile(`\n\n(?:Human|Assistant):\s`)
 	roleTagRe    = regexp.MustCompile(`(?is)<(human|assistant)>.*?</(?:human|assistant)>`)
-	sysInstrRe   = regexp.MustCompile(`(?m)^System Instruction:\s`)
-	foreignToken = regexp.MustCompile(`<\|im_start\|>|<\|im_end\|>|<s>\[INST\]|\[/INST\]|<<SYS>>|<</SYS>>|<\|system\|>|<\|user\|>|<\|assistant\|>`)
+	sysInstrRe   = mustFiltered(`(?m)^System Instruction:\s`)
+	foreignToken = mustFiltered(`<\|im_start\|>|<\|im_end\|>|<s>\[INST\]|\[/INST\]|<<SYS>>|<</SYS>>|<\|system\|>|<\|user\|>|<\|assistant\|>`)
 )
 
 // Check scans CLAUDE.md for pseudo-system markup and role-injection tokens.

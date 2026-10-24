@@ -22,7 +22,7 @@ func (r *cfg026) ID() string { return "CFG026" }
 // bypassPattern is one prompt-injection phrase class scanned in CLAUDE.md.
 type bypassPattern struct {
 	num      int
-	re       *regexp.Regexp
+	re       filteredRegexp
 	sev      finding.Severity
 	label    string
 	skipCode bool // pattern 4 only: ignore matches inside fenced / inline code
@@ -49,7 +49,7 @@ var bypassPatterns = []bypassPattern{
 	// only fired when the qualifier followed the verb directly. It is a closed set
 	// on purpose — a generic `(?:\s+\w+){0,3}` filler would drag in benign prose,
 	// because the noun list carries broad words (data, content, context, text).
-	{1, regexp.MustCompile(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
+	{1, mustFiltered(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
 		finding.Error, "instruction override", false},
 	// Pattern 2 targets hijacking of Claude's own identity. Bare "act as <role>" /
 	// "pretend you are <role>" are the standard, legitimate way to define a skill's
@@ -75,11 +75,11 @@ var bypassPatterns = []bypassPattern{
 	// IDENTITY/SOUL", "detected automatically"). No adversarial target appeared at
 	// all. The optional "now" is there because "your name is now DAN" is the one
 	// filler an author of the hijack would reach for.
-	{2, regexp.MustCompile(`(?i)\b(you\s+are\s+now\s+` + adversarialPersona + `|your\s+(new\s+)?(name|identity|persona)\s+is\s+(now\s+)?` + adversarialPersona + `|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+` + adversarialPersona + `)`),
+	{2, mustFiltered(`(?i)\b(you\s+are\s+now\s+` + adversarialPersona + `|your\s+(new\s+)?(name|identity|persona)\s+is\s+(now\s+)?` + adversarialPersona + `|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+` + adversarialPersona + `)`),
 		finding.Error, "persona / identity hijacking", false},
-	{3, regexp.MustCompile(`(?i)\b(as\s+(your\s+)?(developer|creator|trainer|Anthropic|operator|administrator|sys(tem)?\s*admin)|this\s+(is|message\s+is)\s+(from\s+)?(Anthropic|your\s+developer)|developer\s+mode\s+(enabled|activated|on)|jailbreak\s+(mode|enabled|activated))`),
+	{3, mustFiltered(`(?i)\b(as\s+(your\s+)?(developer|creator|trainer|Anthropic|operator|administrator|sys(tem)?\s*admin)|this\s+(is|message\s+is)\s+(from\s+)?(Anthropic|your\s+developer)|developer\s+mode\s+(enabled|activated|on)|jailbreak\s+(mode|enabled|activated))`),
 		finding.Error, "authority impersonation", false},
-	{4, regexp.MustCompile(`(?i)\b(in\s+a\s+(fictional|hypothetical|alternate|imaginary)\s+(world|scenario|universe|context|story)|for\s+(a\s+)?(story|novel|game|roleplay|simulation|fiction)|hypothetically\s+speaking|in\s+this\s+(roleplay|scenario|simulation),?\s+(you\s+(can|may|should|must|are\s+allowed)))`),
+	{4, mustFiltered(`(?i)\b(in\s+a\s+(fictional|hypothetical|alternate|imaginary)\s+(world|scenario|universe|context|story)|for\s+(a\s+)?(story|novel|game|roleplay|simulation|fiction)|hypothetically\s+speaking|in\s+this\s+(roleplay|scenario|simulation),?\s+(you\s+(can|may|should|must|are\s+allowed)))`),
 		finding.Warn, "permissive fictional / hypothetical framing", true},
 }
 
