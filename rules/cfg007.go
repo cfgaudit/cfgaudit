@@ -43,7 +43,24 @@ var secretSuffixes = []string{
 }
 
 // shellRefRe matches a value that is a single shell-variable reference (e.g. "$FOO" or "${FOO}").
-var shellRefRe = regexp.MustCompile(`^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$`)
+//
+// The default forms "${FOO:-}", "${FOO-}" and "${FOO:-${BAR}}" count too:
+// Claude Code expands ${VAR:-default} in .mcp.json and plugin MCP configs, and
+// an empty or referenced default commits no value. A literal default
+// ("${TOKEN:-sk-live-...}") is a committed secret and does not match (#852).
+var shellRefRe = regexp.MustCompile(`^\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*(?::?-(?:\$\{?[A-Za-z_][A-Za-z0-9_]*\}?)?)?\})$`)
+
+// pathValueRe matches a value that is a filesystem path: absolute, home- or
+// dot-relative, or a Windows drive path, with no whitespace.
+var pathValueRe = regexp.MustCompile(`^(?:/|~/|\./|\.\./|[A-Za-z]:[\\/]|%[A-Za-z_]+%[\\/]|\$HOME/|\$\{HOME\}/)\S*$`)
+
+// literalUnderSecretName reports whether the literal value v of a key with a
+// secret-like name is the secret itself. A file path is not:
+// GOOGLE_APPLICATION_CREDENTIALS and its kind hold the path of a key file by
+// convention, and the file is not in the config (#852).
+func literalUnderSecretName(k, v string) bool {
+	return hasSecretSuffix(k) && !pathValueRe.MatchString(strings.TrimSpace(v))
+}
 
 // templateRefRe matches a value that is entirely a single template/interpolation
 // placeholder ({{X}}, ${{X}}, %{X}, <% X %>, __X__) — resolved to a value at
@@ -115,7 +132,7 @@ func (r *cfg007) Check(t *Target) []finding.Finding {
 			})
 			continue
 		}
-		if hasSecretSuffix(k) {
+		if literalUnderSecretName(k, v) {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG007",
 				Severity: finding.Error,

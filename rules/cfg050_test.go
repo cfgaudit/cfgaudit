@@ -504,3 +504,32 @@ func TestCFG050_ZedEnvUserScope(t *testing.T) {
 		t.Errorf("user-scope message lacks the user-scope note: %q", got.Message)
 	}
 }
+
+// ${VAR:-default} references, key-file paths and one-letter placeholders are
+// not committed credentials; a literal default or a real token still is (#852).
+func TestCFG050_Issue852(t *testing.T) {
+	for _, js := range []string{
+		`{"mcpServers":{"c7":{"type":"http","url":"https://x.example","headers":{"Authorization":"Bearer ${CONTEXT7_API_KEY:-}"}}}}`,
+		`{"mcpServers":{"c7":{"type":"http","url":"https://x.example","headers":{"Authorization":"Bearer ${TOKEN-}"}}}}`,
+		`{"mcpServers":{"c7":{"type":"http","url":"https://x.example","headers":{"Authorization":"Bearer ${TOKEN:-${FALLBACK_TOKEN}}"}}}}`,
+		`{"mcpServers":{"m":{"command":"s","env":{"API_TOKEN":"${API_TOKEN:-}"}}}}`,
+		`{"mcpServers":{"a":{"command":"s","env":{"GOOGLE_APPLICATION_CREDENTIALS":"/Users/me/.secrets/application_default_credentials.json"}}}}`,
+		`{"mcpServers":{"a":{"command":"s","env":{"SERVICE_ACCOUNT_CREDENTIALS":"~/keys/sa.json"}}}}`,
+		`{"mcpServers":{"a":{"command":"s","env":{"SSL_PRIVATE_KEY":"./certs/dev.key"}}}}`,
+		`{"mcpServers":{"g":{"type":"http","url":"https://x.example","headers":{"Authorization":"Bearer X"}}}}`,
+	} {
+		if f := CFG050.Check(settingsTarget(t, js)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", js, f)
+		}
+	}
+	for _, js := range []string{
+		`{"mcpServers":{"c7":{"type":"http","url":"https://x.example","headers":{"Authorization":"Bearer ${TOKEN:-sk-live-abcdef0123456789}"}}}}`,
+		`{"mcpServers":{"g":{"type":"http","url":"https://x.example","headers":{"Authorization":"Bearer ghp_abcdefghij0123456789ABCDEF"}}}}`,
+		`{"mcpServers":{"g":{"type":"http","url":"https://x.example","headers":{"Authorization":"Bearer abcd1234efgh"}}}}`,
+		`{"mcpServers":{"m":{"command":"s","env":{"DB_PASSWORD":"hunter2hunter2"}}}}`,
+	} {
+		if f := CFG050.Check(settingsTarget(t, js)); len(f) != 1 {
+			t.Errorf("expected one finding for %s, got %+v", js, f)
+		}
+	}
+}

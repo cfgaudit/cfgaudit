@@ -51,6 +51,11 @@ var authSchemeRe = regexp.MustCompile(`^(?i:bearer|basic|token)(?:\s+|$)`)
 // defeats both the scheme strip and the placeholder checks.
 const literalQuotes = "'\"`"
 
+// minCredentialLen is the length below which a literal auth-header credential
+// is a placeholder ("Bearer X", "Token abc") rather than a real token: API
+// keys, bearer tokens and Basic credentials are all longer.
+const minCredentialLen = 8
+
 // placeholderRe matches obvious non-secret placeholder values that should not be
 // flagged (e.g. "<your-token>", "changeme", "xxxxx", "TODO").
 var placeholderRe = regexp.MustCompile(`(?i)^(<.*>|x{3,}|changeme|your[-_ ].*|todo|placeholder|example|\.\.\.)$`)
@@ -80,7 +85,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 			}
 			if label, ok := matchSecretPattern(v); ok {
 				findings = append(findings, secretFinding(base+".env."+k, "a hardcoded "+label, ref.File, t))
-			} else if hasSecretSuffix(k) {
+			} else if literalUnderSecretName(k, v) {
 				findings = append(findings, secretFinding(base+".env."+k, "a secret-like name with a literal value", ref.File, t))
 			}
 		}
@@ -267,7 +272,7 @@ func (r *cfg050) checkZedEnv(t *Target) []finding.Finding {
 			loc := "Zed " + site.Label + ".env." + k
 			if label, ok := matchSecretPattern(v); ok {
 				findings = append(findings, secretFinding(loc, "a hardcoded "+label, t.ZedSettingsFile, t))
-			} else if hasSecretSuffix(k) && !screamingPlaceholderRe.MatchString(v) {
+			} else if literalUnderSecretName(k, v) && !screamingPlaceholderRe.MatchString(v) {
 				findings = append(findings, secretFinding(loc, "a secret-like name with a literal value", t.ZedSettingsFile, t))
 			}
 		}
@@ -303,6 +308,9 @@ func headerSecretsAt(prefix string, headers map[string]string, file string, t *T
 			}
 			if screamingPlaceholderRe.MatchString(cred) {
 				continue // an unfilled template such as "TU_API_KEY_AQUI"
+			}
+			if len(cred) < minCredentialLen && !strings.ContainsAny(cred, "$%{") {
+				continue // "Bearer X": too short to be any real token (#852)
 			}
 			what := "a hardcoded credential"
 			if label, ok := matchSecretPattern(cred); ok {

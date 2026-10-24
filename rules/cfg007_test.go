@@ -107,3 +107,18 @@ func TestIsSecretReference_SubstitutionForms(t *testing.T) {
 		}
 	}
 }
+
+// The same reference and path forms in settings.json env (#852).
+func TestCFG007_Issue852(t *testing.T) {
+	for _, js := range []string{
+		`{"env":{"API_TOKEN":"${API_TOKEN:-}"}}`,
+		`{"env":{"GOOGLE_APPLICATION_CREDENTIALS":"/home/me/.config/gcloud/application_default_credentials.json"}}`,
+	} {
+		if f := CFG007.Check(settingsTarget(t, js)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", js, f)
+		}
+	}
+	if f := CFG007.Check(settingsTarget(t, `{"env":{"API_TOKEN":"${API_TOKEN:-abc123secret456}"}}`)); len(f) != 1 {
+		t.Errorf("a literal default must still be reported, got %+v", f)
+	}
+}
