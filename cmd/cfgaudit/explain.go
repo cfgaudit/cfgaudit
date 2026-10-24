@@ -35,6 +35,13 @@ func renderRuleDoc(md string) string {
 	for _, line := range strings.Split(md, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			// An opening fence keeps only its language: path= and version= in the
+			// info string are for the trigger-example test (#781), not the reader.
+			if !inFence {
+				if f := strings.Fields(trimmed); len(f) > 1 {
+					line = line[:strings.Index(line, trimmed)] + f[0]
+				}
+			}
 			inFence = !inFence
 			b.WriteString(line + "\n")
 			continue

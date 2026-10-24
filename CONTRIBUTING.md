@@ -162,6 +162,8 @@ func TestCFGNNN_Trigger(t *testing.T) {
 ...
 ```
 
+Give each fence under **Trigger example** the file it belongs in, after the language: ```` ```json path=.claude/settings.json ````, ```` ```markdown path=CLAUDE.md ````, and `version=2.1.300` as well when the rule is gated on a Claude Code version. `TestRuleDocTriggerExamples` (`cmd/cfgaudit`) writes every annotated fence into an empty project, scans it and fails when the rule does not fire, so the example cannot go stale. Leave a fence unannotated when it is not a complete file on its own (a second file of the same example, a safe variant, shell output); `cfgaudit explain` drops the annotations.
+
 The consistency test (`rules/consistency_test.go`) requires:
 
 - A doc file at `docs/rules/CFGNNN.md` for every registered rule

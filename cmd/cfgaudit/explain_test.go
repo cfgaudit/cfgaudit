@@ -63,3 +63,11 @@ func TestRenderRuleDoc_PreservesCodeFence(t *testing.T) {
 		t.Errorf("expected heading marker stripped, got: %s", out)
 	}
 }
+
+// The trigger-example annotations (#781) stay out of the terminal output.
+func TestRenderRuleDoc_DropsFenceAttributes(t *testing.T) {
+	out := renderRuleDoc("## Trigger example\n\n```json path=.claude/settings.json version=2.1.300\n{}\n```\n")
+	if strings.Contains(out, "path=") || strings.Contains(out, "version=") || !strings.Contains(out, "```json\n{}\n```") {
+		t.Errorf("fence attributes not dropped:\n%s", out)
+	}
+}
