@@ -232,13 +232,15 @@ func TestLoad(t *testing.T) {
 }
 
 func TestDiscover_Errors(t *testing.T) {
-	// A directory where the config file is expected is a read error, not "no config".
+	// A directory where the config file is expected is no config (#828): the
+	// scan runs with the defaults, which are the strictest settings, instead of
+	// stopping.
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, ".cfgaudit.yml"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := Discover(dir); err == nil {
-		t.Error("expected an error when .cfgaudit.yml is a directory")
+	if c, p, err := Discover(dir); err != nil || c != nil || p != "" {
+		t.Errorf("a .cfgaudit.yml directory should read as no config, got %v, %q, %v", c, p, err)
 	}
 
 	dir = t.TempDir()

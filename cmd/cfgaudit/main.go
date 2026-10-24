@@ -204,7 +204,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func requireDir(path string) error {
 	info, err := os.Stat(path)
 	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	case scanroot.IsAbsent(err):
 		return fmt.Errorf("%s: no such directory", path)
 	case err != nil:
 		return err
@@ -629,7 +629,7 @@ func loadSkillsLock(dir string) (*parser.SkillsLock, string, error) {
 	path := filepath.Join(dir, "skills-lock.json")
 	sl, err := parser.ParseSkillsLock(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, "", nil
 		}
 		skipUnreadable(path, err)
@@ -748,7 +748,7 @@ func continueFiles(root string, exts ...string) []string {
 func parseContinueOptional(path string) (*parser.ContinueConfig, error) {
 	cc, err := parser.ParseContinueConfig(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -841,7 +841,7 @@ func codexTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 func parseCodexOptional(path string) (*parser.CodexConfig, error) {
 	cc, err := parser.ParseCodexConfig(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -890,7 +890,7 @@ func geminiTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			GeminiDotEnv:     env,
 			GeminiDotEnvFile: dotEnv,
 		})
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	} else if err != nil && !scanroot.IsAbsent(err) {
 		skipUnreadable(dotEnv, err)
 	}
 	if includeUser {
@@ -910,7 +910,7 @@ func geminiTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 func parseGeminiOptional(path string) (*parser.GeminiSettings, error) {
 	gs, err := parser.ParseGeminiSettings(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -963,7 +963,7 @@ func qwenTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 func parseQwenOptional(path string) (*parser.QwenSettings, error) {
 	qs, err := parser.ParseQwenSettings(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -1009,7 +1009,7 @@ func loadVSCodeSettings(dir string) (*parser.VSCodeSettings, string, error) {
 	path := filepath.Join(dir, ".vscode", "settings.json")
 	v, err := parser.ParseVSCodeSettings(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, "", nil
 		}
 		skipUnreadable(path, err)
@@ -1028,7 +1028,7 @@ func loadVSCodeTasks(dir string) (*parser.VSCodeTasks, string, error) {
 	path := filepath.Join(dir, ".vscode", "tasks.json")
 	v, err := parser.ParseVSCodeTasks(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, "", nil
 		}
 		skipUnreadable(path, err)
@@ -1555,7 +1555,7 @@ func geminiAgentFiles(base string) ([]string, error) {
 	dir := filepath.Join(base, ".gemini", "agents")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("read %s: %w", dir, err)
@@ -1687,7 +1687,7 @@ func filteredInstructionFiles(base string) ([]string, error) {
 		root := filepath.Join(base, fd.dir)
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				if errors.Is(err, os.ErrNotExist) {
+				if scanroot.IsAbsent(err) {
 					return nil
 				}
 				return err
@@ -1904,7 +1904,7 @@ func agentSkillsFiles(base string, dirs []string) ([]string, error) {
 		root := filepath.Join(base, rel)
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				if errors.Is(err, os.ErrNotExist) {
+				if scanroot.IsAbsent(err) {
 					return nil
 				}
 				return err
@@ -1940,7 +1940,7 @@ func kimiAgentFiles(base string) ([]string, error) {
 		root := filepath.Join(base, rel)
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				if errors.Is(err, os.ErrNotExist) {
+				if scanroot.IsAbsent(err) {
 					return nil
 				}
 				return err
@@ -1965,7 +1965,7 @@ func agentRulesFiles(base string, dirs []string) ([]string, error) {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				// A missing rules directory is the common case — not an error.
-				if errors.Is(err, os.ErrNotExist) {
+				if scanroot.IsAbsent(err) {
 					return nil
 				}
 				return err
@@ -1989,7 +1989,7 @@ func agentRulesFiles(base string, dirs []string) ([]string, error) {
 func loadClaudeMD(path string) (string, error) {
 	data, err := scanroot.ReadFile(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return "", nil
 		}
 		return "", err
@@ -2002,7 +2002,7 @@ func loadClaudeMD(path string) (string, error) {
 func parseSettingsOptional(path string) (*parser.Settings, error) {
 	s, err := parser.ParseSettings(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2048,7 +2048,7 @@ func agentHookTargets(dir string) ([]*rules.Target, error) {
 	add := func(path, kind string) error {
 		h, err := parser.ParseAgentHooks(path)
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
+			if scanroot.IsAbsent(err) {
 				return nil
 			}
 			skipUnreadable(path, err)
@@ -2079,7 +2079,7 @@ func agentHookTargets(dir string) ([]*rules.Target, error) {
 	// applies; add still reports the broken file (CFG109).
 	devinDesktopHooks := filepath.Join(dir, ".devin", "hooks.json")
 	h, herr := parser.ParseAgentHooks(devinDesktopHooks)
-	if herr != nil && !errors.Is(herr, os.ErrNotExist) {
+	if herr != nil && !scanroot.IsAbsent(herr) {
 		if err := add(devinDesktopHooks, "Devin Desktop"); err != nil {
 			return nil, err
 		}
@@ -2146,7 +2146,7 @@ func agentHookTargets(dir string) ([]*rules.Target, error) {
 func loadDevinConfigOptional(path string) (*parser.DevinConfig, error) {
 	c, err := parser.ParseDevinConfig(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2162,7 +2162,7 @@ func loadDevinConfigOptional(path string) (*parser.DevinConfig, error) {
 func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, error) {
 	p, err := parser.ParseCursorPermissions(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2177,7 +2177,7 @@ func loadCursorPermissionsOptional(path string) (*parser.CursorPermissions, erro
 func loadZedDebugOptional(path string) (*parser.ZedDebug, error) {
 	z, err := parser.ParseZedDebug(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2192,7 +2192,7 @@ func loadZedDebugOptional(path string) (*parser.ZedDebug, error) {
 func loadZedTasksOptional(path string) (*parser.ZedTasks, error) {
 	z, err := parser.ParseZedTasks(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2208,7 +2208,7 @@ func loadZedTasksOptional(path string) (*parser.ZedTasks, error) {
 func loadContinueHooksOptional(path string) (*parser.ContinueHooks, error) {
 	h, err := parser.ParseContinueHooks(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2223,7 +2223,7 @@ func loadContinueHooksOptional(path string) (*parser.ContinueHooks, error) {
 func loadCodexHooksOptional(path string) (*parser.CodexHooks, error) {
 	h, err := parser.ParseCodexHooksJSON(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2238,7 +2238,7 @@ func loadCodexHooksOptional(path string) (*parser.CodexHooks, error) {
 func loadCursorSandboxOptional(path string) (*parser.CursorSandbox, error) {
 	s, err := parser.ParseCursorSandbox(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2254,7 +2254,7 @@ func loadCursorSandboxOptional(path string) (*parser.CursorSandbox, error) {
 func loadCopilotSettingsOptional(path string) (*parser.CopilotSettings, error) {
 	c, err := parser.ParseCopilotSettings(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2416,7 +2416,7 @@ func markdownFiles(root string, recursive bool) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
+			if scanroot.IsAbsent(err) {
 				return nil
 			}
 			return err
@@ -2510,7 +2510,7 @@ func copilotExtensionTargets(dir string) []*rules.Target {
 func loadOpenCodeConfigOptional(path string) (*parser.OpenCodeConfig, error) {
 	c, err := parser.ParseOpenCodeConfig(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2525,7 +2525,7 @@ func loadOpenCodeConfigOptional(path string) (*parser.OpenCodeConfig, error) {
 func loadGrokConfigOptional(path string) (*parser.GrokConfig, error) {
 	c, err := parser.ParseGrokConfig(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2539,7 +2539,7 @@ func loadGrokConfigOptional(path string) (*parser.GrokConfig, error) {
 func loadGrokHooksOptional(path string) (*parser.GrokHooks, error) {
 	h, err := parser.ParseGrokHooks(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2554,7 +2554,7 @@ func loadGrokHooksOptional(path string) (*parser.GrokHooks, error) {
 func loadZedSettingsOptional(path string) (*parser.ZedSettings, error) {
 	z, err := parser.ParseZedSettings(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2569,7 +2569,7 @@ func loadZedSettingsOptional(path string) (*parser.ZedSettings, error) {
 func loadMCPConfigOptional(path string) (map[string]parser.MCPServer, error) {
 	cfg, err := parser.ParseMCPConfig(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		skipUnreadable(path, err)
@@ -2705,7 +2705,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// Cursor .cursor/cli.json — the CLI's project permission tokens (#649).
 	cursorCLIPath := filepath.Join(dir, ".cursor", "cli.json")
 	if cc, err := parser.ParseCursorCLIConfig(cursorCLIPath); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		if !scanroot.IsAbsent(err) {
 			skipUnreadable(cursorCLIPath, err)
 		}
 	} else if cc.Permissions != nil {
@@ -2803,7 +2803,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// command sites and CFG086 read it like the hooks key of .devin/config.json.
 	hooksV1 := filepath.Join(dir, ".devin", "hooks.v1.json")
 	if hc, err := parser.ParseDevinHooksV1(hooksV1); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		if !scanroot.IsAbsent(err) {
 			skipUnreadable(hooksV1, err)
 		}
 	} else if len(hc.Hooks) > 0 {
@@ -2956,7 +2956,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// repository"; filter_project_lsp_when_untrusted drops them otherwise). #616.
 	grokLSPPath := filepath.Join(dir, ".grok", "lsp.json")
 	if lsp, err := parser.ParseGrokLSP(grokLSPPath); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		if !scanroot.IsAbsent(err) {
 			skipUnreadable(grokLSPPath, err)
 		}
 	} else if len(lsp) > 0 {
@@ -2972,7 +2972,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// configured; the CLI's /lsp help names it "Project config: .github/lsp.json".
 	copilotLSPPath := filepath.Join(dir, ".github", "lsp.json")
 	if lsp, err := parser.ParseCopilotLSP(copilotLSPPath); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		if !scanroot.IsAbsent(err) {
 			skipUnreadable(copilotLSPPath, err)
 		}
 	} else if len(lsp) > 0 {

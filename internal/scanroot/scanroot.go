@@ -19,11 +19,13 @@
 package scanroot
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 // Escape is a path under the scanned directory that resolves outside it.
@@ -70,20 +72,54 @@ func Escapes() []Escape {
 	return append([]Escape(nil), escapes...)
 }
 
-// ReadFile is os.ReadFile for repository content.
+// ReadFile is os.ReadFile for repository content. A directory where a file is
+// expected, and a path through a file where a directory is expected, read as
+// absent (#828): a repository with a .rules folder or an empty .codex file
+// used to stop the whole scan.
 func ReadFile(path string) ([]byte, error) {
 	if err := check(path); err != nil {
 		return nil, err
 	}
-	return os.ReadFile(path) // #nosec G304 -- path is checked against the scanned directory above
+	if err := notADirectory(path); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- path is checked against the scanned directory above
+	return data, absentErr(err, path)
 }
 
-// Open is os.Open for repository content.
+// Open is os.Open for repository content, with ReadFile's handling of
+// directories.
 func Open(path string) (*os.File, error) {
 	if err := check(path); err != nil {
 		return nil, err
 	}
-	return os.Open(path) // #nosec G304 -- path is checked against the scanned directory above
+	if err := notADirectory(path); err != nil {
+		return nil, err
+	}
+	f, err := os.Open(path) // #nosec G304 -- path is checked against the scanned directory above
+	return f, absentErr(err, path)
+}
+
+// IsAbsent reports whether err means there is nothing to read at a path: it
+// does not exist, or a component of it is a file rather than a directory.
+func IsAbsent(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// notADirectory returns a not-exist error when path is a directory.
+func notADirectory(path string) error {
+	if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+		return &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+	}
+	return nil
+}
+
+// absentErr turns an ENOTDIR from a read into a not-exist error.
+func absentErr(err error, path string) error {
+	if err != nil && errors.Is(err, syscall.ENOTDIR) {
+		return &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+	}
+	return err
 }
 
 // check returns a not-exist error for a path under the scanned directory whose

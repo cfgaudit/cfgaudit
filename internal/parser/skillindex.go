@@ -43,7 +43,7 @@ var skillNameRe = regexp.MustCompile(`(?m)^name:\s*["']?([^"'\n]+?)["']?\s*$`)
 func SkillNameCollisions(root string) (map[string][]SkillFileEntry, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if scanroot.IsAbsent(err) {
 			return nil, nil
 		}
 		return nil, err

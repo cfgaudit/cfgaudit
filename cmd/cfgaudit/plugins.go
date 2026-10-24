@@ -5,7 +5,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"io/fs"
@@ -506,7 +505,7 @@ func kimiPluginTargets(path string) ([]*rules.Target, error) {
 			if strings.TrimSpace(string(content)) != "" {
 				targets = append(targets, &rules.Target{InstructionFile: promptPath, InstructionContent: string(content)})
 			}
-		case errors.Is(err, os.ErrNotExist):
+		case scanroot.IsAbsent(err):
 			// Kimi records a diagnostic and skips a missing file rather than
 			// failing the plugin, so a dangling path is not a scan error either.
 		default:

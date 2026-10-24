@@ -58,12 +58,13 @@ func TestFileParsers_MissingFileWrapsNotExist(t *testing.T) {
 	}
 }
 
-// The loaders that treat a missing file as absent still report any other read
-// failure. A directory in place of the file is the portable way to cause one.
-func TestOptionalFileParsers_ReadFailure(t *testing.T) {
+// The loaders that treat a missing file as absent treat a directory in its
+// place the same way (#828): a repository with a folder where a config file is
+// expected used to stop the whole scan.
+func TestOptionalFileParsers_DirectoryIsAbsent(t *testing.T) {
 	dir := t.TempDir()
-	if st, err := ParseScheduledTasks(dir); err == nil || st != nil {
-		t.Errorf("ParseScheduledTasks on a directory: got %v, %v; want an error", st, err)
+	if st, err := ParseScheduledTasks(dir); err != nil || st != nil {
+		t.Errorf("ParseScheduledTasks on a directory: got %v, %v; want nothing", st, err)
 	}
 	if lines, err := ParseIgnore(filepath.Join(dir, "missing")); err != nil || lines != nil {
 		t.Errorf("ParseIgnore on a missing file: got %v, %v; want nothing", lines, err)

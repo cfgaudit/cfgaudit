@@ -154,15 +154,44 @@ func TestOpen(t *testing.T) {
 	}
 	_ = f.Close()
 
-	// The scan root itself is inside the scan.
-	d, err := Open(scan)
-	if err != nil {
-		t.Fatalf("Open of the scan root: %v", err)
+	// The scan root itself is inside the scan, so it is not an escape; as a
+	// directory it reads as absent (#828).
+	if _, err := Open(scan); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Open of the scan root directory: want not-exist, got %v", err)
 	}
-	_ = d.Close()
+	if esc := Escapes(); len(esc) != 0 {
+		t.Fatalf("the scan root was recorded as an escape: %+v", esc)
+	}
 
 	symlink(t, filepath.Join(base, "secret"), filepath.Join(scan, "link"))
 	if _, err := Open(filepath.Join(scan, "link")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Open through a link leaving the scan: err = %v, want not-exist", err)
+	}
+}
+
+// A directory where a file is expected, and a path through a file, read as
+// absent (#828).
+func TestReadFile_FileDirectoryMixups(t *testing.T) {
+	dir := t.TempDir()
+	if err := Set(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+	if err := os.Mkdir(filepath.Join(dir, ".rules"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".codex"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{filepath.Join(dir, ".rules"), filepath.Join(dir, ".codex", "config.toml")} {
+		if _, err := ReadFile(p); !errors.Is(err, fs.ErrNotExist) || !IsAbsent(err) {
+			t.Errorf("ReadFile(%s): want not-exist, got %v", p, err)
+		}
+		if _, err := Open(p); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("Open(%s): want not-exist, got %v", p, err)
+		}
+	}
+	if _, err := os.ReadDir(filepath.Join(dir, ".codex", "skills")); !IsAbsent(err) {
+		t.Errorf("IsAbsent should cover a directory read through a file, got %v", err)
 	}
 }
