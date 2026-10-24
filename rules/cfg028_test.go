@@ -120,3 +120,30 @@ func TestCFG028_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding without settings, got %+v", f)
 	}
 }
+
+// The redirect target is one shell word: a 2>/dev/null before a .claude/hooks
+// script path is not a write to .claude/ (#827). Writes into trust files, with
+// the path built from ${VAR} or $(cmd), still are.
+func TestCFG028_RedirectTargetIsOneWord(t *testing.T) {
+	for _, cmd := range []string{
+		`bash "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}/.claude/hooks/guard.sh"`,
+		`bash "$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/x.sh"`,
+		`cmd 2>&1 | grep -q x && bash .claude/hooks/y.sh`,
+		`echo ok > /tmp/out; cat .claude/settings.json`,
+	} {
+		if f := CFG028.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		`echo x >> .claude/settings.json`,
+		`echo x > "$CLAUDE_PROJECT_DIR/.claude/settings.json"`,
+		`echo x > "${CLAUDE_PROJECT_DIR}/CLAUDE.md"`,
+		`echo x > "$(git rev-parse --show-toplevel)/.mcp.json"`,
+		`echo x | tee -a CLAUDE.md`,
+	} {
+		if f := CFG028.Check(hookTarget(t, cmd)); len(f) != 1 {
+			t.Errorf("expected one finding for %q, got %+v", cmd, f)
+		}
+	}
+}

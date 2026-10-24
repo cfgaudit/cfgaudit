@@ -38,12 +38,19 @@ const trustFile = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settin
 
 var trustFileRe = regexp.MustCompile(trustFile)
 
+// redirectTargetPrefix is the part of one redirect or tee target before the
+// trust-file name: ${VAR}, $(cmd) and characters that stay inside one shell
+// word. It used to be \S*, which ran from "2>/dev/null)}" into the next path
+// and read "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel
+// 2>/dev/null)}/.claude/hooks/guard.sh\"" as a write to .claude/ (#827).
+const redirectTargetPrefix = `(?:\$\{[^}]*\}|\$\([^)]*\)|[^\s)};|&'"])*`
+
 // trustWritePatterns detect a write whose target is a trust file:
 //   - redirection (> / >>) or tee into one
 //   - in-place stream edit (sed -i) of one
 //   - cp / mv / install / ln / dd with one as the final (destination) argument
 var trustWritePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?:>>?|\btee\b(?:\s+-a)?\s+)\s*['"]?\S*` + trustFile),
+	regexp.MustCompile(`(?:>>?|\btee\b(?:\s+-a)?\s+)\s*['"]?` + redirectTargetPrefix + trustFile),
 	regexp.MustCompile(`\bsed\b[^|;&]*-i\b[^|;&]*` + trustFile),
 	regexp.MustCompile(`\b(?:cp|mv|install|ln|dd)\b[^|;&]*` + trustFile + `['"]?\s*(?:$|[|;&])`),
 }
