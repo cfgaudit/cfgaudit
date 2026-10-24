@@ -939,7 +939,7 @@ func TestScanPluginRoot_FindsArtifacts(t *testing.T) {
 	mustWrite(t, filepath.Join(root, "plugin.json"),
 		`{"name":"demo","mcpServers":{"fs":{"command":"npx","args":["pkg@latest"]}}}`)
 
-	targets, err := scanPluginRoot(root)
+	targets, err := scanPluginRoot(root, nil)
 	if err != nil {
 		t.Fatalf("scanPluginRoot: %v", err)
 	}
@@ -1203,14 +1203,14 @@ func TestPluginHooks_ExecFormArgsReachCommandRules(t *testing.T) {
 func TestPluginHooks_MalformedErrors(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "hooks", "hooks.json"), `{not json`)
-	if _, err := scanPluginRoot(root); err == nil {
+	if _, err := scanPluginRoot(root, nil); err == nil {
 		t.Error("expected error for malformed hooks.json")
 	}
 }
 
 func mustScan(t *testing.T, root string) []*rules.Target {
 	t.Helper()
-	ts, err := scanPluginRoot(root)
+	ts, err := scanPluginRoot(root, nil)
 	if err != nil {
 		t.Fatalf("scanPluginRoot: %v", err)
 	}
@@ -2354,7 +2354,7 @@ func TestScanPluginRoot_KimiManifest(t *testing.T) {
 func TestScanPluginRoot_KimiMissingSystemPromptPath(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "kimi.plugin.json"), `{"name":"x","systemPromptPath":"./nope.md"}`)
-	if _, err := scanPluginRoot(root); err != nil {
+	if _, err := scanPluginRoot(root, nil); err != nil {
 		t.Errorf("a missing systemPromptPath must not fail the scan: %v", err)
 	}
 }
@@ -2362,7 +2362,7 @@ func TestScanPluginRoot_KimiMissingSystemPromptPath(t *testing.T) {
 func TestScanPluginRoot_KimiManifestMalformed(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "kimi.plugin.json"), `{"name":`)
-	if _, err := scanPluginRoot(root); err == nil {
+	if _, err := scanPluginRoot(root, nil); err == nil {
 		t.Error("expected an error for a malformed kimi.plugin.json")
 	}
 }

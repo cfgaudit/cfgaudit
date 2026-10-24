@@ -54,7 +54,15 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 				all = append(all, unreadablePluginTarget(dir, path, err))
 			})
 		} else {
-			ts, err = scanPluginRoot(root)
+			// A root found in the repository reports a broken file (CFG109) and
+			// goes on; a path named with --plugins still stops the scan (#825).
+			var unreadable func(path string, err error)
+			if root != explicit {
+				unreadable = func(path string, err error) {
+					all = append(all, unreadablePluginTarget(dir, path, err))
+				}
+			}
+			ts, err = scanPluginRoot(root, unreadable)
 		}
 		if err != nil {
 			return nil, err
@@ -347,9 +355,17 @@ func absPath(p string) string {
 }
 
 // scanPluginRoot walks a plugin package tree and builds a target per recognised
-// artifact.
-func scanPluginRoot(root string) ([]*rules.Target, error) {
+// artifact. With unreadable set, a file that does not parse is handed to it and
+// the walk goes on; without, the error ends the walk.
+func scanPluginRoot(root string, unreadable func(path string, err error)) ([]*rules.Target, error) {
 	var targets []*rules.Target
+	fail := func(path string, err error) error {
+		if unreadable == nil {
+			return err
+		}
+		unreadable(path, err)
+		return nil
+	}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -365,13 +381,16 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 		case "SKILL.md":
 			content, err := scanroot.ReadFile(path)
 			if err != nil {
-				return err
+				return fail(path, err)
 			}
 			targets = append(targets, &rules.Target{InstructionFile: path, InstructionContent: string(content)})
 		case "hooks.json":
+			if !isPluginHooksFile(path) {
+				return nil
+			}
 			t, err := pluginHooksTarget(path)
 			if err != nil {
-				return err
+				return fail(path, err)
 			}
 			if t != nil {
 				targets = append(targets, t)
@@ -379,7 +398,7 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 		case "plugin.json":
 			t, err := pluginMCPTarget(path)
 			if err != nil {
-				return err
+				return fail(path, err)
 			}
 			if t != nil {
 				targets = append(targets, t)
@@ -393,7 +412,7 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 			}
 			t, err := marketplaceTarget(path)
 			if err != nil {
-				return err
+				return fail(path, err)
 			}
 			if t != nil {
 				targets = append(targets, t)
@@ -401,13 +420,24 @@ func scanPluginRoot(root string) ([]*rules.Target, error) {
 		case kimiPluginManifest:
 			ts, err := kimiPluginTargets(path)
 			if err != nil {
-				return err
+				return fail(path, err)
 			}
 			targets = append(targets, ts...)
 		}
 		return nil
 	})
 	return targets, err
+}
+
+// isPluginHooksFile reports whether a hooks.json found in the plugin walk is in
+// the place a Claude Code plugin keeps its hooks, <plugin>/hooks/hooks.json. A
+// hooks.json elsewhere, and one in the project's own .claude/hooks/ (Claude
+// Code reads project hooks from settings.json, not from there), belongs to
+// something else: a marketplace repository with another tool's
+// .claude/hooks/hooks.json stopped the whole scan (#825).
+func isPluginHooksFile(path string) bool {
+	dir := filepath.Dir(path)
+	return filepath.Base(dir) == "hooks" && filepath.Base(filepath.Dir(dir)) != ".claude"
 }
 
 // kimiPluginManifest is the file a Kimi Code plugin declares itself with, at its
