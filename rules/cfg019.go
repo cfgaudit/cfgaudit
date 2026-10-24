@@ -50,7 +50,7 @@ var inlineEvalFlags = map[string]bool{
 func (r *cfg019) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
-		if shell := shellInterpreterName(ref.Server.Command); shell != "" {
+		if shell := shellInterpreterName(ref.Server.Command); shell != "" && !shellLaunchesProgram(shell, ref.Server.Args) {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG019",
 				Severity: finding.Error,
@@ -71,6 +71,68 @@ func (r *cfg019) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+// shellLaunchesProgram reports whether a shell in an MCP server's command only
+// starts a program or a script file rather than running an inline script
+// (#822):
+//
+//   - cmd /c (or /k) followed by one plain command and its arguments, with no
+//     &, |, <, > or ^ in them. "cmd /c npx -y pkg" is how an npx server is
+//     started on native Windows, and Claude Code's MCP docs give that form.
+//   - a POSIX shell given a script path first and no -c flag (alone or in a
+//     group such as -lc): "bash scripts/run-mcp.sh". It is the same shape as
+//     "node ./dist/index.js", which CFG070 leaves alone on purpose.
+//   - PowerShell with -File and none of -Command, -c, -EncodedCommand, -enc,
+//     -ec, -e.
+func shellLaunchesProgram(shell string, args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	switch strings.TrimSuffix(strings.ToLower(shell), ".exe") {
+	case "cmd":
+		switch strings.ToLower(strings.TrimSpace(args[0])) {
+		case "/c", "/k":
+		default:
+			return false
+		}
+		rest := args[1:]
+		if len(rest) == 0 {
+			return false
+		}
+		for _, a := range rest {
+			if strings.ContainsAny(a, "&|<>^") {
+				return false
+			}
+		}
+		return true
+	case "powershell", "pwsh":
+		file := false
+		for _, a := range args {
+			switch strings.ToLower(strings.TrimSpace(a)) {
+			case "-command", "-c", "-encodedcommand", "-enc", "-ec", "-e":
+				return false
+			case "-file", "-f":
+				file = true
+			}
+		}
+		return file
+	default:
+		for _, a := range args {
+			a = strings.TrimSpace(a)
+			if strings.HasPrefix(a, "--") {
+				continue
+			}
+			if strings.HasPrefix(a, "-") {
+				if strings.Contains(a[1:], "c") {
+					return false
+				}
+				continue
+			}
+			return true // the first operand is the script file
+		}
+		return false
+	}
 }
 
 // hasInlineEvalFlag reports whether args contain a flag that makes an interpreter
