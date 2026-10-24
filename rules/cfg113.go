@@ -40,6 +40,36 @@ var (
 	sentenceEndRe = regexp.MustCompile(`[.!?]\s+`)
 )
 
+// relayVerbRe ends the text before a quotation the agent is told to pass on
+// to the person: tell the user: "...", Guide: "...", say "...".
+var relayVerbRe = regexp.MustCompile(`(?i)\b(?:tell|tells|say|says|show|shows|guide|guides|instruct|instructs|ask|asks|inform|informs|explain|explains|reply|replies|respond|responds|message|print|output|display|suggest|suggests|recommend|recommends|prompt|prompts)\b[^"“”]{0,40}$`)
+
+// relayedToUser reports whether pos in line lies inside a quotation that the
+// agent is told to relay to the person ("tell the user: \"Open https://... in
+// your browser and copy/run the installation command\""), so the load and obey
+// verbs are the person's, not the agent's (#824).
+func relayedToUser(line string, pos int) bool {
+	open := -1
+	for i, r := range line {
+		if i > pos {
+			break
+		}
+		switch r {
+		case '"':
+			if open >= 0 {
+				open = -1
+			} else {
+				open = i
+			}
+		case '“':
+			open = i
+		case '”':
+			open = -1
+		}
+	}
+	return open >= 0 && relayVerbRe.MatchString(line[:open])
+}
+
 // Check reports a sentence in an instruction file that tells the agent to load
 // text from a URL and follow it (#621).
 //
@@ -77,19 +107,25 @@ func (r *cfg113) Check(t *Target) []finding.Finding {
 			if fenced[ln] || !fetchURLRe.MatchString(line) {
 				continue
 			}
+			off := 0
 			for _, sentence := range sentenceEndRe.Split(line, -1) {
+				start := off
+				if i := strings.Index(line[off:], sentence); i >= 0 {
+					start = off + i
+					off = start + len(sentence)
+				}
 				if !fetchURLRe.MatchString(sentence) {
 					continue
 				}
-				m := fetchFollowRe.FindStringSubmatch(sentence)
+				m := fetchFollowRe.FindStringSubmatchIndex(sentence)
 				if m == nil {
-					m = fetchFollowLinkRe.FindStringSubmatch(sentence)
+					m = fetchFollowLinkRe.FindStringSubmatchIndex(sentence)
 				}
-				if m == nil {
+				if m == nil || relayedToUser(line, start+m[0]) {
 					continue
 				}
 				sev := finding.Warn
-				verb := strings.ToLower(strings.Join(strings.Fields(m[1]), " "))
+				verb := strings.ToLower(strings.Join(strings.Fields(sentence[m[2]:m[3]]), " "))
 				if verb == "execute" || verb == "run" || verb == "obey" {
 					sev = finding.Error
 				}
