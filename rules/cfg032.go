@@ -21,10 +21,12 @@ func init() { All = append(All, CFG032) }
 func (r *cfg032) ID() string { return "CFG032" }
 
 // authorityTags are invented all-caps tags that claim system-level authority.
+// ROOT is not one (#806): in command docs <ROOT> is a placeholder for a
+// directory or a Merkle root (`--link-owner <ROOT>`, `verify ... "<ROOT>"`).
 var authorityTags = map[string]bool{
 	"SYSTEM": true, "SYSTEM_REQUIREMENT": true, "SYSTEM_OVERRIDE": true,
 	"HIDDEN": true, "GLOBAL": true, "GLOBAL_OVERRIDE": true, "ADMIN": true,
-	"OVERRIDE": true, "ROOT": true, "TRUST": true, "PRIVILEGED": true,
+	"OVERRIDE": true, "TRUST": true, "PRIVILEGED": true,
 	"SUDO": true, "JAILBREAK": true, "DEVELOPER_MODE": true,
 }
 

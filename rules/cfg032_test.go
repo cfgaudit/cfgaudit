@@ -23,9 +23,13 @@ func TestCFG032_AuthorityTag_Error(t *testing.T) {
 }
 
 func TestCFG032_GenericTag_Warn(t *testing.T) {
-	f := CFG032.Check(claudeMDTarget("follow the <MANDATORY> rules"))
-	if len(f) != 1 || f[0].Severity != finding.Warn {
-		t.Fatalf("expected 1 Warn for <MANDATORY>, got %+v", f)
+	// <ROOT_OVERRIDE> still warns through its OVERRIDE segment after ROOT left
+	// the authority list (#806).
+	for _, s := range []string{"follow the <MANDATORY> rules", "<ROOT_OVERRIDE> applies"} {
+		f := CFG032.Check(claudeMDTarget(s))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("expected 1 Warn for %q, got %+v", s, f)
+		}
 	}
 }
 
@@ -42,6 +46,9 @@ func TestCFG032_Placeholders_NoFinding(t *testing.T) {
 		"Timestamp <ISO> and <YYYYMMDD>",
 		"Source <SOURCE>, task <TASK>, id <UUID>",
 		"<INSTRUCTIONS> then <OUTPUT_DESCRIPTION> then <BACKGROUND_INFORMATION>",
+		// a directory or Merkle root placeholder in command docs (#806)
+		"Pass `--link-owner <ROOT>` to publish.",
+		`npx hardhat verify <ADDR> "<URI>" "<ROOT>" "<DAO>" --network sepolia`,
 	} {
 		if f := CFG032.Check(claudeMDTarget(s)); len(f) != 0 {
 			t.Errorf("expected no finding for placeholder/html %q, got %+v", s, f)
