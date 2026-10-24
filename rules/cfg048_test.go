@@ -399,3 +399,10 @@ func TestCFG048_NestedForm(t *testing.T) {
 		}
 	}
 }
+
+// A Copilot prompt override the YAML decoder panics on is skipped, and the
+// other rules still run (#846).
+func TestInstructionSources_CopilotOverrideDecoderPanic(t *testing.T) {
+	tg := vscodeSettingsTarget(t, `{"github.copilot.chat.debug.promptOverrideString": "? -\n? <<\n"}`)
+	_ = Run(tg, nil, nil)
+}

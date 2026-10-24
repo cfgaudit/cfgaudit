@@ -4,7 +4,7 @@
 package rules
 
 import (
-	"gopkg.in/yaml.v3"
+	"github.com/cfgaudit/cfgaudit/internal/safeyaml"
 	"sort"
 	"strings"
 )
@@ -77,7 +77,7 @@ func (t *Target) copilotPromptOverrideSources() []instructionSource {
 			Description string `yaml:"description"`
 		} `yaml:"toolDescriptions"`
 	}
-	if yaml.Unmarshal([]byte(text), &doc) != nil {
+	if safeyaml.Unmarshal([]byte(text), &doc) != nil {
 		return nil
 	}
 	var srcs []instructionSource

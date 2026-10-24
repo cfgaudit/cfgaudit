@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/safeyaml"
 	"gopkg.in/yaml.v3"
 )
 
@@ -161,7 +162,7 @@ func Discover(dir string) (*Config, string, error) {
 
 func parse(data []byte, path string) (*Config, error) {
 	var c Config
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	if err := safeyaml.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	codes, err := normalizeShellCheckCodes(c.ShellCheckExclude)

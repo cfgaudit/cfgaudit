@@ -6,7 +6,7 @@ package parser
 import (
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/cfgaudit/cfgaudit/internal/safeyaml"
 )
 
 // Frontmatter is the YAML metadata block at the top of a Markdown instruction
@@ -24,7 +24,7 @@ func InstructionFrontmatter(content string) (*Frontmatter, bool) {
 		return nil, false
 	}
 	var raw map[string]any
-	if err := yaml.Unmarshal([]byte(block), &raw); err != nil || raw == nil {
+	if err := safeyaml.Unmarshal([]byte(block), &raw); err != nil || raw == nil {
 		return nil, false
 	}
 	return &Frontmatter{Raw: raw}, true

@@ -296,3 +296,10 @@ func TestMatchGlob(t *testing.T) {
 		}
 	}
 }
+
+// A config document the YAML decoder panics on is a parse error (#846).
+func TestParse_DecoderPanic(t *testing.T) {
+	if _, err := parse([]byte("? -\n? <<\n"), "test"); err == nil {
+		t.Fatal("expected a parse error")
+	}
+}

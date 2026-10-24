@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cfgaudit/cfgaudit/internal/safeyaml"
 	"gopkg.in/yaml.v3"
 )
 
@@ -153,7 +154,7 @@ func ParseContinueConfig(path string) (*ContinueConfig, error) {
 		return nil, err
 	}
 	var c ContinueConfig
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	if err := safeyaml.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &c, nil

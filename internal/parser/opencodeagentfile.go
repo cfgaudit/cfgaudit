@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/cfgaudit/cfgaudit/internal/safeyaml"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,7 +27,7 @@ func OpenCodeAgentPermission(content string) json.RawMessage {
 		return nil
 	}
 	var doc yaml.Node
-	if yaml.Unmarshal([]byte(block), &doc) != nil || len(doc.Content) == 0 {
+	if safeyaml.Unmarshal([]byte(block), &doc) != nil || len(doc.Content) == 0 {
 		return nil
 	}
 	root := doc.Content[0]

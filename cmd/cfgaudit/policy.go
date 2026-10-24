@@ -13,6 +13,7 @@ import (
 
 	"github.com/cfgaudit/cfgaudit/internal/config"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
+	"github.com/cfgaudit/cfgaudit/internal/safeyaml"
 	"gopkg.in/yaml.v3"
 )
 
@@ -98,7 +99,7 @@ func policyGenerate(dir, out string) (string, int) {
 func mergeRequireDeny(path string, entries []string) ([]string, error) {
 	var doc yaml.Node
 	if data, err := os.ReadFile(path); err == nil { // #nosec G304,G703 -- config path from a user-supplied dir/--out, by design
-		if err := yaml.Unmarshal(data, &doc); err != nil {
+		if err := safeyaml.Unmarshal(data, &doc); err != nil {
 			return nil, fmt.Errorf("parse %s: %w", path, err)
 		}
 	} else if !os.IsNotExist(err) {
