@@ -55,13 +55,19 @@ func (r *cfg031) ID() string { return "CFG031" }
 // rejected, because a path-less `.key` with an action verb on the line is not a
 // cleaner signal either: of the four such lines in the census, three were the
 // Keynote and Gradle false positives.
+//
+// `.npmrc` counts only in the home directory, or as an `_authToken` line: a
+// project `.npmrc` holds registry settings and is named in prose all the time
+// ("`.npmrc` is used only for auth and registry settings", "plain fetch does
+// not read `.npmrc`"), while the token lives in `~/.npmrc` or is injected in
+// CI (#854).
 var sensitivePathRe = mustFiltered(`(?i)(` +
 	`\.ssh/(?:id_rsa|id_ed25519|id_dsa|id_ecdsa|known_hosts|config)\b` +
 	`|\.aws/(?:credentials|config)\b` +
 	`|\.config/gcloud/` +
 	`|\.gnupg/` +
 	`|\.netrc\b` +
-	`|\.npmrc\b` +
+	`|(?:~|\$HOME|\$\{HOME\}|/home/[\w.\-]+|/Users/[\w.\-]+|/root)/\.npmrc\b|:_authToken\b` +
 	`|\.docker/config\.json` +
 	`|\.kube/config\b` +
 	`|/etc/(?:passwd|shadow|sudoers)\b` +
@@ -75,6 +81,40 @@ var sensitivePathRe = mustFiltered(`(?i)(` +
 // On the same line as the path → error; otherwise a bare mention is only a warn
 // (a skill may legitimately name a credential path in prose).
 var pathActionRe = regexp.MustCompile(`(?i)\b(read|cat|open|less|head|tail|view|print|echo|dump|copy|cp|scp|move|mv|send|upload|post|put|curl|wget|fetch|exfiltrat\w*|leak|transmit|mail|base64|gpg|tar|zip|attach|load|source|contents of|paste)\b`)
+
+// readOnlyRe matches "read-only" / "read only" / "readonly", where "read"
+// describes a mount or a permission, not an action.
+var readOnlyRe = regexp.MustCompile(`(?i)\bread[- ]?only\b`)
+
+// assignmentCommentRe matches a KEY= line whose comment documents the value
+// ("SMTP_DKIM_PRIVATE_KEY_PATH=   # PEM private key, e.g. keys/dkim.pem").
+var assignmentCommentRe = regexp.MustCompile(`^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*=[^#]*#`)
+
+// actionScope returns the part of line whose verbs can act on the path at loc:
+// the clause around it, bounded by sentence punctuation and table cell
+// separators (#854). A verb elsewhere on the line, such as "read the whole
+// change" in a list that also names `scripts/` and a key file, or "fails" in an
+// error message quoted in a troubleshooting table, says nothing about the path.
+// A path inside the comment of a KEY= line documents the value; it has no
+// scope.
+func actionScope(line string, loc []int) string {
+	if m := assignmentCommentRe.FindStringIndex(line); m != nil && loc[0] >= m[1]-1 {
+		return ""
+	}
+	start := clauseStart(line, loc[0])
+	if i := strings.LastIndexByte(line[:loc[0]], '|'); i+1 > start {
+		start = i + 1
+	}
+	end := len(line)
+	for i := loc[1]; i < len(line); i++ {
+		c := line[i]
+		if c == '|' || ((c == '.' || c == ';' || c == '!' || c == '?') && i+1 < len(line) && (line[i+1] == ' ' || line[i+1] == '\t')) {
+			end = i
+			break
+		}
+	}
+	return readOnlyRe.ReplaceAllString(line[start:end], "")
+}
 
 func (r *cfg031) Check(t *Target) []finding.Finding {
 	if t == nil {
@@ -92,7 +132,7 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			sev := finding.Warn
 			msg := src.Name + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
 				"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"
-			if pathActionRe.MatchString(line) {
+			if pathActionRe.MatchString(actionScope(line, loc)) {
 				sev = finding.Error
 				msg = src.Name + " line " + strconv.Itoa(lineNo) + " instructs reading or sending the sensitive file \"" + path +
 					"\" — a hallmark of an exfiltration payload. Remove it"
