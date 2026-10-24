@@ -65,7 +65,13 @@ var shellRefRe = regexp.MustCompile(`^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$`)
 // ${input:id} is VS Code's prompted input in mcp.json: the editor asks for the
 // value and stores it, so the committed text names a prompt, not a secret. The
 // same sample carried it in an OpenCode file copied from a VS Code config.
-var templateRefRe = regexp.MustCompile(`^(?:\$?\{\{.+?\}\}|%\{[^}]+\}|<%.+?%>|__[A-Z][A-Z0-9_]+__|\{env:[^}]+\}|\{file:[^}]+\}|\$\{input:[^}]+\})$`)
+//
+// ${env:NAME} is how Cursor and VS Code read an environment variable in
+// mcp.json ("command, args, env, url, and headers", Cursor's MCP docs), and
+// ${user_config.KEY} is a Claude Code plugin's user option, which Claude Code
+// substitutes in the plugin's MCP server config (plugins reference). Both were
+// reported as hardcoded credentials in real repositories (#821).
+var templateRefRe = regexp.MustCompile(`^(?:\$?\{\{.+?\}\}|%\{[^}]+\}|<%.+?%>|__[A-Z][A-Z0-9_]+__|\{env:[^}]+\}|\{file:[^}]+\}|\$\{input:[^}]+\}|\$\{env:[A-Za-z_][A-Za-z0-9_]*\}|\$\{user_config\.[A-Za-z_][A-Za-z0-9_]*\})$`)
 
 // screamingPlaceholderRe matches an all-caps token that names a credential rather
 // than being one: TU_API_KEY_AQUI, MY_TOKEN_HERE, API_KEY. A real key has mixed

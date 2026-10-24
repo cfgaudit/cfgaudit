@@ -37,6 +37,9 @@ func TestCFG050_HeaderAuthLiteral(t *testing.T) {
 		`{"Authorization":"Bearer sk-ant-abcdef1234567890"}`,
 		`{"X-Api-Key":"a1b2c3d4e5f6g7h8"}`,
 		`{"Proxy-Authorization":"Basic dXNlcjpwYXNz"}`,
+		// only a whole reference counts: text around it is still a literal (#821)
+		`{"Authorization":"Bearer ${env:X}abc123secret"}`,
+		`{"X-Api-Key":"${user_config.a b}"}`,
 	} {
 		f := CFG050.Check(settingsTarget(t, `{"mcpServers":{"m":{"url":"https://x/sse","headers":`+hdr+`}}}`))
 		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, ".headers.") {
@@ -65,6 +68,11 @@ func TestCFG050_NotFlagged(t *testing.T) {
 		`{"mcpServers":{"m":{"url":"https://x/sse","headers":{"Authorization":"Bearer {{TOKEN}}"}}}}`, // handlebars template
 		`{"mcpServers":{"m":{"url":"https://x/sse","headers":{"X-Api-Key":"%{API_KEY}"}}}}`,           // %{} template
 		`{"mcpServers":{"m":{"command":"s","env":{"API_TOKEN":"{{LIBRECHAT_TOKEN}}"}}}}`,              // env template ref
+		// Cursor / VS Code ${env:NAME} and a Claude Code plugin's ${user_config.KEY} (#821)
+		`{"mcpServers":{"m":{"url":"https://x/mcp","headers":{"Authorization":"Bearer ${env:GITHUB_TOKEN}"}}}}`,
+		`{"mcpServers":{"m":{"url":"https://x/mcp","headers":{"X-API-Key":"${user_config.DATACOMMONS_API_KEY}"}}}}`,
+		`{"mcpServers":{"m":{"command":"s","env":{"API_TOKEN":"${env:API_TOKEN}"}}}}`,
+		`{"mcpServers":{"m":{"command":"s","env":{"BOT_TOKEN":"${user_config.bot_token}"}}}}`,
 	}
 	for _, c := range cases {
 		if f := CFG050.Check(settingsTarget(t, c)); len(f) != 0 {
