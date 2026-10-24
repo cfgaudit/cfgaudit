@@ -193,6 +193,22 @@ func TestRuleConfig_RejectsOtherNodeKinds(t *testing.T) {
 	}
 }
 
+func TestParse_ContentPaths(t *testing.T) {
+	c, err := parse([]byte("content-paths:\n  - README.md\n  - docs/**/*.md\n"), "c.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ContentPathGlobs(); len(got) != 2 || got[1] != "docs/**/*.md" {
+		t.Errorf("ContentPathGlobs = %q", got)
+	}
+	if (*Config)(nil).ContentPathGlobs() != nil {
+		t.Error("a nil config has no content paths")
+	}
+	if !MatchGlob("docs/**/*.md", "docs/a/b.md") || MatchGlob("docs/**/*.md", "src/a.md") {
+		t.Error("MatchGlob does not follow the exclude-paths syntax")
+	}
+}
+
 func TestParse_InvalidYAML(t *testing.T) {
 	_, err := parse([]byte("rules: [\n"), "bad.yml")
 	if err == nil || !strings.Contains(err.Error(), "bad.yml") {

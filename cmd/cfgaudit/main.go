@@ -75,6 +75,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	showVersion := fset.Bool("version", false, "print cfgaudit version and exit")
 
 	var only, skip ruleSet
+	var contentPaths pathList
+	fset.Var(&contentPaths, "content-paths", "also scan these files (globs relative to the scanned dir, comma-separated; flag may be repeated) with the high-precision content rules, e.g. README.md,docs/**/*.md (also: content-paths in .cfgaudit.yml)")
 	fset.Var(&only, "only", "run only these rule IDs (comma-separated; flag may be repeated)")
 	fset.Var(&skip, "skip", "skip these rule IDs (comma-separated; flag may be repeated)")
 
@@ -149,6 +151,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	attachSkillShellToPluginSkills(pluginTargets, dir)
 	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
+	docTargets, err := contentPathTargets(dir, append(append([]string(nil), cfg.ContentPathGlobs()...), contentPaths...), targets)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
+	}
+	targets = append(targets, docTargets...)
 	targets = append(targets, escapedLinkTargets()...)
 
 	if shellCheckEnabled(*shellcheck || cfg.ShellCheckEnabled()) {

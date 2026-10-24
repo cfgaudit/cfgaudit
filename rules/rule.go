@@ -68,6 +68,11 @@ type Target struct {
 	InstructionFile    string
 	InstructionContent string
 
+	// ContentPath marks a target for a file that content-paths lists (#795): a
+	// README or doc page, not an instruction file. Run applies only
+	// ContentPathRules to it and reports at most warn.
+	ContentPath bool
+
 	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
 	// workspace tasks). A task set to run on folder-open is a zero-click code
 	// execution vector when committed to a repo (CFG047). Nil when absent;

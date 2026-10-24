@@ -163,6 +163,9 @@ cfgaudit --strict
 # Deeper shell analysis of hook commands (CFG045, needs the shellcheck binary)
 cfgaudit --shellcheck
 
+# Also scan docs that agents read while they work, with the high-precision content rules
+cfgaudit --content-paths 'README.md,CONTRIBUTING.md,docs/**/*.md'
+
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 
@@ -270,6 +273,13 @@ no-exit-codes: false
 shellcheck: false
 # ShellCheck codes CFG045 never reports (with or without the SC prefix)
 shellcheck-exclude: [SC2086]
+
+# Files that are not agent instruction files but that agents read while they
+# work. Off by default. Only the rules for text with no place in any Markdown
+# file run on them (CFG024, CFG032, CFG057, CFG080), and they report warn at most.
+content-paths:
+  - README.md
+  - docs/**/*.md
 
 # Path globs (relative to the scanned dir) whose findings are excluded.
 # Supports *, ** and a trailing / for directory prefixes.

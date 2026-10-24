@@ -41,6 +41,9 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 		if accept != nil && !accept(r) {
 			continue
 		}
+		if target.ContentPath && !ContentPathRules[r.ID()] {
+			continue
+		}
 		if detected != nil {
 			if skipMsg := versionSkip(r, *detected); skipMsg != "" {
 				out = append(out, finding.Finding{
@@ -58,10 +61,31 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 			if results[i].Scope == "" {
 				results[i].Scope = target.Scope
 			}
+			if target.ContentPath && results[i].File == target.InstructionFile {
+				if results[i].Severity == finding.Error {
+					results[i].Severity = finding.Warn
+				}
+				results[i].Message += "; scanned because content-paths lists it: agents read this file when they open it, not as instructions"
+			}
 		}
 		out = append(out, results...)
 	}
 	return out
+}
+
+// ContentPathRules are the rules that run on the files content-paths lists
+// (#795). They look for text with no legitimate place in any Markdown file:
+// hidden Unicode controls (CFG024), pseudo system tags and control tokens
+// (CFG032), encoded payloads (CFG057) and directives in HTML comments
+// (CFG080). On 7,494 README, top-level and docs/ Markdown files from 149
+// public repositories they reported 4 findings (two CFG032 on a `<ROOT>`
+// placeholder, two CFG024 on a zero-width character in an emoji sequence and
+// in text documenting one); the phrase rules reported 343 on the same files.
+var ContentPathRules = map[string]bool{
+	"CFG024": true,
+	"CFG032": true,
+	"CFG057": true,
+	"CFG080": true,
 }
 
 // versionSkip returns a non-empty notice message when r is Versioned and
