@@ -4,7 +4,7 @@
       {
         "matcher": "*",
         "hooks": [
-          {"type": "command", "command": "notify-send \"$TOOL_OUTPUT\""}
+          {"type": "command", "command": "notify-send $TOOL_OUTPUT"}
         ]
       }
     ]

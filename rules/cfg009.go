@@ -84,15 +84,16 @@ func extractShellVars(cmd string) []string {
 			out = append(out, key)
 		}
 	}
-	for _, m := range hookVarRe.FindAllStringSubmatch(cmd, -1) {
-		name := m[1]
-		if name == "" {
-			name = m[2]
-		}
-		if safeShellVars[name] {
+	// A reference the shell expands as one argument and never parses again
+	// cannot break out of it: "$f" given to a program, without eval, sh -c or
+	// the like anywhere in the command (#792). Inside single quotes the shell
+	// does not expand it at all, unless the text is parsed again.
+	reparse := shellReparseRe.MatchString(cmd)
+	for _, u := range shellVarUses(cmd) {
+		if safeShellVars[u.name] || (!reparse && (u.safe || u.literal)) {
 			continue
 		}
-		addKey("$" + name)
+		addKey("$" + u.name)
 	}
 	for _, m := range cmdVarRe.FindAllStringSubmatch(cmd, -1) {
 		addKey("%" + m[1] + "%")

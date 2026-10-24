@@ -11,7 +11,7 @@ import (
 )
 
 func TestCFG009_DollarVar(t *testing.T) {
-	json := `{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"notify-send \"$TOOL_OUTPUT\""}]}]}}`
+	json := `{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"notify-send $TOOL_OUTPUT"}]}]}}`
 	f := CFG009.Check(settingsTarget(t, json))
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
@@ -157,11 +157,54 @@ func TestCFG009_OtherAgentsProjectVarsAreSafe(t *testing.T) {
 
 // A non-framework variable alongside a safe one is still reported, and only it.
 func TestCFG009_SafeVarDoesNotMaskOthers(t *testing.T) {
-	f := CFG009.Check(hookTarget(t, `cd "$ZED_WORKTREE_ROOT" && run "$USER_SUPPLIED"`))
+	f := CFG009.Check(hookTarget(t, `cd "$ZED_WORKTREE_ROOT" && run $USER_SUPPLIED`))
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %+v", f)
 	}
 	if !strings.Contains(f[0].Message, "USER_SUPPLIED") || strings.Contains(f[0].Message, "ZED_WORKTREE_ROOT") {
 		t.Errorf("only the unsafe variable should be named, got %q", f[0].Message)
+	}
+}
+
+// A reference the shell expands as one argument and never parses again is not
+// reported (#792); every way of getting it parsed again still is.
+func TestCFG009_Quoting(t *testing.T) {
+	tests := []struct {
+		cmd  string
+		want string // the variable reported, or "" for none
+	}{
+		// the hook from #792: stdin into f, f only ever in double quotes
+		{`f=$(jq -r '.tool_input.file_path'); printf '%s' "$f" | grep -qE '\\.gitlab-ci\\.yml$' && "${CLAUDE_PLUGIN_ROOT}/bin/tool" "$f" || true`, ""},
+		{`notify-send "$TOOL_OUTPUT"`, ""},
+		{`cp "${SRC}" "${SRC}.bak"`, ""},
+		{`run "$DIR/out.txt"`, ""},
+		{`jq -n '$ENV.HOME'`, ""},
+		{`notify-send $TOOL_OUTPUT`, "$TOOL_OUTPUT"},
+		{`notify-send "x" $TOOL_OUTPUT`, "$TOOL_OUTPUT"},
+		{`jq ".path == \"$f\""`, "$f"},
+		{`python3 -c "print('$f')"`, "$f"},
+		{`eval "$CMD"`, "$CMD"},
+		{`sh -c "echo $f"`, "$f"},
+		{`bash -lc 'echo $f'`, "$f"},
+		{`printf '%s' "$f" | xargs sh -c 'rm $0'`, "$f"},
+		{`"$CMD" --version`, "$CMD"},
+		{`X=1 "$CMD"`, "$CMD"},
+		{`true && "$CMD"`, "$CMD"},
+		{`echo "$f`, "$f"},
+		{`echo \$HOME is literal`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.cmd, func(t *testing.T) {
+			f := CFG009.Check(hookTarget(t, tt.cmd))
+			if tt.want == "" {
+				if len(f) != 0 {
+					t.Errorf("expected no finding, got %+v", f)
+				}
+				return
+			}
+			if len(f) != 1 || !strings.Contains(f[0].Message, tt.want) {
+				t.Errorf("expected %s reported, got %+v", tt.want, f)
+			}
+		})
 	}
 }

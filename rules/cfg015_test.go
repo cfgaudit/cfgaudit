@@ -155,3 +155,34 @@ func TestCFG015_BenignAndDangerousTogether(t *testing.T) {
 		t.Errorf("the benign substitution must not be listed, got %q", f[0].Message)
 	}
 }
+
+// A substitution that only reads the hook's stdin and only fills a variable is
+// not reported (#792); used as an argument, reading a file or the network, or
+// glued to more text, it still is.
+func TestCFG015_AssignedFromStdin(t *testing.T) {
+	tests := []struct {
+		cmd  string
+		want bool
+	}{
+		{`f=$(jq -r '.tool_input.file_path'); printf '%s' "$f" | grep -q x && tool "$f" || true`, false},
+		{`f=$(jq -r .tool_input.file_path) && tool "$f"`, false},
+		{`local input=$(cat); echo "$input" | tool`, false},
+		{`P=$(jq -r ".tool_input.command")`, false},
+		{`FILE=$(jq -r '.tool_input.file_path' 2>/dev/null); [ -z "$FILE" ] && exit 0`, false},
+		{`f=$(jq -r '.x' 2>/tmp/log)`, true},
+		{`tool $(jq -r '.tool_input.file_path')`, true},
+		{`f=$(jq -r '.x' /etc/passwd)`, true},
+		{`f=$(cat ~/.ssh/id_rsa)`, true},
+		{`f=$(jq -r '.x' | sh)`, true},
+		{`f=$(curl -s https://example.com)`, true},
+		{`f=$(jq -r '.x')suffix`, true},
+		{`f=$(jq -r '.x'); tool $(jq -r '.x')`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.cmd, func(t *testing.T) {
+			if got := len(CFG015.Check(hookTarget(t, tt.cmd))) > 0; got != tt.want {
+				t.Errorf("finding = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

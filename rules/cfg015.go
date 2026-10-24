@@ -64,6 +64,42 @@ func isBenignSubstitution(s string) bool {
 	return benignSubstRe.MatchString(inner)
 }
 
+// stdinReaderRe matches a substituted command that only reads the hook's own
+// stdin, the event JSON Claude Code pipes in: jq with options and one filter
+// and no file argument, or a bare cat, optionally with stderr sent to
+// /dev/null. That is how the docs of this rule tell
+// a hook to get its input (#792).
+var stdinReaderRe = regexp.MustCompile(`^\s*(?:jq(?:\s+-[A-Za-z-]+)*\s+(?:'[^']*'|"[^"]*"|\.[A-Za-z0-9_.\[\]]*)|cat)(?:\s+2>\s*/dev/null)?\s*$`)
+
+// assignedFromStdin reports whether the substitution s appears in cmd only as
+// the whole value of a variable assignment (NAME=$(...), local NAME=$(...))
+// and its command only reads stdin. The output is stored, not spliced into a
+// command line; where the variable is used is CFG009's question.
+func assignedFromStdin(cmd, s string) bool {
+	if !strings.HasPrefix(s, "$(") || !stdinReaderRe.MatchString(s[2:len(s)-1]) {
+		return false
+	}
+	found := false
+	for i := 0; ; {
+		j := strings.Index(cmd[i:], s)
+		if j < 0 {
+			return found
+		}
+		j += i
+		if !assignedBeforeRe.MatchString(cmd[:j]) {
+			return false
+		}
+		end := j + len(s)
+		if end < len(cmd) && !strings.ContainsRune(" \t;&|)\n", rune(cmd[end])) {
+			return false // more text glued to the value
+		}
+		found = true
+		i = end
+	}
+}
+
+var assignedBeforeRe = regexp.MustCompile(`(?:^|[\s;&|(])[A-Za-z_][A-Za-z0-9_]*=$`)
+
 func (r *cfg015) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -73,6 +109,7 @@ func (r *cfg015) Check(t *Target) []finding.Finding {
 	for _, site := range commandSites(t) {
 		substs := extractHookSubstitutions(site.Command)
 		substs = slices.DeleteFunc(substs, isBenignSubstitution)
+		substs = slices.DeleteFunc(substs, func(s string) bool { return assignedFromStdin(site.Command, s) })
 		if len(substs) == 0 {
 			continue
 		}
