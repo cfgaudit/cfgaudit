@@ -38,9 +38,10 @@ include:
       path: testdata/gitlab-component
       format: json
       allow_failure: true
+  # A $VAR reference, so the input regex is checked to let one through (#798).
   - local: templates/cfgaudit-code-quality.yml
     inputs:
-      path: testdata/gitlab-component
+      path: $CI_PROJECT_DIR/testdata/gitlab-component
 
 # Any image with sh and grep would do; this pin is not bumped with releases.
 .check:

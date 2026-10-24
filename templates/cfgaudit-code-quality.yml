@@ -20,15 +20,26 @@ spec:
     path:
       default: "."
       description: Directory to scan.
+      # Interpolated into the script inside double quotes (#798): path
+      # characters and $VAR or ${VAR} references only, no quotes, backticks or
+      # $( ).
+      regex: '^([A-Za-z0-9 ._/@+-]|\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})*$'
     config:
       default: ""
       description: >-
         .cfgaudit.yml to use instead of the one in the scanned directory. For merge
         requests from people you do not fully trust, point it at a file the merge
         request cannot change, such as a File-type CI/CD variable ($CFGAUDIT_CONFIG).
+      # Interpolated into the script inside double quotes (#798): path
+      # characters and $VAR or ${VAR} references only, no quotes, backticks or
+      # $( ).
+      regex: '^([A-Za-z0-9 ._/@+-]|\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})*$'
     version:
       default: "1.17.1"
-      description: cfgaudit ghcr.io image tag (pinned; do not use a moving tag).
+      description: >-
+        cfgaudit ghcr.io image tag (pinned; do not use a moving tag), optionally
+        with its digest: X.Y.Z@sha256:<digest>.
+      regex: '^[0-9]+\.[0-9]+\.[0-9]+(@sha256:[0-9a-f]{64})?$'
     allow_failure:
       type: boolean
       default: true
@@ -49,3 +60,5 @@ cfgaudit-code-quality:
     paths:
       - gl-code-quality-report.json
     when: always
+    # Long enough to cover a merge request review (#798).
+    expire_in: 30 days

@@ -342,7 +342,7 @@ include:
       format: text
 ```
 
-Inputs: `stage`, `path`, `format`, `config`, `version` (pinned ghcr.io image tag), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`.
+Inputs: `stage`, `path`, `format`, `config`, `version` (pinned ghcr.io image tag, optionally with `@sha256:<digest>`), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`. `path` and `config` take path characters and `$VAR` / `${VAR}` references only; quotes, backticks and `$( )` are rejected when the pipeline is created. The output artifact expires after 30 days.
 
 `config` replaces the scanned directory's `.cfgaudit.yml`. For merge requests, keep the config out of the repository, for example in a File-type CI/CD variable, so the merge request cannot change it ([why](#untrusted-repositories)):
 
