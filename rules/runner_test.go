@@ -134,3 +134,28 @@ func (p *plainRule) ID() string { return p.id }
 func (p *plainRule) Check(t *Target) []finding.Finding {
 	return []finding.Finding{{RuleID: p.id, Severity: finding.Warn, File: t.SettingsFile}}
 }
+
+// A content-paths target runs only ContentPathRules, caps error at warn and
+// says why the file was scanned (#795).
+func TestRun_ContentPathTarget(t *testing.T) {
+	const file = "README.md"
+	// Fresh stubs per run: Run updates the returned findings in place.
+	stubs := func() {
+		withRules(t,
+			&stubRule{id: "CFG024", results: []finding.Finding{{RuleID: "CFG024", Severity: finding.Error, File: file, Message: "hidden"}}},
+			&stubRule{id: "CFG026", results: []finding.Finding{{RuleID: "CFG026", Severity: finding.Error, File: file, Message: "phrase"}}},
+		)
+	}
+	stubs()
+	got := Run(&Target{InstructionFile: file, ContentPath: true}, nil, nil)
+	if len(got) != 1 || got[0].RuleID != "CFG024" {
+		t.Fatalf("want only CFG024, got %+v", got)
+	}
+	if got[0].Severity != finding.Warn || !strings.HasSuffix(got[0].Message, "scanned because content-paths lists it: agents read this file when they open it, not as instructions") {
+		t.Errorf("want a warn with the content-paths note, got %+v", got[0])
+	}
+	stubs()
+	if got := Run(&Target{InstructionFile: file}, nil, nil); len(got) != 2 || got[0].Severity != finding.Error {
+		t.Errorf("an ordinary instruction target keeps every rule and its severity, got %+v", got)
+	}
+}

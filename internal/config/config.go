@@ -36,6 +36,19 @@ type Config struct {
 	// shellcheck as --exclude. parse normalizes each entry to "SC" plus four
 	// digits and rejects anything else (#717).
 	ShellCheckExclude []string `yaml:"shellcheck-exclude"`
+	// ContentPaths are globs, relative to the scanned directory and in the
+	// exclude-paths syntax, naming files that are not agent instruction files
+	// but that agents read while they work, such as README.md or docs/**/*.md.
+	// The high-precision instruction-content rules scan them too (#795).
+	ContentPaths []string `yaml:"content-paths"`
+}
+
+// ContentPathGlobs returns the content-paths globs. Safe on a nil *Config.
+func (c *Config) ContentPathGlobs() []string {
+	if c == nil {
+		return nil
+	}
+	return c.ContentPaths
 }
 
 // ShellCheckEnabled reports whether shellcheck analysis is requested via config.
@@ -251,6 +264,10 @@ func parseSeverity(s string) (finding.Severity, bool) {
 	}
 	return "", false
 }
+
+// MatchGlob reports whether path, slash-separated and relative to the scanned
+// directory, matches pattern in the syntax of exclude-paths.
+func MatchGlob(pattern, path string) bool { return matchGlob(pattern, path) }
 
 // matchGlob matches a path against a glob supporting `*` (within a segment),
 // `**` (across segments), `?`, and a trailing `/` (directory prefix).
