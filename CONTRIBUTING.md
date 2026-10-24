@@ -213,6 +213,8 @@ Every change, including the maintainer's own, lands through a pull request; noth
 - **Workflows.** Actions are pinned to commit SHAs, permissions are the least the job needs, no input is interpolated into a script, and zizmor passes.
 - **Docs and style.** README, rule docs and CONTRIBUTING.md match the change.
 
+**Sensitive paths.** A pull request that touches the plugin (`hooks/`, `bin/`, `skills/`), the build and release files, the published Action and GitLab components, agent or editor config, or the files that steer the other checks fails the `Sensitive paths` check until the maintainer has looked at those files and set the `sensitive-paths-reviewed` label. A new push removes the label again. The full list is in `.github/workflows/sensitive-paths.yml`.
+
 **What makes a change acceptable:** all required checks pass, every review comment is resolved, and the title is a conventional commit line that references the issue. The pull request is then squash-merged.
 
 **New contributors** can start with an issue labelled [`good first issue`](https://github.com/cfgaudit/cfgaudit/labels/good%20first%20issue): small, self-contained changes with the expected result spelled out.
