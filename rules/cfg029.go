@@ -235,6 +235,96 @@ func negated(lines []string, i int, loc []int) bool {
 	return introducesList(g) && prohibitionRe.MatchString(g[clauseStart(g, len(g)):])
 }
 
+// cliFlagRe finds a command-line flag in a line: `--fix`, `-y`, --yes. The
+// leading character keeps "non-interactive" and a list dash out.
+var cliFlagRe = regexp.MustCompile("(?:^|[\\s`(|\"'=,\\[])(--?[A-Za-z][\\w-]*)")
+
+// agentPermissionFlags are the flags that change an agent's own permission
+// handling. A line naming one of them keeps reporting: there the bypass phrase
+// is about the agent.
+var agentPermissionFlags = map[string]bool{
+	"--dangerously-skip-permissions": true, "--allow-dangerously-skip-permissions": true,
+	"--permission-mode": true, "--yolo": true, "--full-auto": true, "--trust": true,
+	"--dangerously-bypass-approvals-and-sandbox": true, "--approval-mode": true,
+	"--auto-approve": true, "--always-approve": true,
+}
+
+// autoApproveObjectRe is the object that makes "auto-approve" an order about
+// the agent's permissions: tools, commands, edits, permissions, or all of them,
+// or the no-prompt mode it runs in ("Auto-approve in yolo mode", kept from
+// #655).
+var autoApproveObjectRe = regexp.MustCompile(`(?i)^[^.;|]{0,40}?\b(?:all|every|everything|any|anything|tools?|tool\s+calls?|bash|shell|commands?|edits?|writes?|permissions?|permission\s+requests?|actions?|operations?|mcp|yolo|bypass|dangerously)\b`)
+
+// autoApproveMappedRe is the same object written before an arrow, the shape of
+// an approval table: "read-only tools → auto-approve".
+var autoApproveMappedRe = regexp.MustCompile(`(?i)\b(?:tools?|tool\s+calls?|commands?|edits?|writes?|operations?|actions?|permissions?|bash|shell|mcp)\b[^.;|]{0,40}(?:→|->|=>)\s*$`)
+
+// neverPromptObjectRe is the object that makes "never prompt"/"never confirm"
+// about permission: never prompt for permission, approval or confirmation, or
+// before running something.
+var neverPromptObjectRe = regexp.MustCompile(`(?i)^\s+(?:the\s+user\s+)?(?:for\s+(?:permission|approval|confirmation)|before\b)`)
+
+// The bypassNoun patterns match "bypass permission(s)" used as a noun
+// (Salesforce's bypass permission set): after an article, before "set", or as
+// a whole list item ("sharing rules, and bypass permissions."). "and bypass
+// permission prompts" is the verb and keeps reporting.
+var bypassNounBeforeRe = regexp.MustCompile(`(?i)\b(?:the|a|an|any|this|that|each|its|their)\s+$`)
+var bypassNounListRe = regexp.MustCompile(`(?:,|\band)\s+$`)
+var bypassNounAfterRe = regexp.MustCompile(`(?i)^s?\s+sets?\b`)
+var bypassNounEndRe = regexp.MustCompile(`^s?\s*[,.;)]`)
+
+// notAPermissionBypass reports a match that names something other than the
+// agent's permission prompts (#830): a tool's own flag being documented
+// ("`--fix`: Apply fixes without prompting"), "auto-approve" as a noun or an
+// approval workflow ("routes to auto-approve", "Auto-approve and merge"),
+// "never prompt" about input rather than permission ("Never prompt for JSON",
+// "users are never prompted"), and Salesforce's bypass permission set.
+func notAPermissionBypass(line string, loc []int) bool {
+	match := strings.ToLower(line[loc[0]:loc[1]])
+	after := line[loc[1]:]
+	before := line[:loc[0]]
+	// Where a flag can make the phrase its description: anywhere in a table
+	// row (a table documents commands), else in the same clause before the
+	// match ("- `--fix`: Apply fixes without prompting", "use `-y` to
+	// auto-approve requirements"). A flag elsewhere on the line does not.
+	scope := before[clauseStart(line, loc[0]):]
+	if strings.HasPrefix(strings.TrimSpace(line), "|") {
+		scope = line
+	}
+	if flags := cliFlagRe.FindAllStringSubmatch(scope, -1); len(flags) > 0 {
+		agentFlag := false
+		for _, f := range cliFlagRe.FindAllStringSubmatch(line, -1) {
+			if agentPermissionFlags[strings.ToLower(f[1])] {
+				agentFlag = true
+			}
+		}
+		if !agentFlag {
+			return true
+		}
+	}
+	switch {
+	case strings.HasPrefix(match, "auto"):
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			return true // a heading or a code comment names a topic
+		}
+		return !autoApproveObjectRe.MatchString(after) && !autoApproveMappedRe.MatchString(before)
+	case strings.HasPrefix(match, "never prompt"), strings.HasPrefix(match, "never confirm"):
+		if len(after) > 0 && isWordByte(after[0]) {
+			return true // prompts, prompted, confirmed, CONFIRMED
+		}
+		rest := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(after)), "the user ")
+		return !neverPromptObjectRe.MatchString(after) && strings.HasPrefix(rest, "for")
+	case strings.HasPrefix(match, "bypass permission"):
+		return bypassNounBeforeRe.MatchString(before) || bypassNounAfterRe.MatchString(after) ||
+			(bypassNounListRe.MatchString(before) && bypassNounEndRe.MatchString(after))
+	}
+	return false
+}
+
+func isWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b == '_'
+}
+
 // introducesList reports whether a line is the kind that governs the list under
 // it: a Markdown heading, or a line that ends in a colon.
 //
@@ -298,7 +388,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 			if loc == nil {
 				continue
 			}
-			if negated(lines, i, loc) {
+			if negated(lines, i, loc) || notAPermissionBypass(line, loc) {
 				continue
 			}
 			lineNo := i + 1
