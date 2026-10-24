@@ -4,10 +4,12 @@
 package parser
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -422,15 +424,148 @@ func ParseSettings(path string) (*Settings, error) {
 
 // ParseSettingsBytes decodes settings.json from an in-memory byte slice.
 // path is used only for error messages.
+//
+// Only a file that is not a JSON object fails. The typed fields are decoded one
+// by one and leniently (#826): Claude Code 2.1.310 loads a settings file with
+// "env": {"X": 80} or "mcpServers": [...], so failing the whole file on one
+// field's type hid every other setting in it from the rules. Whether a wrong
+// top-level type makes Claude Code drop the file is decided from Raw
+// (rules.SettingsDiscarded), not here.
 func ParseSettingsBytes(data []byte, path string) (*Settings, error) {
 	var s Settings
-	if err := json.Unmarshal(data, &s); err != nil {
+	if err := json.Unmarshal(data, &s.Raw); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if err := json.Unmarshal(data, &s.Raw); err != nil {
-		return nil, fmt.Errorf("parse raw %s: %w", path, err)
+	if s.Raw == nil {
+		return nil, fmt.Errorf("parse %s: not a JSON object", path)
 	}
+	s.Permissions = lenientPermissions(s.Raw["permissions"])
+	s.Env = lenientEnv(s.Raw["env"])
+	s.Hooks = lenientHooks(s.Raw["hooks"])
+	s.MCPServers = lenientMap[MCPServer](s.Raw["mcpServers"])
 	return &s, nil
+}
+
+// lenientPermissions decodes the permissions block, skipping list entries that
+// are not strings and a defaultMode that is not one.
+func lenientPermissions(raw json.RawMessage) *Permissions {
+	var p Permissions
+	if len(raw) == 0 || json.Unmarshal(raw, &p) == nil {
+		if len(raw) == 0 || string(raw) == "null" {
+			return nil
+		}
+		return &p
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return nil
+	}
+	p = Permissions{Allow: lenientStrings(m["allow"]), Deny: lenientStrings(m["deny"]), Ask: lenientStrings(m["ask"])}
+	_ = json.Unmarshal(m["defaultMode"], &p.DefaultMode)
+	return &p
+}
+
+// lenientStrings decodes a JSON array, keeping only its string elements.
+func lenientStrings(raw json.RawMessage) []string {
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return nil
+	}
+	var out []string
+	for _, it := range items {
+		var v string
+		if json.Unmarshal(it, &v) == nil {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// lenientEnv decodes the env block. A number or boolean value is kept as its
+// JSON text, the string the variable gets; an object, array or null is skipped.
+func lenientEnv(raw json.RawMessage) map[string]string {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil || len(m) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for k, v := range m {
+		if string(bytes.TrimSpace(v)) == "null" {
+			continue
+		}
+		var str string
+		if json.Unmarshal(v, &str) == nil {
+			out[k] = str
+			continue
+		}
+		var num json.Number
+		var b bool
+		dec := json.NewDecoder(bytes.NewReader(v))
+		dec.UseNumber()
+		if dec.Decode(&num) == nil {
+			out[k] = num.String()
+		} else if json.Unmarshal(v, &b) == nil {
+			out[k] = strconv.FormatBool(b)
+		}
+	}
+	return out
+}
+
+// lenientHooks decodes the hooks block event by event and group by group,
+// skipping a group that does not decode.
+func lenientHooks(raw json.RawMessage) map[string][]HookGroup {
+	var events map[string]json.RawMessage
+	if json.Unmarshal(raw, &events) != nil || len(events) == 0 {
+		return nil
+	}
+	out := map[string][]HookGroup{}
+	for event, rawGroups := range events {
+		var groups []json.RawMessage
+		if json.Unmarshal(rawGroups, &groups) != nil {
+			continue
+		}
+		for _, g := range groups {
+			var hg HookGroup
+			if json.Unmarshal(g, &hg) == nil {
+				out[event] = append(out[event], hg)
+				continue
+			}
+			// One handler of the wrong shape: keep the group's other handlers.
+			var loose struct {
+				Matcher json.RawMessage   `json:"matcher"`
+				Hooks   []json.RawMessage `json:"hooks"`
+			}
+			if json.Unmarshal(g, &loose) != nil {
+				continue
+			}
+			hg = HookGroup{}
+			_ = json.Unmarshal(loose.Matcher, &hg.Matcher)
+			for _, h := range loose.Hooks {
+				var hc HookCommand
+				if json.Unmarshal(h, &hc) == nil {
+					hg.Hooks = append(hg.Hooks, hc)
+				}
+			}
+			out[event] = append(out[event], hg)
+		}
+	}
+	return out
+}
+
+// lenientMap decodes a JSON object of T, skipping entries that do not decode.
+func lenientMap[T any](raw json.RawMessage) map[string]T {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil || len(m) == 0 {
+		return nil
+	}
+	out := map[string]T{}
+	for k, v := range m {
+		var t T
+		if json.Unmarshal(v, &t) == nil {
+			out[k] = t
+		}
+	}
+	return out
 }
 
 // MCPStaticOAuth is the part of a Cursor MCP server's `auth` block cfgaudit reads.
