@@ -56,6 +56,28 @@ var (
 // (error). Part C: foreign-LLM tokenizer control sequences (warn — harmless to
 // Claude's tokenizer but a strong adversarial-authorship signal). Code-fenced
 // matches are still reported.
+// exampleUserTurnRe matches a paragraph that opens an example dialogue turn
+// with "User:".
+var exampleUserTurnRe = regexp.MustCompile(`^(?:User|Me|Customer|Developer):\s`)
+
+// exampleDialogueTurn reports whether the "Assistant:" boundary at off answers
+// a "User:" paragraph, the shape of an example conversation in a skill
+// ("User: Yes, https://...\n\nAssistant: [Fetches and analyzes release
+// notes]"). Claude's real turn marker is "Human:"; a "Human:" boundary, and an
+// "Assistant:" without such a "User:" paragraph before it, keep reporting
+// (#856).
+func exampleDialogueTurn(c string, off int) bool {
+	if !strings.HasPrefix(c[off:], "Assistant:") {
+		return false
+	}
+	prev := strings.TrimRight(c[:off], "\n")
+	start := strings.LastIndex(prev, "\n\n") + 1
+	if start > 0 {
+		start++
+	}
+	return exampleUserTurnRe.MatchString(strings.TrimLeft(prev[start:], "\n"))
+}
+
 func (r *cfg032) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -91,6 +113,9 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 
 		// Part B — Claude turn-boundary / role injection (error)
 		for _, loc := range turnBoundary.FindAllStringIndex(c, -1) {
+			if exampleDialogueTurn(c, loc[0]+2) {
+				continue
+			}
 			add(loc[0]+2, finding.Error, "injects a Claude turn boundary (Human:/Assistant:) (Part B) — an attempt to close the turn and open an attacker-controlled one; remove it")
 		}
 		for _, loc := range roleTagRe.FindAllStringIndex(c, -1) {

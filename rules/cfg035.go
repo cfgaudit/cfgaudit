@@ -32,8 +32,12 @@ type mcpInstrPattern struct {
 var mcpInstructionPatterns = []mcpInstrPattern{
 	{mustFiltered(`(?i)claude\s+mcp\s+add\b`), finding.Warn, true},
 	{mustFiltered(`(?i)(?:add|install|configure|register|enable|connect)\s+(?:the\s+)?(?:mcp|model\s+context\s+protocol)\s+(?:server|tool|integration)`), finding.Warn, true},
-	{mustFiltered(`(?i)(?:alwaysAllow|trust|whitelist|allowlist)\s+.*\bmcp\b`), finding.Error, false},
-	{mustFiltered(`(?i)\bmcp\b.*\b(?:alwaysAllow|trusted|allow\s+all)`), finding.Error, false},
+	// The trust verb and the MCP server have to be within a few words of each
+	// other: with `.*` any line holding "trust"/"allowlist" and a later "MCP"
+	// matched, such as "allowlist `MCP_LOGO_FETCH_HOSTS` (default: public icon
+	// CDNs only ...)" (#856).
+	{mustFiltered(`(?i)\b(?:alwaysAllow|trust|whitelist|allowlist)\s+(?:[\w.@/\-]+\s+){0,3}?mcp\b`), finding.Error, false},
+	{mustFiltered(`(?i)\bmcp\b(?:\s+[\w.@/\-]+){0,4}?\s+(?:to\s+)?(?:alwaysAllow|(?:is\s+|are\s+|as\s+)?trusted|allow\s+all)\b`), finding.Error, false},
 }
 
 // Check flags instruction-file content that installs or trusts an MCP server. A

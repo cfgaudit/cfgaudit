@@ -29,6 +29,32 @@ var (
 	urlPlaceholderRe = regexp.MustCompile(`\{\{[^}]*\}\}|<[A-Za-z_][^>]*>|__[A-Za-z]\w*__`)
 )
 
+// identifierPlaceholderRe matches a placeholder that names an identifier the
+// author fills in when writing the link: <uuid>, <NEW_HASH>, <owner>,
+// <assets-branch>, <name>, a badge's <status>-<status_color>. In the path of an image URL that is a template for
+// an upload result or a repository location, not a slot for conversation data
+// (#856).
+var identifierPlaceholderRe = regexp.MustCompile(`(?i)^(?:<|\{\{\s*|__)[\w\-\s]*?(?:uuid|guid|id|hash|sha|owner|org|user(?:name)?|repo(?:sitory)?|branch|tag|version|name|file(?:name)?|path|image|asset|number|slug|width|height|size|status|colou?r|label|style|logo|badge)(?:\s*>|\s*\}\}|__)$`)
+
+// placeholderSink reports whether url has a placeholder the agent could fill
+// with conversation data: any placeholder in the query string, or one in the
+// path that is not an identifier slot.
+func placeholderSink(url string) bool {
+	path, query := url, ""
+	if i := strings.IndexByte(url, '?'); i >= 0 {
+		path, query = url[:i], url[i:]
+	}
+	if urlPlaceholderRe.MatchString(query) {
+		return true
+	}
+	for _, p := range urlPlaceholderRe.FindAllString(path, -1) {
+		if !identifierPlaceholderRe.MatchString(p) {
+			return true
+		}
+	}
+	return false
+}
+
 // Check flags markdown image references whose URL has an empty or placeholder
 // query parameter. Claude is then instructed to fill it with conversation data,
 // and rendering/following the image URL exfiltrates that data to the attacker's
@@ -42,7 +68,7 @@ func (r *cfg033) Check(t *Target) []finding.Finding {
 		for i, line := range strings.Split(src.Content, "\n") {
 			for _, m := range mdImageRe.FindAllStringSubmatchIndex(line, -1) {
 				url := line[m[2]:m[3]]
-				if !emptyQueryParamRe.MatchString(url) && !urlPlaceholderRe.MatchString(url) {
+				if !emptyQueryParamRe.MatchString(url) && !placeholderSink(url) {
 					continue
 				}
 				lineNo := i + 1
