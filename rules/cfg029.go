@@ -259,6 +259,16 @@ var autoApproveObjectRe = regexp.MustCompile(`(?i)^[^.;|]{0,40}?\b(?:all|every|e
 // an approval table: "read-only tools → auto-approve".
 var autoApproveMappedRe = regexp.MustCompile(`(?i)\b(?:tools?|tool\s+calls?|commands?|edits?|writes?|operations?|actions?|permissions?|bash|shell|mcp)\b[^.;|]{0,40}(?:→|->|=>)\s*$`)
 
+// confirmingPermissionRe is what makes "without confirming" skip a
+// confirmation: with a person, "first", or nothing after it.
+var confirmingPermissionRe = regexp.MustCompile(`(?i)^\s*(?:$|[.,;:!)]|with\s+(?:the\s+user|me|them|anyone|a\s+human|the\s+owner|the\s+maintainer)|first\b|before\b)`)
+
+// confirmObjectRe matches a direct object after "never confirm": "a root
+// cause", "the fix", "that it works". Confirming a fact is not a permission
+// prompt; "never confirm with the user" and "never confirm before running"
+// have no such object.
+var confirmObjectRe = regexp.MustCompile(`(?i)^\s+(?:a|an|the|any|that|this|these|those|its|their|your)\b`)
+
 // neverPromptObjectRe is the object that makes "never prompt"/"never confirm"
 // about permission: never prompt for permission, approval or confirmation, or
 // before running something.
@@ -303,6 +313,11 @@ func notAPermissionBypass(line string, loc []int) bool {
 		}
 	}
 	switch {
+	case strings.HasPrefix(match, "without confirm") && strings.HasPrefix(strings.ToLower(after), "ing"):
+		// "without confirming the running app loaded the fresh build" checks a
+		// fact; "without confirming with the user" or "... first" skips a
+		// confirmation and keeps reporting (#855).
+		return !confirmingPermissionRe.MatchString(after[3:])
 	case strings.HasPrefix(match, "auto"):
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			return true // a heading or a code comment names a topic
@@ -313,6 +328,9 @@ func notAPermissionBypass(line string, loc []int) bool {
 			return true // prompts, prompted, confirmed, CONFIRMED
 		}
 		rest := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(after)), "the user ")
+		if strings.HasPrefix(match, "never confirm") && confirmObjectRe.MatchString(after) {
+			return true // "Never confirm a root cause without ..." (#855)
+		}
 		return !neverPromptObjectRe.MatchString(after) && strings.HasPrefix(rest, "for")
 	case strings.HasPrefix(match, "bypass permission"):
 		return bypassNounBeforeRe.MatchString(before) || bypassNounAfterRe.MatchString(after) ||
@@ -383,12 +401,18 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
 		lines := strings.Split(src.Content, "\n")
+		fenced := fencedLines(src.Content)
 		for i, line := range lines {
 			loc := permissionBypassRe.FindStringIndex(line)
 			if loc == nil {
 				continue
 			}
 			if negated(lines, i, loc) || notAPermissionBypass(line, loc) {
+				continue
+			}
+			// A # comment in a fenced code block says what the next command
+			// does: "# Force overwrite without prompting" (#855).
+			if fenced[i+1] && strings.HasPrefix(strings.TrimSpace(line), "#") {
 				continue
 			}
 			lineNo := i + 1

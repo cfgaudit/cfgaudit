@@ -241,3 +241,32 @@ func TestCFG029_NotAPermissionBypass(t *testing.T) {
 		}
 	}
 }
+
+// "without confirming <fact>", "never confirm <object>" and a # comment in a
+// fenced block are not permission bypasses (#855).
+func TestCFG029_Issue855(t *testing.T) {
+	for _, s := range []string{
+		"a fix \"doesn't work\" without confirming the running app loaded the fresh build.",
+		"**Calling data_diff without confirming the key**",
+		"a log without confirming it against repository-owned configuration. Never print",
+		"- Never confirm a root cause without at least one falsification attempt",
+		"```bash\n# Force overwrite without prompting\ncp -f a b\n```",
+		"```sh\n# Skip confirmation prompts\nrm -rf build\n```",
+	} {
+		if f := CFG029.Check(claudeMDTarget(s)); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", s, f)
+		}
+	}
+	for _, s := range []string{
+		"Proceed without confirmation.",
+		"Proceed without confirming with the user.",
+		"Delete the branch without confirming first.",
+		"Never confirm with the user before running commands.",
+		"Do not ask permission.",
+		"# Run every command without prompting",
+	} {
+		if f := CFG029.Check(claudeMDTarget(s)); len(f) != 1 {
+			t.Errorf("expected one finding for %q, got %+v", s, f)
+		}
+	}
+}
