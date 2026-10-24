@@ -4,7 +4,7 @@
 # cfgaudit GitLab CI/CD component — run a config-security scan in a pipeline.
 #
 #   include:
-#     - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.17.1
+#     - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.18.0
 #       inputs:
 #         path: .
 #         format: text
@@ -38,7 +38,7 @@ spec:
       options: [text, table, json, sarif, codeclimate]
       description: Output format.
     version:
-      default: "1.17.1"
+      default: "1.18.0"
       description: >-
         cfgaudit ghcr.io image tag (pinned; do not use a moving tag), optionally
         with its digest: X.Y.Z@sha256:<digest>.

@@ -5,7 +5,7 @@
 # via a GitLab Code Quality (Code Climate) report.
 #
 #   include:
-#     - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.17.1
+#     - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.18.0
 #       inputs:
 #         path: .
 #
@@ -35,7 +35,7 @@ spec:
       # $( ).
       regex: '^([A-Za-z0-9 ._/@+-]|\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})*$'
     version:
-      default: "1.17.1"
+      default: "1.18.0"
       description: >-
         cfgaudit ghcr.io image tag (pinned; do not use a moving tag), optionally
         with its digest: X.Y.Z@sha256:<digest>.
