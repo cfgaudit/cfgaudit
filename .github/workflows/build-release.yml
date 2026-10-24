@@ -28,6 +28,9 @@ jobs:
   goreleaser:
     name: GoReleaser
     runs-on: ubuntu-latest
+    # A release takes about two minutes. Without a limit a hang runs for six
+    # hours, and a cancelled job keeps no log (#816).
+    timeout-minutes: 20
     permissions:
       contents: write # create the GitHub release and upload archives/checksums
       id-token: write # keyless signing of the provenance via Sigstore
@@ -96,7 +99,10 @@ jobs:
 
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
-          version: "~> v2"
+          # Pinned (#816): "~> v2" pulled v2.19.0 two days after its release, and
+          # the v1.18.0 run hung in the publish phase. v2.18.3 published v1.17.1.
+          # Bump only after the 7-day cooldown, with a --skip=publish dry run.
+          version: v2.18.3
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
