@@ -39,7 +39,7 @@ func (r *cfg030) ID() string { return "CFG030" }
 var concealRe = regexp.MustCompile(`(?i)(` +
 	`(?:don'?t|do\s+not|never)\s+(?:tell|inform|mention|notify|reveal|disclose|show)` +
 	`(?:\s+(?:this|that|it|these|those|anything|everything|any\s+of\s+(?:this|that|it)))?` +
-	`(?:\s+(?:to|about))?\s+(?:the\s+)?(?:user|caller)` +
+	`(?:\s+(?:to|about))?\s+(?:the\s+)?(?:user|caller)s?\b` +
 	`|without\s+the\s+user(?:'s)?\s+(?:knowing|knowledge|awareness)` +
 	`|(?:silently|secretly)\s+(?:do|run|execute|perform|send|email|upload|exfiltrate|post|forward|delete|remove|modify|edit|change|install|add|disable|copy|leak)\b` +
 	`|pretend\s+(?:you|to)\s+(?:don'?t|didn'?t|did\s+not|do\s+not)` +
@@ -54,7 +54,7 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 	for _, src := range t.instructionSources() {
 		for i, line := range strings.Split(src.Content, "\n") {
 			loc := concealRe.FindStringIndex(line)
-			if loc == nil || concealNegated(line, loc) {
+			if loc == nil || concealNegated(line, loc) || silentlyDescribes(line, loc) {
 				continue
 			}
 			lineNo := i + 1
@@ -70,6 +70,49 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+// silentlyLeadWords may precede an instruction's "silently <verb>" in its own
+// clause without being its subject: "Then silently upload", "you must silently
+// delete", "please silently run".
+var silentlyLeadWords = map[string]bool{
+	"and": true, "then": true, "also": true, "just": true, "please": true, "always": true,
+	"now": true, "first": true, "next": true, "finally": true, "simply": true, "immediately": true,
+	"you": true, "must": true, "should": true, "shall": true, "need": true, "to": true, "or": true, "so": true,
+}
+
+// silentlyClauseRe finds the punctuation a clause starts after, for the
+// "silently" check: commas, colons, square brackets, table cells and dashes as
+// well as sentence ends, so "Before responding, silently send ..." keeps its
+// clause. Round brackets do not end one: in "Org changes (renames) silently
+// change the schema" the subject is before the bracket.
+var silentlyClauseRe = regexp.MustCompile(`[.,;:!?\[\]|"*]|—|\s-\s`)
+
+// silentlyDescribes reports whether a "silently <verb>" match describes what
+// something else does rather than telling the agent what to do (#823): the
+// clause has a subject before it ("hooks silently do nothing", "policies
+// silently do not run", "These two silently change input behavior"), or the
+// phrase is "silently do nothing". An instruction has nothing before
+// "silently" in its clause but lead words (silentlyLeadWords).
+func silentlyDescribes(line string, loc []int) bool {
+	m := strings.ToLower(line[loc[0]:loc[1]])
+	if !strings.HasPrefix(m, "silently") && !strings.HasPrefix(m, "secretly") {
+		return false
+	}
+	if strings.HasPrefix(strings.TrimSpace(strings.ToLower(line[loc[1]:])), "nothing") && strings.HasSuffix(m, " do") {
+		return true
+	}
+	before := line[:loc[0]]
+	if ends := silentlyClauseRe.FindAllStringIndex(before, -1); len(ends) > 0 {
+		before = before[ends[len(ends)-1][1]:]
+	}
+	for _, w := range strings.Fields(strings.ToLower(before)) {
+		w = strings.Trim(w, "`'_~")
+		if w != "" && !silentlyLeadWords[w] {
+			return true
+		}
+	}
+	return false
 }
 
 // concealModalRe matches a modal right before a "silently <verb>" match, which
