@@ -237,3 +237,36 @@ func TestSettingsParsers_ReadAndDecodeErrors(t *testing.T) {
 		t.Error("ParseSettingsBytes: a non-object document must fail")
 	}
 }
+
+// #923: a .github/mcp.json that is not JSON even after the lenient cleanup is a
+// parse error; one without mcpServers yields no servers.
+func TestParseMCPConfig_GithubMCP(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), ".github")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "mcp.json")
+	for _, tc := range []struct {
+		body    string
+		wantErr bool
+		servers int
+	}{
+		{`{`, true, 0},
+		{`{"servers":{"a":{"command":"npx"}}}`, false, 0},
+		{"\xef\xbb\xbf{\"servers\":{\"a\":{}}}", false, 0},
+		{`{"mcpServers":{"a":{"command":"npx"}}}`, false, 1},
+		{"// c\n{\"mcpServers\":{}}", true, 0},
+	} {
+		if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := ParseMCPConfig(path)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("%q: error %v, want error %v", tc.body, err, tc.wantErr)
+			continue
+		}
+		if err == nil && len(c.MCPServers) != tc.servers {
+			t.Errorf("%q: got %d servers, want %d", tc.body, len(c.MCPServers), tc.servers)
+		}
+	}
+}

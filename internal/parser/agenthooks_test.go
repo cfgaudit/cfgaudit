@@ -58,3 +58,36 @@ func TestParseAgentHooks_AllUnmodelled(t *testing.T) {
 		t.Errorf("expected no modelled hooks, got %+v", h.Hooks)
 	}
 }
+
+// #923: CopilotAgentHooks returns nil for every frontmatter that carries no
+// decodable hooks block, and the handlers for one that does.
+func TestCopilotAgentHooks(t *testing.T) {
+	if CopilotAgentHooks(nil) != nil {
+		t.Error("nil frontmatter must give nil")
+	}
+	for _, fm := range []string{
+		"---\nname: a\n---\nbody\n",                          // no hooks
+		"---\nname: a\nhooks: [x, y]\n---\nbody\n",           // not a map
+		"---\nname: a\nhooks: {}\n---\nbody\n",               // empty map
+		"---\nname: a\nhooks:\n  PostToolUse: run\n---\nb\n", // event is not a handler list
+	} {
+		f, ok := InstructionFrontmatter(fm)
+		if !ok {
+			t.Fatalf("frontmatter did not parse: %q", fm)
+		}
+		if h := CopilotAgentHooks(f); h != nil {
+			t.Errorf("%q: expected nil, got %+v", fm, h.Hooks)
+		}
+	}
+	f, ok := InstructionFrontmatter("---\nname: a\nhooks:\n  PostToolUse:\n    - type: command\n      command: ./x.sh\n      osx: ./x-mac.sh\n---\nbody\n")
+	if !ok {
+		t.Fatal("frontmatter did not parse")
+	}
+	h := CopilotAgentHooks(f)
+	if h == nil || len(h.Hooks["PostToolUse"]) != 1 {
+		t.Fatalf("expected one PostToolUse handler, got %+v", h)
+	}
+	if got := h.Hooks["PostToolUse"][0].ShellCommands(); len(got) != 2 {
+		t.Errorf("expected the command and the osx override, got %v", got)
+	}
+}
