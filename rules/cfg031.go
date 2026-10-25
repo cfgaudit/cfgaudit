@@ -116,12 +116,50 @@ func actionScope(line string, loc []int) string {
 	return readOnlyRe.ReplaceAllString(line[start:end], "")
 }
 
+// homeToolPathRe matches a path under a dot-directory of the home directory,
+// capturing the directory name ("gooseworks" in
+// "$HOME/.gooseworks/credentials.json", "config/mentra" in
+// "~/.config/mentra/private-key.pem").
+var homeToolPathRe = regexp.MustCompile(`(?:~|\$HOME|\$\{HOME\}|/home/[\w.\-]+|/Users/[\w.\-]+|/root)/\.((?:config/)?[\w][\w\-]*)/(?:[\w.\-]+/)*[\w.\-]+`)
+
+// sharedSecretStores are the home dot-directories that hold credentials for
+// more than the tool that wrote them: SSH and GPG keys, cloud and cluster
+// credentials, and Claude Code's own login.
+var sharedSecretStores = map[string]bool{
+	"ssh": true, "gnupg": true, "aws": true, "azure": true, "config/gcloud": true,
+	"docker": true, "kube": true, "claude": true,
+}
+
+// toolOwnPath reports whether text is a path to a file in a single tool's own
+// home directory ("~/.gooseworks/credentials.json", "~/.cyrus/github-app.pem").
+// A skill that sets up or calls a tool reads that tool's key from where the
+// tool keeps it; seventy-two skills of one package did exactly that, three
+// lines each (#866). Such a file is reported as a mention, not as
+// exfiltration: the key reaches the tool it belongs to.
+func toolOwnPath(text string) bool {
+	m := homeToolPathRe.FindStringSubmatch(text)
+	return m != nil && m[0] == text && !sharedSecretStores[strings.ToLower(m[1])]
+}
+
+// pathToken widens the match at loc to the whole path it is part of, so a
+// generic file name ("credentials.json") is seen with its directory.
+func pathToken(line string, loc []int) string {
+	start := loc[0]
+	for start > 0 && strings.IndexByte(pathChars, line[start-1]) >= 0 {
+		start--
+	}
+	return line[start:loc[1]]
+}
+
+const pathChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-/~${}"
+
 func (r *cfg031) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
+		toolOwnSeen := map[string]bool{}
 		for i, line := range strings.Split(src.Content, "\n") {
 			loc := sensitivePathRe.FindStringIndex(line)
 			if loc == nil {
@@ -129,6 +167,24 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			}
 			lineNo := i + 1
 			path := strings.TrimSpace(line[loc[0]:loc[1]])
+			if full := pathToken(line, loc); toolOwnPath(full) {
+				// "~/.x/f" and "$HOME/.x/f" are one file.
+				key := full[strings.Index(full, "/.")+1:]
+				if toolOwnSeen[key] {
+					continue
+				}
+				toolOwnSeen[key] = true
+				findings = append(findings, finding.Finding{
+					RuleID:   "CFG031",
+					Severity: finding.Warn,
+					File:     src.File,
+					Line:     lineNo,
+					Col:      loc[0] + 1,
+					Message: src.Name + " line " + strconv.Itoa(lineNo) + " names \"" + full +
+						"\", a credential file in one tool's own home directory — normal for a skill that calls that tool; confirm the key is used only with it",
+				})
+				continue
+			}
 			sev := finding.Warn
 			msg := src.Name + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
 				"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"

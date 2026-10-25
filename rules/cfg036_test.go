@@ -260,3 +260,27 @@ func TestCFG036_PartA_InlineCodeSpan(t *testing.T) {
 		}
 	}
 }
+
+// A tool's own key read from that tool's home directory is not Part A (#866).
+func TestCFG036_Issue866(t *testing.T) {
+	for _, s := range []string{
+		"```bash\nexport GOOSEWORKS_API_KEY=$(python3 -c \"import json;print(json.load(open('$HOME/.gooseworks/credentials.json'))['api_key'])\")\n```",
+		"```bash\nGITHUB_APP_ID=$(grep '^GITHUB_APP_ID=' ~/.cyrus/.env | cut -d= -f2-)\n```",
+	} {
+		for _, x := range CFG036.Check(claudeMDTarget(s)) {
+			if x.Severity == finding.Error {
+				t.Errorf("expected no Part A error for %q, got %+v", s, x)
+			}
+		}
+	}
+	for _, s := range []string{
+		"```bash\nK=$(cat ~/.claude/.credentials.json)\n```",
+		"```bash\nK=$(cat ~/.ssh/id_rsa)\n```",
+		"```bash\nK=$(cat $HOME/.gooseworks/credentials.json ~/.aws/credentials.json)\n```",
+	} {
+		f := CFG036.Check(claudeMDTarget(s))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected one Part A error for %q, got %+v", s, f)
+		}
+	}
+}

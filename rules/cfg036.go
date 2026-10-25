@@ -177,6 +177,14 @@ var dollarSubstRe = regexp.MustCompile(`\$\([^)]*\)?`)
 func sensitiveSubstitution(line string, inFence bool) []int {
 	check := func(span string) bool {
 		cleaned := substTemplateRe.ReplaceAllString(span, "")
+		// A tool's own key read from that tool's home directory is reported by
+		// CFG031 as a mention (#866).
+		cleaned = homeToolPathRe.ReplaceAllStringFunc(cleaned, func(p string) string {
+			if toolOwnPath(p) {
+				return ""
+			}
+			return p
+		})
 		return cmdSubstSensitiveRe.MatchString(cleaned)
 	}
 	for _, loc := range dollarSubstRe.FindAllStringIndex(line, -1) {
