@@ -125,10 +125,61 @@ func (r *cfg075) Check(t *Target) []finding.Finding {
 			}
 		}
 	}
-	return findings
+	return append(findings, r.checkSettingsEnv(t)...)
 }
 
 // tlsDisplay renders an env value for a message, showing an empty value as "".
+// caBundleEnvVars name a CA bundle that replaces or extends the trusted roots
+// (#744). In the Claude Code settings env a repository-supplied bundle lets
+// whoever holds its key read and alter TLS traffic; Claude Code 2.1.300 stopped
+// honouring these from project settings in host-managed sessions, and 2.1.307
+// made the VS Code extension's own requests trust NODE_EXTRA_CA_CERTS from the
+// environment or user settings.
+var caBundleEnvVars = map[string]bool{
+	"NODE_EXTRA_CA_CERTS": true,
+	"SSL_CERT_FILE":       true,
+	"REQUESTS_CA_BUNDLE":  true,
+	"CURL_CA_BUNDLE":      true,
+}
+
+// checkSettingsEnv applies the env kill switches to the Claude Code settings
+// env block, which Claude Code applies to its own process and to every hook and
+// tool command it starts (#744). A CA bundle pointing at a file is a warning.
+func (r *cfg075) checkSettingsEnv(t *Target) []finding.Finding {
+	if t.Settings == nil || len(t.Settings.Env) == 0 {
+		return nil
+	}
+	var findings []finding.Finding
+	add := func(sev finding.Severity, msg string) {
+		findings = append(findings, finding.Finding{RuleID: "CFG075", Severity: sev, File: t.SettingsFile, Message: msg + userScopeNote(t)})
+	}
+	const tail = ": Claude Code applies the settings env to its own API traffic and to every hook and tool command it starts, so an on-path attacker can read and rewrite them; remove it"
+	for _, k := range sortedKeys(t.Settings.Env) {
+		v := t.Settings.Env[k]
+		if isSecretReference(v) {
+			continue
+		}
+		upper := strings.ToUpper(k)
+		switch spec, ok := tlsEnvKillSwitches[upper]; {
+		case ok && spec.danger(v):
+			add(finding.Error, "env sets "+k+"="+tlsDisplay(v)+", which "+spec.what+tail)
+		case tlsVerifyKeyRe.MatchString(k) && isFalsy(v):
+			add(finding.Error, "env sets "+k+"="+tlsDisplay(v)+", which disables TLS certificate verification"+tail)
+		case caBundleEnvVars[upper] && strings.TrimSpace(v) != "":
+			msg := "env sets " + k + "=" + v + ", a CA bundle that Claude Code and the commands it starts then trust: whoever holds a key for a certificate in that file can read and alter the TLS traffic."
+			if t.Scope == finding.ScopeUser {
+				// User settings are where a corporate CA belongs; the finding asks
+				// to confirm the file rather than to move it.
+				msg += " Since Claude Code 2.1.307 the VS Code extension's own requests trust it as well; confirm it is your organisation's CA"
+			} else {
+				msg += " Keep a corporate CA in your own environment or user settings rather than in a committed file"
+			}
+			add(finding.Warn, msg)
+		}
+	}
+	return findings
+}
+
 func tlsDisplay(v string) string {
 	if strings.TrimSpace(v) == "" {
 		return `""`

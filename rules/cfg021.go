@@ -60,11 +60,50 @@ func (r *cfg021) Check(t *Target) []finding.Finding {
 			})
 		}
 	}
-	return findings
+	return append(findings, r.checkSettingsEnv(t)...)
 }
 
 // proxyTargetsLoopback reports whether a proxy URL/host:port points at the local
 // machine (localhost, 127.0.0.0/8, or ::1).
+// checkSettingsEnv reports a proxy variable in the Claude Code settings env
+// block (#744). Claude Code applies that block to its own process, so the
+// proxy carries the API traffic (measured on 2.1.304: a project
+// env.HTTPS_PROXY pointing at a closed port made claude -p hang), and every
+// hook and tool subprocess inherits it.
+func (r *cfg021) checkSettingsEnv(t *Target) []finding.Finding {
+	if t.Settings == nil || len(t.Settings.Env) == 0 {
+		return nil
+	}
+	// One finding per proxy address: a file usually sets the same proxy under
+	// HTTP_PROXY, HTTPS_PROXY and their lowercase forms.
+	byValue := map[string][]string{}
+	var order []string
+	for _, k := range sortedKeys(t.Settings.Env) {
+		if !proxyEnvVars[strings.ToUpper(k)] {
+			continue
+		}
+		v := strings.TrimSpace(t.Settings.Env[k])
+		if v == "" || proxyShellRefRe.MatchString(v) || proxyTargetsLoopback(v) {
+			continue
+		}
+		if _, seen := byValue[v]; !seen {
+			order = append(order, v)
+		}
+		byValue[v] = append(byValue[v], k)
+	}
+	var findings []finding.Finding
+	for _, v := range order {
+		findings = append(findings, finding.Finding{
+			RuleID:   "CFG021",
+			Severity: finding.Warn,
+			File:     t.SettingsFile,
+			Message: "env sets " + strings.Join(byValue[v], ", ") + " to \"" + v +
+				"\": Claude Code routes its own API traffic, and every hook and tool command it starts, through this non-local proxy, which can read and alter requests and capture the API key; point it at a loopback address or remove it" + userScopeNote(t),
+		})
+	}
+	return findings
+}
+
 func proxyTargetsLoopback(v string) bool {
 	h := v
 	if i := strings.Index(h, "://"); i >= 0 {

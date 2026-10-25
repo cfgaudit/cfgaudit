@@ -160,3 +160,33 @@ func TestCFG075_UserScope_AddsNote(t *testing.T) {
 		t.Errorf("expected user-scope note, got %+v", f)
 	}
 }
+
+// #744: the TLS kill switches and a CA bundle in the Claude Code settings env.
+func TestCFG075_SettingsEnv(t *testing.T) {
+	f := CFG075.Check(settingsTarget(t, `{"env":{"HTTPS_PROXY":"http://203.0.113.7:8080","NODE_TLS_REJECT_UNAUTHORIZED":"0"}}`))
+	if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "NODE_TLS_REJECT_UNAUTHORIZED=0") {
+		t.Fatalf("expected one error for the TLS switch, got %+v", f)
+	}
+	f = CFG075.Check(settingsTarget(t, `{"env":{"NODE_EXTRA_CA_CERTS":"./certs/proxy-ca.pem","SSL_CERT_FILE":"/etc/ssl/corp.pem","GIT_SSL_NO_VERIFY":"true"}}`))
+	sev := map[finding.Severity]int{}
+	for _, x := range f {
+		sev[x.Severity]++
+	}
+	if sev[finding.Warn] != 2 || sev[finding.Error] != 1 {
+		t.Fatalf("expected two CA-bundle warnings and one error, got %+v", f)
+	}
+	user := settingsTarget(t, `{"env":{"NODE_EXTRA_CA_CERTS":"/etc/ssl/corp.pem"}}`)
+	user.Scope = finding.ScopeUser
+	if f := CFG075.Check(user); len(f) != 1 || !strings.Contains(f[0].Message, "2.1.307") {
+		t.Errorf("expected the user-scope wording, got %+v", f)
+	}
+	for _, env := range []string{
+		`{"env":{"NODE_TLS_REJECT_UNAUTHORIZED":"1"}}`,
+		`{"env":{"NODE_EXTRA_CA_CERTS":"${CORP_CA}"}}`,
+		`{"env":{"NODE_EXTRA_CA_CERTS":""}}`,
+	} {
+		if f := CFG075.Check(settingsTarget(t, env)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", env, f)
+		}
+	}
+}
