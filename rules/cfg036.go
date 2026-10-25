@@ -375,6 +375,9 @@ func sensitiveSubstitution(line string, inFence bool) ([]int, finding.Severity) 
 // "**Asks** for confirmation on risky-but-legitimate ones:".
 var guardHeadRe = regexp.MustCompile(`(?i)\b(?:block\w*|den(?:y|ied|ies)|refus\w*|forbid\w*|prohibit\w*|asks?\W*\s+(?:for\s+)?(?:confirmation|approval)|requires?\W*\s+(?:confirmation|approval))\b`)
 
+// guardCellRe matches a hook event or a guard named in a table cell (#914).
+var guardCellRe = regexp.MustCompile(`(?i)\|\s*[^|]*\b(?:PreToolUse|PermissionRequest|BeforeTool|beforeShellExecution|\w*-?guard|block(?:s|ed|list)?|deny(?:list)?)\b[^|]*\|`)
+
 // listedAsRefused reports whether the Part A span at loc on line i names a
 // read the text refuses rather than orders: CFG031's checks (a negation or a
 // refusing list, #869), or a list item, possibly wrapped over several lines,
@@ -383,6 +386,12 @@ var guardHeadRe = regexp.MustCompile(`(?i)\b(?:block\w*|den(?:y|ied|ies)|refus\w
 // risky-but-legitimate ones:" (#885).
 func listedAsRefused(lines []string, i int, loc []int) bool {
 	if notARead(lines, i, loc, lines[i][loc[0]:loc[1]]) {
+		return true
+	}
+	// A table row whose cells before the span name a hook or a guard lists
+	// what that guard blocks: "| command-guard | PreToolUse | `cat .env`,
+	// ... |" (#914).
+	if strings.HasPrefix(strings.TrimSpace(lines[i]), "|") && guardCellRe.MatchString(lines[i][:loc[0]]) {
 		return true
 	}
 	for j := i; j >= 0 && i-j <= 20; j-- {

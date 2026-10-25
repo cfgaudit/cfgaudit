@@ -152,7 +152,7 @@ func concealNegated(line string, loc []int) bool {
 	// never tell the user opened it" is about finding out, not hiding (#853).
 	if m := strings.ToLower(line[loc[0]:loc[1]]); strings.Contains(m, "tell") {
 		after := line[loc[1]:]
-		if tellClaimRe.MatchString(after) || tellQuotedClaimRe.MatchString(after) ||
+		if tellClaimRe.MatchString(after) || tellQuotedClaimRe.MatchString(after) || tellBareClaimRe.MatchString(after) ||
 			tellUntilRe.MatchString(clauseRest(after)) || concealModalRe.MatchString(line[:loc[0]]) {
 			return true
 		}
@@ -199,7 +199,15 @@ var tellClaimRe = regexp.MustCompile(`(?i)^\s+(?:that\s+)?` +
 // must not use: "Don't tell the user a build \"submitted to Play\"", "Never tell
 // the user Flow \"cannot\" do something" (#870). Quoting the claim marks it as
 // the wording to avoid, not a fact to hide.
-var tellQuotedClaimRe = regexp.MustCompile(`^\s+(?:that\s+)?[\w.\-/]+(?:\s+[\w.\-/]+){0,3}\s+["\x{201C}][^"\x{201D}]+["\x{201D}]`)
+//
+// The subject may be missing and the quotes may be CJK corner brackets:
+// "Never tell the user “…” as a closing statement" (#914).
+var tellQuotedClaimRe = regexp.MustCompile(`^\s+(?:that\s+)?(?:[\w.\-/]+(?:\s+[\w.\-/]+){0,3}\s+)?(?:["\x{201C}][^"\x{201D}]+["\x{201D}]|\x{300C}[^\x{300D}]+\x{300D})`)
+
+// tellBareClaimRe matches a status claim about a bare noun: "never tell the
+// user voiceover is impossible" (#914). tellClaimRe needs an article or a
+// pronoun before the subject; here the verb is required instead.
+var tellBareClaimRe = regexp.MustCompile(`(?i)^\s+(?:that\s+)?[\w.\-/]+\s+(?:is|are|was|were)\s+(?:not\s+)?(?:impossible|unavailable|unsupported|possible|available|supported|broken|done|ready|free|paid)\b`)
 
 // tellUntilRe matches a claim held back only until it is true: "Do not tell the
 // user the artifact is being monitored until that wake path is live" (#870).

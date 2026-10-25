@@ -296,7 +296,16 @@ var readOnlyGrantRe = regexp.MustCompile(`(?i)\bread[- ]?only\s+(?:commands?|too
 // clause ("Use `create-chat-sdk` to scaffold a project without prompts"). An
 // order to the agent puts the verb first: "Run `make deploy` without
 // prompting" keeps reporting.
-var programRunsRe = regexp.MustCompile("`[^`]+`\\s+(?:and\\s+`[^`]+`\\s+)?(?:runs|run|works|exits|completes|proceeds|continues)\\b[^.;]*$")
+var programRunsRe = regexp.MustCompile("`[^`]+`[*_]*\\s+(?:[^.;`]{0,60}?\\s)?(?:and\\s+`[^`]+`\\s+)?(?:runs|run|works|exits|completes|proceeds|continues)\\b[^.;]*$")
+
+// programExitsRe matches a program as the subject of "exits ... without
+// prompting": "If it exits successfully without prompting" (#914). "it" counts
+// only with the verbs a process has.
+var programExitsRe = regexp.MustCompile(`(?i)\b(?:it|the\s+(?:command|script|cli|tool|installer|program|binary|process))\s+(?:\w+\s+){0,2}?(?:exits|completes|succeeds|finishes|returns)\b[^.;]*$`)
+
+// nonInteractiveRe matches a mode in which a program must not prompt: "In
+// non-interactive or JSON mode, never prompt or open a browser" (#914).
+var nonInteractiveRe = regexp.MustCompile(`(?i)\bnon-?interactive\b|\bheadless\b|\bJSON\s+mode\b`)
 var codeSpanRe = regexp.MustCompile("`[^`]+`")
 
 // prApprovalRe matches a line about approving a pull request, where "skip
@@ -341,9 +350,17 @@ func notAPermissionBypass(line string, loc []int) bool {
 	}
 	if strings.HasPrefix(match, "without prompt") {
 		plural := len(after) > 0 && (after[0] == 's' || after[0] == 'S')
-		if programRunsRe.MatchString(scope) || plural && codeSpanRe.MatchString(scope) {
+		if programRunsRe.MatchString(scope) || programExitsRe.MatchString(scope) || plural && codeSpanRe.MatchString(scope) {
 			return true
 		}
+	}
+	// "skip the prompt and pass `--api-key-env NAME` instead" swaps a CLI's
+	// key prompt for a flag (#914).
+	if strings.HasPrefix(match, "skip the prompt") && cliFlagRe.MatchString(clauseRest(after)) {
+		return true
+	}
+	if strings.HasPrefix(match, "never prompt") && nonInteractiveRe.MatchString(scope) {
+		return true
 	}
 	if strings.HasPrefix(match, "skip approval") && prApprovalRe.MatchString(line) {
 		return true
