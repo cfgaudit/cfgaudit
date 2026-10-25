@@ -132,6 +132,11 @@ cfgaudit /path/to/project
 # text when piped or redirected. Force either with --format table / --format text.
 cfgaudit --format table
 
+# Text and table output colour the severity and rule ID on a terminal. Turn it
+# off with --no-color or NO_COLOR, or on in a CI log with FORCE_COLOR=1. JSON,
+# SARIF and Code Climate are never coloured.
+cfgaudit --no-color
+
 # Output as JSON (for CI integration)
 cfgaudit --format json
 

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cfgaudit/cfgaudit/internal/color"
 	"github.com/cfgaudit/cfgaudit/internal/config"
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
@@ -73,6 +74,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	strict := fset.Bool("strict", false, "treat warn findings as errors for the exit code (also: strict: true in .cfgaudit.yml)")
 	shellcheck := fset.Bool("shellcheck", false, "run shellcheck on hook/helper commands (requires the shellcheck binary; also: shellcheck: true in .cfgaudit.yml)")
 	showVersion := fset.Bool("version", false, "print cfgaudit version and exit")
+	noColor := fset.Bool("no-color", false, "no colour in the text and table output (also: NO_COLOR; FORCE_COLOR turns it on without a terminal)")
 
 	var only, skip ruleSet
 	var contentPaths pathList
@@ -190,10 +192,21 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 2
 		}
 	case "table":
-		renderTable(stdout, all, cfgauditVersion)
+		if color.Enabled(*noColor, stdout) {
+			var b strings.Builder
+			renderTable(&b, all, cfgauditVersion)
+			_, _ = io.WriteString(stdout, color.Table(b.String()))
+		} else {
+			renderTable(stdout, all, cfgauditVersion)
+		}
 	default:
+		colored := color.Enabled(*noColor, stdout)
 		for _, f := range all {
-			_, _ = fmt.Fprintln(stdout, f)
+			line := f.String()
+			if colored {
+				line = color.TextLine(line)
+			}
+			_, _ = fmt.Fprintln(stdout, line)
 		}
 		_, _ = fmt.Fprintf(stdout, "\ncfgaudit %s — %d %s\n", cfgauditVersion, len(all), pluralize("finding", len(all)))
 	}
