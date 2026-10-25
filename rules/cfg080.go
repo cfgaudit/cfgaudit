@@ -86,7 +86,7 @@ func (r *cfg080) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
 		fenced := fencedLines(src.Content)
-		for _, c := range commentSpans(src.Content) {
+		for _, c := range commentSpans(maskInlineCode(src.Content, fenced)) {
 			m := commentDirectiveRe.FindString(c.body)
 			if m == "" {
 				continue
@@ -126,6 +126,24 @@ func fencedLines(content string) map[int]bool {
 		}
 	}
 	return out
+}
+
+// maskInlineCode blanks the inline code spans outside fenced blocks, keeping
+// every offset. A comment marker in code formatting is shown, not hidden:
+// "(e.g., `<!-- ignore rules -->`)" cites the trick a defensive rule refuses,
+// and "contains `<!-- triage-frontend-ticket:`" names a marker to look for,
+// which otherwise paired with a "-->" lines later (#873).
+func maskInlineCode(content string, fenced map[int]bool) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if fenced[i+1] || !strings.Contains(line, "`") {
+			continue
+		}
+		lines[i] = inlineCodeSpanRe.ReplaceAllStringFunc(line, func(s string) string {
+			return strings.Repeat(" ", len(s))
+		})
+	}
+	return strings.Join(lines, "\n")
 }
 
 // columnAt returns the 1-based column of byte offset off within its line.

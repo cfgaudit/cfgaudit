@@ -75,3 +75,19 @@ func TestCFG033_Issue856(t *testing.T) {
 		}
 	}
 }
+
+// A README badge template names repository facts, not conversation data
+// (#873).
+func TestCFG033_Issue873(t *testing.T) {
+	for _, s := range []string{
+		"| 2 | License | `LICENSE` file exists | `[![License](https://img.shields.io/badge/license-{{LICENSE}}-blue?style=flat-square)](LICENSE)` |",
+		"| 3 | npm | Main package published | `[![npm](https://img.shields.io/npm/v/{{MAIN_PKG}}?style=flat-square)]()` |",
+	} {
+		if f := CFG033.Check(claudeMDTarget(s)); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", s, f)
+		}
+	}
+	if f := CFG033.Check(claudeMDTarget("![x](https://img.shields.io/badge/{{SUMMARY}}-blue)")); len(f) != 1 {
+		t.Errorf("expected one finding for a conversation slot, got %+v", f)
+	}
+}
