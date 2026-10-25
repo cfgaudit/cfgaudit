@@ -365,3 +365,27 @@ func TestCFG036_Issue885(t *testing.T) {
 		}
 	}
 }
+
+func TestCFG036_Issue906(t *testing.T) {
+	// "ZWNobyBoZWxsbyB3b3JsZA==" decodes to "echo hello world".
+	for _, s := range []string{
+		"echo 'ZWNobyBoZWxsbyB3b3JsZA==' | base64 -D | bash",
+		"```\necho \"Setup-Wizard: https://x.example/setup\" && echo 'ZWNobyBoZWxsbyB3b3JsZA==' | base64 -D | bash\n```",
+		"Try with sudo: `sudo bash -c \"echo 'ZWNobyBoZWxsbyB3b3JsZA==' | base64 --decode | bash\"`",
+		"echo ZWNobyBoZWxsbyB3b3JsZA== | base64 -d | sudo sh",
+	} {
+		if f := CFG036.Check(claudeMDTarget(s)); !hasSeverityWithPart(f, finding.Error, "Part E") {
+			t.Errorf("expected a Part E error for %q, got %+v", s, f)
+		}
+	}
+	for _, s := range []string{
+		"```bash\nssh host \"echo $b64 | base64 -d | bash\"\n```",
+		"echo <BASE64> | base64 -d | sh",
+		"- `base64 -d | sh` — encoded command injection",
+		"echo 'ZWNobyBoZWxsbyB3b3JsZA==' | base64 -d > script.sh",
+	} {
+		if f := CFG036.Check(claudeMDTarget(s)); hasSeverityWithPart(f, finding.Error, "Part E") {
+			t.Errorf("expected no Part E finding for %q, got %+v", s, f)
+		}
+	}
+}

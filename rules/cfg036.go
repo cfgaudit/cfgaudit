@@ -47,6 +47,11 @@ var (
 	// python3 -m json.tool). The URL is required, so prose like "no
 	// curl|bash installers" is not one.
 	pipeShellRe = mustFiltered(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b`)
+	// A literal base64 string decoded straight into a shell (Part E, #906):
+	// "echo '<base64>' | base64 -D | bash". A reader cannot see what it runs.
+	// A variable or placeholder ($b64, <BASE64>) is not a literal and does
+	// not match.
+	decodeShellRe = mustFiltered(`(?i)\becho\s+(?:-n\s+)?['"]?[A-Za-z0-9+/]{16,}={0,2}['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b`)
 	// Network exfiltration command (Pattern B).
 	netExfilRe = mustFiltered(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
 
@@ -437,6 +442,12 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 					pipeCovered[j] = true
 					break
 				}
+			}
+		}
+
+		for i, line := range lines {
+			if loc := decodeShellRe.FindStringIndex(line); loc != nil {
+				add(i, loc[0], finding.Error, "decodes a literal base64 string into a shell (Part E) — nobody reading the file can see the command it runs; documentation has no reason to hide one this way. Write the command out")
 			}
 		}
 
