@@ -279,9 +279,33 @@ var neverPromptObjectRe = regexp.MustCompile(`(?i)^\s+(?:the\s+user\s+)?(?:for\s
 // a whole list item ("sharing rules, and bypass permissions."). "and bypass
 // permission prompts" is the verb and keeps reporting.
 var bypassNounBeforeRe = regexp.MustCompile(`(?i)\b(?:the|a|an|any|this|that|each|its|their)\s+$`)
-var bypassNounListRe = regexp.MustCompile(`(?:,|\band)\s+$`)
+var bypassNounListRe = regexp.MustCompile(`(?:,|\band|\|)\s+$`)
 var bypassNounAfterRe = regexp.MustCompile(`(?i)^s?\s+sets?\b`)
 var bypassNounEndRe = regexp.MustCompile(`^s?\s*[,.;)]`)
+
+// readOnlyGrantRe matches a grant limited to reading: "run read-only commands
+// or tools without confirmation, but you must NEVER write code" (#867).
+// Claude Code itself runs its read-only tools and commands without asking, so
+// the sentence lifts no prompt that guards anything.
+var readOnlyGrantRe = regexp.MustCompile(`(?i)\bread[- ]?only\s+(?:commands?|tools?|operations?|actions?|queries|checks?|git\s+commands?)\b`)
+
+// programRunsRe and codeSpanRe find a clause that describes a program's own
+// interactive prompts rather than the agent's (#867): a command in code
+// formatting followed by a verb in the third person ("`gh stack merge` runs
+// without prompting"), or the plural "prompts" with a command named in the
+// clause ("Use `create-chat-sdk` to scaffold a project without prompts"). An
+// order to the agent puts the verb first: "Run `make deploy` without
+// prompting" keeps reporting.
+var programRunsRe = regexp.MustCompile("`[^`]+`\\s+(?:and\\s+`[^`]+`\\s+)?(?:runs|run|works|exits|completes|proceeds|continues)\\b[^.;]*$")
+var codeSpanRe = regexp.MustCompile("`[^`]+`")
+
+// prApprovalRe matches a line about approving a pull request, where "skip
+// approval" means not submitting an approving review (#867).
+var prApprovalRe = regexp.MustCompile(`(?i)\b(?:PRs?|pull\s+requests?|merge\s+requests?|MRs?)\b`)
+
+// detectionLeadRe matches a clause that asks the agent to find the phrase, not
+// to follow it: "Flag any path that can bypass approval UI" (#867).
+var detectionLeadRe = regexp.MustCompile(`(?i)\b(?:flag|detect|look\s+for|check\s+for|scan\s+for|watch\s+for)\s+(?:any|anything|all|every)\b[^.;]{0,60}\b(?:that|which)\s+(?:can|could|might|may|tries|try|attempts?)\s+$`)
 
 // notAPermissionBypass reports a match that names something other than the
 // agent's permission prompts (#830): a tool's own flag being documented
@@ -312,6 +336,26 @@ func notAPermissionBypass(line string, loc []int) bool {
 			return true
 		}
 	}
+	if strings.HasPrefix(match, "without") && readOnlyGrantRe.MatchString(scope) {
+		return true
+	}
+	if strings.HasPrefix(match, "without prompt") {
+		plural := len(after) > 0 && (after[0] == 's' || after[0] == 'S')
+		if programRunsRe.MatchString(scope) || plural && codeSpanRe.MatchString(scope) {
+			return true
+		}
+	}
+	if strings.HasPrefix(match, "skip approval") && prApprovalRe.MatchString(line) {
+		return true
+	}
+	if detectionLeadRe.MatchString(scope) {
+		return true
+	}
+	// A quoted phrase is cited, not said: ("ignore previous instructions",
+	// "skip approval", "run this command") (#867).
+	if q := strings.Count(before, "\""); q%2 == 1 && strings.HasPrefix(after, "\"") {
+		return true
+	}
 	switch {
 	case strings.HasPrefix(match, "without confirm") && strings.HasPrefix(strings.ToLower(after), "ing"):
 		// "without confirming the running app loaded the fresh build" checks a
@@ -326,6 +370,9 @@ func notAPermissionBypass(line string, loc []int) bool {
 	case strings.HasPrefix(match, "never prompt"), strings.HasPrefix(match, "never confirm"):
 		if len(after) > 0 && isWordByte(after[0]) {
 			return true // prompts, prompted, confirmed, CONFIRMED
+		}
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(after)), "interactively") {
+			return true // a program's design: "Never prompt interactively inside the use case" (#867)
 		}
 		rest := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(after)), "the user ")
 		if strings.HasPrefix(match, "never confirm") && confirmObjectRe.MatchString(after) {
@@ -411,8 +458,9 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 				continue
 			}
 			// A # comment in a fenced code block says what the next command
-			// does: "# Force overwrite without prompting" (#855).
-			if fenced[i+1] && strings.HasPrefix(strings.TrimSpace(line), "#") {
+			// does: "# Force overwrite without prompting" (#855), or what a
+			// parameter means: "force: bool = False,  # Skip approval" (#867).
+			if fenced[i+1] && (strings.HasPrefix(strings.TrimSpace(line), "#") || strings.Contains(line[:loc[0]], " # ")) {
 				continue
 			}
 			lineNo := i + 1
