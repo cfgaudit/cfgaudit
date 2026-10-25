@@ -52,9 +52,10 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 	}
 	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
-		for i, line := range strings.Split(src.Content, "\n") {
+		lines := strings.Split(src.Content, "\n")
+		for i, line := range lines {
 			loc := concealRe.FindStringIndex(line)
-			if loc == nil || concealNegated(line, loc) || silentlyDescribes(line, loc) {
+			if loc == nil || concealNegated(withContinuation(lines, i), loc) || silentlyDescribes(line, loc) {
 				continue
 			}
 			lineNo := i + 1
@@ -70,6 +71,20 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+// withContinuation returns line i joined with the next line when the sentence
+// wraps onto it ("Don't tell the user a" / "build \"submitted to Play\"",
+// #870): the next line is not blank, a list item, a heading or a fence.
+func withContinuation(lines []string, i int) string {
+	if i+1 >= len(lines) {
+		return lines[i]
+	}
+	next := strings.TrimSpace(lines[i+1])
+	if next == "" || listItemRe.MatchString(lines[i+1]) || strings.HasPrefix(next, "#") || isFenceDelimiter(next) || strings.HasPrefix(next, "|") {
+		return lines[i]
+	}
+	return lines[i] + " " + next
 }
 
 // silentlyLeadWords may precede an instruction's "silently <verb>" in its own
@@ -136,7 +151,9 @@ func concealNegated(line string, loc []int) bool {
 	// "Do not tell the user it's impossible" forbids a false claim, and "can
 	// never tell the user opened it" is about finding out, not hiding (#853).
 	if m := strings.ToLower(line[loc[0]:loc[1]]); strings.Contains(m, "tell") {
-		if tellClaimRe.MatchString(line[loc[1]:]) || concealModalRe.MatchString(line[:loc[0]]) {
+		after := line[loc[1]:]
+		if tellClaimRe.MatchString(after) || tellQuotedClaimRe.MatchString(after) ||
+			tellUntilRe.MatchString(clauseRest(after)) || concealModalRe.MatchString(line[:loc[0]]) {
 			return true
 		}
 	}
@@ -166,7 +183,17 @@ var concealDescriptiveRe = regexp.MustCompile(`(?i)\b(?:does\s+not|doesn'?t|did\
 var tellClaimRe = regexp.MustCompile(`(?i)^\s+(?:that\s+)?` +
 	`(?:it|this|that|there|they|(?:a|an|the|this|that|these|those|its|their|your|our|any|every)\s+[\w.\-/]+(?:\s+[\w.\-/]+){0,3})` +
 	`(?:'s|'re|\s+(?:is|are|was|were|has\s+been|have\s+been|will\s+be|looks|seems))?\s+(?:not\s+|now\s+|fully\s+)?` +
-	`(?:done|complete|completed|finished|fixed|working|works|worked|healthy|ready|impossible|unavailable|available|possible|broken|successful|succeeded|passed|failed|live|deployed|resolved|supported|unsupported|safe|secure)\b`)
+	`(?:(?:a|an)\s+)?(?:done|complete|completed|finished|fixed|working|works|worked|healthy|ready|impossible|unavailable|available|possible|broken|successful|succeeded|passed|failed|live|deployed|resolved|supported|unsupported|safe|secure|paid|free|premium|deprecated)\b`)
+
+// tellQuotedClaimRe matches a subject followed by the quoted words the agent
+// must not use: "Don't tell the user a build \"submitted to Play\"", "Never tell
+// the user Flow \"cannot\" do something" (#870). Quoting the claim marks it as
+// the wording to avoid, not a fact to hide.
+var tellQuotedClaimRe = regexp.MustCompile(`^\s+(?:that\s+)?[\w.\-/]+(?:\s+[\w.\-/]+){0,3}\s+["\x{201C}][^"\x{201D}]+["\x{201D}]`)
+
+// tellUntilRe matches a claim held back only until it is true: "Do not tell the
+// user the artifact is being monitored until that wake path is live" (#870).
+var tellUntilRe = regexp.MustCompile(`(?i)\buntil\b[^.;]{0,60}?\b(?:is|are|has\s+been|have\s+been)\s+(?:live|ready|done|finished|complete|completed|verified|confirmed|working|deployed|merged|running|available|in\s+place)\b`)
 
 // tellToRe matches "to <verb>" right after "tell the user", which turns the
 // phrase into guidance about what the user should be told to do.
