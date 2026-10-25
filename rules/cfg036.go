@@ -115,6 +115,11 @@ var readOutCommands = map[string]bool{
 // readOutCommands. Leading VAR=value assignments and sudo/env are skipped.
 func readsOut(span string) bool {
 	for _, cmd := range splitCommands(span) {
+		// "node --env-file=.env scripts/x.mjs" loads the file into the
+		// process (#868).
+		if strings.Contains(cmd, "--env-file") {
+			continue
+		}
 		for _, w := range strings.Fields(cmd) {
 			if strings.Contains(w, "=") && !strings.HasPrefix(w, "-") && !strings.Contains(w, "`") {
 				continue
@@ -155,6 +160,31 @@ func splitCommands(s string) []string {
 	return append(out, s[start:])
 }
 
+// envKeyLookupRe is a substitution that looks up one named key in an env file
+// or lists env files: $(grep '^ADMIN_API_KEY=' .env | cut -d= -f2-),
+// $(grep -E '^STATE_DIR=' docker/.env 2>/dev/null | cut -d= -f2- | tr -d '"'),
+// $(ls apps/web/.env.local apps/web/.env 2>/dev/null | head -1).
+var envKeyLookupRe = regexp.MustCompile(`^\$\(\s*(?:grep\s+(?:-\w+\s+)*["']?(?:\^[A-Za-z_<][\w<>]*|[A-Z_<][A-Z0-9_<>]*)=?["']?\s+[\w./\-]*\.env[\w.\-]*|ls\s+[^|)]*)\s*(?:2>\s*/dev/null\s*)?(?:\|\s*(?:cut|tr|sed|head|tail|xargs|awk)\b[^|)]*)*\)$`)
+
+// substAssignedRe is a shell variable assignment right before a substitution:
+// NAME=$( or NAME="$(.
+var substAssignedRe = regexp.MustCompile(`(?:^|[\s;(])(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*="?$`)
+
+// envKeyLookup reports whether the substitution at loc stores one key of an env
+// file in a shell variable, or lists env files (#868). That is how a skill
+// hands a project's own setting or token to the next command (PINATA_JWT=$(grep
+// "^PINATA_API_JWT=" .env | cut -d'=' -f2-)); the value stays in the shell. A
+// substitution used as an argument, which is where a payload sends a secret
+// ("curl -H \"X: $(grep '^TOKEN=' .env)\" ..."), a whole-file read and an open
+// search ("grep token .env") are still Part A.
+func envKeyLookup(line string, loc []int) bool {
+	sub := line[loc[0]:loc[1]]
+	if !envKeyLookupRe.MatchString(sub) {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(sub[2:]), "ls") || substAssignedRe.MatchString(line[:loc[0]])
+}
+
 // dollarSubstRe is a $( ) substitution, to its closing parenthesis or the end
 // of the line.
 var dollarSubstRe = regexp.MustCompile(`\$\([^)]*\)?`)
@@ -188,9 +218,17 @@ func sensitiveSubstitution(line string, inFence bool) []int {
 		return cmdSubstSensitiveRe.MatchString(cleaned)
 	}
 	for _, loc := range dollarSubstRe.FindAllStringIndex(line, -1) {
+		if envKeyLookup(line, loc) {
+			continue
+		}
 		if check(line[loc[0]:loc[1]]) {
 			return loc
 		}
+	}
+	// In a fence, a # line is a shell comment, where backticks run nothing:
+	// "# Put these PATH exports + `set -a; source .env; set +a` in env.sh" (#868).
+	if inFence && strings.HasPrefix(strings.TrimSpace(line), "#") {
+		return nil
 	}
 	for _, loc := range inlineCodeSpanRe.FindAllStringIndex(line, -1) {
 		if !inFence && !readsOut(line[loc[0]+1:loc[1]-1]) {
