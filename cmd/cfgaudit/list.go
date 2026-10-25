@@ -22,7 +22,7 @@ type ruleSummary struct {
 }
 
 var (
-	docTitleRe = regexp.MustCompile(`(?m)^#\s+(CFG\d{3})\s*[—-]\s*(.+?)\s*$`)
+	docTitleRe = regexp.MustCompile(`(?m)^#\s+(CFG\d{3})\s*[—:-]\s*(.+?)\s*$`)
 	docSevRe   = regexp.MustCompile(`(?m)^\*\*Severity:\*\*\s*(.+?)\s*$`)
 	docOwaspRe = regexp.MustCompile(`LLM\d{2}`)
 	docMcpRe   = regexp.MustCompile(`MCP\d{2}`)

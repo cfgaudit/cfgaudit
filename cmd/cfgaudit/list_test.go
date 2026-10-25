@@ -33,8 +33,12 @@ func TestList_JSON(t *testing.T) {
 	if len(rules) < 20 {
 		t.Errorf("expected many rules, got %d", len(rules))
 	}
-	if rules[0].ID == "" || rules[0].Severity == "" || rules[0].OWASP == "" || rules[0].Description == "" {
-		t.Errorf("expected fully-populated summary, got %+v", rules[0])
+	// Every rule, not only the first: docs titled "# CFGxxx: ..." printed no
+	// description (#916).
+	for _, r := range rules {
+		if r.ID == "" || r.Severity == "" || r.OWASP == "" || r.Description == "" {
+			t.Errorf("expected fully-populated summary, got %+v", r)
+		}
 	}
 }
 
