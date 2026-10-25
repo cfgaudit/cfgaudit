@@ -122,3 +122,27 @@ func TestCFG007_Issue852(t *testing.T) {
 		t.Errorf("a literal default must still be reported, got %+v", f)
 	}
 }
+
+// A relative key-file path and a boolean switch under a secret-like name are
+// not literal secrets; a token and a word password still are (#891).
+func TestCFG007_Issue891(t *testing.T) {
+	for _, js := range []string{
+		`{"env":{"GOOGLE_APPLICATION_CREDENTIALS":".codex/credentials/firebase-dev-readonly.json"}}`,
+		`{"env":{"BRIDGE_PERSISTENT_SECRET":"true"}}`,
+		`{"env":{"USE_API_KEY":"off"}}`,
+	} {
+		if f := CFG007.Check(settingsTarget(t, js)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", js, f)
+		}
+	}
+	for _, js := range []string{
+		`{"env":{"OPENAI_API_KEY":"sk-abc123def456ghi789"}}`,
+		`{"env":{"DB_PASSWORD":"hunter2"}}`,
+		`{"env":{"DB_PASSWORD":"123456"}}`,
+		`{"env":{"API_TOKEN":"abc/def+ghi=="}}`,
+	} {
+		if f := CFG007.Check(settingsTarget(t, js)); len(f) != 1 {
+			t.Errorf("expected one finding for %s, got %+v", js, f)
+		}
+	}
+}
