@@ -162,6 +162,16 @@ var defaultHookFilePaths = map[string]bool{
 // with no trust gate at all.
 const vscodeRestrictedNote = " The key is `restricted`, so the value is ignored until the workspace is trusted; trust is a single prompt, granted once, after which every clone is covered."
 
+// hookHarnessNote and terminalHarnessNote scope the hook and integrated
+// terminal keys to the harness that reads them (#752): VS Code's settings
+// reference says chat.useHooks, chat.hookFilesLocations and chat.useClaudeHooks
+// configure the Local harness only, and its tools page that the
+// integrated-terminal controls apply to Local harness sessions and to
+// configurations that use the integrated terminal tool.
+const hookHarnessNote = " It configures only Local harness sessions; a Copilot harness session, which recent VS Code releases start by default, reads hooks from its own settings files and from this repository's Claude settings without it."
+
+const terminalHarnessNote = " These controls apply to Local harness sessions and to configurations that use the integrated terminal tool; a Copilot harness session runs commands through its own shell tool."
+
 const terminalTrustNote = " These terminal keys are `restricted`, so the value is ignored until the workspace is trusted; trust is a single prompt, granted once, after which every clone is covered."
 
 // nestedFilterNote qualifies the scope and trust statements above for a value
@@ -358,7 +368,7 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 				Scope:    t.Scope,
 				File:     t.VSCodeSettingsFile,
 				Message: terminalAutoApproveKey + " approves the catch-all pattern \"" + strings.Join(broad, "\", \"") +
-					"\" — every command the agent proposes runs in the terminal with no confirmation." + terminalTrustNote + nestedNote(t, terminalAutoApproveKey) +
+					"\" — every command the agent proposes runs in the terminal with no confirmation." + terminalTrustNote + terminalHarnessNote + nestedNote(t, terminalAutoApproveKey) +
 					" List the specific commands the project needs instead",
 			})
 		}
@@ -371,7 +381,7 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 			Scope:    t.Scope,
 			File:     t.VSCodeSettingsFile,
 			Message: useClaudeHooksKey + " is true — it switches on execution of Claude-format hooks, which VS Code leaves off by default, and the default hook locations already include this repository's own .claude/settings.json." +
-				" A committed file therefore turns on execution of hook commands the same repository ships." + vscodeRestrictedNote + nestedNote(t, useClaudeHooksKey) +
+				" A committed file therefore turns on execution of hook commands the same repository ships." + vscodeRestrictedNote + hookHarnessNote + nestedNote(t, useClaudeHooksKey) +
 				" Remove the key and let each user decide",
 		})
 	}
@@ -394,7 +404,7 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 				File:     t.VSCodeSettingsFile,
 				Message: hookLocationsKey + " registers the hook location \"" + strings.Join(added, "\", \"") +
 					"\" — hook files declare \"custom shell commands to execute at strategic points in an agent's workflow\", and a relative path is resolved from the workspace root, so a committed value points the editor at command files this repository chose." +
-					" cfgaudit reads the standard hook paths and does not follow a registered one, so whatever those files contain is unreviewed by this scan." + vscodeRestrictedNote + nestedNote(t, hookLocationsKey),
+					" cfgaudit reads the standard hook paths and does not follow a registered one, so whatever those files contain is unreviewed by this scan." + vscodeRestrictedNote + hookHarnessNote + nestedNote(t, hookLocationsKey),
 			})
 		}
 	}
@@ -406,7 +416,7 @@ func (r *cfg048) checkTerminal(t *Target) []finding.Finding {
 			Scope:    t.Scope,
 			File:     t.VSCodeSettingsFile,
 			Message: terminalIgnoreDefaultsKey + " is true — VS Code's built-in terminal auto-approve rules are switched off, including the denials its own documentation describes as \"designed to protect you against running dangerous commands\"." +
-				" On its own this approves nothing, but it removes the backstop under any pattern the same file approves." + terminalTrustNote + nestedNote(t, terminalIgnoreDefaultsKey) +
+				" On its own this approves nothing, but it removes the backstop under any pattern the same file approves." + terminalTrustNote + terminalHarnessNote + nestedNote(t, terminalIgnoreDefaultsKey) +
 				" Leave it unset and narrow the allow patterns instead",
 		})
 	}
