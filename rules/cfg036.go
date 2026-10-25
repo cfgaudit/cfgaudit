@@ -68,7 +68,7 @@ var (
 	// review. The run instruction must be on the link's line or up to 3 lines
 	// after it, so a paste site only named (a list of payload hosts) does not
 	// match.
-	pasteLinkRe = mustFiltered(`(?i)\b(?:glot\.io/snippets|rentry\.(?:co|org)|pastebin\.com|hastebin\.com|paste\.ee|justpaste\.it|ghostbin\.\w+|0bin\.net)/\S`)
+	pasteLinkRe = mustFiltered(`(?i)https?://(?:www\.)?(?:glot\.io/snippets|rentry\.(?:co|org)|pastebin\.com|hastebin\.com|paste\.ee|justpaste\.it|ghostbin\.\w+|0bin\.net)/\S`)
 	pasteRunRe  = regexp.MustCompile(`(?i)\b(?:execute|run|paste)\b[^\n]{0,80}?\b(?:terminal|shell|command\s+line|console|powershell)\b`)
 	// Network exfiltration command (Pattern B).
 	netExfilRe = mustFiltered(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
