@@ -157,6 +157,16 @@ func concealNegated(line string, loc []int) bool {
 			return true
 		}
 	}
+	// "never tell the user \"I need to restore your token\" unless you've
+	// confirmed there's a token" holds back an unverified claim, and "Do not
+	// show the user a diagram that failed this check" withholds a broken
+	// result (#890).
+	if m := strings.ToLower(line[loc[0]:loc[1]]); strings.Contains(m, "tell") || strings.Contains(m, "show") {
+		after := line[loc[1]:]
+		if tellUnlessRe.MatchString(clauseRest(after)) || (strings.Contains(m, "show") && showFailedRe.MatchString(after)) {
+			return true
+		}
+	}
 	if m := prohibitionRe.FindStringIndex(line[loc[0]:loc[1]]); m != nil && m[0] == 0 {
 		return false
 	}
@@ -194,6 +204,16 @@ var tellQuotedClaimRe = regexp.MustCompile(`^\s+(?:that\s+)?[\w.\-/]+(?:\s+[\w.\
 // tellUntilRe matches a claim held back only until it is true: "Do not tell the
 // user the artifact is being monitored until that wake path is live" (#870).
 var tellUntilRe = regexp.MustCompile(`(?i)\buntil\b[^.;]{0,60}?\b(?:is|are|has\s+been|have\s+been)\s+(?:live|ready|done|finished|complete|completed|verified|confirmed|working|deployed|merged|running|available|in\s+place)\b`)
+
+// tellUnlessRe matches a claim held back unless it has been confirmed: "never
+// tell the user \"I need to restore your Telegram token\" unless you've
+// confirmed there's a token to restore" (#890).
+var tellUnlessRe = regexp.MustCompile(`(?i)\bunless\s+(?:you(?:'ve|\s+have)?\s+|it\s+(?:is|has\s+been)\s+|they(?:'ve|\s+have)?\s+(?:been\s+)?)?(?:confirmed|verified|checked|validated)\b`)
+
+// showFailedRe matches a result that failed a check or is broken, right after
+// "do not show the user": "a diagram that failed this check" (#890). Keeping a
+// broken result back until it is fixed is a quality gate, not concealment.
+var showFailedRe = regexp.MustCompile(`(?i)^\s+(?:a|an|the|any)\s+(?:(?:[\w\-]+\s+){1,3}(?:that|which)\s+(?:has\s+|have\s+)?(?:failed|fails|fail|is\s+(?:broken|invalid|unverified)|are\s+(?:broken|invalid|unverified))|(?:broken|invalid|unverified|failing|failed)\s)`)
 
 // tellToRe matches "to <verb>" right after "tell the user", which turns the
 // phrase into guidance about what the user should be told to do.
