@@ -156,6 +156,48 @@ func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unr
 	return targets
 }
 
+// rootSkillTargets returns a target for each SKILL.md under the scanned
+// directory's own skills/ folder that no plugin target already reads. Skill
+// collections and plugin repositories keep their skills there, and installers
+// copy from it, but without --plugins none of them was scanned (#912). Only the
+// skills are read here; a plugin's hooks and MCP servers stay with --plugins,
+// which also reads its manifest.
+func rootSkillTargets(dir string, have []*rules.Target) []*rules.Target {
+	root := filepath.Join(dir, "skills")
+	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, t := range have {
+		if t.InstructionFile != "" {
+			seen[absPath(t.InstructionFile)] = true
+		}
+	}
+	var targets []*rules.Target
+	_ = filepath.WalkDir(root, func(path string, e fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if e.IsDir() {
+			switch e.Name() {
+			case ".git", "node_modules", "vendor":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if e.Name() != "SKILL.md" || seen[absPath(path)] {
+			return nil
+		}
+		content, err := scanroot.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, InstructionFile: path, InstructionContent: string(content)})
+		return nil
+	})
+	return targets
+}
+
 // insideRoot resolves a manifest component path against the plugin root and
 // reports whether it stays inside it.
 func insideRoot(root, rel string) (string, bool) {

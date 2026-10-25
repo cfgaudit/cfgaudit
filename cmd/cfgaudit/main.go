@@ -149,6 +149,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
 		return 2
 	}
+	pluginTargets = append(pluginTargets, rootSkillTargets(dir, pluginTargets)...)
 	attachSkillShellToPluginSkills(pluginTargets, dir)
 	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
 	docTargets, err := contentPathTargets(dir, append(append([]string(nil), cfg.ContentPathGlobs()...), contentPaths...), targets)
