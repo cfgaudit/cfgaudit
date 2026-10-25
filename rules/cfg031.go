@@ -113,7 +113,16 @@ func actionScope(line string, loc []int) string {
 			break
 		}
 	}
-	return readOnlyRe.ReplaceAllString(line[start:end], "")
+	scope := line[start:end]
+	// A verb in another code span is a command of its own: "GitHub via
+	// `~/.ssh/config`) rather than `github.com`, `gh stack link`/`view`" (#869).
+	scope = inlineCodeSpanRe.ReplaceAllStringFunc(scope, func(span string) string {
+		if sensitivePathRe.MatchString(span) {
+			return span
+		}
+		return strings.Repeat(" ", len(span))
+	})
+	return readOnlyRe.ReplaceAllString(scope, "")
 }
 
 // homeToolPathRe matches a path under a dot-directory of the home directory,
@@ -153,6 +162,66 @@ func pathToken(line string, loc []int) string {
 
 const pathChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-/~${}"
 
+// publicCertRe matches a CA certificate, which is public by design:
+// "~/.portless/ca.pem", "cyrus-egress-ca.pem", "cacert.pem" (#869).
+var publicCertRe = regexp.MustCompile(`(?i)(?:^|[/_.\-])(?:ca|cacert|ca-cert\w*|ca-bundle|ca-certificates?)\.(?:pem|crt)$`)
+
+// placeholderPathRe matches a placeholder for a path the reader fills in:
+// "/path/to/cert.pem", "path-to-cert.pem" (#869).
+var placeholderPathRe = regexp.MustCompile(`(?i)(?:^|/)path[/\-]to[/\-]|^<[^>]*>$|^your[\-_]`)
+
+// notASecretFile reports a match that names no secret file: a path inside a
+// URL ("https://gvisor.dev/archive.key" is a public signing key), a CA
+// certificate and a placeholder (#869).
+func notASecretFile(line string, loc []int, full string) bool {
+	start := loc[1] - len(full)
+	if strings.HasPrefix(full, "//") && start > 0 && line[start-1] == ':' &&
+		!strings.HasSuffix(strings.ToLower(line[:start-1]), "file") {
+		return true // a web URL; file:///etc/passwd is still a local file
+	}
+	return publicCertRe.MatchString(full) || placeholderPathRe.MatchString(full)
+}
+
+// blockedAfterRe matches a clause that says the read is refused: "Attempts to
+// read `/proc/self/environ`, `~/.docker/config.json` ... will be denied".
+var blockedAfterRe = regexp.MustCompile(`(?i)\b(?:is|are|will\s+be|get|gets|be)\s+(?:blocked|denied|forbidden|rejected|refused|not\s+allowed)\b`)
+
+// writeOrTestBeforeRe matches what makes the path a write target or an
+// existence test rather than a read: "> key.pem", "test -f x.pem", "[ -f x ]".
+var writeOrTestBeforeRe = regexp.MustCompile(`(?:>>?\s*['"]?|\b(?:test|\[)\s+-[efsrdL]\s+['"]?)$`)
+
+// npmrcWriteRe matches a line that writes an .npmrc file, where an
+// ":_authToken" is the line being written: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc.
+var npmrcWriteRe = regexp.MustCompile(`>\s*\S*\.npmrc[\w.\-]*`)
+
+// blockListHeadRe matches the head of a list of things refused or detected:
+// "**106 patterns covering:**", "Never:", "Blocked paths:".
+var blockListHeadRe = regexp.MustCompile(`(?i)\b(?:patterns?|detect\w*|block\w*|den(?:y|ied|ies)|forbid\w*|prohibit\w*|red\s+flags?|dangerous)\b`)
+
+// notARead reports whether a verb near the path does not read it (#869): a
+// negation before the path in its clause or a refusing list above it, a
+// refusal after it, a write or an existence test of the path, and an
+// ":_authToken" line written to an .npmrc.
+func notARead(lines []string, i int, loc []int, full string) bool {
+	line := lines[i]
+	start := loc[1] - len(full)
+	if prohibitionRe.MatchString(line[clauseStart(line, start):start]) {
+		return true
+	}
+	// "etc." inside the list does not end the sentence.
+	if blockedAfterRe.MatchString(clauseRest(strings.ReplaceAll(line[loc[1]:], "etc.", "etc"))) {
+		return true
+	}
+	if writeOrTestBeforeRe.MatchString(line[:start]) {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(line[loc[0]:loc[1]]), ":_authtoken") && npmrcWriteRe.MatchString(line[loc[1]:]) {
+		return true
+	}
+	g := governingLine(lines, i)
+	return introducesList(g) && (prohibitionRe.MatchString(g) || blockListHeadRe.MatchString(g))
+}
+
 func (r *cfg031) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -160,14 +229,19 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
 		toolOwnSeen := map[string]bool{}
-		for i, line := range strings.Split(src.Content, "\n") {
+		lines := strings.Split(src.Content, "\n")
+		for i, line := range lines {
 			loc := sensitivePathRe.FindStringIndex(line)
 			if loc == nil {
 				continue
 			}
 			lineNo := i + 1
 			path := strings.TrimSpace(line[loc[0]:loc[1]])
-			if full := pathToken(line, loc); toolOwnPath(full) {
+			full := pathToken(line, loc)
+			if notASecretFile(line, loc, full) {
+				continue
+			}
+			if toolOwnPath(full) {
 				// "~/.x/f" and "$HOME/.x/f" are one file.
 				key := full[strings.Index(full, "/.")+1:]
 				if toolOwnSeen[key] {
@@ -188,7 +262,7 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			sev := finding.Warn
 			msg := src.Name + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
 				"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"
-			if pathActionRe.MatchString(actionScope(line, loc)) {
+			if pathActionRe.MatchString(actionScope(line, loc)) && !notARead(lines, i, loc, full) {
 				sev = finding.Error
 				msg = src.Name + " line " + strconv.Itoa(lineNo) + " instructs reading or sending the sensitive file \"" + path +
 					"\" — a hallmark of an exfiltration payload. Remove it"
