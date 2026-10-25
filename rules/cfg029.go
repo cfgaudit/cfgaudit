@@ -400,14 +400,14 @@ var (
 	// Someone other than the agent approves or bypasses: "The user always
 	// approves which change ...", "Members with isAdmin ... bypass permission
 	// checks".
-	userSubjectRe  = regexp.MustCompile(`(?i)\b(?:the\s+)?(?:user|human|maintainer|owner|reviewer)\s+$`)
-	grantThirdPartyRe   = regexp.MustCompile(`(?i)\b(?:members|users|admins?|administrators|owners|roles?|accounts?|callers?|clients?|superusers?)\b`)
-	youRe          = regexp.MustCompile(`(?i)\byou\b`)
-	codeSubjectRe  = regexp.MustCompile("`\\s*$")
-	promptNounRe   = regexp.MustCompile(`(?i)^\s+(?:structure|engineering|templates?|design|files?|text|injection|caching|tokens?|quality|context|format\w*|optimi[sz]ation)\b`)
-	hypotheticalRe = regexp.MustCompile(`(?i)\b(?:would|could)\s+(?:\w+\s+){1,2}$`)
-	questionWhatRe = regexp.MustCompile(`(?i)\bwhat\s+(?:\S+\s+){1,3}(?:may|can|could|should|is\s+allowed\s+to)\s+\w+\s+$`)
-	abbrevDotRe    = strings.NewReplacer("etc. ", "etc, ", "e.g. ", "e.g, ", "i.e. ", "i.e, ")
+	userSubjectRe     = regexp.MustCompile(`(?i)\b(?:the\s+)?(?:user|human|maintainer|owner|reviewer)\s+$`)
+	grantThirdPartyRe = regexp.MustCompile(`(?i)\b(?:members|users|admins?|administrators|owners|roles?|accounts?|callers?|clients?|superusers?)\b`)
+	youRe             = regexp.MustCompile(`(?i)\byou\b`)
+	codeSubjectRe     = regexp.MustCompile("`\\s*$")
+	promptNounRe      = regexp.MustCompile(`(?i)^\s+(?:structure|engineering|templates?|design|files?|text|injection|caching|tokens?|quality|context|format\w*|optimi[sz]ation)\b`)
+	hypotheticalRe    = regexp.MustCompile(`(?i)\b(?:would|could)\s+(?:\w+\s+){1,2}$`)
+	questionWhatRe    = regexp.MustCompile(`(?i)\bwhat\s+(?:\S+\s+){1,3}(?:may|can|could|should|is\s+allowed\s+to)\s+\w+\s+$`)
+	abbrevDotRe       = strings.NewReplacer("etc. ", "etc, ", "e.g. ", "e.g, ", "i.e. ", "i.e, ")
 )
 
 // describesState reports a match that names a state, a defect, a tool or a
