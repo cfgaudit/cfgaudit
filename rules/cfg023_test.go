@@ -179,3 +179,17 @@ func TestCFG023_RunnerPinnedPackage(t *testing.T) {
 		}
 	}
 }
+
+// A shell running a named script passes the wildcard to the script (#874).
+func TestCFG023_Issue874(t *testing.T) {
+	for _, e := range []string{"Bash(bash build.bash:*)", "Bash(sh ./scripts/test.sh *)"} {
+		if _, _, ok := dangerousAllowBinary(e); ok {
+			t.Errorf("expected %q to be exempt", e)
+		}
+	}
+	for _, e := range []string{"Bash(bash:*)", "Bash(bash -c:*)", "Bash(sh -x *)", "Bash(bash *.sh)"} {
+		if _, _, ok := dangerousAllowBinary(e); !ok {
+			t.Errorf("expected %q to be reported", e)
+		}
+	}
+}

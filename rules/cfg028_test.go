@@ -147,3 +147,15 @@ func TestCFG028_RedirectTargetIsOneWord(t *testing.T) {
 		}
 	}
 }
+
+// A log file under .claude/ is not configuration (#874).
+func TestCFG028_Issue874(t *testing.T) {
+	if got := trustWriteTarget(`s=.claude/hooks/setup-worktree.sh; [ -x "$s" ] && exec "$s"; echo 'not found' >>~/.claude/worktree-hook.log`); got != "" {
+		t.Errorf("expected no trust write, got %q", got)
+	}
+	for _, c := range []string{`echo x >> ~/.claude/settings.json`, `echo x >> .claude/commands/x.md; echo y >> ~/.claude/a.log`, `echo x >> ~/.claude/a.log.md`} {
+		if trustWriteTarget(c) == "" {
+			t.Errorf("expected a trust write in %q", c)
+		}
+	}
+}

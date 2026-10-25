@@ -5,6 +5,7 @@ package rules
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -67,10 +68,10 @@ func (r *cfg028) Check(t *Target) []finding.Finding {
 	}
 	var findings []finding.Finding
 	for _, site := range commandSites(t) {
-		if !matchesAny(trustWritePatterns, site.Command) {
+		target := trustWriteTarget(site.Command)
+		if target == "" {
 			continue
 		}
-		target := trustFileRe.FindString(site.Command)
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG028",
 			Severity: finding.Error,
@@ -82,11 +83,28 @@ func (r *cfg028) Check(t *Target) []finding.Finding {
 	return findings
 }
 
-func matchesAny(res []*regexp.Regexp, s string) bool {
-	for _, re := range res {
-		if re.MatchString(s) {
-			return true
+// claudeLogRe matches a log file under .claude/, which the agent never reads
+// as configuration: "echo '...' >>~/.claude/worktree-hook.log" (#874).
+var claudeLogRe = regexp.MustCompile(`(?i)^\.claude/[\w.\-/]*\.log$`)
+
+// trustWriteTarget returns the trust file a command writes to, or "" when it
+// writes to none. A write whose target is a log file under .claude/ does not
+// count.
+func trustWriteTarget(cmd string) string {
+	for _, re := range trustWritePatterns {
+		for _, loc := range re.FindAllStringIndex(cmd, -1) {
+			m := cmd[loc[0]:loc[1]]
+			tl := trustFileRe.FindAllStringIndex(m, -1)
+			start := loc[0] + tl[len(tl)-1][0]
+			end := start
+			for end < len(cmd) && !strings.ContainsRune(" \t\n;|&)'\"", rune(cmd[end])) {
+				end++
+			}
+			if claudeLogRe.MatchString(cmd[start:end]) {
+				continue
+			}
+			return cmd[start : loc[0]+tl[len(tl)-1][1]]
 		}
 	}
-	return false
+	return ""
 }

@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -118,14 +119,14 @@ func shellLaunchesProgram(shell string, args []string) bool {
 		}
 		return file
 	default:
-		for _, a := range args {
+		for i, a := range args {
 			a = strings.TrimSpace(a)
 			if strings.HasPrefix(a, "--") {
 				continue
 			}
 			if strings.HasPrefix(a, "-") {
 				if strings.Contains(a[1:], "c") {
-					return false
+					return i+2 == len(args) && guardedExec(args[i+1])
 				}
 				continue
 			}
@@ -133,6 +134,40 @@ func shellLaunchesProgram(shell string, args []string) bool {
 		}
 		return false
 	}
+}
+
+// guardStepRe and execStepRe are the steps of a guarded launch: a test that
+// runs nothing ("[ -f \"$HOME/.sentry/mcp.json\" ]", "command -v x >/dev/null"),
+// "exit N", and exec of one named program with literal arguments.
+var guardStepRe = regexp.MustCompile(`^(?:\[\s[^\]` + "`" + `]*\s\]|test\s[^` + "`" + `]*|command\s+-v\s+[\w.\-]+(?:\s*>\s*/dev/null(?:\s*2>&1)?)?|exit(?:\s+\d+)?|true|false)$`)
+var guardSplitRe = regexp.MustCompile(`&&|\|\||;`)
+var execStepRe = regexp.MustCompile(`^exec\s+[\w./\-]+(?:\s+[\w./=:@,\-"']+)*$`)
+
+// guardedExec reports whether a -c script only checks a condition and then
+// execs one named program: "[ -f \"$HOME/.sentry/mcp.json\" ] && exec
+// sentry-mcp --organization-slug hackerspub || exit 0" starts the server only
+// where it is configured (#874). Anything else in the script, a substitution,
+// a pipe or a redirect, keeps it an inline script.
+func guardedExec(script string) bool {
+	rest := strings.NewReplacer("||", " ", "&&", " ", ">/dev/null", " ", "> /dev/null", " ", "2>&1", " ").Replace(script)
+	if strings.ContainsAny(rest, "|<>`\n") || strings.Contains(script, "$(") {
+		return false
+	}
+	execs, guards := 0, 0
+	for _, step := range guardSplitRe.Split(script, -1) {
+		step = strings.TrimSpace(step)
+		switch {
+		case execStepRe.MatchString(step):
+			execs++
+		case guardStepRe.MatchString(step):
+			guards++
+		default:
+			return false
+		}
+	}
+	// A bare "exec real-mcp-server" has no condition to check and is still
+	// the shell-wrapped server the rule reports.
+	return execs == 1 && guards > 0
 }
 
 // hasInlineEvalFlag reports whether args contain a flag that makes an interpreter

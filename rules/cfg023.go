@@ -215,8 +215,25 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 	if (tok == "npx" || tok == "bunx") && runnerPackagePinned(inner) {
 		return "", allowCat{}, false
 	}
+	if shellInterpreters[tok] && shellScriptPinned(inner) {
+		return "", allowCat{}, false
+	}
 	if cat, ok := dangerousAllowLookup[tok]; ok {
 		return tok, cat, true
 	}
 	return "", allowCat{}, false
+}
+
+// shellScriptPinned reports whether a Bash(bash …*) entry names the script
+// the shell runs: "Bash(bash build.bash:*)" runs build.bash with any
+// arguments, which go to the script as $1, $2, ... and never to the shell
+// (#874). An option first ("bash -c:*", "bash -x *") or a wildcard in the
+// script position keeps the entry open.
+func shellScriptPinned(inner string) bool {
+	fields := strings.Fields(inner)
+	if len(fields) < 2 {
+		return false
+	}
+	f := strings.TrimSuffix(fields[1], ":*")
+	return f != "" && !strings.HasPrefix(f, "-") && !strings.ContainsAny(f, "*$`;|&<>")
 }
