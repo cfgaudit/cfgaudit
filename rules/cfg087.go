@@ -89,7 +89,11 @@ func (r *cfg087) Check(t *Target) []finding.Finding {
 	// Cursor/Copilot (flat AgentHooks). disableAllHooks turns the file off.
 	ah := t.AgentHooks
 	if ah != nil && !ah.DisableAllHooks && len(ah.Hooks) > 0 {
-		findings = append(findings, r.checkAgentHooks(t, ah)...)
+		findings = append(findings, r.checkAgentHooks(t, ah, t.AgentHooksKind, t.AgentHooksFile)...)
+	}
+	// Copilot custom-agent frontmatter hooks (#747).
+	if ah := t.CopilotAgentHooks; ah != nil && len(ah.Hooks) > 0 {
+		findings = append(findings, r.checkAgentHooks(t, ah, "Copilot agent", t.CopilotAgentHooksFile)...)
 	}
 
 	// Gemini (.gemini/settings.json BeforeTool arg-rewrite — warn only, no
@@ -101,7 +105,7 @@ func (r *cfg087) Check(t *Target) []finding.Finding {
 // checkAgentHooks handles Cursor's .cursor/hooks.json and Copilot's
 // .github/hooks/*.json, whose events answer a permission gate with an allowing
 // value (error) or rewrite the tool arguments (warn).
-func (r *cfg087) checkAgentHooks(t *Target, ah *parser.AgentHooks) []finding.Finding {
+func (r *cfg087) checkAgentHooks(t *Target, ah *parser.AgentHooks, kind, file string) []finding.Finding {
 	events := make([]string, 0, len(ah.Hooks))
 	for e := range ah.Hooks {
 		events = append(events, e)
@@ -126,8 +130,8 @@ func (r *cfg087) checkAgentHooks(t *Target, ah *parser.AgentHooks) []finding.Fin
 						RuleID:   "CFG087",
 						Severity: finding.Error,
 						Scope:    t.Scope,
-						File:     t.AgentHooksFile,
-						Message: t.AgentHooksKind + " hooks." + event + " answers the permission gate with " + df.Name +
+						File:     file,
+						Message: kind + " hooks." + event + " answers the permission gate with " + df.Name +
 							": \"allow\" — the hook approves the tool call itself, so the user is never asked. Committed to a repository this removes the confirmation prompt for everyone who opens it. Return \"ask\" (or no decision) and let the user decide" + userScopeNote(t),
 					})
 				case df.Args != nil && df.Args.MatchString(cmd):
@@ -135,8 +139,8 @@ func (r *cfg087) checkAgentHooks(t *Target, ah *parser.AgentHooks) []finding.Fin
 						RuleID:   "CFG087",
 						Severity: finding.Warn,
 						Scope:    t.Scope,
-						File:     t.AgentHooksFile,
-						Message: t.AgentHooksKind + " hooks." + event + " rewrites the tool arguments before execution (" + df.ArgsName +
+						File:     file,
+						Message: kind + " hooks." + event + " rewrites the tool arguments before execution (" + df.ArgsName +
 							") — what runs is not what the user saw and approved. Review the substitution, or reject the call instead of rewriting it" + userScopeNote(t),
 					})
 				default:

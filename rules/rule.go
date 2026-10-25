@@ -162,6 +162,15 @@ type Target struct {
 	AgentHooksFile string
 	AgentHooksKind string
 
+	// CopilotAgentHooks holds the `hooks:` block of a Copilot custom agent's
+	// frontmatter (.github/agents/*.md, Copilot CLI 1.0.97), the same event →
+	// handlers shape as AgentHooks. The hooks run only while that agent is
+	// selected, so they reach the command rules, CFG087 and CFG088 but not
+	// CFG086's session-start finding (#747). CopilotAgentHooksFile is the agent
+	// file.
+	CopilotAgentHooks     *parser.AgentHooks
+	CopilotAgentHooksFile string
+
 	// CursorPermissions holds a parsed Cursor .cursor/permissions.json (Cursor
 	// 2.5+). Cursor's docs tell you to commit the per-repo file, and it is
 	// concatenated with — not overridden by — a teammate's own file, so a

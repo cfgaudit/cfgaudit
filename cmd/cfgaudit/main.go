@@ -1161,8 +1161,8 @@ var (
 		// carry an inline mcp-servers block (see attachSubagentBlocks). Copilot
 		// recognises both *.md and *.agent.md here — the *.agent.md spelling wins
 		// when both exist for the same base name — and the plain *.md glob already
-		// matches both, so one pattern covers the directory.
-		filepath.Join(".github", "agents", "*.md"),
+		// matches both. The directory is walked recursively (filteredInstructionDirs,
+		// #747).
 		// Claude Code custom subagents, slash commands, and skills — Markdown with a
 		// YAML frontmatter (description trigger, allowed-tools) read as trusted
 		// context. Skills live one directory deep: .claude/skills/<name>/SKILL.md.
@@ -1420,9 +1420,8 @@ func attachSkillShellToPluginSkills(targets []*rules.Target, dir string) {
 //     the inline `mcpServers:` list rides ProjectMCP like the servers in .mcp.json.
 //
 //   - GitHub Copilot, .github/agents/*.md (#439): the kebab-case `mcp-servers:`
-//     mapping rides ProjectMCP. Copilot's custom-agent frontmatter has no hooks
-//     block — its hooks come from config dirs and plugin manifests, not from an
-//     agent file — so none is decoded here.
+//     mapping rides ProjectMCP. Since Copilot CLI 1.0.97 the frontmatter can also
+//     carry agent-scoped `hooks:` (#747), decoded into CopilotAgentHooks.
 //
 //   - qwen-code, .qwen/agents/*.md (#579): the frontmatter "mirrors Claude Code
 //     2.1.168's .claude/agents/<name>.md schema verbatim", so the same `hooks:`
@@ -1469,6 +1468,10 @@ func attachSubagentBlocks(t *rules.Target) {
 			t.ProjectMCP = servers
 			t.ProjectMCPFile = t.InstructionFile
 		}
+		if h := parser.CopilotAgentHooks(fm); h != nil {
+			t.CopilotAgentHooks = h
+			t.CopilotAgentHooksFile = t.InstructionFile
+		}
 		return
 	}
 
@@ -1508,11 +1511,20 @@ func isClaudeSubagentFile(path string) bool {
 	return isAgentDefinitionFile(path, ".claude")
 }
 
-// isCopilotAgentFile reports whether path is a Markdown file directly inside a
-// .github/agents directory. Copilot accepts both the *.md and *.agent.md
+// isCopilotAgentFile reports whether path is a Markdown file inside a
+// .github/agents directory, at any depth. Copilot accepts both the *.md and *.agent.md
 // spellings there; both end in .md, so no separate check is needed.
 func isCopilotAgentFile(path string) bool {
-	return isAgentDefinitionFile(path, ".github")
+	if path == "" || !strings.EqualFold(filepath.Ext(path), ".md") {
+		return false
+	}
+	// Any depth below .github/agents (#747).
+	for dir := filepath.Dir(path); dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+		if filepath.Base(dir) == "agents" && filepath.Base(filepath.Dir(dir)) == ".github" {
+			return true
+		}
+	}
+	return false
 }
 
 // isGeminiAgentFile reports whether path is a Markdown file directly inside a
@@ -1647,6 +1659,10 @@ var filteredInstructionDirs = []filteredInstructionDir{
 	{filepath.Join(".github", "instructions"), func(name string) bool {
 		return strings.HasSuffix(name, ".instructions.md") || name == "copilot-instructions.md"
 	}},
+	// Copilot custom agents (#439, #747). Measured on Copilot CLI 1.0.95, an
+	// agent in .github/agents/team/deep/ was found and ran like one directly in
+	// .github/agents; 1.0.97's changelog says nested agent files are discovered.
+	{filepath.Join(".github", "agents"), isMarkdown},
 	{filepath.Join(".cursor", "rules"), func(name string) bool { return strings.HasSuffix(name, ".mdc") }},
 	{filepath.Join(".devin", "rules"), isMarkdown},
 	{filepath.Join(".windsurf", "rules"), isMarkdown},
@@ -2587,6 +2603,7 @@ var (
 	agentMCPFiles = []string{
 		filepath.Join(".cursor", "mcp.json"),    // Cursor (project)
 		filepath.Join(".vscode", "mcp.json"),    // VS Code / Copilot
+		filepath.Join(".github", "mcp.json"),    // Copilot CLI workspace MCP, auto-loaded since 1.0.61 (#747)
 		"cline_mcp_settings.json",               // Cline
 		filepath.Join(".kimi-code", "mcp.json"), // Kimi Code project MCP — same {mcpServers} shape as .mcp.json; it OVERRIDES the repo-root .mcp.json (Kimi spreads it last) and its stdio entries execute at session start, so it is scanned as its own attributed target rather than merged (which would hide the override)
 	}

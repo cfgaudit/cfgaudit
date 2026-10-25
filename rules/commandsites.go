@@ -448,6 +448,18 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// Copilot custom-agent frontmatter hooks (#747): commands that run while the
+	// agent is selected, after workspace admission.
+	if ah := t.CopilotAgentHooks; ah != nil && len(ah.Hooks) > 0 {
+		for _, event := range sortedKeys2(ah.Hooks) {
+			for _, h := range ah.Hooks[event] {
+				for _, cmd := range h.ShellCommands() {
+					sites = append(sites, commandSite{Label: "Copilot agent hooks." + event + " command", File: t.CopilotAgentHooksFile, Command: cmd})
+				}
+			}
+		}
+	}
+
 	// Grok .grok/lsp.json: each language server is a command Grok spawns (#616).
 	for _, name := range sortedKeys2(t.GrokLSP) {
 		s := t.GrokLSP[name]

@@ -407,6 +407,31 @@ func ParseMCPConfig(path string) (*MCPConfig, error) {
 	if isVSCodeWorkspaceFile(path) {
 		data = stripJSONC(data)
 	}
+	// Copilot CLI reads .github/mcp.json strictly and only under mcpServers:
+	// measured on 1.0.95, a file with VS Code's "servers" key is skipped with
+	// "malformed: mcpServers: Required", and so is one with a comment, a
+	// trailing comma or a byte-order mark (#747). A file that is valid JSON but
+	// has no mcpServers starts nothing, so it yields no servers and no finding;
+	// one that is not JSON at all stays a parse error (CFG109).
+	if isCopilotWorkspaceMCP(path) {
+		// Whether the file declares mcpServers at all is read from a lenient copy
+		// (no byte-order mark, comments or trailing commas), so a VS Code-shaped
+		// file is ignored however it is written; the strict parse below then
+		// reports a file Copilot cannot read although it means to.
+		var top map[string]json.RawMessage
+		if err := json.Unmarshal(stripJSONC(data), &top); err != nil {
+			return nil, fmt.Errorf("parse %s: %w", path, err)
+		}
+		if _, ok := top["mcpServers"]; !ok {
+			return &MCPConfig{}, nil
+		}
+		var c MCPConfig
+		if err := json.Unmarshal(data, &c); err != nil {
+			return nil, fmt.Errorf("parse %s: %w", path, err)
+		}
+		c.Servers = nil
+		return &c, nil
+	}
 	var c MCPConfig
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
@@ -423,6 +448,11 @@ func ParseMCPConfig(path string) (*MCPConfig, error) {
 		c.Servers = nil
 	}
 	return &c, nil
+}
+
+// isCopilotWorkspaceMCP reports whether path is a .github/mcp.json.
+func isCopilotWorkspaceMCP(path string) bool {
+	return filepath.Base(path) == "mcp.json" && filepath.Base(filepath.Dir(path)) == ".github"
 }
 
 // isVSCodeWorkspaceFile reports whether path is a file in a .vscode directory.

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 type cfg088 struct{}
@@ -60,10 +61,19 @@ func (r *cfg088) checkContinueHooks(t *Target) []finding.Finding {
 }
 
 func (r *cfg088) checkAgentHooks(t *Target) []finding.Finding {
-	ah := t.AgentHooks
-	if ah == nil || ah.DisableAllHooks || len(ah.Hooks) == 0 {
-		return nil
+	var findings []finding.Finding
+	if ah := t.AgentHooks; ah != nil && !ah.DisableAllHooks && len(ah.Hooks) > 0 {
+		findings = append(findings, agentHTTPHooks(t, ah, t.AgentHooksKind, t.AgentHooksFile)...)
 	}
+	// Copilot custom-agent frontmatter hooks (#747).
+	if ah := t.CopilotAgentHooks; ah != nil && len(ah.Hooks) > 0 {
+		findings = append(findings, agentHTTPHooks(t, ah, "Copilot agent", t.CopilotAgentHooksFile)...)
+	}
+	return findings
+}
+
+// agentHTTPHooks reports the http handlers of a flat event → handlers table.
+func agentHTTPHooks(t *Target, ah *parser.AgentHooks, kind, file string) []finding.Finding {
 	events := make([]string, 0, len(ah.Hooks))
 	for e := range ah.Hooks {
 		events = append(events, e)
@@ -73,7 +83,7 @@ func (r *cfg088) checkAgentHooks(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, event := range events {
 		for _, h := range ah.Hooks[event] {
-			findings = append(findings, httpHookFindings(t, t.AgentHooksKind+" hooks."+event, t.AgentHooksFile, h.Type, h.URL, h.AllowedEnvVars)...)
+			findings = append(findings, httpHookFindings(t, kind+" hooks."+event, file, h.Type, h.URL, h.AllowedEnvVars)...)
 		}
 	}
 	return findings

@@ -6,6 +6,8 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
@@ -23,6 +25,18 @@ type AgentHook struct {
 	Shell   string `json:"powershell,omitempty"`
 	Matcher any    `json:"matcher,omitempty"`
 
+	// Exec and Args are Copilot CLI's shell-free form: "Runs the executable
+	// directly without a shell", with args "passed directly to exec". The
+	// command rules read the two joined, as for Claude Code's exec form (#747).
+	Exec string   `json:"exec,omitempty"`
+	Args []string `json:"args,omitempty"`
+
+	// Windows, Linux and OSX override the command per platform in a Copilot
+	// custom agent's frontmatter hooks (#747).
+	Windows string `json:"windows,omitempty"`
+	Linux   string `json:"linux,omitempty"`
+	OSX     string `json:"osx,omitempty"`
+
 	// URL, Headers and AllowedEnvVars belong to Copilot's http hook type, which
 	// POSTs to an arbitrary endpoint. AllowedEnvVars names the environment
 	// variables forwarded with that request.
@@ -34,8 +48,16 @@ type AgentHook struct {
 // ShellCommand returns the shell command this hook runs, preferring the explicit
 // per-platform spellings over the cross-platform fallback. Empty for a prompt or
 // http hook, which run no command.
+// execLine joins the exec form into one line for the command rules.
+func (h AgentHook) execLine() string {
+	if strings.TrimSpace(h.Exec) == "" {
+		return ""
+	}
+	return strings.TrimSpace(strings.Join(append([]string{h.Exec}, h.Args...), " "))
+}
+
 func (h AgentHook) ShellCommand() string {
-	for _, c := range []string{h.Bash, h.Shell, h.Command} {
+	for _, c := range []string{h.Bash, h.Shell, h.Command, h.Linux, h.OSX, h.Windows, h.execLine()} {
 		if c != "" {
 			return c
 		}
@@ -51,7 +73,7 @@ func (h AgentHook) ShellCommand() string {
 func (h AgentHook) ShellCommands() []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, c := range []string{h.Bash, h.Shell, h.Command} {
+	for _, c := range []string{h.Bash, h.Shell, h.Command, h.Linux, h.OSX, h.Windows, h.execLine()} {
 		if c != "" && !seen[c] {
 			seen[c] = true
 			out = append(out, c)
@@ -127,4 +149,29 @@ func ParseAgentHooks(path string) (*AgentHooks, error) {
 	}
 	h.decodeHooks()
 	return &h, nil
+}
+
+// CopilotAgentHooks decodes the `hooks:` event map in a Copilot custom agent's
+// frontmatter (Copilot CLI 1.0.97, "agent-scoped declarative hooks"): the same
+// event → handlers shape as .github/hooks/*.json, with windows, linux and osx
+// overriding the command per platform. The hooks run only while that agent is
+// selected, after workspace admission. Nil when absent or of another shape.
+func CopilotAgentHooks(fm *Frontmatter) *AgentHooks {
+	if fm == nil {
+		return nil
+	}
+	raw, ok := fm.Raw["hooks"].(map[string]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	h := &AgentHooks{HooksRaw: b}
+	h.decodeHooks()
+	if len(h.Hooks) == 0 {
+		return nil
+	}
+	return h
 }
