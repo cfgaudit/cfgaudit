@@ -54,12 +54,13 @@ func TestCFG012_AllowlistedMcpServers_NoFinding(t *testing.T) {
 	}
 }
 
-// subagentStatusLine is a real, executed key that the bundled schema does not
-// carry. cfgaudit reads it as a command site, so CFG012 must not call it unknown.
+// subagentStatusLine is a real, executed key. cfgaudit reads it as a command
+// site, so CFG012 must not call it unknown; the bundled schema carries it
+// since #894.
 func TestCFG012_AllowlistedSubagentStatusLine_NoFinding(t *testing.T) {
 	f := CFG012.Check(settingsTarget(t, `{"subagentStatusLine":{"type":"command","command":"./bar.sh"}}`))
 	if len(f) != 0 {
-		t.Errorf("expected no finding for allowlisted subagentStatusLine, got %d: %+v", len(f), f)
+		t.Errorf("expected no finding for subagentStatusLine, got %d: %+v", len(f), f)
 	}
 }
 
@@ -134,5 +135,18 @@ func TestCFG012_UnknownKey_StaysWarn(t *testing.T) {
 	f := CFG012.Check(settingsTarget(t, `{"thisIsNotARealKey":"whatever"}`))
 	if len(f) != 1 || f[0].Severity != finding.Warn {
 		t.Fatalf("expected 1 Warn, got %+v", f)
+	}
+}
+
+func TestCFG012_Issue894(t *testing.T) {
+	for _, k := range []string{`"skillListingBudgetFraction":0.5`, `"disableWorkflows":true`, `"disableArtifact":true`, `"workflowSizeGuideline":"small"`, `"disableBundledSkills":true`, `"disableClaudeAiConnectors":true`, `"disableRemoteControl":true`, `"footerLinksRegexes":[]`} {
+		if f := CFG012.Check(settingsTarget(t, "{"+k+"}")); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %+v", k, f)
+		}
+	}
+	for _, k := range []string{`"_comment":"x"`, `"// env":"x"`, `"prompt":"x"`} {
+		if f := CFG012.Check(settingsTarget(t, "{"+k+"}")); len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("%s: expected one unknown-key warn, got %+v", k, f)
+		}
 	}
 }
