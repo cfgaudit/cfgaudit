@@ -401,7 +401,7 @@ var (
 	// approves which change ...", "Members with isAdmin ... bypass permission
 	// checks".
 	userSubjectRe  = regexp.MustCompile(`(?i)\b(?:the\s+)?(?:user|human|maintainer|owner|reviewer)\s+$`)
-	thirdPartyRe   = regexp.MustCompile(`(?i)\b(?:members|users|admins?|administrators|owners|roles?|accounts?|callers?|clients?|superusers?)\b`)
+	grantThirdPartyRe   = regexp.MustCompile(`(?i)\b(?:members|users|admins?|administrators|owners|roles?|accounts?|callers?|clients?|superusers?)\b`)
 	youRe          = regexp.MustCompile(`(?i)\byou\b`)
 	codeSubjectRe  = regexp.MustCompile("`\\s*$")
 	promptNounRe   = regexp.MustCompile(`(?i)^\s+(?:structure|engineering|templates?|design|files?|text|injection|caching|tokens?|quality|context|format\w*|optimi[sz]ation)\b`)
@@ -461,7 +461,7 @@ func describesState(line string, loc []int) bool {
 	case strings.HasPrefix(match, "always approve"), strings.HasPrefix(match, "automatically approve"):
 		return userSubjectRe.MatchString(before)
 	case strings.HasPrefix(match, "bypass permission"):
-		return thirdPartyRe.MatchString(before) && !youRe.MatchString(before)
+		return grantThirdPartyRe.MatchString(before) && !youRe.MatchString(before)
 	}
 	return false
 }
