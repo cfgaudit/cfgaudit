@@ -62,6 +62,14 @@ var (
 	archiveLinkRe     = regexp.MustCompile(`(?i)https?://\S`)
 	archivePasswordRe = mustFiltered(`(?i:\b(?:extract|unzip|unpack|decompress)\w*\b[^\n]{0,40}?(?:\b(?:using|with)\b[^\n]{0,15}?|\(\s*)\bpass(?:word|phrase)?\b)|\bunzip\s+-P\s*\S+|\b7z\s+x\b[^\n]*\s-p\S+`)
 	archiveRunRe      = regexp.MustCompile(`(?i)\b(?:run|execute|launch|open|start)\b`)
+	// A paste-site link whose content the text says to run in a terminal
+	// (Part G, #910): "Visit [this page](https://glot.io/snippets/...) and
+	// execute the installation command in Terminal". A paste can change after
+	// review. The run instruction must be on the link's line or up to 3 lines
+	// after it, so a paste site only named (a list of payload hosts) does not
+	// match.
+	pasteLinkRe = mustFiltered(`(?i)\b(?:glot\.io/snippets|rentry\.(?:co|org)|pastebin\.com|hastebin\.com|paste\.ee|justpaste\.it|ghostbin\.\w+|0bin\.net)/\S`)
+	pasteRunRe  = regexp.MustCompile(`(?i)\b(?:execute|run|paste)\b[^\n]{0,80}?\b(?:terminal|shell|command\s+line|console|powershell)\b`)
 	// Network exfiltration command (Pattern B).
 	netExfilRe = mustFiltered(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
 
@@ -80,6 +88,17 @@ var (
 	// The noun that follows "at the start", within the same sentence.
 	sessionScopeRe = regexp.MustCompile(`(?i)^[^.;]{0,40}?\b(?:session|conversation|chat)\b`)
 )
+
+// pasteRun reports whether a run-in-a-terminal instruction follows the paste
+// link on line i, on that line or up to 3 lines after it (Part G, #910).
+func pasteRun(lines []string, i int) bool {
+	for j := i; j <= min(len(lines)-1, i+3); j++ {
+		if pasteRunRe.MatchString(lines[j]) {
+			return true
+		}
+	}
+	return false
+}
 
 // passwordArchiveRun reports whether the archive password on line i comes
 // with a download link on that line or up to 3 lines before it, and an
@@ -471,6 +490,9 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 		}
 
 		for i, line := range lines {
+			if loc := pasteLinkRe.FindStringIndex(line); loc != nil && pasteRun(lines, i) {
+				add(i, loc[0], finding.Error, "asks to run a command from a paste site in a terminal (Part G) — the paste can change after review, and nothing in the file says what it runs. Write the command out or point to the tool's own install docs")
+			}
 			if loc := archivePasswordRe.FindStringIndex(line); loc != nil && passwordArchiveRun(lines, i) {
 				add(i, loc[0], finding.Error, "asks to run a downloaded password-protected archive (Part F) — the password keeps malware scanners out of the archive, and nothing in the file says what it runs. Point to the tool's own signed release or package instead")
 			}
