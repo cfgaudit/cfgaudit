@@ -35,7 +35,9 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 	markets := objectKeys(marketsRaw)
 	registered := make(map[string]bool, len(markets))
 	for _, m := range markets {
-		registered[m] = true
+		if !officialMarketplace(marketsRaw, m) {
+			registered[m] = true
+		}
 	}
 
 	var findings []finding.Finding
@@ -56,10 +58,36 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 	}
 
 	for _, m := range markets {
+		if officialMarketplace(marketsRaw, m) {
+			continue
+		}
 		add(finding.Warn, marketsKey+" registers the plugin marketplace \""+m+"\" — a committed file points users at a marketplace source they did not choose; review it and pin the source to a fixed ref")
 	}
 
 	return findings
+}
+
+// officialMarketplace reports whether the marketplace name is Anthropic's
+// official one registered with its own source, github
+// anthropics/claude-plugins-official. Claude Code knows that marketplace
+// already, so the entry hands nobody a source they did not choose, and a
+// plugin enabled from it is a plain enable, not one from a marketplace the
+// file controls (#872).
+func officialMarketplace(raw json.RawMessage, name string) bool {
+	if name != "claude-plugins-official" {
+		return false
+	}
+	var m map[string]struct {
+		Source struct {
+			Source string `json:"source"`
+			Repo   string `json:"repo"`
+		} `json:"source"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return false
+	}
+	src := m[name].Source
+	return src.Source == "github" && strings.EqualFold(src.Repo, "anthropics/claude-plugins-official")
 }
 
 // objectKeys returns the sorted keys of a JSON object value, or nil.

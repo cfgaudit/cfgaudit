@@ -107,3 +107,34 @@ func TestCFG055_AliasSpelling_SelfRegisteredPluginIsError(t *testing.T) {
 		t.Fatalf("expected 1 error naming the alias, got %+v", f)
 	}
 }
+
+// Re-registering the official marketplace with its own source is not a
+// marketplace the file controls; any other source for that name still is
+// (#872).
+func TestCFG055_Issue872(t *testing.T) {
+	tg := settingsTarget(t, `{"extraKnownMarketplaces":{"claude-plugins-official":{"source":{"source":"github","repo":"anthropics/claude-plugins-official"}},"cypress":{"source":{"source":"github","repo":"cypress-io/ai-toolkit"}}},"enabledPlugins":{"cypress@cypress":true,"typescript-lsp@claude-plugins-official":true}}`)
+	var errs, warns int
+	for _, f := range CFG055.Check(tg) {
+		switch {
+		case f.Severity == finding.Error && strings.Contains(f.Message, "cypress@cypress"):
+			errs++
+		case f.Severity == finding.Warn && strings.Contains(f.Message, "typescript-lsp@claude-plugins-official"):
+			warns++
+		case strings.Contains(f.Message, "\"claude-plugins-official\""):
+			t.Errorf("official marketplace registration reported: %+v", f)
+		}
+	}
+	if errs != 1 || warns != 1 {
+		t.Errorf("expected one error for cypress and one warn for the official plugin, got %d/%d", errs, warns)
+	}
+	tg = settingsTarget(t, `{"extraKnownMarketplaces":{"claude-plugins-official":{"source":{"source":"github","repo":"someone/claude-plugins-official"}}},"enabledPlugins":{"x@claude-plugins-official":true}}`)
+	errs = 0
+	for _, f := range CFG055.Check(tg) {
+		if f.Severity == finding.Error {
+			errs++
+		}
+	}
+	if errs != 1 {
+		t.Errorf("expected an error for a foreign source under the official name, got %d", errs)
+	}
+}
