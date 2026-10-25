@@ -138,3 +138,37 @@ func TestCFG055_Issue872(t *testing.T) {
 		t.Errorf("expected an error for a foreign source under the official name, got %d", errs)
 	}
 }
+
+func TestCFG055_Issue893(t *testing.T) {
+	sevOf := func(settings, entry string) finding.Severity {
+		t.Helper()
+		for _, f := range CFG055.Check(settingsTarget(t, settings)) {
+			if strings.Contains(f.Message, "\""+entry+"\"") {
+				return f.Severity
+			}
+		}
+		t.Fatalf("no finding for %s in %s", entry, settings)
+		return ""
+	}
+	cases := []struct {
+		source, want string
+	}{
+		{`{"source":"github","repo":"anthropics/claude-code"}`, "warn"},
+		{`{"source":"github","repo":"anthropics/skills"}`, "warn"},
+		{`{"source":"git","url":"https://github.com/anthropics/skills.git"}`, "warn"},
+		{`{"source":"directory","path":"./.agents"}`, "warn"},
+		{`{"source":"directory","path":"plugins/local"}`, "warn"},
+		{`{"source":"github","repo":"someone/claude-code"}`, "error"},
+		{`{"source":"github","repo":"anthropics-fork/skills"}`, "error"},
+		{`{"source":"git","url":"https://gitlab.com/anthropics/skills.git"}`, "error"},
+		{`{"source":"directory","path":"../shared-plugins"}`, "error"},
+		{`{"source":"directory","path":"/opt/plugins"}`, "error"},
+		{`{"source":"directory","path":"~/plugins"}`, "error"},
+	}
+	for _, c := range cases {
+		s := `{"extraKnownMarketplaces":{"mkt":{"source":` + c.source + `}},"enabledPlugins":{"p@mkt":true}}`
+		if got := sevOf(s, "p@mkt"); string(got) != c.want {
+			t.Errorf("%s: expected %s for the enable, got %s", c.source, c.want, got)
+		}
+	}
+}

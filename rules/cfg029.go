@@ -386,6 +386,86 @@ func notAPermissionBypass(line string, loc []int) bool {
 	return false
 }
 
+// The shapes describesState skips (#884).
+var (
+	// A state: "apply was requested without approval", "added without
+	// approval", "unresolved P1 without approval", "max iterations reached
+	// without approval".
+	stateBeforeRe = regexp.MustCompile(`(?i)(?:\b(?:was|were|has\s+been|have\s+been|had\s+been)\s+\w+(?:ed|en|ne|un)|\b(?:added|reached|unresolved|introduced)(?:\s+\S+){0,2})\s+$`)
+	// The fix named in the same row or item: "| Write actions without
+	// approval | Add human approval gate ... |".
+	addGateRe = regexp.MustCompile(`(?i)\badd(?:s|ing)?\s+(?:an?\s+)?(?:\w+\s+){0,2}(?:approval|confirmation)\b`)
+	// "What it will NOT do without confirmation" keeps the confirmation.
+	willNotRe = regexp.MustCompile(`(?i)\b(?:will\s+not|won'?t|would\s+not|wouldn'?t)\b`)
+	// Someone other than the agent approves or bypasses: "The user always
+	// approves which change ...", "Members with isAdmin ... bypass permission
+	// checks".
+	userSubjectRe     = regexp.MustCompile(`(?i)\b(?:the\s+)?(?:user|human|maintainer|owner|reviewer)\s+$`)
+	grantThirdPartyRe = regexp.MustCompile(`(?i)\b(?:members|users|admins?|administrators|owners|roles?|accounts?|callers?|clients?|superusers?)\b`)
+	youRe             = regexp.MustCompile(`(?i)\byou\b`)
+	codeSubjectRe     = regexp.MustCompile("`\\s*$")
+	promptNounRe      = regexp.MustCompile(`(?i)^\s+(?:structure|engineering|templates?|design|files?|text|injection|caching|tokens?|quality|context|format\w*|optimi[sz]ation)\b`)
+	hypotheticalRe    = regexp.MustCompile(`(?i)\b(?:would|could)\s+(?:\w+\s+){1,2}$`)
+	questionWhatRe    = regexp.MustCompile(`(?i)\bwhat\s+(?:\S+\s+){1,3}(?:may|can|could|should|is\s+allowed\s+to)\s+\w+\s+$`)
+	abbrevDotRe       = strings.NewReplacer("etc. ", "etc, ", "e.g. ", "e.g, ", "i.e. ", "i.e, ")
+)
+
+// describesState reports a match that names a state, a defect, a tool or a
+// question rather than ordering the agent to skip a prompt (#884): status
+// labels and rubric rows ("apply was requested without approval",
+// "unresolved P1 without approval"), an anti-pattern row that names the fix
+// ("| Write actions without approval | Add human approval gate |"), a bold
+// label naming a defect ("**Destructive actions without confirmation or
+// undo**"), "will NOT do without confirmation", a "Never ... etc. Without
+// Approval" heading, the user or a third party as the subject, a command as
+// the subject of "never prompt", "prompt" as a noun ("prompt-only", "prompt
+// structure"), "would apply without prompting" and "what the tool may decide
+// without confirmation".
+func describesState(line string, loc []int) bool {
+	match := strings.ToLower(line[loc[0]:loc[1]])
+	after := line[loc[1]:]
+	start := clauseStart(abbrevDotRe.Replace(line), loc[0])
+	before := line[start:loc[0]]
+	// A match that is itself negated ("don't ask permission") is the bypass;
+	// negated() keeps it for the same reason.
+	if m := prohibitionRe.FindStringIndex(match); m == nil || m[0] != 0 {
+		if prohibitionRe.MatchString(before) || willNotRe.MatchString(before) {
+			return true
+		}
+	}
+	switch {
+	case strings.HasPrefix(match, "without"):
+		if stateBeforeRe.MatchString(before) || questionWhatRe.MatchString(before) {
+			return true
+		}
+		t := strings.TrimSpace(line)
+		if (strings.HasPrefix(t, "|") || listItemRe.MatchString(line)) && addGateRe.MatchString(line[loc[1]:]) {
+			return true
+		}
+		if m := labelLeadRe.FindStringSubmatchIndex(line); m != nil && loc[0] >= m[2] && loc[1] <= m[3] {
+			first := strings.Fields(line[m[2]:loc[0]] + " x")[0]
+			if !agentActionRe.MatchString(first) && !prohibitionRe.MatchString(first) && !strings.EqualFold(first, "always") && !strings.EqualFold(first, "just") {
+				return true
+			}
+		}
+		if strings.HasPrefix(match, "without prompt") {
+			if strings.HasPrefix(after, "-") || match == "without prompt" && promptNounRe.MatchString(after) {
+				return true
+			}
+			if strings.HasPrefix(match, "without prompting") && hypotheticalRe.MatchString(before) {
+				return true
+			}
+		}
+	case strings.HasPrefix(match, "never prompt"):
+		return strings.HasPrefix(after, "-") || codeSubjectRe.MatchString(before)
+	case strings.HasPrefix(match, "always approve"), strings.HasPrefix(match, "automatically approve"):
+		return userSubjectRe.MatchString(before)
+	case strings.HasPrefix(match, "bypass permission"):
+		return grantThirdPartyRe.MatchString(before) && !youRe.MatchString(before)
+	}
+	return false
+}
+
 func isWordByte(b byte) bool {
 	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b == '_'
 }
@@ -454,7 +534,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 			if loc == nil {
 				continue
 			}
-			if negated(lines, i, loc) || notAPermissionBypass(line, loc) {
+			if negated(lines, i, loc) || notAPermissionBypass(line, loc) || describesState(line, loc) {
 				continue
 			}
 			// A # comment in a fenced code block says what the next command

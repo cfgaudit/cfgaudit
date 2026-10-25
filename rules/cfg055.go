@@ -5,6 +5,7 @@ package rules
 
 import (
 	"encoding/json"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -34,8 +35,13 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 	marketsRaw, marketsKey := t.Settings.Marketplaces()
 	markets := objectKeys(marketsRaw)
 	registered := make(map[string]bool, len(markets))
+	inRepo := make(map[string]bool, len(markets))
 	for _, m := range markets {
-		if !officialMarketplace(marketsRaw, m) {
+		switch {
+		case officialMarketplace(marketsRaw, m), anthropicMarketplace(marketsRaw, m):
+		case inRepoMarketplace(marketsRaw, m):
+			inRepo[m] = true
+		default:
 			registered[m] = true
 		}
 	}
@@ -50,9 +56,12 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 		if i := strings.LastIndex(entry, "@"); i >= 0 {
 			mkt = entry[i+1:]
 		}
-		if mkt != "" && registered[mkt] {
+		switch {
+		case mkt != "" && inRepo[mkt]:
+			add(finding.Warn, "enabledPlugins auto-enables \""+entry+"\" from a marketplace in a directory of this repository ("+marketsKey+"); its hooks/commands/MCP run on session start for anyone who opens the repo. The code is under the same review as this file, but let users opt in")
+		case mkt != "" && registered[mkt]:
 			add(finding.Error, "enabledPlugins auto-enables \""+entry+"\" from a marketplace this same settings file registers ("+marketsKey+") — a committed file fully controls the supply chain and runs the plugin's hooks/commands/MCP for anyone who opens the repo. Remove it and let users opt in")
-		} else {
+		default:
 			add(finding.Warn, "enabledPlugins auto-enables the plugin \""+entry+"\" — a committed file loads its hooks/commands/MCP on session start for anyone who opens the repo; let users enable plugins themselves")
 		}
 	}
@@ -77,17 +86,72 @@ func officialMarketplace(raw json.RawMessage, name string) bool {
 	if name != "claude-plugins-official" {
 		return false
 	}
+	src := marketplaceSource(raw, name)
+	return src.Source == "github" && strings.EqualFold(src.Repo, "anthropics/claude-plugins-official")
+}
+
+// marketplaceSourceSpec is the source object of one extraKnownMarketplaces
+// entry.
+type marketplaceSourceSpec struct {
+	Source string `json:"source"`
+	Repo   string `json:"repo"`
+	URL    string `json:"url"`
+	Path   string `json:"path"`
+}
+
+// marketplaceSource returns the source of the marketplace name in raw, or the
+// zero value.
+func marketplaceSource(raw json.RawMessage, name string) marketplaceSourceSpec {
 	var m map[string]struct {
-		Source struct {
-			Source string `json:"source"`
-			Repo   string `json:"repo"`
-		} `json:"source"`
+		Source marketplaceSourceSpec `json:"source"`
 	}
 	if err := json.Unmarshal(raw, &m); err != nil {
+		return marketplaceSourceSpec{}
+	}
+	return m[name].Source
+}
+
+// anthropicGitURLRe is a git URL of a repository in the anthropics
+// organisation on github.com.
+var anthropicGitURLRe = regexp.MustCompile(`(?i)^(?:https://|ssh://git@|git@)github\.com[/:]anthropics/[\w.\-]+(?:\.git)?/?(?:#.*)?$`)
+
+// anthropicMarketplace reports whether the marketplace's source is a
+// repository in Anthropic's own GitHub organisation, under whatever name it
+// is registered: "claude-code-plugins" from anthropics/claude-code,
+// "anthropic-agent-skills" from anthropics/skills. The source pins the
+// publisher, so a plugin enabled from it is a plain enable, as for the
+// official marketplace (#893).
+func anthropicMarketplace(raw json.RawMessage, name string) bool {
+	src := marketplaceSource(raw, name)
+	switch src.Source {
+	case "github":
+		owner, _, ok := strings.Cut(src.Repo, "/")
+		return ok && strings.EqualFold(owner, "anthropics")
+	case "git":
+		return anthropicGitURLRe.MatchString(src.URL)
+	}
+	return false
+}
+
+// inRepoMarketplace reports whether the marketplace is a directory or file
+// inside the repository ("./.agents"): its plugins are code under the same
+// review as the settings file. An absolute path, a home path or one that
+// climbs out with ".." is not (#893).
+func inRepoMarketplace(raw json.RawMessage, name string) bool {
+	src := marketplaceSource(raw, name)
+	if src.Source != "directory" && src.Source != "file" {
 		return false
 	}
-	src := m[name].Source
-	return src.Source == "github" && strings.EqualFold(src.Repo, "anthropics/claude-plugins-official")
+	p := strings.ReplaceAll(strings.TrimSpace(src.Path), `\`, "/")
+	if p == "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") || strings.HasPrefix(p, "$") || (len(p) > 1 && p[1] == ':') {
+		return false
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // objectKeys returns the sorted keys of a JSON object value, or nil.

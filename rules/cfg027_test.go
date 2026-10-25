@@ -67,3 +67,37 @@ func TestCFG027_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding without settings, got %+v", f)
 	}
 }
+
+func TestCFG027_Issue892(t *testing.T) {
+	reads := []string{
+		`cloud_shell_exports="$(cat /etc/profile.d/team-cloud.sh)"`,
+		`if [ ! -s /etc/profile.d/team-cloud.sh ]; then echo missing; fi`,
+		`source ~/.bashrc && npm test`,
+		`[ -f "$HOME/.zshrc" ] && . "$HOME/.zshrc"; node hook.js`,
+		`grep -q nvm ~/.bashrc || echo "nvm not set up"`,
+		`ls ~/Library/LaunchAgents`,
+		`cat /etc/systemd/system/app.service`,
+	}
+	for _, cmd := range reads {
+		if f := CFG027.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("read, not a write: expected no finding for %q, got %+v", cmd, f)
+		}
+	}
+	writes := []string{
+		`echo 'x' >> ~/.bashrc`,
+		`printf '%s\n' "$line" >>"$HOME/.zshrc"`,
+		`cp evil /etc/profile.d/x.sh`,
+		`echo x | sudo tee -a /etc/profile.d/x.sh`,
+		`sed -i 's/a/b/' ~/.bashrc`,
+		`ln -s ~/evil ~/.zshenv`,
+		`if true; then install -m 644 job /etc/cron.d/job; fi`,
+		"echo ok\ncp evil.plist ~/Library/LaunchAgents/",
+		`touch ~/.config/systemd/user/evil.service`,
+		`crontab -l | grep backup`,
+	}
+	for _, cmd := range writes {
+		if f := CFG027.Check(hookTarget(t, cmd)); len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for %q, got %+v", cmd, f)
+		}
+	}
+}

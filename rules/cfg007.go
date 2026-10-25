@@ -57,10 +57,20 @@ var pathValueRe = regexp.MustCompile(`^(?:/|~/|\./|\.\./|[A-Za-z]:[\\/]|%[A-Za-z
 // literalUnderSecretName reports whether the literal value v of a key with a
 // secret-like name is the secret itself. A file path is not:
 // GOOGLE_APPLICATION_CREDENTIALS and its kind hold the path of a key file by
-// convention, and the file is not in the config (#852).
+// convention, and the file is not in the config (#852). Nor is a relative
+// path with a directory and a file extension (".codex/credentials/dev.json"),
+// or a boolean switch ("BRIDGE_PERSISTENT_SECRET": "true") (#891).
 func literalUnderSecretName(k, v string) bool {
-	return hasSecretSuffix(k) && !pathValueRe.MatchString(strings.TrimSpace(v))
+	v = strings.TrimSpace(v)
+	return hasSecretSuffix(k) && !pathValueRe.MatchString(v) && !relativeFileValueRe.MatchString(v) && !booleanValueRe.MatchString(v)
 }
+
+// relativeFileValueRe matches a relative file path with at least one directory
+// and an extension that starts with a letter: ".codex/credentials/dev.json".
+var relativeFileValueRe = regexp.MustCompile(`^[\w.\-]+(?:/[\w.\-]+)*/[\w.\-]*\.[A-Za-z][A-Za-z0-9]{0,4}$`)
+
+// booleanValueRe matches a boolean switch value.
+var booleanValueRe = regexp.MustCompile(`^(?i:true|false|yes|no|on|off)$`)
 
 // templateRefRe matches a value that is entirely a single template/interpolation
 // placeholder ({{X}}, ${{X}}, %{X}, <% X %>, __X__) — resolved to a value at

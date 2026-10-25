@@ -65,7 +65,8 @@ var exampleUserTurnRe = regexp.MustCompile(`^(?:User|Me|Customer|Developer):\s`)
 // ("User: Yes, https://...\n\nAssistant: [Fetches and analyzes release
 // notes]"). Claude's real turn marker is "Human:"; a "Human:" boundary, and an
 // "Assistant:" without such a "User:" paragraph before it, keep reporting
-// (#856).
+// (#856). The "User:" line may follow tag lines or a heading that open the
+// example in the same paragraph ("<EXAMPLE_INTERACTION>\nUser: ...") (#889).
 func exampleDialogueTurn(c string, off int) bool {
 	if !strings.HasPrefix(c[off:], "Assistant:") {
 		return false
@@ -75,8 +76,18 @@ func exampleDialogueTurn(c string, off int) bool {
 	if start > 0 {
 		start++
 	}
-	return exampleUserTurnRe.MatchString(strings.TrimLeft(prev[start:], "\n"))
+	for _, line := range strings.Split(strings.TrimLeft(prev[start:], "\n"), "\n") {
+		if exampleOpenerRe.MatchString(line) {
+			continue
+		}
+		return exampleUserTurnRe.MatchString(line)
+	}
+	return false
 }
+
+// exampleOpenerRe matches a line that opens an example before its first turn:
+// an XML-style tag on its own line or a Markdown heading.
+var exampleOpenerRe = regexp.MustCompile(`^\s*(?:</?[A-Za-z][\w\-]*(?:\s[^>]*)?>\s*|#{1,6}\s.*)$`)
 
 func (r *cfg032) Check(t *Target) []finding.Finding {
 	if t == nil {

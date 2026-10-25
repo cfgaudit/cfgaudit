@@ -95,7 +95,9 @@ var authorDirectedRe = regexp.MustCompile(`(?i)^[^.;]{0,20}?\b(?:provide|give|sh
 // kin), an identifier ending in .env (process.env, import.meta.env), and the
 // destination of a copy or move (cp .env.example .env, Copy-Item ...), a
 // permission change (chmod 600 .../.env), and a public key (id_ed25519.pub).
-var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?)\b|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b`)
+// A ${Name.method(...)} span is a JavaScript template literal, not a shell
+// expansion: `Bearer ${Deno.env.get("OPENAI_API_KEY")}` (#885).
+var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+\([^}]*\)\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b`)
 
 // inlineCodeSpanRe matches a Markdown inline-code span: a pair of backticks
 // around text with no backtick in it.
@@ -179,10 +181,49 @@ var substAssignedRe = regexp.MustCompile(`(?:^|[\s;(])(?:export\s+)?[A-Za-z_][A-
 // search ("grep token .env") are still Part A.
 func envKeyLookup(line string, loc []int) bool {
 	sub := line[loc[0]:loc[1]]
-	if !envKeyLookupRe.MatchString(sub) {
+	if !singleKeyLookup(line, loc) {
 		return false
 	}
 	return strings.HasPrefix(strings.TrimSpace(sub[2:]), "ls") || substAssignedRe.MatchString(line[:loc[0]])
+}
+
+// pyKeyLookupRe is a Python one-liner that loads a TOML or JSON file and
+// prints one key: $(python3 -c 'import tomllib,os;print(tomllib.load(open(
+// os.path.expanduser("~/workspace/.env.toml"),"rb"))["gitlab"]["token"])')
+// (#885). It is matched from the start of the substitution on the whole line,
+// since the substitution itself ends at the first ")".
+var pyKeyLookupRe = regexp.MustCompile(`^\$\(\s*python[23]?\s+-c\s+'[^']*\b(?:tomllib|json)\.loads?\([^']*\)(?:\[\\?"[\w.\-]+\\?"\])+\)\s*'\s*\)`)
+
+// singleKeyLookup reports whether the substitution at loc looks up one named
+// key in an env or config file, or lists env files: the grep form of
+// envKeyLookupRe or the Python form of pyKeyLookupRe.
+func singleKeyLookup(line string, loc []int) bool {
+	return envKeyLookupRe.MatchString(line[loc[0]:loc[1]]) || pyKeyLookupRe.MatchString(line[loc[0]:])
+}
+
+// countOnlyGrepRe is a grep whose flags make it print a count, file names or
+// nothing: -c, -l, -L, -q, alone or in a group (-qE, -cF).
+var countOnlyGrepRe = regexp.MustCompile(`^grep\s+(?:-\w+\s+)*-[A-Za-z]*[clLq][A-Za-z]*\s`)
+
+// countsOnly reports whether every command in the substitution sub is such a
+// grep, or a fallback that prints nothing (|| true, :). "$(grep -c
+// '^ACCOUNT_KEY_' .env 2>/dev/null || true)" counts keys and prints no value
+// (#885).
+func countsOnly(sub string) bool {
+	inner := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(sub), "$("), ")")
+	inner = strings.ReplaceAll(inner, "2>&1", "")
+	greps := 0
+	for _, cmd := range splitCommands(inner) {
+		cmd = strings.TrimSpace(cmd)
+		switch {
+		case cmd == "" || cmd == "true" || cmd == ":":
+		case countOnlyGrepRe.MatchString(cmd + " "):
+			greps++
+		default:
+			return false
+		}
+	}
+	return greps > 0
 }
 
 // dollarSubstRe is a $( ) substitution, to its closing parenthesis or the end
@@ -204,7 +245,12 @@ var dollarSubstRe = regexp.MustCompile(`\$\([^)]*\)?`)
 // ./.env`"), searches for a pattern, or is a log line or a code expression. In
 // a fence, where the text is a shell example, every span keeps its shell
 // meaning (#849).
-func sensitiveSubstitution(line string, inFence bool) []int {
+//
+// The severity is Warn for a lookup of one named key that is neither stored
+// in a variable nor part of a command that sends data out: redis-cli -a
+// "$(grep '^REDIS_PASSWORD=' .env | cut -d= -f2-)" passes a project's own
+// setting to a local tool (#885).
+func sensitiveSubstitution(line string, inFence bool) ([]int, finding.Severity) {
 	check := func(span string) bool {
 		cleaned := substTemplateRe.ReplaceAllString(span, "")
 		// A tool's own key read from that tool's home directory is reported by
@@ -218,27 +264,100 @@ func sensitiveSubstitution(line string, inFence bool) []int {
 		return cmdSubstSensitiveRe.MatchString(cleaned)
 	}
 	for _, loc := range dollarSubstRe.FindAllStringIndex(line, -1) {
-		if envKeyLookup(line, loc) {
+		if envKeyLookup(line, loc) || countsOnly(line[loc[0]:loc[1]]) {
 			continue
 		}
 		if check(line[loc[0]:loc[1]]) {
-			return loc
+			if singleKeyLookup(line, loc) && !netExfilRe.MatchString(line) {
+				return loc, finding.Warn
+			}
+			return loc, finding.Error
 		}
 	}
 	// In a fence, a # line is a shell comment, where backticks run nothing:
 	// "# Put these PATH exports + `set -a; source .env; set +a` in env.sh" (#868).
 	if inFence && strings.HasPrefix(strings.TrimSpace(line), "#") {
-		return nil
+		return nil, ""
 	}
 	for _, loc := range inlineCodeSpanRe.FindAllStringIndex(line, -1) {
 		if !inFence && !readsOut(line[loc[0]+1:loc[1]-1]) {
 			continue
 		}
 		if check(line[loc[0]:loc[1]]) {
-			return loc
+			return loc, finding.Error
 		}
 	}
-	return nil
+	return nil, ""
+}
+
+// guardHeadRe matches the head of a list item that names what a guard
+// refuses or holds back: "**Blocks** catastrophic operations outright:",
+// "**Asks** for confirmation on risky-but-legitimate ones:".
+var guardHeadRe = regexp.MustCompile(`(?i)\b(?:block\w*|den(?:y|ied|ies)|refus\w*|forbid\w*|prohibit\w*|asks?\W*\s+(?:for\s+)?(?:confirmation|approval)|requires?\W*\s+(?:confirmation|approval))\b`)
+
+// listedAsRefused reports whether the Part A span at loc on line i names a
+// read the text refuses rather than orders: CFG031's checks (a negation or a
+// refusing list, #869), or a list item, possibly wrapped over several lines,
+// whose head says a guard blocks or asks about what follows: "credential
+// reads (`cat ~/.ssh/…`), etc." under "- **Asks** for confirmation on
+// risky-but-legitimate ones:" (#885).
+func listedAsRefused(lines []string, i int, loc []int) bool {
+	if notARead(lines, i, loc, lines[i][loc[0]:loc[1]]) {
+		return true
+	}
+	for j := i; j >= 0 && i-j <= 20; j-- {
+		l := lines[j]
+		if strings.TrimSpace(l) == "" {
+			return false
+		}
+		if m := listItemRe.FindStringSubmatch(l); m != nil {
+			head := l
+			if k := strings.Index(head, ":"); k >= 0 {
+				head = head[:k]
+			}
+			return guardHeadRe.MatchString(head) || prohibitionRe.MatchString(head)
+		}
+		// Only an indented line continues the item above it.
+		if !strings.HasPrefix(l, " ") && !strings.HasPrefix(l, "\t") {
+			return false
+		}
+	}
+	return false
+}
+
+// partBReach is how far, in bytes, a directive reaches to a network command
+// on its own line, and how close to the end of its line it must sit to reach
+// the lines below it.
+const partBReach = 300
+
+// netCommandStart returns where the first network command at or after from
+// starts on line, or -1.
+func netCommandStart(line string, from int) int {
+	best := -1
+	for _, re := range []filteredRegexp{netExfilRe, pipeShellRe} {
+		if loc := re.FindStringIndex(line[from:]); loc != nil && (best < 0 || from+loc[0] < best) {
+			best = from + loc[0]
+		}
+	}
+	return best
+}
+
+// directiveReaches reports whether the directive at loc on line i applies to
+// the network command on line j (#885). On the same line the command must
+// start within partBReach of the directive, before or after it; a later line
+// counts when the directive ends its own line and the command opens the later
+// one. On a long prose paragraph "before any run" and a curl install note
+// 13,000 characters away are unrelated.
+func directiveReaches(lines []string, i int, loc []int, j int) bool {
+	if j == i {
+		start := netCommandStart(lines[i], max(0, loc[0]-partBReach))
+		return start >= 0 && start <= loc[1]+partBReach
+	}
+	if len(lines[i])-loc[1] > partBReach {
+		return false
+	}
+	start := netCommandStart(lines[j], 0)
+	return start >= 0 && start <= partBReach
 }
 
 // Check flags CLAUDE.md text that makes Claude run shell commands on the
@@ -284,8 +403,14 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 			}
 			pipeShell[i] = pipeShellRe.MatchString(line)
 			network[i] = netExfilRe.MatchString(line) || pipeShell[i]
-			if loc := sensitiveSubstitution(line, fenced[i+1]); loc != nil {
-				add(i, loc[0], finding.Error, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
+			if loc, sev := sensitiveSubstitution(line, fenced[i+1]); loc != nil {
+				// A read the text refuses is downgraded, not dropped, as
+				// CFG031 does (#869): a refusing heading must not hide a
+				// payload.
+				if listedAsRefused(lines, i, loc) {
+					sev = finding.Warn
+				}
+				add(i, loc[0], sev, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
 			}
 		}
 
@@ -306,7 +431,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 				if j > i && strings.TrimSpace(lines[j]) == "" {
 					break
 				}
-				if network[j] {
+				if network[j] && directiveReaches(lines, i, loc, j) {
 					add(i, loc[0], finding.Error, "combines an auto-execution directive with a network-exfiltration command (Part B) — instructs the agent to run a command that sends data to a remote host. Remove it")
 					covered[i] = true
 					pipeCovered[j] = true

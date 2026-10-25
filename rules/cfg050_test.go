@@ -533,3 +533,24 @@ func TestCFG050_Issue852(t *testing.T) {
 		}
 	}
 }
+
+// A relative key-file path and a boolean switch under a secret-like name in an
+// MCP server's env are not literal secrets (#891).
+func TestCFG050_Issue891(t *testing.T) {
+	for _, js := range []string{
+		`{"mcpServers":{"f":{"command":"s","env":{"GOOGLE_APPLICATION_CREDENTIALS":".codex/credentials/firebase-dev-readonly.json"}}}}`,
+		`{"mcpServers":{"g":{"command":"s","env":{"BRIDGE_PERSISTENT_SECRET":"true"}}}}`,
+	} {
+		if f := CFG050.Check(settingsTarget(t, js)); len(f) != 0 {
+			t.Errorf("expected no finding for %s, got %+v", js, f)
+		}
+	}
+	for _, js := range []string{
+		`{"mcpServers":{"o":{"command":"s","env":{"DB_PASSWORD":"hunter2"}}}}`,
+		`{"mcpServers":{"o":{"command":"s","env":{"OPENAI_API_KEY":"sk-abc123def456ghi789"}}}}`,
+	} {
+		if f := CFG050.Check(settingsTarget(t, js)); len(f) != 1 {
+			t.Errorf("expected one finding for %s, got %+v", js, f)
+		}
+	}
+}
