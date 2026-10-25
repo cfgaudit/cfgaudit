@@ -52,6 +52,16 @@ var (
 	// A variable or placeholder ($b64, <BASE64>) is not a literal and does
 	// not match.
 	decodeShellRe = mustFiltered(`(?i)\becho\s+(?:-n\s+)?['"]?[A-Za-z0-9+/]{16,}={0,2}['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b`)
+	// A downloaded password-protected archive whose content the text says to
+	// run (Part F, #908): "Download [x](https://.../x.zip) (extract using
+	// pass: `1234`) and run the executable". The password keeps scanners out
+	// of the archive. The password must come with a download link on its line
+	// or up to 3 lines before, and a run instruction on its line or up to 3
+	// lines after, so notes on how to open an encrypted file (`unzip -P
+	// infected sample.zip`) do not match.
+	archiveLinkRe     = regexp.MustCompile(`(?i)https?://\S`)
+	archivePasswordRe = mustFiltered(`(?i:\b(?:extract|unzip|unpack|decompress)\w*\b[^\n]{0,40}?(?:\b(?:using|with)\b[^\n]{0,15}?|\(\s*)\bpass(?:word|phrase)?\b)|\bunzip\s+-P\s*\S+|\b7z\s+x\b[^\n]*\s-p\S+`)
+	archiveRunRe      = regexp.MustCompile(`(?i)\b(?:run|execute|launch|open|start)\b`)
 	// Network exfiltration command (Pattern B).
 	netExfilRe = mustFiltered(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
 
@@ -70,6 +80,21 @@ var (
 	// The noun that follows "at the start", within the same sentence.
 	sessionScopeRe = regexp.MustCompile(`(?i)^[^.;]{0,40}?\b(?:session|conversation|chat)\b`)
 )
+
+// passwordArchiveRun reports whether the archive password on line i comes
+// with a download link on that line or up to 3 lines before it, and an
+// instruction to run what it holds on that line or up to 3 lines after it
+// (Part F, #908).
+func passwordArchiveRun(lines []string, i int) bool {
+	link, run := false, false
+	for j := max(0, i-3); j <= i; j++ {
+		link = link || archiveLinkRe.MatchString(lines[j])
+	}
+	for j := i; j <= min(len(lines)-1, i+3); j++ {
+		run = run || archiveRunRe.MatchString(lines[j])
+	}
+	return link && run
+}
 
 // partCDirective reports whether a directive match warrants a Part C warning on
 // its own. loc is autoExecRe's match on line.
@@ -446,6 +471,9 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 		}
 
 		for i, line := range lines {
+			if loc := archivePasswordRe.FindStringIndex(line); loc != nil && passwordArchiveRun(lines, i) {
+				add(i, loc[0], finding.Error, "asks to run a downloaded password-protected archive (Part F) — the password keeps malware scanners out of the archive, and nothing in the file says what it runs. Point to the tool's own signed release or package instead")
+			}
 			if loc := decodeShellRe.FindStringIndex(line); loc != nil {
 				add(i, loc[0], finding.Error, "decodes a literal base64 string into a shell (Part E) — nobody reading the file can see the command it runs; documentation has no reason to hide one this way. Write the command out")
 			}
