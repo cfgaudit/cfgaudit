@@ -179,8 +179,16 @@ func notASecretFile(line string, loc []int, full string) bool {
 		!strings.HasSuffix(strings.ToLower(line[:start-1]), "file") {
 		return true // a web URL; file:///etc/passwd is still a local file
 	}
+	if strings.Contains(full, "../") && baseURLPathRe.MatchString(full) {
+		return true
+	}
 	return publicCertRe.MatchString(full) || placeholderPathRe.MatchString(full)
 }
+
+// baseURLPathRe matches a path that starts with a base URL placeholder:
+// "{BASE_URL}/api/assets/download/../../../etc/passwd" is a path traversal
+// probe sent to a web server, not a local file (#887).
+var baseURLPathRe = regexp.MustCompile(`^(?:\{\{?\s*[A-Za-z_]\w*\s*\}?\}|\$\{?[A-Za-z_]\w*\}?)/`)
 
 // blockedAfterRe matches a clause that says the read is refused: "Attempts to
 // read `/proc/self/environ`, `~/.docker/config.json` ... will be denied".
@@ -189,6 +197,37 @@ var blockedAfterRe = regexp.MustCompile(`(?i)\b(?:is|are|will\s+be|get|gets|be)\
 // writeOrTestBeforeRe matches what makes the path a write target or an
 // existence test rather than a read: "> key.pem", "test -f x.pem", "[ -f x ]".
 var writeOrTestBeforeRe = regexp.MustCompile(`(?:>>?\s*['"]?|\b(?:test|\[)\s+-[efsrdL]\s+['"]?)$`)
+
+// copyCommandRe matches a cp, mv, install or ln command up to the path, with
+// at least one argument before it: "sudo cp -i /etc/kubernetes/admin.conf ".
+var copyCommandRe = regexp.MustCompile(`(?:^|[;&|(` + "`" + `]\s*|^\s*(?:[-*+]|\d+\.)\s+)(?:sudo\s+(?:-\S+\s+)*)?(?:cp|mv|install|ln)\s+(?:\S+\s+)+['"]?$`)
+
+// copyToRe matches prose that names the path as where a file goes: "Copy the
+// user's PEM to `instance/secrets/app.pem`".
+var copyToRe = regexp.MustCompile(`(?i)\b(?:copy|move|write|save|place|put|store)\b[^.;|]*\bto\s+[` + "`" + `'"]?$`)
+
+// listCommandRe matches a command that checks a path without printing its
+// content: "ls \"/etc/sudoers.d/...\"", "stat x.pem".
+var listCommandRe = regexp.MustCompile(`\b(?:ls|stat)(?:\s+-\w+)*\s+['"]?$`)
+
+// copyDestination reports whether the path between start and end is written
+// or only checked, not read (#887): the last argument of cp, mv, install or ln
+// ("sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config"), the target of
+// "copy ... to", and a path given to ls or stat.
+func copyDestination(line string, start, end int) bool {
+	before := line[:start]
+	if copyToRe.MatchString(before) || listCommandRe.MatchString(before) {
+		return true
+	}
+	if !copyCommandRe.MatchString(before) {
+		return false
+	}
+	rest := line[end:]
+	if i := strings.IndexAny(rest, ";&|`)"); i >= 0 {
+		rest = rest[:i]
+	}
+	return strings.Trim(rest, " \t'\"") == ""
+}
 
 // npmrcWriteRe matches a line that writes an .npmrc file, where an
 // ":_authToken" is the line being written: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc.
@@ -212,7 +251,7 @@ func notARead(lines []string, i int, loc []int, full string) bool {
 	if blockedAfterRe.MatchString(clauseRest(strings.ReplaceAll(line[loc[1]:], "etc.", "etc"))) {
 		return true
 	}
-	if writeOrTestBeforeRe.MatchString(line[:start]) {
+	if writeOrTestBeforeRe.MatchString(line[:start]) || copyDestination(line, start, loc[1]) {
 		return true
 	}
 	if strings.HasPrefix(strings.ToLower(line[loc[0]:loc[1]]), ":_authtoken") && npmrcWriteRe.MatchString(line[loc[1]:]) {

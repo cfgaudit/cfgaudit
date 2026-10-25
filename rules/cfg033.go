@@ -34,8 +34,11 @@ var (
 // <assets-branch>, <name>, a badge's <status>-<status_color>, and the
 // repository facts of a README badge, {{LICENSE}} and {{MAIN_PKG}} (#873). In
 // the path of an image URL that is a template for an upload result or a
-// repository location, not a slot for conversation data (#856).
-var identifierPlaceholderRe = regexp.MustCompile(`(?i)^(?:<|\{\{\s*|__)[\w\-\s]*?(?:uuid|guid|id|hash|sha|owner|org|user(?:name)?|repo(?:sitory)?|branch|tag|version|name|file(?:name)?|path|image|asset|number|slug|width|height|size|status|colou?r|label|style|logo|badge|license|licence|pkg|package|module|project|crate|gem)(?:\s*>|\s*\}\}|__)$`)
+// repository location, not a slot for conversation data (#856). A shields.io
+// badge also names its metric and a date (<metric>, <YYYY--MM--DD>), and a
+// slot may say how the value is written (<org-name-url-encoded>,
+// <oid-abbreviated>) (#888).
+var identifierPlaceholderRe = regexp.MustCompile(`(?i)^(?:<|\{\{\s*|__)[\w\-\s]*?(?:uuid|guid|id|hash|sha|owner|org|user(?:name)?|repo(?:sitory)?|branch|tag|version|name|file(?:name)?|path|image|asset|number|slug|width|height|size|status|colou?r|label|style|logo|badge|license|licence|pkg|package|module|project|crate|gem|metric|date|yyyy-+mm-+dd)(?:[\-_\s]+(?:url[\-_]?encoded|encoded|escaped|abbreviated|short|full|lower(?:case)?))*(?:\s*>|\s*\}\}|__)$`)
 
 // placeholderSink reports whether url has a placeholder the agent could fill
 // with conversation data: any placeholder in the query string, or one in the
