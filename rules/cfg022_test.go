@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/version"
 )
 
 func TestCFG022_BwrapPath_Error(t *testing.T) {
@@ -192,5 +193,41 @@ func TestCFG022_FilesystemDisabled_ProjectScope_NoFinding(t *testing.T) {
 		if f := CFG022.Check(tgt); len(f) != 0 {
 			t.Errorf("expected no finding for filesystem.disabled in scope %q, got %+v", sc, f)
 		}
+	}
+}
+
+// #777: sandbox.allowNestedUserNamespaces (2.1.305) is honoured from user
+// settings only, so it is reported there and nowhere else.
+func TestCFG022_AllowNestedUserNamespaces(t *testing.T) {
+	const cfg = `{"sandbox":{"enabled":true,"allowNestedUserNamespaces":true}}`
+	for _, tc := range []struct {
+		ver  string
+		want finding.Severity
+	}{{"", finding.Error}, {"2.1.305", finding.Error}, {"2.1.310", finding.Error}, {"2.1.300", finding.Warn}} {
+		tgt := settingsTarget(t, cfg)
+		tgt.Scope = finding.ScopeUser
+		if tc.ver != "" {
+			v, err := version.Parse(tc.ver)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tgt.ClaudeVersion = &v
+		}
+		f := CFG022.Check(tgt)
+		if len(f) != 1 || f[0].Severity != tc.want || !strings.Contains(f[0].Message, "allowNestedUserNamespaces") {
+			t.Errorf("version %q: expected one %s finding naming the key, got %+v", tc.ver, tc.want, f)
+		}
+	}
+	for _, sc := range []finding.Scope{finding.ScopeProject, finding.ScopeProjectLocal, ""} {
+		tgt := settingsTarget(t, cfg)
+		tgt.Scope = sc
+		if f := CFG022.Check(tgt); len(f) != 0 {
+			t.Errorf("scope %q: Claude Code ignores the key there, got %+v", sc, f)
+		}
+	}
+	tgt := settingsTarget(t, `{"sandbox":{"allowNestedUserNamespaces":false}}`)
+	tgt.Scope = finding.ScopeUser
+	if f := CFG022.Check(tgt); len(f) != 0 {
+		t.Errorf("false is the default, got %+v", f)
 	}
 }

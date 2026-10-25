@@ -7,7 +7,12 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/version"
 )
+
+// nestedUserNamespacesFrom is the release that added
+// sandbox.allowNestedUserNamespaces (#777).
+var nestedUserNamespacesFrom = version.Version{Major: 2, Minor: 1, Patch: 305}
 
 type cfg022 struct{}
 
@@ -81,6 +86,22 @@ func (r *cfg022) Check(t *Target) []finding.Finding {
 	// copy does not produce a false positive.
 	if sb.AllowAppleEvents && t.Scope == finding.ScopeUser {
 		add(finding.Warn, "sandbox.allowAppleEvents is true — sandboxed commands can launch other applications unsandboxed with no prompt and drive them via AppleScript, removing the sandbox's code-execution isolation (the macOS automation-consent prompt (TCC) still gates each target). Scope the specific tool with excludedCommands instead of this blanket opt-in")
+	}
+
+	// allowNestedUserNamespaces (2.1.305) lets sandboxed commands on Linux and
+	// WSL2 create user namespaces, and the sandboxing docs say code from a
+	// sandboxed command "can end up running outside the sandbox", so protected
+	// paths and credentials.files no longer hold (#777). Like allowAppleEvents it
+	// is honoured only from user, managed and --settings values, so it is
+	// reported at user scope only. On a detected release before 2.1.305 the key
+	// does nothing yet, but an update turns it on, so it stays a warning there.
+	if sb.AllowNestedUserNamespaces && t.Scope == finding.ScopeUser {
+		msg := "sandbox.allowNestedUserNamespaces is true: sandboxed commands on Linux and WSL2 can create user namespaces, and code from a sandboxed command can end up running outside the sandbox, so protected paths and credentials.files no longer stop a malicious command. Leave it off and run the specific tool (a browser, rootless podman) outside the sandbox with excludedCommands instead"
+		if t.ClaudeVersion != nil && !t.ClaudeVersion.AtLeast(nestedUserNamespacesFrom) {
+			add(finding.Warn, msg+". The detected Claude Code "+t.ClaudeVersion.String()+" does not read the key yet; it takes effect from 2.1.305")
+		} else {
+			add(finding.Error, msg)
+		}
 	}
 
 	// network.allowUnixSockets / allowAllUnixSockets — array/merge keys honored

@@ -180,6 +180,10 @@ type SandboxConfig struct {
 	BwrapPath        string   `json:"bwrapPath,omitempty"`
 	SocatPath        string   `json:"socatPath,omitempty"`
 	AllowAppleEvents bool     `json:"allowAppleEvents,omitempty"`
+	// AllowNestedUserNamespaces (Claude Code 2.1.305) lets sandboxed commands on
+	// Linux and WSL2 create user namespaces; honoured from user, managed and
+	// --settings values only.
+	AllowNestedUserNamespaces bool `json:"allowNestedUserNamespaces,omitempty"`
 
 	EnableWeakerNestedSandbox    bool               `json:"enableWeakerNestedSandbox,omitempty"`
 	EnableWeakerNetworkIsolation bool               `json:"enableWeakerNetworkIsolation,omitempty"`
