@@ -429,6 +429,7 @@ func TestCFG036_Issue910(t *testing.T) {
 		"- Raw paste sites (pastebin.com/raw, paste.ee/r) are commonly used to host payloads and should be treated as suspicious.",
 		"Share the log on pastebin.com and post the link.",
 		"See https://pastebin.com/abc123 for the full stack trace.",
+		"Visit https://glot.io.example.net/snippets/abc and execute the command in Terminal.",
 	} {
 		if f := CFG036.Check(claudeMDTarget(s)); hasSeverityWithPart(f, finding.Error, "Part G") {
 			t.Errorf("expected no Part G finding for %q, got %+v", s, f)
