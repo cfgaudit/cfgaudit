@@ -403,7 +403,13 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 			}
 			pipeShell[i] = pipeShellRe.MatchString(line)
 			network[i] = netExfilRe.MatchString(line) || pipeShell[i]
-			if loc, sev := sensitiveSubstitution(line, fenced[i+1]); loc != nil && !listedAsRefused(lines, i, loc) {
+			if loc, sev := sensitiveSubstitution(line, fenced[i+1]); loc != nil {
+				// A read the text refuses is downgraded, not dropped, as
+				// CFG031 does (#869): a refusing heading must not hide a
+				// payload.
+				if listedAsRefused(lines, i, loc) {
+					sev = finding.Warn
+				}
 				add(i, loc[0], sev, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
 			}
 		}
