@@ -10,7 +10,8 @@ import (
 )
 
 // claudeHookSet is one source of Claude Code hooks: a settings file, a plugin
-// hooks.json (which rides a settings-shaped target) or a subagent's frontmatter.
+// hooks.json (which rides a settings-shaped target), or the frontmatter of a
+// subagent, skill or slash command.
 type claudeHookSet struct {
 	label string // prefixed to "hooks.<event>" in a finding
 	file  string
@@ -26,7 +27,7 @@ func claudeHookSets(t *Target) []claudeHookSet {
 		sets = append(sets, claudeHookSet{file: t.SettingsFile, hooks: t.Settings.Hooks})
 	}
 	if len(t.SubagentHooks) > 0 {
-		sets = append(sets, claudeHookSet{label: "subagent frontmatter ", file: t.SubagentHooksFile, hooks: t.SubagentHooks})
+		sets = append(sets, claudeHookSet{label: t.frontmatterHooksKind() + " frontmatter ", file: t.SubagentHooksFile, hooks: t.SubagentHooks})
 	}
 	return sets
 }
@@ -45,4 +46,12 @@ func (s claudeHookSet) each(fn func(loc string, h parser.HookCommand)) {
 			}
 		}
 	}
+}
+
+// frontmatterHooksKind names the file kind SubagentHooks came from.
+func (t *Target) frontmatterHooksKind() string {
+	if t.SubagentHooksKind != "" {
+		return t.SubagentHooksKind
+	}
+	return "subagent"
 }

@@ -264,8 +264,15 @@ type Target struct {
 	// rides ProjectMCP instead, so the MCP rules apply to it unchanged. Nil when
 	// absent; SubagentHooksFile is the agent file's path, used to attribute
 	// findings.
+	//
+	// A Claude Code skill (SKILL.md) or slash command (.claude/commands/*.md)
+	// carries the same block, and Claude Code runs it while the skill or command
+	// is active (#935); SubagentHooksKind then says "skill" or "command", and
+	// findings name the hook "<kind> frontmatter hooks.<Event>". Empty means
+	// "subagent".
 	SubagentHooks     map[string][]parser.HookGroup
 	SubagentHooksFile string
+	SubagentHooksKind string
 
 	// ClaudeHooksDisabled is the effective disableAllHooks of the Claude Code
 	// settings in the scan: the local file over the project file over the user

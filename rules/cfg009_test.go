@@ -208,3 +208,28 @@ func TestCFG009_Quoting(t *testing.T) {
 		})
 	}
 }
+
+// #935: framework and login variables, and a date(1) format, are not reported;
+// a real cmd.exe variable and an agent-supplied one still are.
+func TestCFG009_SkillDirHomeAndDateFormat(t *testing.T) {
+	for _, tc := range []struct {
+		cmd  string
+		want string // "" for no finding
+	}{
+		{`bash ${CLAUDE_SKILL_DIR}/scripts/check.sh`, ""},
+		{`bash $HOME/.claude/hooks/log.sh`, ""},
+		{`echo done >> log-$(date -u +%Y-%m-%dT%H:%M:%SZ).txt`, ""},
+		{`date '+%Y-%m-%dT%H:%M'`, ""},
+		{`echo %USERPROFILE%`, "%USERPROFILE%"},
+		{`bash $CLAUDE_SKILL_DIR/run.sh $TOOL_OUTPUT`, "$TOOL_OUTPUT"},
+	} {
+		json := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":` + jsonQuote(tc.cmd) + `}]}]}}`
+		f := CFG009.Check(settingsTarget(t, json))
+		switch {
+		case tc.want == "" && len(f) != 0:
+			t.Errorf("%s: want no finding, got %s", tc.cmd, f[0].Message)
+		case tc.want != "" && (len(f) != 1 || !strings.Contains(f[0].Message, tc.want) || strings.Contains(f[0].Message, "CLAUDE_SKILL_DIR")):
+			t.Errorf("%s: want one finding naming only %s, got %+v", tc.cmd, tc.want, f)
+		}
+	}
+}

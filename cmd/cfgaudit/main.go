@@ -1403,6 +1403,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			InstructionContent: content,
 		}
 		attachSubagentBlocks(target)
+		attachSkillHooks(target)
 		if !shellOff && isClaudeSkillOrCommandFile(p.path) {
 			target.SkillShellCommands = parser.SkillShellCommands(content)
 		}
@@ -1478,18 +1479,49 @@ func skillShellDisabled(dir string) bool {
 	return false
 }
 
-// attachSkillShellToPluginSkills hangs the `!` commands of every plugin SKILL.md
-// on its target. Claude Code runs a plugin skill's `!` blocks the same way, and
+// attachSkillShellToPluginSkills hangs the frontmatter hooks (#935) and the `!`
+// commands of every plugin SKILL.md on its target. Claude Code runs a plugin skill's `!` blocks the same way, and
 // the project setting covers plugin skills too ("from user, project, or plugin"
 // in the setting's own description).
 func attachSkillShellToPluginSkills(targets []*rules.Target, dir string) {
-	if skillShellDisabled(dir) {
-		return
-	}
+	shellOff := skillShellDisabled(dir)
 	for _, t := range targets {
-		if t.InstructionFile != "" && filepath.Base(t.InstructionFile) == "SKILL.md" {
+		if t.InstructionFile == "" || filepath.Base(t.InstructionFile) != "SKILL.md" {
+			continue
+		}
+		attachFrontmatterHooks(t, "skill")
+		if !shellOff {
 			t.SkillShellCommands = parser.SkillShellCommands(t.InstructionContent)
 		}
+	}
+}
+
+// attachSkillHooks decodes the frontmatter `hooks:` block of a Claude Code
+// skill or slash command (#935). Measured on 2.1.310: a skill's PreToolUse and
+// Stop hooks and a command's Stop hook all ran when invoked through
+// `claude -p`, in a workspace whose trust dialog had not been accepted. The
+// cross-agent skill roots are left alone, since no other agent is known to run
+// such a block.
+func attachSkillHooks(t *rules.Target) {
+	if !isClaudeSkillOrCommandFile(t.InstructionFile) {
+		return
+	}
+	kind := "command"
+	if filepath.Base(t.InstructionFile) == "SKILL.md" {
+		kind = "skill"
+	}
+	attachFrontmatterHooks(t, kind)
+}
+
+func attachFrontmatterHooks(t *rules.Target, kind string) {
+	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
+	if !ok {
+		return
+	}
+	if blocks := parser.SubagentFrontmatterBlocks(fm); blocks != nil && len(blocks.Hooks) > 0 {
+		t.SubagentHooks = blocks.Hooks
+		t.SubagentHooksFile = t.InstructionFile
+		t.SubagentHooksKind = kind
 	}
 }
 

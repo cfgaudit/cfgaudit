@@ -38,17 +38,27 @@ var cmdVarRe = regexp.MustCompile(`%([A-Za-z_][A-Za-z0-9_]*)%`)
 //
 // PWD is here for the same reason. It is the shell's own working directory, set
 // by the shell rather than by any agent or remote input, and a hook that has no
-// framework variable to reach for uses it instead.
+// framework variable to reach for uses it instead. HOME is set by the login in
+// the same way.
 var safeShellVars = map[string]bool{
-	// Claude Code
+	// Claude Code. CLAUDE_SKILL_DIR is the skill's own directory, which 2.1.310
+	// substitutes into a skill and lists beside CLAUDE_PROJECT_DIR; 49 of the
+	// 110 findings a frontmatter-hooks sample added named it (#935).
 	"CLAUDE_PLUGIN_ROOT": true,
 	"CLAUDE_PROJECT_DIR": true,
+	"CLAUDE_SKILL_DIR":   true,
 	// Zed task variables (crates/task/src/task_template.rs VariableName)
 	"ZED_WORKTREE_ROOT":     true,
 	"ZED_MAIN_GIT_WORKTREE": true,
-	// the shell's own cwd
-	"PWD": true,
+	// the shell's own cwd, and the user's home directory, which the login sets
+	// (#935)
+	"PWD":  true,
+	"HOME": true,
 }
+
+// dateFormatRe matches a date(1) +FORMAT argument, whose strftime conversions
+// read as cmd.exe variables: +%Y-%m-%dT%H:%M:%SZ holds "%dT%" (#935).
+var dateFormatRe = regexp.MustCompile(`(?:^|\s)['"]?\+%\S*`)
 
 func (r *cfg009) Check(t *Target) []finding.Finding {
 	if t == nil {
@@ -95,7 +105,7 @@ func extractShellVars(cmd string) []string {
 		}
 		addKey("$" + u.name)
 	}
-	for _, m := range cmdVarRe.FindAllStringSubmatch(cmd, -1) {
+	for _, m := range cmdVarRe.FindAllStringSubmatch(dateFormatRe.ReplaceAllString(cmd, " "), -1) {
 		addKey("%" + m[1] + "%")
 	}
 	return out

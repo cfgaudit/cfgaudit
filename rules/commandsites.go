@@ -315,7 +315,9 @@ func commandSites(t *Target) []commandSite {
 	// additionally require the agent file's folder to have accepted workspace
 	// trust. Neither caveat changes the command content, which is what these rules
 	// judge; the trigger is why CFG067 and CFG086 are deliberately not extended
-	// here (see instructionSources and CFG086's doc).
+	// here (see instructionSources and CFG086's doc). A skill's or slash
+	// command's frontmatter hooks ride the same field (#935): they run while
+	// the skill or command is active, which is again not opening the repo.
 	if len(t.SubagentHooks) > 0 {
 		events := make([]string, 0, len(t.SubagentHooks))
 		for e := range t.SubagentHooks {
@@ -326,7 +328,7 @@ func commandSites(t *Target) []commandSite {
 			for _, group := range t.SubagentHooks[event] {
 				for _, h := range group.Hooks {
 					if h.Command != "" {
-						sites = append(sites, commandSite{Label: "subagent frontmatter hooks." + event + " command", File: t.SubagentHooksFile, Command: claudeHookCommand(h)})
+						sites = append(sites, commandSite{Label: t.frontmatterHooksKind() + " frontmatter hooks." + event + " command", File: t.SubagentHooksFile, Command: claudeHookCommand(h)})
 					}
 				}
 			}

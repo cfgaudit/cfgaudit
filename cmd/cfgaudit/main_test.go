@@ -1576,11 +1576,13 @@ body
 	}
 }
 
-// The blocks are read only from real agent files whose frontmatter carries them.
-// Grok's subagent frontmatter has permissionMode but no hooks/mcpServers, and a
-// skill or command is not an agent file, so decoding these keys there would
-// report fields the agent never reads. qwen IS an agent file that mirrors the
-// Claude schema and is covered by its own wiring test above.
+// The blocks are read only from files whose frontmatter the agent acts on.
+// Grok's subagent frontmatter has permissionMode but no hooks/mcpServers, so
+// decoding them there would report fields the agent never reads. A Claude Code
+// skill or command does run its hooks (#935, measured on 2.1.310), so those are
+// decoded, but not an mcpServers block, which was not measured there. qwen IS
+// an agent file that mirrors the Claude schema and is covered by its own wiring
+// test above.
 func TestBuildTargets_SubagentBlocksOnlyForClaudeAgents(t *testing.T) {
 	body := `---
 name: x
@@ -1598,11 +1600,14 @@ mcpServers:
 ---
 body
 `
-	for _, rel := range []string{
-		filepath.Join(".grok", "agents", "x.md"),
-		filepath.Join(".claude", "skills", "x", "SKILL.md"),
-		filepath.Join(".claude", "commands", "x.md"),
+	for _, tc := range []struct {
+		rel, hooksKind string // "" when hooks must not be decoded
+	}{
+		{filepath.Join(".grok", "agents", "x.md"), ""},
+		{filepath.Join(".claude", "skills", "x", "SKILL.md"), "skill"},
+		{filepath.Join(".claude", "commands", "x.md"), "command"},
 	} {
+		rel := tc.rel
 		t.Run(filepath.ToSlash(rel), func(t *testing.T) {
 			dir := t.TempDir()
 			mustWrite(t, filepath.Join(dir, rel), body)
@@ -1610,13 +1615,20 @@ body
 			if err != nil {
 				t.Fatalf("buildTargets: %v", err)
 			}
+			decoded := false
 			for _, tg := range targets {
 				if len(tg.SubagentHooks) > 0 {
-					t.Errorf("%s: hooks must not be decoded here, got %v", rel, tg.SubagentHooks)
+					decoded = true
+					if tg.SubagentHooksKind != tc.hooksKind {
+						t.Errorf("%s: hooks kind %q, want %q", rel, tg.SubagentHooksKind, tc.hooksKind)
+					}
 				}
 				if len(tg.ProjectMCP) > 0 {
 					t.Errorf("%s: mcpServers must not be decoded here, got %v", rel, tg.ProjectMCP)
 				}
+			}
+			if decoded != (tc.hooksKind != "") {
+				t.Errorf("%s: hooks decoded = %v, want %v", rel, decoded, tc.hooksKind != "")
 			}
 		})
 	}
