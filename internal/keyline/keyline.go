@@ -254,14 +254,34 @@ var quotedRe = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
 // The key path is the longest dotted path of a key in the document that msg
 // starts with, preferring a path from the root. It may leave out leading keys
 // ("defaultMode" for permissions.defaultMode) when only one key in the
-// document matches. If msg
-// quotes a value after the path, the result is the first string under that key
-// equal to it, or else containing it; otherwise it is the key itself. A
-// repeated key resolves to its last occurrence, the one JSON parsers keep.
+// document matches. If msg quotes a value after the path, the result is the
+// first string under that key equal to it, or else containing it; otherwise it
+// is the key itself. A repeated key resolves to its last occurrence, the one
+// JSON parsers keep.
+//
+// Rules name a server mcpServers.<name> whatever the file calls the block
+// (opencode.json "mcp", VS Code "servers") and some put the agent first
+// ("Gemini hooks.SessionStart"), so when msg names no key, Locate tries again
+// without its first path segment and then without its first word.
 func (d *Doc) Locate(msg string) (line, col int) {
 	if d == nil {
 		return 0, 0
 	}
+	if line, col = d.locate(msg); line > 0 {
+		return line, col
+	}
+	if i := strings.IndexAny(msg, ". "); i > 0 && msg[i] == '.' {
+		if line, col = d.locate(msg[i+1:]); line > 0 {
+			return line, col
+		}
+	}
+	if i := strings.IndexByte(msg, ' '); i > 0 {
+		return d.locate(msg[i+1:])
+	}
+	return 0, 0
+}
+
+func (d *Doc) locate(msg string) (line, col int) {
 	best, bestLen, rooted := []int(nil), 0, false
 	for i, n := range d.nodes {
 		if n.key == "" {
@@ -327,8 +347,15 @@ func (d *Doc) Locate(msg string) (line, col int) {
 // find returns the first node from member i on whose key or string value is
 // want, or else the first whose string value contains it.
 func (d *Doc) find(i int, want string) (int, bool) {
+	// A member wins over an array element with the same value: a VS Code
+	// task's "label" over another task's "dependsOn" naming it.
 	for j := i; j < d.nodes[i].end; j++ {
-		if n := d.nodes[j]; n.key == want || (n.isStr && n.str == want) {
+		if n := d.nodes[j]; n.key != "" && (n.key == want || (n.isStr && n.str == want)) {
+			return j, true
+		}
+	}
+	for j := i; j < d.nodes[i].end; j++ {
+		if n := d.nodes[j]; n.isStr && n.str == want {
 			return j, true
 		}
 	}

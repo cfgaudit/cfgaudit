@@ -36,6 +36,16 @@ func TestLocate(t *testing.T) {
   "mcp": ["mcp-server"],
   "allow": ["x", "Bash(.venv\\Scripts\\python x)"]
 }`
+	tasks := `{"tasks": [
+    {"label": "build", "dependsOn": ["install"]},
+    {"label": "watch"},
+    {"label": "install", "runOptions": {"runOn": "folderOpen"}}
+]}`
+	opencode := `{
+  "mcp": {
+    "docs": { "type": "remote", "url": "https://docs.example.invalid/mcp" }
+  }, "permission": {"bash": "allow"}
+}`
 	tests := []struct {
 		name, src, msg string
 		line, col      int
@@ -52,6 +62,9 @@ func TestLocate(t *testing.T) {
 		{"root key wins over a deeper key of the same name", settings, "hooks (PostToolUse) run on open", 11, 3},
 		{"quoted key is the key itself, not a value containing it", mcp2, `mcp unknown top-level key "mcp"`, 2, 3},
 		{"raw backslashes in the quoted value", mcp2, `allow grants "Bash(.venv\Scripts\python x)"`, 3, 18},
+		{"member before an array element with the same value", tasks, `tasks task "install" runs on folder open`, 4, 6},
+		{"server named with mcpServers in a file that calls the block mcp", opencode, `mcpServers.docs connects to "https://docs.example.invalid/mcp"`, 3, 33},
+		{"agent name before the key path", opencode, "OpenCode permission.bash allows everything", 4, 21},
 		{"no key path", settings, "project-scoped settings define hooks", 0, 0},
 		{"word that is not a delimited path", settings, "envelope of the request", 0, 0},
 		{"ambiguous suffix resolved by the value", mcp, `env.HOST="0.0.0.0" binds to all interfaces`, 4, 39},

@@ -99,6 +99,7 @@ func (r *cfg047) checkVSCode(t *Target) []finding.Finding {
 			Severity: finding.Error,
 			Scope:    t.Scope,
 			File:     t.VSCodeTasksFile,
+			Key:      "tasks",
 			Message:  msg,
 		})
 	}

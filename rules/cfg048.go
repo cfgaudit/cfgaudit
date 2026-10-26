@@ -229,6 +229,7 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 			Severity: finding.Warn, // upstream-inert (application-scoped); see blanketAutoApproveKeys
 			Scope:    t.Scope,
 			File:     t.VSCodeSettingsFile,
+			Key:      key,
 			Message: "\"" + key + "\": true blanket-auto-approves every agent tool call, including terminal commands" +
 				" — committed to a repo this removes the confirmation prompt for anyone who opens it in agent mode (it also disables the terminal allow/deny list). Upstream VS Code ignores this key from a workspace file (it is application-scoped), but forks that read the same file may not." + nestedNote(t, key) + " Remove it",
 		})
