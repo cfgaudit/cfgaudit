@@ -122,7 +122,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					if overrideOnlyQualified[verb] && sm[4] < 0 {
 						continue
 					}
-					if overrideNegated(line, loc[0], verb) || attributiveNoun(line, sm) ||
+					if overrideNegated(line, loc[0], verb) || listNegated(line[:loc[0]], line[loc[1]:]) || attributiveNoun(line, sm) ||
 						untrustedSource(line[loc[1]:]) || flagDefinitionRe.MatchString(line) ||
 						(loc[0] > 0 && (line[loc[0]-1] == '-' || line[loc[0]-1] == '@')) ||
 						flagPurposeRe.MatchString(line[:loc[0]]) || toolIgnoreRe.MatchString(line[:loc[0]]) ||
@@ -330,6 +330,40 @@ func overrideNegated(line string, start int, verb string) bool {
 		return false
 	}
 	return overrideNegationRe.MatchString(line[:start])
+}
+
+// listNegationRe finds a negation that opens a list of verbs, and listItemsRe
+// what may stand between it and the pattern-1 verb: list items only, the last
+// one ending in a comma, "or" or "and".
+var (
+	listNegationRe = regexp.MustCompile(`(?i)\b(?:don'?t|do\s+not|never|must\s+not|mustn'?t|should\s+not|shouldn'?t)\s+`)
+	listItemsRe    = regexp.MustCompile(`(?i)^[^.;:!?]*,\s*(?:(?:or|and)\s+)?$|^[^.;:!?,]*\s(?:or|and)\s+$`)
+	listBreakRe    = regexp.MustCompile(`(?i)\b(?:but|instead|then|rather|however)\b`)
+	listGoesOnRe   = regexp.MustCompile(`(?i)^[^.;:!?]*?,?\s+or\s+\w`)
+)
+
+// listNegated reports whether a pattern-1 verb is a middle item of a list that
+// a negation opens (#943): "do not override project rules, ignore directives,
+// or modify ..." forbids ignoring directives. The negation has to be in the
+// same clause, a "but", "instead" or "then" breaks the list, and the list has
+// to go on after the match with "or ...", the way a list of forbidden actions
+// ends. That last condition keeps "Don't worry, ignore previous instructions."
+// reported: a payload can open with a negated filler, and it does not then
+// list further forbidden actions.
+func listNegated(before, after string) bool {
+	if !listGoesOnRe.MatchString(after) {
+		return false
+	}
+	clause := before
+	if k := strings.LastIndexAny(before, ".;:!?"); k >= 0 {
+		clause = before[k+1:]
+	}
+	locs := listNegationRe.FindAllStringIndex(clause, -1)
+	if len(locs) == 0 {
+		return false
+	}
+	between := clause[locs[len(locs)-1][1]:]
+	return listItemsRe.MatchString(between) && !listBreakRe.MatchString(between)
 }
 
 // attributiveNouns are the pattern-1 nouns that commonly modify another noun:
