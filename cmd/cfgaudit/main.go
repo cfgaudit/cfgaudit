@@ -173,6 +173,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	for _, target := range targets {
 		all = append(all, rules.Run(target, detected, accept)...)
 	}
+	locateKeyLines(all)
 	all = cfg.PostProcess(all, dir)
 
 	stdoutFile, _ := stdout.(*os.File)

@@ -37,6 +37,10 @@ type Finding struct {
 	Line     int
 	Col      int
 	Message  string
+	// Key is the key path the finding reports, for a message that does not
+	// start with it. A finding in a JSON file gets the line of that key, or
+	// else of the path the message starts with (#927).
+	Key string `json:"-"`
 }
 
 func (f Finding) String() string {

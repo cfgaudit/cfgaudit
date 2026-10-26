@@ -47,6 +47,7 @@ func (r *cfg012) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG012",
 				Severity: finding.Warn,
 				File:     t.SettingsFile,
+				Key:      k,
 				Message:  "unknown top-level key \"" + k + "\" — not defined in the bundled Claude Code settings schema. The bundled schema may lag behind newer Claude Code releases; if this key was added upstream recently, the warning is safe to suppress. Otherwise it likely indicates a typo or stale configuration.",
 			})
 			continue
@@ -60,6 +61,7 @@ func (r *cfg012) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG012",
 				Severity: finding.Error,
 				File:     t.SettingsFile,
+				Key:      k,
 				Message: "key \"" + k + "\" has JSON type " + actual + " but the schema expects " + strings.Join(ps.AllowedTypes, " or ") +
 					" — Claude Code does not ignore the value, it discards this settings file whole, so every permission rule, hook and env entry in it is inert, with nothing printed to say so. Fix the type (an unknown key would be tolerated; a wrong type on a known one is not)",
 			})

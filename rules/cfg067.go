@@ -47,6 +47,7 @@ func (r *cfg067) Check(t *Target) []finding.Finding {
 		RuleID:   "CFG067",
 		Severity: finding.Warn,
 		File:     t.SettingsFile,
+		Key:      "hooks",
 		Message: "project-scoped settings define hooks (" + strings.Join(events, ", ") +
 			") — committed hooks run automatically on every developer who opens this repo, before they interact with Claude Code (CVE-2025-59536). Move hook definitions to your user-global ~/.claude/settings.json or a reviewed onboarding step",
 	}}
