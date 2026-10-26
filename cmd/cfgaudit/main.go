@@ -1394,7 +1394,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if err != nil {
 			return nil, err
 		}
-		if content == "" {
+		if content == "" || clineDisabledFile(dir, p.path, content) {
 			continue
 		}
 		target := &rules.Target{
@@ -1409,6 +1409,39 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		targets = append(targets, target)
 	}
 	return targets, nil
+}
+
+// clineDisabledFile reports whether path is a Cline-only rule, workflow or
+// skill file whose frontmatter switches it off (#780). Cline's loader
+// (user-instruction-config-loader.ts, v4.1.26) reads a boolean `disabled`
+// first and the legacy `enabled: false` only when `disabled` is absent, and
+// drops a disabled file; since v4.1.26 the VS Code toggle writes the flag into
+// the file, so a committed rule can carry it. Only directories Cline alone
+// reads are skipped: a lone .clinerules file is also Zed's rules file, and
+// .claude/skills and .agents/skills are loaded by other agents whatever Cline
+// thinks of them.
+func clineDisabledFile(dir, path, content string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	switch {
+	case len(parts) >= 2 && parts[0] == ".clinerules":
+	case len(parts) >= 3 && parts[0] == ".cline" &&
+		(parts[1] == "rules" || parts[1] == "workflows" || parts[1] == "skills"):
+	default:
+		return false
+	}
+	fm, ok := parser.InstructionFrontmatter(content)
+	if !ok {
+		return false
+	}
+	if d, isBool := fm.Raw["disabled"].(bool); isBool {
+		return d
+	}
+	e, isBool := fm.Raw["enabled"].(bool)
+	return isBool && !e
 }
 
 // isClaudeSkillOrCommandFile reports whether path is a Claude Code skill
