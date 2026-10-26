@@ -411,6 +411,36 @@ func notAPermissionBypass(line string, loc []int) bool {
 	return false
 }
 
+// anaphoricOpsRe matches a clause that opens by pointing back at a list of
+// operations: "These operations", "Those read commands", "The above tools".
+var anaphoricOpsRe = regexp.MustCompile(`(?i)^\s*(?:these|those|such|the\s+above|all\s+of\s+these)\s+(?:\w+\s+){0,2}?(?:operations?|commands?|tools?|actions?|queries|calls?|requests?)\b`)
+
+// readHeadRe and writeHeadRe sort the heading of a permission-model section.
+var (
+	readHeadRe  = regexp.MustCompile(`(?i)\bread(?:[- ]?only)?\b|\bread\s*/\s*view\b|\bqueries\b|\blookups?\b`)
+	writeHeadRe = regexp.MustCompile(`(?i)\b(?:write|writes|delete|deletes|destructive|mutat\w*|modif\w*|create|update|admin)\b`)
+)
+
+// readSectionSummary reports whether the match sits in a sentence that sums
+// up a list of reads: "These operations execute automatically without
+// prompting." after "### READ Operations (Automatic)" and its items (#941).
+// Reads running without a prompt is how Claude Code treats read-only tools by
+// default, not a bypass. The nearest heading or bold label above decides, and
+// one that also names writes keeps the finding.
+func readSectionSummary(lines []string, i int, loc []int) bool {
+	if !anaphoricOpsRe.MatchString(lines[i][clauseStart(lines[i], loc[0]):loc[0]]) {
+		return false
+	}
+	for j := i - 1; j >= 0 && i-j <= 25; j-- {
+		t := strings.TrimSpace(lines[j])
+		heading := strings.HasPrefix(t, "#") || (strings.HasPrefix(t, "**") && introducesList(t))
+		if heading {
+			return readHeadRe.MatchString(t) && !writeHeadRe.MatchString(t)
+		}
+	}
+	return false
+}
+
 // The shapes describesState skips (#884).
 var (
 	// A state: "apply was requested without approval", "added without
@@ -559,7 +589,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 			if loc == nil {
 				continue
 			}
-			if negated(lines, i, loc) || notAPermissionBypass(line, loc) || describesState(line, loc) {
+			if negated(lines, i, loc) || notAPermissionBypass(line, loc) || describesState(line, loc) || readSectionSummary(lines, i, loc) {
 				continue
 			}
 			// A # comment in a fenced code block says what the next command

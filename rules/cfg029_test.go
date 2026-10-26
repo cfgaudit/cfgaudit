@@ -364,3 +364,23 @@ func TestCFG029_WillNotList(t *testing.T) {
 		}
 	}
 }
+
+// #941: a sentence summing up a list of reads is not a bypass; the same
+// sentence for writes, or one that does not point back at a list, still is.
+func TestCFG029_ReadSectionSummary(t *testing.T) {
+	for _, tc := range []struct {
+		content string
+		want    int
+	}{
+		{"## Permission Model\n\n### READ Operations (Automatic)\n- Searching error issues\n- Getting issue details\n\nThese operations execute automatically without prompting.\n", 0},
+		{"**Read-only commands:**\n- `git status`\n- `git log`\n\nThose commands run without asking.\n", 0},
+		{"### WRITE Operations\n- Updating issue state\n\nThese operations execute automatically without prompting.\n", 1},
+		{"### Read and write operations\n- Updating issue state\n\nThese operations execute automatically without prompting.\n", 1},
+		{"### READ Operations\n- Searching issues\n\nExecute all operations without prompting.\n", 1},
+		{"These operations execute automatically without prompting.\n", 1},
+	} {
+		if f := CFG029.Check(claudeMDTarget(tc.content)); len(f) != tc.want {
+			t.Errorf("%q: got %d findings, want %d", tc.content, len(f), tc.want)
+		}
+	}
+}
