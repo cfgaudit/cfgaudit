@@ -353,6 +353,9 @@ func sensitiveSubstitution(line string, inFence bool) ([]int, finding.Severity) 
 			if singleKeyLookup(line, loc) && !netExfilRe.MatchString(line) {
 				return loc, finding.Warn
 			}
+			if !check(passwdRe.ReplaceAllString(line[loc[0]:loc[1]], "")) && !netExfilRe.MatchString(line) {
+				return loc, finding.Warn
+			}
 			return loc, finding.Error
 		}
 	}
@@ -369,11 +372,20 @@ func sensitiveSubstitution(line string, inFence bool) ([]int, finding.Severity) 
 			continue
 		}
 		if check(line[loc[0]:loc[1]]) {
+			if !check(passwdRe.ReplaceAllString(line[loc[0]:loc[1]], "")) && !netExfilRe.MatchString(line) {
+				return loc, finding.Warn
+			}
 			return loc, finding.Error
 		}
 	}
 	return nil, ""
 }
+
+// passwdRe matches /etc/passwd, which every user can read and which holds
+// account names, not password hashes. A substitution whose only sensitive
+// path it is, "for user in $(grep /bin/bash /etc/passwd | cut -d: -f1)", lists
+// accounts and is a warning unless the line also sends data out (#966).
+var passwdRe = regexp.MustCompile(`/etc/passwd\b`)
 
 // ruleExpressionRe matches a code span that is a rule-language comparison,
 // a dotted field name and an operator: `open.file.path in ["/etc/shadow"]`
@@ -510,7 +522,12 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 				if listedAsRefused(lines, i, loc) {
 					sev = finding.Warn
 				}
-				add(i, loc[0], sev, "uses command substitution reading a sensitive path (Part A) — \""+strings.TrimSpace(line[loc[0]:loc[1]])+"…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it")
+				span := strings.TrimSpace(line[loc[0]:loc[1]])
+				msg := "uses command substitution reading a sensitive path (Part A) — \"" + span + "…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it"
+				if sev == finding.Warn && passwdRe.MatchString(span) {
+					msg = "uses command substitution reading /etc/passwd (Part A) — \"" + span + "…\"; the file is world-readable and holds account names, not password hashes; confirm the account list is not collected for an attack"
+				}
+				add(i, loc[0], sev, msg)
 			}
 		}
 
