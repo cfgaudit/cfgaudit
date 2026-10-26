@@ -3,7 +3,10 @@
 
 package keyline
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLocate(t *testing.T) {
 	settings := "\xEF\xBB\xBF{\n" + // BOM
@@ -134,4 +137,49 @@ func FuzzLocate(f *testing.F) {
 			t.Fatalf("Locate = %d:%d", line, col)
 		}
 	})
+}
+
+// #929: the parser's rejection paths and the inputs that reach the rarer
+// branches.
+func TestParseEdges(t *testing.T) {
+	for _, src := range []string{
+		`{"a": {"b": }}`,      // a value fails inside an object
+		`{"a": 1`,             // input ends after a member
+		`{"a"`,                // input ends after a key
+		`{"a": [1`,            // input ends after an element
+		`[`,                   // input ends inside an array
+		`["a" "b"]`,           // no separator between elements
+		`[{"a": 1} {"b": 2}]`, // nor between objects
+		`{1: 2}`,              // a key that is not a string
+		`{"a": "b`,            // unterminated value
+		`{"a": [ ]] }`,        // wrong closer
+	} {
+		if d := Parse([]byte(src)); d != nil {
+			t.Errorf("Parse(%q) accepted", src)
+		}
+	}
+	deep := ""
+	for i := 0; i <= maxDepth; i++ {
+		deep += `{"a":`
+	}
+	if Parse([]byte(deep+"1"+strings.Repeat("}", maxDepth+1))) != nil {
+		t.Error("Parse accepted objects nested deeper than maxDepth")
+	}
+
+	if Parse([]byte(`"just a string"`)) == nil {
+		t.Error("Parse rejected a string document")
+	}
+	d := Parse([]byte("{\n  /* a comment\n     over two lines */\n  \"url\": \"http:\\/\\/x.example.invalid\"\n}"))
+	if d == nil {
+		t.Fatal("Parse rejected a block comment or a \\/ escape")
+	}
+	if line, col := d.Locate("url"); line != 4 || col != 3 {
+		t.Errorf("Locate(path only) = %d:%d, want 4:3", line, col)
+	}
+	if line, col := d.Locate(`url connects to "http:\/\/x.example.invalid"`); line != 4 || col != 3 {
+		t.Errorf("Locate(raw escaped value) = %d:%d, want 4:3", line, col)
+	}
+	if line, col := d.Locate("nokey"); line != 0 || col != 0 {
+		t.Errorf("Locate(word) = %d:%d, want 0:0", line, col)
+	}
 }
