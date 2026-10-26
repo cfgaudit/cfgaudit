@@ -12,8 +12,10 @@ import (
 )
 
 // #939: a plugin's agents are instruction text. A manifest "agents" path
-// replaces the default agents/ directory, independently of "commands", and
-// the frontmatter hooks and mcpServers are not decoded yet.
+// replaces the default agents/ directory, independently of "commands". The
+// frontmatter hooks and mcpServers are not decoded: Claude Code 2.1.310 ran
+// neither for a plugin agent in a trusted workspace, while it ran both for the
+// same file under .claude/agents.
 func TestPluginAgents939(t *testing.T) {
 	const agent = `---
 name: a

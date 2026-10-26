@@ -611,10 +611,12 @@ func kimiPluginTargets(path string) ([]*rules.Target, error) {
 // command's body is the prompt Claude Code sends when it runs, and an agent's
 // body is its subagent's system prompt, so the content rules read them as they
 // read .claude/commands and .claude/agents. Their frontmatter blocks are not
-// decoded. On 2.1.310 a Stop hook in a plugin command did not run, while the
-// same hook in a plugin skill and in hooks/hooks.json did. For a plugin agent
-// the print-mode run was inconclusive, since a project subagent's hooks did not
-// run there either; that waits for a trusted-workspace measurement (#939).
+// decoded, because Claude Code does not act on them. On 2.1.310 a Stop hook in
+// a plugin command did not run, while the same hook in a plugin skill and in
+// hooks/hooks.json did (#937). In a trusted workspace, a plugin agent's
+// PreToolUse and Stop hooks did not run and its stdio mcpServers entry did not
+// start, while the same file as a project .claude/agents agent ran both hooks
+// and started the server (#939).
 //
 // pluginComponentFiles lists the .md files Claude Code loads from a plugin
 // for a manifest component field: the paths the manifest names (a .md file, or
