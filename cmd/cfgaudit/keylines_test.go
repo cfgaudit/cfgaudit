@@ -57,7 +57,7 @@ func TestKeyLines927(t *testing.T) {
 	for _, r := range log.Runs[0].Results {
 		loc := r.Locations[0].PhysicalLocation
 		uri := loc.ArtifactLocation.URI
-		key := r.RuleID + " " + uri[strings.LastIndex(uri, "/")+1:]
+		key := r.RuleID + " " + uri[strings.LastIndexAny(uri, `/\`)+1:]
 		if loc.Region == nil {
 			got[key] = "no region"
 			continue
