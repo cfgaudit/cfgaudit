@@ -66,6 +66,13 @@ type PluginManifest struct {
 	// commands/ was "not installed in this session"; without the field the
 	// reverse.
 	Commands json.RawMessage `json:"commands,omitempty"`
+
+	// Agents names the plugin's agent files or directories, with the same
+	// forms as Commands, and replaces the default agents/ directory too.
+	// Measured on 2.1.310 (#939): with "agents": ["./extra/owl.md"] the only
+	// plugin agent was plug:owl; without the field it was plug:greeter from
+	// agents/.
+	Agents json.RawMessage `json:"agents,omitempty"`
 }
 
 // ManifestPaths decodes a manifest component field that holds a string path or

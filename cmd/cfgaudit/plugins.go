@@ -23,7 +23,7 @@ import (
 //   - SKILL.md          → ClaudeMD target (CFG024 hidden Unicode, CFG026 bypass)
 //   - hooks.json        → hook command target (CFG008/009/014/015/027/028)
 //   - plugin.json       → MCP server target (CFG010/011/017–021), and the
-//     plugin's slash commands as instruction targets (#937)
+//     plugin's slash commands and agents as instruction targets (#937, #939)
 //
 // Project-root settings.json / .mcp.json are intentionally left to buildTargets
 // so nothing is scanned twice.
@@ -91,8 +91,9 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 //   - the MCP servers plugin.json declares, inline or through its path form
 //   - every SKILL.md under skills/, plus under any path the manifest names under
 //     "skills" (a custom path adds to the default directory)
-//   - the slash commands under commands/, or the paths the manifest names under
-//     "commands", which replace that directory (#937)
+//   - the slash commands under commands/ and the agents under agents/, or the
+//     paths the manifest names under "commands" and "agents", which replace
+//     those directories (#937, #939)
 //
 // A component path that resolves outside the plugin root is skipped.
 func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unreadable func(path string, err error)) []*rules.Target {
@@ -125,7 +126,7 @@ func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unr
 		targets = append(targets, t)
 	}
 
-	for _, path := range pluginCommandFiles(root, m) {
+	for _, path := range pluginInstructionFiles(root, m) {
 		content, err := scanroot.ReadFile(path)
 		if err != nil {
 			unreadable(path, err)
@@ -467,7 +468,7 @@ func scanPluginRoot(root string, unreadable func(path string, err error)) ([]*ru
 			if filepath.Base(filepath.Dir(path)) == claudePluginDir {
 				// pluginMCPTarget parsed the manifest already, so it parses here.
 				m, _ := parser.ParsePluginManifest(path)
-				for _, f := range pluginCommandFiles(filepath.Dir(filepath.Dir(path)), m) {
+				for _, f := range pluginInstructionFiles(filepath.Dir(filepath.Dir(path)), m) {
 					content, err := scanroot.ReadFile(f)
 					if err != nil {
 						if err := fail(f, err); err != nil {
@@ -606,23 +607,23 @@ func kimiPluginTargets(path string) ([]*rules.Target, error) {
 	return targets, nil
 }
 
-// A plugin's slash commands (#937) are instruction targets: a command's body is
-// the prompt Claude Code sends when it runs, so the content rules read it as
-// they read .claude/commands. Its frontmatter hooks are not decoded: on 2.1.310
-// a Stop hook in a plugin command did not run, while the same hook in a plugin
-// skill and in hooks/hooks.json did.
+// A plugin's slash commands (#937) and agents (#939) are instruction targets: a
+// command's body is the prompt Claude Code sends when it runs, and an agent's
+// body is its subagent's system prompt, so the content rules read them as they
+// read .claude/commands and .claude/agents. Their frontmatter blocks are not
+// decoded. On 2.1.310 a Stop hook in a plugin command did not run, while the
+// same hook in a plugin skill and in hooks/hooks.json did. For a plugin agent
+// the print-mode run was inconclusive, since a project subagent's hooks did not
+// run there either; that waits for a trusted-workspace measurement (#939).
 //
-// pluginCommandFiles lists the command files Claude Code loads from a plugin:
-// the paths the manifest names under "commands" (a .md file, or a directory
-// walked for them), which replace the default, or else commands/**/*.md. A
-// path that leaves the plugin root is skipped.
-func pluginCommandFiles(root string, m *parser.PluginManifest) []string {
-	dirs := []string{filepath.Join(root, "commands")}
+// pluginComponentFiles lists the .md files Claude Code loads from a plugin
+// for a manifest component field: the paths the manifest names (a .md file, or
+// a directory walked for them), which replace the default directory, or else
+// <defaultDir>/**/*.md. Measured on 2.1.310 for "commands" and for "agents".
+// A path that leaves the plugin root is skipped.
+func pluginComponentFiles(root string, named json.RawMessage, defaultDir string) []string {
+	dirs := []string{filepath.Join(root, defaultDir)}
 	var files []string
-	var named json.RawMessage
-	if m != nil {
-		named = m.Commands
-	}
 	if paths := parser.ManifestPaths(named); len(paths) > 0 {
 		dirs = nil
 		for _, rel := range paths {
@@ -657,6 +658,16 @@ func pluginCommandFiles(root string, m *parser.PluginManifest) []string {
 		})
 	}
 	return files
+}
+
+// pluginInstructionFiles is every command and agent file of the plugin at
+// root, in that order.
+func pluginInstructionFiles(root string, m *parser.PluginManifest) []string {
+	var commands, agents json.RawMessage
+	if m != nil {
+		commands, agents = m.Commands, m.Agents
+	}
+	return append(pluginComponentFiles(root, commands, "commands"), pluginComponentFiles(root, agents, "agents")...)
 }
 
 // pluginHooksTarget parses a plugin hooks.json into a target carrying only its
