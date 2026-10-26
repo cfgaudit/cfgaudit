@@ -58,6 +58,14 @@ type PluginManifest struct {
 	// 2.1.288: a hooks.json at sub/hooks/ did not run until the manifest named it
 	// with `"hooks": "./sub/hooks/hooks.json"`. An inline object is not decoded.
 	Hooks json.RawMessage `json:"hooks,omitempty"`
+
+	// Commands names the plugin's slash-command files or directories: a string
+	// path or an array of them, resolved against the plugin root. Unlike skills
+	// it replaces the default commands/ directory. Measured on 2.1.310 (#937):
+	// with "commands": ["./extra/other.md"], /plug:other loaded and a command in
+	// commands/ was "not installed in this session"; without the field the
+	// reverse.
+	Commands json.RawMessage `json:"commands,omitempty"`
 }
 
 // ManifestPaths decodes a manifest component field that holds a string path or

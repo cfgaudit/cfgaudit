@@ -22,7 +22,8 @@ import (
 //
 //   - SKILL.md          → ClaudeMD target (CFG024 hidden Unicode, CFG026 bypass)
 //   - hooks.json        → hook command target (CFG008/009/014/015/027/028)
-//   - plugin.json       → MCP server target (CFG010/011/017–021)
+//   - plugin.json       → MCP server target (CFG010/011/017–021), and the
+//     plugin's slash commands as instruction targets (#937)
 //
 // Project-root settings.json / .mcp.json are intentionally left to buildTargets
 // so nothing is scanned twice.
@@ -90,6 +91,8 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 //   - the MCP servers plugin.json declares, inline or through its path form
 //   - every SKILL.md under skills/, plus under any path the manifest names under
 //     "skills" (a custom path adds to the default directory)
+//   - the slash commands under commands/, or the paths the manifest names under
+//     "commands", which replace that directory (#937)
 //
 // A component path that resolves outside the plugin root is skipped.
 func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unreadable func(path string, err error)) []*rules.Target {
@@ -120,6 +123,15 @@ func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unr
 		unreadable(manifest, err)
 	} else if t != nil {
 		targets = append(targets, t)
+	}
+
+	for _, path := range pluginCommandFiles(root, m) {
+		content, err := scanroot.ReadFile(path)
+		if err != nil {
+			unreadable(path, err)
+			continue
+		}
+		targets = append(targets, &rules.Target{InstructionFile: path, InstructionContent: string(content)})
 	}
 
 	skillDirs := []string{filepath.Join(root, "skills")}
@@ -452,6 +464,20 @@ func scanPluginRoot(root string, unreadable func(path string, err error)) ([]*ru
 			if t != nil {
 				targets = append(targets, t)
 			}
+			if filepath.Base(filepath.Dir(path)) == claudePluginDir {
+				// pluginMCPTarget parsed the manifest already, so it parses here.
+				m, _ := parser.ParsePluginManifest(path)
+				for _, f := range pluginCommandFiles(filepath.Dir(filepath.Dir(path)), m) {
+					content, err := scanroot.ReadFile(f)
+					if err != nil {
+						if err := fail(f, err); err != nil {
+							return err
+						}
+						continue
+					}
+					targets = append(targets, &rules.Target{InstructionFile: f, InstructionContent: string(content)})
+				}
+			}
 		case "marketplace.json":
 			// Only the manifest in .claude-plugin/ is the marketplace document.
 			// Matching the bare filename anywhere in the tree would decode an
@@ -578,6 +604,59 @@ func kimiPluginTargets(path string) ([]*rules.Target, error) {
 		}
 	}
 	return targets, nil
+}
+
+// A plugin's slash commands (#937) are instruction targets: a command's body is
+// the prompt Claude Code sends when it runs, so the content rules read it as
+// they read .claude/commands. Its frontmatter hooks are not decoded: on 2.1.310
+// a Stop hook in a plugin command did not run, while the same hook in a plugin
+// skill and in hooks/hooks.json did.
+//
+// pluginCommandFiles lists the command files Claude Code loads from a plugin:
+// the paths the manifest names under "commands" (a .md file, or a directory
+// walked for them), which replace the default, or else commands/**/*.md. A
+// path that leaves the plugin root is skipped.
+func pluginCommandFiles(root string, m *parser.PluginManifest) []string {
+	dirs := []string{filepath.Join(root, "commands")}
+	var files []string
+	var named json.RawMessage
+	if m != nil {
+		named = m.Commands
+	}
+	if paths := parser.ManifestPaths(named); len(paths) > 0 {
+		dirs = nil
+		for _, rel := range paths {
+			p, ok := insideRoot(root, rel)
+			if !ok {
+				continue
+			}
+			switch {
+			case dirExists(p):
+				dirs = append(dirs, p)
+			case fileExists(p) && strings.EqualFold(filepath.Ext(p), ".md"):
+				files = append(files, p)
+			}
+		}
+	}
+	for _, d := range dirs {
+		_ = filepath.WalkDir(d, func(path string, e fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if e.IsDir() {
+				switch e.Name() {
+				case ".git", "node_modules", "vendor":
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if strings.EqualFold(filepath.Ext(path), ".md") {
+				files = append(files, path)
+			}
+			return nil
+		})
+	}
+	return files
 }
 
 // pluginHooksTarget parses a plugin hooks.json into a target carrying only its

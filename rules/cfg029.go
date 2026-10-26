@@ -66,6 +66,14 @@ var forbiddenMarkRe = regexp.MustCompile(`^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*)?\
 // "Red flags" (#623).
 var antiPatternHeadRe = regexp.MustCompile(`(?i)\b(?:anti-?patterns?|failure\s+modes?|pitfalls?|common\s+mistakes|red\s+flags|what\s+not\s+to\s+do|don'?ts|traps?)\b`)
 
+// willNotHeadRe matches a list heading that opens with "Will not" or "Won't"
+// and no subject: "**Will Not:**", "**Explicitly Will NOT** (without `--force`
+// flag):", the boundaries section of a command saying what it refuses to do
+// (#937). A heading with a subject ("Claude will not ask before:") can
+// introduce a list of actions taken without asking, so it is not matched,
+// and "will not" stays out of prohibitionRe for the same reason.
+var willNotHeadRe = regexp.MustCompile(`(?i)^\s*(?:#+\s*|[-*+]\s+)?(?:\*\*|__)?\s*(?:explicitly\s+|strictly\s+)?(?:will\s+not|won'?t)\b`)
+
 // labelLeadRe captures the bold label that opens a list item ("- **The
 // "cleanup" trap** — ..."), whose words say what kind of item it is (#655).
 var labelLeadRe = regexp.MustCompile(`^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*([^*]+)\*\*`)
@@ -222,7 +230,7 @@ func negated(lines []string, i int, loc []int) bool {
 		return true
 	}
 	g := governingLine(lines, i)
-	if introducesList(g) && (antiPatternHeadRe.MatchString(g) || forbiddenMarkRe.MatchString(g)) {
+	if introducesList(g) && (antiPatternHeadRe.MatchString(g) || forbiddenMarkRe.MatchString(g) || willNotHeadRe.MatchString(g)) {
 		return true
 	}
 	// Only the clause the list hangs off counts, for the same reason the line

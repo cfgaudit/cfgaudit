@@ -345,3 +345,22 @@ func TestCFG029_Issue884(t *testing.T) {
 		}
 	}
 }
+
+// #937: a "Will Not" boundaries list says what the command refuses to do; a
+// heading with a subject can still introduce a bypass list.
+func TestCFG029_WillNotList(t *testing.T) {
+	for _, tc := range []struct {
+		content string
+		want    int
+	}{
+		{"## Boundaries\n\n**Will Not:**\n- Modify repository configuration without explicit authorization\n- Execute destructive operations without confirmation\n", 0},
+		{"**Explicitly Will NOT** (without `--force` flag):\n- Make architectural decisions\n- Refactor code structure without confirmation\n", 0},
+		{"### Won't do:\n- Delete files without confirmation\n", 0},
+		{"Claude will not ask before:\n- Execute destructive operations without confirmation\n", 1},
+		{"**Will:**\n- Execute destructive operations without confirmation\n", 1},
+	} {
+		if f := CFG029.Check(claudeMDTarget(tc.content)); len(f) != tc.want {
+			t.Errorf("%q: got %d findings, want %d: %+v", tc.content, len(f), tc.want, f)
+		}
+	}
+}
