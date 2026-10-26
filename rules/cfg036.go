@@ -175,9 +175,11 @@ var authorDirectedRe = regexp.MustCompile(`(?i)^[^.;]{0,20}?\b(?:provide|give|sh
 // kin), an identifier ending in .env (process.env, import.meta.env), and the
 // destination of a copy or move (cp .env.example .env, Copy-Item ...), a
 // permission change (chmod 600 .../.env), and a public key (id_ed25519.pub).
-// A ${Name.method(...)} span is a JavaScript template literal, not a shell
-// expansion: `Bearer ${Deno.env.get("OPENAI_API_KEY")}` (#885).
-var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+\([^}]*\)\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b`)
+// A ${Name.method(...)} or ${name.member} span is a JavaScript template
+// literal, not a shell expansion, whose variable names cannot hold a dot:
+// `Bearer ${Deno.env.get("OPENAI_API_KEY")}` (#885), `Bearer
+// ${c.env.AI_GATEWAY_TOKEN}` in a Cloudflare Worker (#955).
+var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b`)
 
 // inlineCodeSpanRe matches a Markdown inline-code span: a pair of backticks
 // around text with no backtick in it.
