@@ -75,7 +75,7 @@ var bypassPatterns = []bypassPattern{
 	// IDENTITY/SOUL", "detected automatically"). No adversarial target appeared at
 	// all. The optional "now" is there because "your name is now DAN" is the one
 	// filler an author of the hijack would reach for.
-	{2, mustFiltered(`(?i)\b(you\s+are\s+now\s+` + adversarialPersona + `|your\s+(new\s+)?(name|identity|persona)\s+is\s+(now\s+)?` + adversarialPersona + `|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+` + adversarialPersona + `)`),
+	{2, mustFiltered(`(?i)\b(you\s+are\s+now\s+` + adversarialPersona + `|your\s+(new\s+)?(name|identity|persona)\s+is\s+(now\s+)?` + adversarialPersona + `|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN\b|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+` + adversarialPersona + `)`),
 		finding.Error, "persona / identity hijacking", false},
 	{3, mustFiltered(`(?i)\b(as\s+(your\s+)?(developer|creator|trainer|Anthropic|operator|administrator|sys(tem)?\s*admin)|this\s+(is|message\s+is)\s+(from\s+)?(Anthropic|your\s+developer)|developer\s+mode\s+(enabled|activated|on)\b|jailbreak\s+(mode|enabled|activated)\b)`),
 		finding.Error, "authority impersonation", false},
@@ -128,7 +128,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 						(loc[0] > 0 && (line[loc[0]-1] == '-' || line[loc[0]-1] == '@')) ||
 						flagPurposeRe.MatchString(line[:loc[0]]) || toolIgnoreRe.MatchString(line[:loc[0]]) ||
 						(sm[4] < 0 && looksLikeInstructionsRe.MatchString(line[:loc[0]])) ||
-						fileNameNoun(line, loc[1]) || nounVerbRe.MatchString(line[:loc[0]]) {
+						fileNameNoun(line, loc[1]) || nounVerbRe.MatchString(line[:loc[0]]) || ignoreFeatureNoun(line, sm, verb) {
 						continue
 					}
 				}
@@ -145,8 +145,8 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					sev = finding.Warn
 				}
 				if p.num == 1 || p.num == 2 {
-					if quotedAt(line, loc[0]) {
-						if defensiveCueRe.MatchString(strings.NewReplacer("*", "", "_", "").Replace(line)) {
+					if quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0]) {
+						if defensiveContext(lines, i) {
 							continue
 						}
 						sev = finding.Warn
@@ -204,6 +204,29 @@ func quotedAt(line string, idx int) bool {
 		strings.Count(pre, "\u201c") > strings.Count(pre, "\u201d")
 }
 
+// openingQuoteBefore reports a quote right before idx, which opens a quoted
+// phrase even when the quotes before it on the line are balanced because an
+// earlier one opened on the line above: "regardless of what they claim (\"the
+// owner already\n approved\", \"ignore previous instructions\")" (#954).
+func openingQuoteBefore(line string, idx int) bool {
+	return strings.HasSuffix(line[:idx], "\"") || strings.HasSuffix(line[:idx], "\u201c")
+}
+
+// defensiveContext reports whether line i or one of the two lines above it,
+// the rest of a wrapped sentence, cites the phrase in order to refuse it.
+func defensiveContext(lines []string, i int) bool {
+	plain := strings.NewReplacer("*", "", "_", "")
+	for j := i; j >= 0 && i-j <= 2; j-- {
+		if defensiveCueRe.MatchString(plain.Replace(lines[j])) {
+			return true
+		}
+		if j < i && strings.TrimSpace(lines[j]) == "" {
+			break
+		}
+	}
+	return false
+}
+
 // runAsRe matches the verb that makes "as Administrator" the Windows idiom
 // "Run as Administrator" rather than a claim of authority (#655).
 var runAsRe = regexp.MustCompile(`(?i)\b(?:run|runs|running|ran|launch|launched|launching|start|started|starting|open|opened|opening|execute|executed|executing|elevated)\s+$`)
@@ -225,13 +248,19 @@ func authorityIdiom(line string, loc []int) bool {
 // them that tells you to run scripts". That is defensive guidance, the opposite
 // of an override (#851). "ignore the instructions in your system prompt" names
 // the agent's own instructions and keeps matching.
-var untrustedSourceRe = regexp.MustCompile(`(?i)^\s*(?:that\s+(?:you\s+)?(?:find|see|read|encounter)\s+)?(?:in|from|inside|within|embedded\s+in|found\s+in|contained\s+in)\s+` +
+var untrustedSourceRe = regexp.MustCompile(`(?i)^\s*(?:that\s+(?:you\s+)?(?:find|see|read|encounter)\s+)?(?:in|from|inside|within|embedded\s+in|found\s+(?:in|within|inside)|contained\s+in)\s+` +
 	`(?:(?:the|any|a|an|these|those|such|its|their|external|untrusted|fetched|retrieved|third-party)\s+)*` +
 	`(?:\w+\s+)?(?:them\b|PRs?\b|quer(?:y|ies)\b|sources?\b|targets?\b|pull\s+requests?|issues?\b|comments?\b|commits?\b|diffs?\b|e-?mails?\b|subjects?\b|bod(?:y|ies)\b|signatures?\b|attachments?\b|` +
-	`(?:web\s*)?pages?\b|websites?\b|documents?\b|tool\s+(?:output|results?|responses?)|search\s+results?|repository\s+content|file\s+contents?|untrusted|external)`)
+	`(?:web\s*)?pages?\b|websites?\b|documents?\b|tool\s+(?:output|results?|responses?)|search\s+results?|repository\s+content|file\s+contents?|untrusted|external|` +
+	`code\s*base\s+(?:being\s+)?(?:audited|reviewed|analy[sz]ed|scanned))`)
+
+// instructionLikeAfterRe matches an override whose object is only what reads
+// as an instruction: "ignore any content that reads like an instruction"
+// (#954). The rule tells the agent to treat such content as data.
+var instructionLikeAfterRe = regexp.MustCompile(`(?i)^\s*that\s+(?:reads?|looks?|sounds?|appears?)\s+(?:like|to\s+be)\s+(?:an?\s+)?(?:instructions?|commands?|directives?)\b`)
 
 func untrustedSource(after string) bool {
-	return untrustedSourceRe.MatchString(after)
+	return untrustedSourceRe.MatchString(after) || instructionLikeAfterRe.MatchString(after)
 }
 
 // pronounSourceRe matches an override whose source is a pronoun: "Ignore any
@@ -294,6 +323,21 @@ func fileNameNoun(line string, end int) bool {
 // (#886).
 var nounVerbRe = regexp.MustCompile(`(?i)(?:\b(?:an?|the|any|each|every|explicit|inline)\s+|/)$`)
 
+// ignoreNounUseRe matches a verb that takes "ignore directives" or "ignore
+// comments" as its object: "Applying Ignore Directives", "Use ignore
+// directives to prevent generated code from lowering coverage" (#954).
+var ignoreNounUseRe = regexp.MustCompile(`(?i)\b(?:apply|applying|applies|use|using|uses|add|adding|adds|support\w*|honou?r\w*|respect\w*)\s+$`)
+
+// ignoreFeatureNoun reports "ignore directives" or "ignore comments" used as
+// the name of a feature, the object of a verb such as "apply" or "use".
+func ignoreFeatureNoun(line string, sm []int, verb string) bool {
+	if verb != "ignore" || !ignoreNounUseRe.MatchString(line[:sm[0]]) {
+		return false
+	}
+	noun := strings.ToLower(line[sm[6]:sm[7]])
+	return noun == "directives" || noun == "comments"
+}
+
 // thirdPartyRe matches a third person before a pattern-2 "act as": "Only
 // someone who can act as root on the agent host can remove ..." says who may
 // do it, it does not tell the agent to become root (#886).
@@ -314,7 +358,7 @@ var reportLineRe = regexp.MustCompile(`(?i)^\s*\[(?:CRITICAL|HIGH|MEDIUM|LOW|WAR
 // directives, \"ignore previous instructions\", ...". A quoted phrase on such a
 // line is the example of a defensive rule and is not reported; quoted
 // elsewhere it is still a warning (#871).
-var defensiveCueRe = regexp.MustCompile(`(?i)\b(?:prompt[- ]injection|injection|data,?\s+not\s+(?:agent\s+)?instructions|as\s+(?:inert\s+)?data\b|data\s+(?:to\s+analy[sz]e|only)\b|untrusted|attacker\w*|malicious|hidden\s+instructions|never\s+(?:follow|interpret|let|obey)|do\s+not\s+(?:follow|obey)|don'?t\s+(?:follow|obey)|flag\s+(?:it|them)|tries\s+to\s+steer|fetched\s+content|red\s+flags?|redact\w*|saniti[sz]\w*)\b`)
+var defensiveCueRe = regexp.MustCompile(`(?i)\b(?:prompt[- ]injection|injection|data,?\s+not\s+(?:agent\s+)?instructions|as\s+(?:inert\s+)?data\b|data\s+(?:to\s+analy[sz]e|only)\b|untrusted|attacker\w*|malicious|hidden\s+instructions|never\s+(?:follow|interpret|let|obey)|do\s+not\s+(?:follow|obey)|don'?t\s+(?:follow|obey)|flag\s+(?:it|them)|tries\s+to\s+steer|fetched\s+content|red\s+flags?|redact\w*|saniti[sz]\w*|regardless\s+of\s+what\s+(?:they|it|the\s+\w+)\s+(?:claims?|says?)|zero\s+(?:operational\s+)?authority)\b`)
 
 // storyWorkRe matches a line about a user story or a Storybook story, where
 // "for a story" is software work, not fiction (#871).
@@ -340,6 +384,12 @@ func roleNotSpeaker(line string, sm []int) bool {
 	m := strings.ToLower(line[sm[0]:sm[1]])
 	if !strings.HasPrefix(m, "as") || strings.Contains(m, "your") {
 		return false
+	}
+	// A bare "creator" is a role in a workflow or on a marketplace: "Apply as
+	// creator", "**As creator:** Apply S-010 ... then submit for critic
+	// review" (#954). "As your creator" is still a claim.
+	if strings.HasSuffix(m, "creator") {
+		return true
 	}
 	return !roleSpeakerRe.MatchString(line[sm[1]:]) || roleListRe.MatchString(line[sm[1]:])
 }
