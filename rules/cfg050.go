@@ -66,7 +66,8 @@ var placeholderRe = regexp.MustCompile(`(?i)^(<.*>|x{3,}|changeme|your[-_ ].*|to
 // the same shape of committed request credential. Shares CFG007's secret detector
 // for values and key names.
 func (r *cfg050) Check(t *Target) []finding.Finding {
-	findings := r.checkAgentHookHeaders(t)
+	findings := r.checkClaudeHookHeaders(t)
+	findings = append(findings, r.checkAgentHookHeaders(t)...)
 	// Gemini telemetry.otlpHeaders (#646) go on every export request; the 0.65
 	// nightly sent a project's literal Authorization header with them.
 	if t != nil && t.Gemini != nil && t.Gemini.Telemetry != nil {
@@ -110,6 +111,22 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 				Message:  base + ".oauth.client_secret contains a hardcoded OAuth client secret: Codex sends it in the token exchange for this server, and it has no environment-variable form, so move the oauth table to your user-level ~/.codex/config.toml rather than committing it" + userScopeNote(t),
 			})
 		}
+	}
+	return findings
+}
+
+// checkClaudeHookHeaders reports hardcoded credentials in the headers of a
+// Claude Code http hook, in a settings file, a plugin hooks.json or a subagent's
+// frontmatter (#745). Like the Copilot check below, disableAllHooks does not
+// suppress it: the secret is committed whether or not the hook runs.
+func (r *cfg050) checkClaudeHookHeaders(t *Target) []finding.Finding {
+	var findings []finding.Finding
+	for _, set := range claudeHookSets(t) {
+		set.each(func(loc string, h parser.HookCommand) {
+			if len(h.Headers) > 0 {
+				findings = append(findings, headerSecrets(loc, h.Headers, set.file, t)...)
+			}
+		})
 	}
 	return findings
 }
@@ -312,6 +329,9 @@ func headerSecretsAt(prefix string, headers map[string]string, file string, t *T
 			if len(cred) < minCredentialLen && !strings.ContainsAny(cred, "$%{") {
 				continue // "Bearer X": too short to be any real token (#852)
 			}
+			if publishableKey(cred) {
+				continue
+			}
 			what := "a hardcoded credential"
 			if label, ok := matchSecretPattern(cred); ok {
 				what = "a hardcoded " + label
@@ -320,6 +340,22 @@ func headerSecretsAt(prefix string, headers map[string]string, file string, t *T
 		}
 	}
 	return findings
+}
+
+// publishableKeyPrefixes are keys their vendors issue to be shipped in public
+// clients: Supabase's publishable key ("safe to expose") and Stripe's
+// publishable keys. A Claude Code http hook posting to a Supabase REST endpoint
+// sends one as apikey and Authorization, which is how the 101-file sample for
+// #745 had it.
+var publishableKeyPrefixes = []string{"sb_publishable_", "pk_live_", "pk_test_"}
+
+func publishableKey(cred string) bool {
+	for _, p := range publishableKeyPrefixes {
+		if strings.HasPrefix(cred, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // unquoteValue removes one layer of literal surrounding quotes. A value that is

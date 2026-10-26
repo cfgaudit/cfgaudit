@@ -52,6 +52,19 @@ func (s *Settings) StringField(key string) string {
 	return v
 }
 
+// BoolField returns a top-level boolean setting and whether the file sets it
+// as one.
+func (s *Settings) BoolField(key string) (v, ok bool) {
+	raw, present := s.Raw[key]
+	if !present {
+		return false, false
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return false, false
+	}
+	return v, true
+}
+
 // CommandHelperField returns the .command of a {"type":..,"command":..} object
 // key (statusLine, subagentStatusLine, fileSuggestion). Missing or mistyped
 // values yield "".
@@ -262,10 +275,10 @@ type HookCommand struct {
 
 	// URL, Headers and AllowedEnvVars belong to a type:"http" handler, which POSTs
 	// the event payload to an endpoint instead of running a command (CFG088).
-	// Continue's hooks use this same matcher-group shape and support that handler
-	// type; Copilot's equivalent fields live on AgentHook, whose file format is a
-	// flat event → handlers map rather than matcher groups. Absent for Claude
-	// Code, Grok, Gemini and qwen, whose handlers carry no URL.
+	// Claude Code and Continue use this matcher-group shape and both support that
+	// handler type (#745); Copilot's equivalent fields live on AgentHook, whose
+	// file format is a flat event → handlers map rather than matcher groups.
+	// Absent for Grok, Gemini and qwen, whose handlers carry no URL.
 	URL            string            `json:"url,omitempty"`
 	Headers        map[string]string `json:"headers,omitempty"`
 	AllowedEnvVars []string          `json:"allowedEnvVars,omitempty"`

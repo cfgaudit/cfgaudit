@@ -161,6 +161,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	targets = append(targets, docTargets...)
 	targets = append(targets, escapedLinkTargets()...)
+	applyClaudeHooksDisabled(targets)
 
 	if shellCheckEnabled(*shellcheck || cfg.ShellCheckEnabled()) {
 		for _, t := range targets {
@@ -213,6 +214,39 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	return cfg.ExitCode(all)
+}
+
+// applyClaudeHooksDisabled gives every target the effective disableAllHooks of
+// the Claude Code settings files in the scan (#745). Claude Code merges the
+// settings sources, so the local file wins over the project file and that over
+// the user file; the switch then turns off every hook, a plugin's or a
+// subagent's included ("Disable all hooks and statusLine execution").
+func applyClaudeHooksDisabled(targets []*rules.Target) {
+	disabled := false
+	for _, scope := range []finding.Scope{finding.ScopeProjectLocal, finding.ScopeProject, finding.ScopeUser} {
+		v, ok := claudeSettingsBool(targets, scope, "disableAllHooks")
+		if ok {
+			disabled = v
+			break
+		}
+	}
+	for _, t := range targets {
+		t.ClaudeHooksDisabled = disabled
+	}
+}
+
+// claudeSettingsBool returns key from the Claude Code settings file of the
+// given scope, if the scan has one and it sets the key.
+func claudeSettingsBool(targets []*rules.Target, scope finding.Scope, key string) (v, ok bool) {
+	for _, t := range targets {
+		if t.Scope != scope || t.Settings == nil || filepath.Base(filepath.Dir(t.SettingsFile)) != ".claude" {
+			continue
+		}
+		if v, ok = t.Settings.BoolField(key); ok {
+			return v, true
+		}
+	}
+	return false, false
 }
 
 // requireDir returns an error naming path unless it is an existing directory.

@@ -267,6 +267,14 @@ type Target struct {
 	SubagentHooks     map[string][]parser.HookGroup
 	SubagentHooksFile string
 
+	// ClaudeHooksDisabled is the effective disableAllHooks of the Claude Code
+	// settings in the scan: the local file over the project file over the user
+	// file, as Claude Code merges them. It switches off every Claude Code hook,
+	// those of plugins and subagents included, so CFG088 reports no channel for a
+	// disabled http hook; CFG050 still reports a credential in its headers,
+	// which is committed either way (#745).
+	ClaudeHooksDisabled bool
+
 	// SkillShellCommands are the `!` shell commands of a Claude Code skill or
 	// slash command file (InstructionFile), which Claude Code runs when the skill
 	// is invoked, by the user or by the model, before the text reaches the model

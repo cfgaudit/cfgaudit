@@ -4,6 +4,8 @@
 package rules
 
 import (
+	neturl "net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -19,7 +21,7 @@ func init() { All = append(All, CFG088) }
 
 func (r *cfg088) ID() string { return "CFG088" }
 
-// Check flags a Copilot `type: "http"` hook that POSTs to a non-loopback URL.
+// Check flags a Claude Code, Copilot, Cursor or Continue `type: "http"` hook that POSTs to a non-loopback URL.
 // An http hook sends the event payload — prompts, tool names and arguments — to
 // whatever endpoint the config names, so a committed hook file declares an
 // outbound channel for everyone who opens the repository. CFG038 catches the same
@@ -36,8 +38,26 @@ func (r *cfg088) ID() string { return "CFG088" }
 // channel. Hooks with no URL, and non-http hook types, are not this rule's
 // business.
 func (r *cfg088) Check(t *Target) []finding.Finding {
-	findings := r.checkAgentHooks(t)
+	findings := r.checkClaudeHooks(t)
+	findings = append(findings, r.checkAgentHooks(t)...)
 	return append(findings, r.checkContinueHooks(t)...)
+}
+
+// checkClaudeHooks applies the rule to Claude Code's own http handler, in a
+// settings file, a plugin hooks.json or a subagent's frontmatter (#745). The
+// fields are the same url, headers and allowedEnvVars. disableAllHooks, merged
+// across the settings files as Claude Code merges it, switches them all off.
+func (r *cfg088) checkClaudeHooks(t *Target) []finding.Finding {
+	if t == nil || t.ClaudeHooksDisabled {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, set := range claudeHookSets(t) {
+		set.each(func(loc string, h parser.HookCommand) {
+			findings = append(findings, httpHookFindings(t, loc, set.file, h.Type, h.URL, h.AllowedEnvVars)...)
+		})
+	}
+	return findings
 }
 
 // checkContinueHooks applies the same rule to a Continue settings file's hooks.
@@ -99,10 +119,10 @@ func httpHookFindings(t *Target, loc, file, handlerType, rawURL string, allowedE
 		return nil
 	}
 	url := strings.TrimSpace(rawURL)
-	if url == "" || proxyTargetsLoopback(url) {
+	if url == "" || proxyTargetsLoopback(url) || placeholderHookURL(url) {
 		return nil
 	}
-	if vars := nonEmptyEnvVars(allowedEnvVars); len(vars) > 0 {
+	if vars := credentialEnvVars(allowedEnvVars); len(vars) > 0 {
 		return []finding.Finding{{
 			RuleID:   "CFG088",
 			Severity: finding.Error,
@@ -122,14 +142,48 @@ func httpHookFindings(t *Target, loc, file, handlerType, rawURL string, allowedE
 	}}
 }
 
-// nonEmptyEnvVars returns the trimmed, non-empty entries of an allowedEnvVars
-// list, preserving the order the config declares them in.
-func nonEmptyEnvVars(vars []string) []string {
+// credentialEnvVars returns the allowedEnvVars entries whose names say they
+// hold a credential (CFG007's *_TOKEN, *_SECRET, *_API_KEY, ... suffixes), in
+// the order the config declares them. Forwarding USER or CLAUDE_PROJECT_DIR is
+// not an exfiltration channel; 3 of the 6 real Claude Code files that set the
+// field in a 101-file sample named only such variables (#745).
+func credentialEnvVars(vars []string) []string {
 	out := make([]string, 0, len(vars))
 	for _, v := range vars {
-		if v = strings.TrimSpace(v); v != "" {
+		if v = strings.TrimSpace(v); v != "" && hasSecretSuffix(v) {
 			out = append(out, v)
 		}
 	}
 	return out
+}
+
+// placeholderHookURLRe matches the unfilled parts of a template URL:
+// __HOOK_URL__, YOUR/WEBHOOK/URL, <your-endpoint>, {{ url }}.
+var placeholderHookURLRe = regexp.MustCompile(`__[A-Z][A-Z0-9_]*__|\bYOUR[_/-]|<[^>]*>|\{\{`)
+
+// placeholderHookURL reports whether url is not an endpoint a hook can post to:
+// not an http(s) URL at all, a template, or a host under a name reserved for
+// documentation (RFC 2606, RFC 6761), which is where example configs point. In
+// a 101-file sample of Claude Code hooks, 10 of the 16 files with an http hook
+// were such examples (#745).
+func placeholderHookURL(url string) bool {
+	if placeholderHookURLRe.MatchString(url) {
+		return true
+	}
+	u, err := neturl.Parse(url)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return true
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	for _, d := range []string{"example.com", "example.net", "example.org"} {
+		if host == d || strings.HasSuffix(host, "."+d) {
+			return true
+		}
+	}
+	for _, tld := range []string{".example", ".invalid", ".test"} {
+		if strings.HasSuffix(host, tld) {
+			return true
+		}
+	}
+	return false
 }

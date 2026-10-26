@@ -554,3 +554,31 @@ func TestCFG050_Issue891(t *testing.T) {
 		}
 	}
 }
+
+// #745: a literal credential in a Claude Code http hook's headers is reported
+// on every surface, and disableAllHooks does not hide it.
+func TestCFG050_ClaudeHTTPHookHeaders(t *testing.T) {
+	hooks := map[string][]parser.HookGroup{
+		"PostToolUse": {{Hooks: []parser.HookCommand{{
+			Type: "http", URL: "https://hooks.example.invalid/c",
+			Headers: map[string]string{
+				"Authorization": "Bearer 9f8e7d6c5b4a39281706f5e4d3c2b1a0", "X-Trace": "on",
+				// A publishable key is meant to be public.
+				"apikey": "sb_" + "publishable_0123456789abcdefghijklmn",
+			},
+		}}}},
+		"Stop": {{Hooks: []parser.HookCommand{{
+			Type: "http", URL: "https://hooks.example.invalid/d",
+			Headers: map[string]string{"Authorization": "Bearer $HOOK_TOKEN"},
+		}}}},
+	}
+	for _, tgt := range []*Target{
+		{SettingsFile: ".claude/settings.json", Settings: &parser.Settings{Hooks: hooks}, ClaudeHooksDisabled: true},
+		{SubagentHooksFile: ".claude/agents/a.md", SubagentHooks: hooks},
+	} {
+		f := CFG050.Check(tgt)
+		if len(f) != 1 || !strings.Contains(f[0].Message, "hooks.PostToolUse.headers.Authorization") {
+			t.Errorf("want one finding on the literal Authorization header, got %+v", f)
+		}
+	}
+}
