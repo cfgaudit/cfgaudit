@@ -236,6 +236,16 @@ func copyDestination(line string, start, end int) bool {
 	return strings.Trim(rest, " \t'\"") == ""
 }
 
+// quietGrepBeforeRe matches a grep that reports only whether the file holds a
+// match, not what it holds: -q, -c, -l and their long forms, up to the path
+// ("grep -q 'ANTHROPIC' \"$HOME/.claude/.credentials.json\"", #952).
+var quietGrepBeforeRe = regexp.MustCompile(`\bgrep\s+(?:-\S+\s+)*?(?:-[A-Za-z]*[qcl][A-Za-z]*|--quiet|--silent|--count|--files-with-matches)\s+(?:\S+\s+)*['"]?$`)
+
+// errorTextAfterRe matches the error a program prints about the path, so the
+// verb before it is the failed call quoted from a log: "open /data/tls.key:
+// permission denied" in a troubleshooting table (#952).
+var errorTextAfterRe = regexp.MustCompile(`(?i)^:\s*(?:permission\s+denied|no\s+such\s+file(?:\s+or\s+directory)?|is\s+a\s+directory|not\s+a\s+directory|operation\s+not\s+permitted|read-only\s+file\s+system)\b`)
+
 // npmrcWriteRe matches a line that writes an .npmrc file, where an
 // ":_authToken" is the line being written: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc.
 var npmrcWriteRe = regexp.MustCompile(`>\s*\S*\.npmrc[\w.\-]*`)
@@ -246,7 +256,8 @@ var blockListHeadRe = regexp.MustCompile(`(?i)\b(?:patterns?|detect\w*|block\w*|
 
 // notARead reports whether a verb near the path does not read it (#869): a
 // negation before the path in its clause or a refusing list above it, a
-// refusal after it, a write or an existence test of the path, and an
+// refusal after it, a write or an existence test of the path (a quiet grep
+// among them), an error message quoted about the path, and an
 // ":_authToken" line written to an .npmrc.
 func notARead(lines []string, i int, loc []int, full string) bool {
 	line := lines[i]
@@ -258,7 +269,8 @@ func notARead(lines []string, i int, loc []int, full string) bool {
 	if blockedAfterRe.MatchString(clauseRest(strings.ReplaceAll(line[loc[1]:], "etc.", "etc"))) {
 		return true
 	}
-	if writeOrTestBeforeRe.MatchString(line[:start]) || copyDestination(line, start, loc[1]) {
+	if writeOrTestBeforeRe.MatchString(line[:start]) || copyDestination(line, start, loc[1]) ||
+		quietGrepBeforeRe.MatchString(line[:start]) || errorTextAfterRe.MatchString(line[loc[1]:]) {
 		return true
 	}
 	if strings.HasPrefix(strings.ToLower(line[loc[0]:loc[1]]), ":_authtoken") && npmrcWriteRe.MatchString(line[loc[1]:]) {
@@ -278,6 +290,16 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 		lines := strings.Split(src.Content, "\n")
 		for i, line := range lines {
 			loc := sensitivePathRe.FindStringIndex(line)
+			// A public key is meant to be shared: look past "id_ed25519.pub"
+			// to a private key later on the line (#952).
+			for loc != nil && strings.HasPrefix(line[loc[1]:], ".pub") {
+				next := sensitivePathRe.FindStringIndex(line[loc[1]:])
+				if next == nil {
+					loc = nil
+					break
+				}
+				loc = []int{loc[1] + next[0], loc[1] + next[1]}
+			}
 			if loc == nil {
 				continue
 			}
