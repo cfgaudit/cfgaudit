@@ -99,3 +99,12 @@ func TestBuildTargets_ClineDisabled780(t *testing.T) {
 		}
 	}
 }
+
+// #933: a path that cannot be related to the scan root is not a Cline file,
+// whatever its frontmatter says.
+func TestClineDisabledFile_UnrelatablePath(t *testing.T) {
+	disabled := "---\ndisabled: true\n---\nbody\n"
+	if clineDisabledFile(t.TempDir(), filepath.Join(".cline", "rules", "a.md"), disabled) {
+		t.Error("a relative path under an absolute root was treated as a disabled Cline file")
+	}
+}
