@@ -94,6 +94,15 @@ var settingValueAfterRe = regexp.MustCompile(`^\s*` + "`?" + `\s*[:=]`)
 // confirmations"): the text documents a flag, the choice is the user's (#655).
 var flagConditionRe = regexp.MustCompile(`(?i)\b(?:when|if|with)\b[^.]*?` + "`?" + `--?[a-z][\w-]*`)
 
+// doesNotRe matches a negated third-person verb: "does not", "doesn't", "did
+// not". It stays out of prohibitionRe, which also governs the "ask" forms,
+// because "the tool does not ask for confirmation" describes a bypass.
+var doesNotRe = regexp.MustCompile(`(?i)\b(?:does\s+not|doesn'?t|did\s+not|didn'?t)\b`)
+
+// catalogueRowRe matches a table row whose first cell is an identifier of a
+// risk or weakness catalogue: ASI06, LLM01, CWE-862, AML.T0051.
+var catalogueRowRe = regexp.MustCompile(`^\s*\|\s*(?:\*\*)?[A-Z]{2,}[-.]?(?:T)?\d{2,}(?:\.\d+)?(?:\*\*)?\s*\|`)
+
 // withoutGateRe matches the "without confirmation / approval / prompting"
 // branch. The ask-branch ("without asking for confirmation") names the agent's
 // own question and is not subject to the action check.
@@ -207,6 +216,21 @@ func negated(lines []string, i int, loc []int) bool {
 		return true
 	}
 	if strings.HasPrefix(strings.ToLower(match), "without") && noWithoutRe.MatchString(before) {
+		return true
+	}
+	// "does not install anything without confirmation" says the
+	// confirmation happens; the negation may sit on the wrapped line above
+	// (#953).
+	if strings.HasPrefix(strings.ToLower(match), "without") {
+		prev := continuedFrom(lines, i)
+		if doesNotRe.MatchString(prev[clauseStart(prev, len(prev)):] + before) {
+			return true
+		}
+	}
+	// A row of a vulnerability catalogue names a class of defect: "| ASI06 |
+	// Excessive agency | AI takes destructive actions without confirmation |"
+	// (#953).
+	if catalogueRowRe.MatchString(line) {
 		return true
 	}
 	if forbiddenMarkRe.MatchString(line) || conditionAfterRe.MatchString(line[loc[1]:]) {
@@ -400,13 +424,36 @@ func notAPermissionBypass(line string, loc []int) bool {
 			return true // a program's design: "Never prompt interactively inside the use case" (#867)
 		}
 		rest := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(after)), "the user ")
-		if strings.HasPrefix(match, "never confirm") && confirmObjectRe.MatchString(after) {
-			return true // "Never confirm a root cause without ..." (#855)
+		if strings.HasPrefix(match, "never confirm") && (confirmObjectRe.MatchString(after) || verbListAfterRe.MatchString(after)) {
+			return true // "Never confirm a root cause without ..." (#855), "never confirm, negotiate, or alter payment terms" (#953)
 		}
 		return !neverPromptObjectRe.MatchString(after) && strings.HasPrefix(rest, "for")
 	case strings.HasPrefix(match, "bypass permission"):
+		// A heading or a quoted UI string names the mode: "### Dialog 2:
+		// Bypass Permissions Warning", "`⏵⏵ bypass permissions on` = status
+		// bar" (#953).
+		if markdownHeadingRe.MatchString(line) || insideCodeSpan(line, loc) {
+			return true
+		}
 		return bypassNounBeforeRe.MatchString(before) || bypassNounAfterRe.MatchString(after) ||
 			(bypassNounListRe.MatchString(before) && bypassNounEndRe.MatchString(after))
+	}
+	return false
+}
+
+// verbListAfterRe matches "confirm" as the first verb of a list acting on one
+// object: "never confirm, negotiate, or alter payment terms" (#953).
+var verbListAfterRe = regexp.MustCompile(`(?i)^\s*,\s*(?:\w+,\s*)*(?:or|and)?\s*\w+,?\s+(?:or|and)\s+\w+\s+\w+`)
+
+// markdownHeadingRe matches a Markdown heading line.
+var markdownHeadingRe = regexp.MustCompile(`^\s{0,3}#{1,6}\s`)
+
+// insideCodeSpan reports whether loc lies inside an inline code span.
+func insideCodeSpan(line string, loc []int) bool {
+	for _, m := range codeSpanRe.FindAllStringIndex(line, -1) {
+		if loc[0] > m[0] && loc[1] < m[1] {
+			return true
+		}
 	}
 	return false
 }
@@ -534,6 +581,29 @@ func describesState(line string, loc []int) bool {
 	return false
 }
 
+// installVerbRe matches the verb of an install step.
+var installVerbRe = regexp.MustCompile(`(?i)\b(?:install\w*|set\s+up|setup|add|upgrade|update)\b`)
+
+// installerPrompts reports "without prompts:" ahead of a fenced install
+// command: "to install the storage skill globally ... without prompts:" (#953).
+// The prompts are the installer's own questions, answered by the flags of the
+// command below, not the agent's permission prompts.
+func installerPrompts(lines []string, i int, loc []int) bool {
+	line := lines[i]
+	if !strings.EqualFold(line[loc[0]:loc[1]], "without prompt") || !strings.HasPrefix(strings.ToLower(line[loc[1]:]), "s:") {
+		return false
+	}
+	if !installVerbRe.MatchString(line[clauseStart(line, loc[0]):loc[0]]) {
+		return false
+	}
+	for j := i + 1; j < len(lines); j++ {
+		if t := strings.TrimSpace(lines[j]); t != "" {
+			return strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~")
+		}
+	}
+	return false
+}
+
 func isWordByte(b byte) bool {
 	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b == '_'
 }
@@ -608,7 +678,13 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 			// A # comment in a fenced code block says what the next command
 			// does: "# Force overwrite without prompting" (#855), or what a
 			// parameter means: "force: bool = False,  # Skip approval" (#867).
-			if fenced[i+1] && (strings.HasPrefix(strings.TrimSpace(line), "#") || strings.Contains(line[:loc[0]], " # ")) {
+			// The same for a // comment in a C-like language: "// Auto-approve
+			// git commands only" above the callback that does it (#953).
+			if fenced[i+1] && (strings.HasPrefix(strings.TrimSpace(line), "#") || strings.Contains(line[:loc[0]], " # ") ||
+				strings.HasPrefix(strings.TrimSpace(line), "//") || strings.Contains(line[:loc[0]], " // ")) {
+				continue
+			}
+			if installerPrompts(lines, i, loc) {
 				continue
 			}
 			lineNo := i + 1
