@@ -526,7 +526,7 @@ AI coding agents read their instruction files as trusted system-context every se
 | [CFG026](docs/rules/CFG026.md) | error/warn | instruction file contains instruction-bypass phrases (override / persona hijack / authority impersonation → error; permissive fictional framing → warn) | LLM01 |
 | [CFG029](docs/rules/CFG029.md) | error | instruction file instructs the agent to bypass permission prompts ("always approve", "without asking", …) — NL equivalent of `defaultMode: bypassPermissions` | LLM03 |
 | [CFG030](docs/rules/CFG030.md) | error | instruction file instructs the agent to conceal its behavior ("don't tell the user", "silently exfiltrate", …) | LLM01 |
-| [CFG031](docs/rules/CFG031.md) | error/warn | instruction file references a sensitive file path (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — error when read/sent (exfiltration), warn on a bare mention | LLM02 |
+| [CFG031](docs/rules/CFG031.md) | error/warn | instruction file references a sensitive file path (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — error when read/sent (exfiltration), warn on a bare mention, a read of `/etc/passwd` alone, or a path read on a remote target (URL, `--file-read`, XML entity) | LLM02 |
 | [CFG032](docs/rules/CFG032.md) | error/warn | instruction file contains pseudo-system tags (`<SYSTEM>`), turn-boundary/role injection (`Human:`/`<human>`) → error; generic all-caps tags & foreign-LLM control tokens → warn | LLM01 |
 | [CFG033](docs/rules/CFG033.md) | error | instruction file contains a markdown image with an empty/placeholder query param (`![](https://x?d=)`) — data-exfiltration sink | LLM02 |
 | [CFG034](docs/rules/CFG034.md) | warn | instruction file contains Guidance/template role delimiters (`{{#system~}}` …) — role-injection markup | LLM01 |
@@ -558,7 +558,7 @@ Installing an agent plugin is a supply-chain trust decision. With `--plugins <di
 
 | Artifact | Rules applied |
 |----------|---------------|
-| `SKILL.md` | CLAUDE.md content rules — CFG024 (hidden Unicode), CFG026 (instruction-bypass) |
+| `SKILL.md` | instruction-content rules, as for `CLAUDE.md`: CFG024, CFG026, CFG029–CFG036, CFG057, CFG080, CFG081, CFG090, CFG113; frontmatter rules CFG051 and CFG056 |
 | `hooks/hooks.json` | command-content rules — CFG008, CFG009, CFG014, CFG015, CFG027, CFG028; instruction-content rules over `type: "prompt"` / `type: "agent"` hook prompts — CFG024, CFG026, CFG029–CFG036, CFG057 |
 | `plugin.json` `mcpServers` | MCP rules — CFG010, CFG011, CFG017–CFG021 |
 | `commands/**/*.md`, or the paths `plugin.json` names under `commands` | instruction-content rules, as for `.claude/commands`. A manifest `commands` entry replaces the `commands/` directory rather than adding to it, and a command's frontmatter `hooks:` are not read, since 2.1.310 did not run them ([#937](https://github.com/cfgaudit/cfgaudit/issues/937)) |

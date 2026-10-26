@@ -20,7 +20,8 @@ import (
 // buildPluginTargets discovers Claude Code plugin/skill packages and turns their
 // bundled artifacts into scan targets, reusing the existing rule engine:
 //
-//   - SKILL.md          → ClaudeMD target (CFG024 hidden Unicode, CFG026 bypass)
+//   - SKILL.md          → instruction target (the instruction-content rules,
+//     plus the frontmatter rules CFG051/056)
 //   - hooks.json        → hook command target (CFG008/009/014/015/027/028)
 //   - plugin.json       → MCP server target (CFG010/011/017–021), and the
 //     plugin's slash commands and agents as instruction targets (#937, #939)
