@@ -436,3 +436,26 @@ func TestCFG036_Issue910(t *testing.T) {
 		}
 	}
 }
+
+// #945: a rule expression in a code span inside a fence is not a backtick
+// substitution; a read in a span or a $( ) still is.
+func TestCFG036_RuleExpressionSpan(t *testing.T) {
+	for _, tc := range []struct {
+		content string
+		want    bool
+	}{
+		{"```\n2. \"Sensitive File Access\" - File Activity\n   Expression: `open.file.path in [\"/etc/shadow\", \"/etc/passwd\"]`\n```\n", false},
+		{"```\nRun `cat /etc/shadow` now\n```\n", true},
+		{"```bash\nKEY=$(cat ~/.ssh/id_rsa)\n```\n", true},
+	} {
+		got := false
+		for _, f := range CFG036.Check(claudeMDTarget(tc.content)) {
+			if strings.Contains(f.Message, "Part A") {
+				got = true
+			}
+		}
+		if got != tc.want {
+			t.Errorf("%q: Part A finding = %v, want %v", tc.content, got, tc.want)
+		}
+	}
+}
