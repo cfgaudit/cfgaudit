@@ -164,6 +164,7 @@ func concealNegated(line string, loc []int) bool {
 	if m := strings.ToLower(line[loc[0]:loc[1]]); strings.Contains(m, "tell") {
 		after := line[loc[1]:]
 		if tellClaimRe.MatchString(after) || tellQuotedClaimRe.MatchString(after) || tellBareClaimRe.MatchString(after) ||
+			tellConditionalClaimRe.MatchString(clauseRest(after)) ||
 			tellUntilRe.MatchString(clauseRest(after)) || concealModalRe.MatchString(line[:loc[0]]) {
 			return true
 		}
@@ -175,6 +176,14 @@ func concealNegated(line string, loc []int) bool {
 	if m := strings.ToLower(line[loc[0]:loc[1]]); strings.Contains(m, "tell") || strings.Contains(m, "show") {
 		after := line[loc[1]:]
 		if tellUnlessRe.MatchString(clauseRest(after)) || (strings.Contains(m, "show") && showFailedRe.MatchString(after)) {
+			return true
+		}
+	}
+	// "The user's attention is being sold by the publisher to the advertiser
+	// without the user's knowledge" describes what a third party does (#956).
+	if m := strings.ToLower(line[loc[0]:loc[1]]); strings.HasPrefix(m, "without") {
+		before := line[clauseStart(line, loc[0]):loc[0]]
+		if thirdPartyActorRe.MatchString(before) && !youRe.MatchString(before) {
 			return true
 		}
 	}
@@ -233,6 +242,16 @@ var tellUnlessRe = regexp.MustCompile(`(?i)\bunless\s+(?:you(?:'ve|\s+have)?\s+|
 // "do not show the user": "a diagram that failed this check" (#890). Keeping a
 // broken result back until it is fixed is a quality gate, not concealment.
 var showFailedRe = regexp.MustCompile(`(?i)^\s+(?:a|an|the|any)\s+(?:(?:[\w\-]+\s+){1,3}(?:that|which)\s+(?:has\s+|have\s+)?(?:failed|fails|fail|is\s+(?:broken|invalid|unverified)|are\s+(?:broken|invalid|unverified))|(?:broken|invalid|unverified|failing|failed)\s)`)
+
+// tellConditionalClaimRe matches a claim with an indefinite subject and the
+// condition under which it would be false: "Do not tell the user nobody
+// answered when the reason says a machine did" (#956). Forbidding the wrong
+// report is an accuracy rule.
+var tellConditionalClaimRe = regexp.MustCompile(`(?i)^\s+(?:that\s+)?(?:nobody|no\s+one|nothing|everyone|everybody|someone|somebody)\s+\w+(?:\s+\w+){0,4}?\s+(?:when|if|unless|while)\b`)
+
+// thirdPartyActorRe matches a third party acting in the clause, the subject
+// or the agent of a passive: "by the publisher", "advertisers track".
+var thirdPartyActorRe = regexp.MustCompile(`(?i)\b(?:publishers?|advertisers?|ad\s+networks?|trackers?|platforms?|vendors?|companies|websites?|third[- ]part(?:y|ies)|attackers?|malware|data\s+brokers?)\b`)
 
 // tellToRe matches "to <verb>" right after "tell the user", which turns the
 // phrase into guidance about what the user should be told to do.

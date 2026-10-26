@@ -459,3 +459,22 @@ func TestCFG036_RuleExpressionSpan(t *testing.T) {
 		}
 	}
 }
+
+// #955: a JavaScript template literal reading a member of an environment
+// binding is not a substitution; a shell read of the same file still is.
+func TestCFG036_TemplateMember955(t *testing.T) {
+	for _, tc := range []struct {
+		s    string
+		want bool
+	}{
+		{"```ts\nheaders: {\n  'Authorization': `Bearer ${c.env.AI_GATEWAY_TOKEN}`,\n},\n```", false},
+		{"```ts\nconst url = `${env.API_BASE}/v1/${this.config.path}`;\n```", false},
+		{"```bash\nTOKEN=`cat .env | grep TOKEN`\n```", true},
+		{"```bash\nKEY=`cat ${HOME}/.ssh/id_rsa`\n```", true},
+		{"```bash\nexport T=$(cat ~/.aws/credentials)\n```", true},
+	} {
+		if got := hasSeverityWithPart(CFG036.Check(claudeMDTarget(tc.s)), finding.Error, "Part A"); got != tc.want {
+			t.Errorf("%q: Part A error = %v, want %v", tc.s, got, tc.want)
+		}
+	}
+}

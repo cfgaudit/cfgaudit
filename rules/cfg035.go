@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -40,6 +41,30 @@ var mcpInstructionPatterns = []mcpInstrPattern{
 	{mustFiltered(`(?i)\bmcp\b(?:\s+[\w.@/\-]+){0,4}?\s+(?:to\s+)?(?:alwaysAllow|(?:is\s+|are\s+|as\s+)?trusted|allow\s+all)\b`), finding.Error, false},
 }
 
+// trustedNounAfterRe matches the noun that "trusted" qualifies when it is an
+// adjective of something else: "trusted interactive OS user", "trusted
+// hosts".
+var trustedNounAfterRe = regexp.MustCompile(`(?i)^\s+(?:[\w]+[\s-]+){0,3}?(?:users?|operators?|people|persons?|humans?|hosts?|machines?|clients?|devices?|networks?|developers?|admins?|administrators?|accounts?|part(?:y|ies))\b`)
+
+// trustedOtherNoun reports a match that ends in "trusted" used as an adjective
+// of another noun: "ae-mcp supports one trusted interactive OS user" states
+// whom the product trusts, it does not tell the agent to trust a server
+// (#957). "the mcp server is trusted" and "mcp as trusted" keep matching.
+func trustedOtherNoun(line string, loc []int) bool {
+	m := strings.ToLower(line[loc[0]:loc[1]])
+	if !strings.HasSuffix(m, "trusted") {
+		return false
+	}
+	f := strings.Fields(m)
+	if len(f) >= 2 {
+		switch f[len(f)-2] {
+		case "is", "are", "as":
+			return false
+		}
+	}
+	return trustedNounAfterRe.MatchString(line[loc[1]:])
+}
+
 // Check flags instruction-file content that installs or trusts an MCP server. A
 // trust/allow-all instruction is an error; an add/install instruction (e.g.
 // `claude mcp add`) is a warn and is skipped inside code blocks, where it is a
@@ -65,6 +90,9 @@ func (r *cfg035) Check(t *Target) []finding.Finding {
 					continue
 				}
 				if p.skipCode && inInlineCode(line, loc[0]) {
+					continue
+				}
+				if trustedOtherNoun(line, loc) {
 					continue
 				}
 				lineNo := i + 1
