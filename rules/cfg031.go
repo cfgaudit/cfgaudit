@@ -122,8 +122,15 @@ func actionScope(line string, loc []int) string {
 		}
 		return strings.Repeat(" ", len(span))
 	})
+	scope = fieldNameRe.ReplaceAllStringFunc(scope, func(f string) string { return strings.Repeat(" ", len(f)) })
 	return readOnlyRe.ReplaceAllString(scope, "")
 }
+
+// fieldNameRe matches a dotted field name of a rule or query language,
+// three or more lowercase segments: open.file.path, exec.file.name. Its first
+// segment is not a verb, so "open.file.path in [\"/etc/shadow\"]" in a
+// detection rule does not read the file (#945).
+var fieldNameRe = regexp.MustCompile(`\b[a-z_]+(?:\.[a-z_]+){2,}\b`)
 
 // homeToolPathRe matches a path under a dot-directory of the home directory,
 // capturing the directory name ("gooseworks" in

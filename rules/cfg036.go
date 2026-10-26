@@ -363,12 +363,21 @@ func sensitiveSubstitution(line string, inFence bool) ([]int, finding.Severity) 
 		if !inFence && !readsOut(line[loc[0]+1:loc[1]-1]) {
 			continue
 		}
+		if ruleExpressionRe.MatchString(line[loc[0]+1 : loc[1]-1]) {
+			continue
+		}
 		if check(line[loc[0]:loc[1]]) {
 			return loc, finding.Error
 		}
 	}
 	return nil, ""
 }
+
+// ruleExpressionRe matches a code span that is a rule-language comparison,
+// a dotted field name and an operator: `open.file.path in ["/etc/shadow"]`
+// in a detection rule's sample output names what the rule watches; it is
+// not a backtick substitution (#945).
+var ruleExpressionRe = regexp.MustCompile(`^\s*[a-z_]+(?:\.[a-z_]+){2,}\s+(?:not\s+in|in|==|!=|=~|!~|matches|contains|startswith|endswith)\s`)
 
 // guardHeadRe matches the head of a list item that names what a guard
 // refuses or holds back: "**Blocks** catastrophic operations outright:",
