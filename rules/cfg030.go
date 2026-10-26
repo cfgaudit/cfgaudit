@@ -142,7 +142,18 @@ var concealModalRe = regexp.MustCompile(`(?i)\b(?:would|could|might|may|will|can
 // clause-local check: a negation before the match in the same clause, while a
 // match that begins with its own negation ("don't tell the user") is the
 // instruction itself and keeps reporting.
+// internalLabelRe matches the label of the agent's own reasoning right before a
+// "don't show the user": "Self-Questioning (Internal - Don't show to user)",
+// "internal analysis, do not show the user", "in your thinking; don't
+// reveal it to the user" (#949).
+var internalLabelRe = regexp.MustCompile(`(?i)(?:\(\s*internal\b[^)]*|\binternal\s+(?:analysis|reasoning|notes?|thinking|step|checklist)\b[^.;]*|\byour\s+(?:own\s+)?(?:thinking|reasoning)\b[^.;]*|\bscratch\s*pad\b[^.;]*)$`)
+
 func concealNegated(line string, loc []int) bool {
+	// Reasoning kept internal is not behaviour hidden from the user (#949).
+	if m := strings.ToLower(line[loc[0]:loc[1]]); (strings.Contains(m, "show") || strings.Contains(m, "reveal") || strings.Contains(m, "tell")) &&
+		internalLabelRe.MatchString(line[:loc[0]]) {
+		return true
+	}
 	// "Do not tell the user to read X" says what to tell the user, not what to
 	// keep from them (#655).
 	if tellToRe.MatchString(line[loc[1]:]) {
