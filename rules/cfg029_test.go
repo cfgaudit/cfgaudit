@@ -384,3 +384,26 @@ func TestCFG029_ReadSectionSummary(t *testing.T) {
 		}
 	}
 }
+
+// #947: a subject and a past participle state what happened; behaviour and
+// imperatives are still reported.
+func TestCFG029_ParticipleState(t *testing.T) {
+	for _, tc := range []struct {
+		line string
+		want int
+	}{
+		{"⚠️ New API key created without approval ticket", 0},
+		{"⚠️ 2 keys created without approval tickets", 0},
+		{"Changes are applied without approval.", 1},
+		{"Merge PRs without approval.", 1},
+		{"Deploy everything without approval.", 1},
+		{"Pushed commits without confirmation are fine; you can always push without confirmation.", 1},
+		{"Commit and push without asking for confirmation.", 1},
+		{"Allowed:\n- Files edited without confirmation", 1},
+		{"- New API key created without approval ticket", 1},
+	} {
+		if f := CFG029.Check(claudeMDTarget(tc.line + "\n")); len(f) != tc.want {
+			t.Errorf("%q: got %d findings, want %d", tc.line, len(f), tc.want)
+		}
+	}
+}

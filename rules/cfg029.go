@@ -447,6 +447,16 @@ var (
 	// approval", "unresolved P1 without approval", "max iterations reached
 	// without approval".
 	stateBeforeRe = regexp.MustCompile(`(?i)(?:\b(?:was|were|has\s+been|have\s+been|had\s+been)\s+\w+(?:ed|en|ne|un)|\b(?:added|reached|unresolved|introduced)(?:\s+\S+){0,2})\s+$`)
+	// A subject and a past participle with no auxiliary, on a report line
+	// that opens with a status mark: "⚠️ New API key created without approval
+	// ticket", "⚠️ 2 keys created without approval tickets" (#947). The mark
+	// is required because "- Files edited without confirmation" under
+	// "Allowed:" grants the bypass in the same words. The auxiliary check keeps
+	// "Changes are applied without approval", which says how the agent
+	// behaves.
+	statusMarkRe      = regexp.MustCompile(`^\s*(?:[-*+]\s+)?(?:\x{26A0}|\x{2713}|\x{2714}|\x{2705}|\x{274C}|\x{2757}|\x{1F534}|\x{1F7E0}|\x{1F7E1}|\x{1F7E2}|\[(?:WARN|WARNING|ERROR|INFO|FAIL|PASS|OK)\])`)
+	participleStateRe = regexp.MustCompile(`(?i)\b\w+\s+\w+ed\s+$`)
+	auxiliaryRe       = regexp.MustCompile(`(?i)\b(?:is|are|am|be|being|get|gets|getting|can|could|may|might|will|would|shall|should|must|to|always|just|you|we|i)\b`)
 	// The fix named in the same row or item: "| Write actions without
 	// approval | Add human approval gate ... |".
 	addGateRe = regexp.MustCompile(`(?i)\badd(?:s|ing)?\s+(?:an?\s+)?(?:\w+\s+){0,2}(?:approval|confirmation)\b`)
@@ -491,6 +501,9 @@ func describesState(line string, loc []int) bool {
 	switch {
 	case strings.HasPrefix(match, "without"):
 		if stateBeforeRe.MatchString(before) || questionWhatRe.MatchString(before) {
+			return true
+		}
+		if statusMarkRe.MatchString(line) && participleStateRe.MatchString(before) && !auxiliaryRe.MatchString(before) {
 			return true
 		}
 		t := strings.TrimSpace(line)
