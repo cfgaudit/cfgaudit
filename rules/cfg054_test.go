@@ -73,6 +73,21 @@ func TestCFG054_JSONValueLeaves(t *testing.T) {
 	}
 }
 
+func TestCFG054_JSONValueEdgeCases(t *testing.T) {
+	// A value that starts like JSON but does not parse is scored as one
+	// token, as before JSON values were walked.
+	f := CFG054.Check(settingsTarget(t, `{"env":{"SESSION_KEY":"{a8Kd92Lmz0Qw3RtY7bVx1NpC4"}}`))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "env.SESSION_KEY is") {
+		t.Fatalf("expected one finding on the whole invalid-JSON value, got %+v", f)
+	}
+
+	// An array element is reported with its index.
+	f = CFG054.Check(settingsTarget(t, `{"env":{"LIST":"[\"example.one\",\"a8Kd92Lmz0Qw3RtY7bVx1NpC4\"]"}}`))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "env.LIST[1] is") {
+		t.Fatalf("expected one finding on the array element, got %+v", f)
+	}
+}
+
 func TestCFG054_NotFlagged(t *testing.T) {
 	cases := []string{
 		`{"env":{"NODE_ENV":"development"}}`,                                // short, low entropy
