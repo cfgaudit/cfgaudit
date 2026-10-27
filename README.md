@@ -883,6 +883,8 @@ To show it on a GitLab project page, add it under **Settings → General → Bad
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, the test loop, and the step-by-step recipe for adding a new rule. Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md); what is planned next is in the [roadmap](ROADMAP.md).
 
+If cfgaudit is useful to you, a star on GitHub helps other people find it.
+
 ---
 
 ## License
