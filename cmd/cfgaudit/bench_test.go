@@ -21,7 +21,24 @@ func benchArgs(dir string) []string {
 	return []string{"cfgaudit", "--claude-version", "2.1.312", "--format", "json", dir}
 }
 
+// quietStderr sends os.Stderr to the null device until the benchmark ends.
+// Some notices bypass run's stderr argument, and go test prints them into the
+// middle of a result line, which benchstat then cannot read.
+func quietStderr(b *testing.B) {
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	saved := os.Stderr
+	os.Stderr = null
+	b.Cleanup(func() {
+		os.Stderr = saved
+		_ = null.Close()
+	})
+}
+
 func benchScan(b *testing.B, p benchcorpus.Profile) {
+	quietStderr(b)
 	dir := b.TempDir()
 	if err := benchcorpus.Write(dir, p); err != nil {
 		b.Fatal(err)
