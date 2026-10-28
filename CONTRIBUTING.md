@@ -58,6 +58,32 @@ CI additionally runs:
 
 If you change anything under `.github/workflows/`, run `zizmor .github/workflows/` locally — actions must be pinned to commit SHAs and `persist-credentials: false` must stay on `actions/checkout`.
 
+### Benchmarks
+
+The benchmarks scan a corpus that `internal/benchcorpus` generates from a fixed seed: neutral project documentation, skills, commands, rules files, settings and MCP configs. Nothing in it is copied from a real repository.
+
+```sh
+go test -run '^$' -bench . -benchmem ./rules ./cmd/cfgaudit
+```
+
+| Benchmark | What it measures |
+|---|---|
+| `BenchmarkScan_Repo`, `BenchmarkScan_Large` | a whole scan, discovery to JSON output, of a tree sized like a large agent repository (37 files) and like a `--user` scan (119 files) |
+| `BenchmarkRun_InstructionContent` | every rule over a 4,000-line instruction file, the no-match path most real lines take |
+| `BenchmarkRun_Fixtures` | every rule over `testdata/settings`, the many-findings path |
+| `BenchmarkRun_EdgeCases` | a 20,000-byte line, a line dense with prefilter words, a settings file with 4,000 permission entries |
+| `BenchmarkInit_Rules` | startup cost of the `rules` package, mostly regexp compilation (reported as `init-ms/op`, `init-B/op`, `init-allocs/op`) |
+
+To compare two commits, run each one with `-count=10`, save the output, and compare with [`benchstat`](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat):
+
+```sh
+go test -run '^$' -bench . -benchmem -count=10 ./rules ./cmd/cfgaudit > new.txt
+git stash && go test -run '^$' -bench . -benchmem -count=10 ./rules ./cmd/cfgaudit > old.txt && git stash pop
+benchstat old.txt new.txt
+```
+
+`TestBenchCorpus_ScansClean` and `TestBenchCorpus_PrefilterPassRate` keep the corpus honest: it must produce no findings, and a few percent of its lines must still pass the literal prefilter. If a rule change makes the corpus match, adjust the rule or the corpus in a commit of its own, because a corpus change moves every benchmark number.
+
 ---
 
 ## Adding a new rule
