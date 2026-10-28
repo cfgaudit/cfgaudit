@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"testing"
@@ -100,11 +101,27 @@ func TestPrefilter_Folding(t *testing.T) {
 	}
 }
 
+// raceBuild reports whether the test binary was built with -race. It reads
+// the build settings rather than a pair of build-tagged files, because gobco
+// compiles every file regardless of build tags.
+func raceBuild() bool {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return false
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "-race" {
+			return s.Value == "true"
+		}
+	}
+	return false
+}
+
 // MayMatch runs once per line and filtered regexp, so an allocation in it
 // costs one per pair; before #1018 that was 99% of a content scan's
 // allocations.
 func TestPrefilter_MayMatchDoesNotAllocate(t *testing.T) {
-	if raceEnabled {
+	if raceBuild() {
 		t.Skip("sync.Pool drops items at random under -race")
 	}
 	f := requiredLiterals(regexp.MustCompile(`(?i)\bskip\s+approval`))
