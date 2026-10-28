@@ -1,0 +1,182 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Keeps a history of the benchmarks on the bench-data branch (#1019): every
+# push to main appends one JSON line to bench.jsonl, which the website charts
+# (cfgaudit/cfgaudit.github.io#17). The format is described in the README on
+# that branch; bump "v" when a field changes meaning.
+#
+# Two jobs, so the write token never shares a runner with repository code:
+# measure runs the benchmarks with a read-only token and uploads the line;
+# record only downloads that line and pushes it.
+name: Benchmark history
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One run at a time, in push order, so two appends never race.
+concurrency:
+  group: bench-history
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: head
+          persist-credentials: false
+      - name: Find the latest release
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected tag: $tag" >&2; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: ref
+          ref: ${{ steps.tag.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: head/go.mod
+          cache-dependency-path: head/go.sum
+      # Head and the release take turns, as in bench.yml, so a runner that
+      # slows down mid-job affects both alike. A release that predates the
+      # benchmarks gives no ratio.
+      - name: Run benchmarks
+        run: |
+          set -euo pipefail
+          pkgs="./rules ./cmd/cfgaudit"
+          has_ref=0
+          [[ -f ref/cmd/cfgaudit/bench_test.go ]] && has_ref=1
+          for _ in 1 2 3 4 5; do
+            (cd head && go test -run '^$' -bench . -benchmem -benchtime 10x -count 2 $pkgs) >> "$RUNNER_TEMP/head.txt"
+            if [[ $has_ref == 1 ]]; then
+              (cd ref && go test -run '^$' -bench . -benchmem -benchtime 10x -count 2 $pkgs) >> "$RUNNER_TEMP/ref.txt"
+            fi
+          done
+          touch "$RUNNER_TEMP/ref.txt"
+      - name: Build the line
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          LC_ALL: C
+        run: |
+          set -euo pipefail
+          # name unit median, one per line, for every benchmark and unit.
+          medians() {
+            awk '/^Benchmark/ { name = $1; sub(/-[0-9]+$/, "", name); sub(/^Benchmark/, "", name)
+                   for (i = 3; i < NF; i += 2) print name, $(i + 1), $i }' "$1" |
+              sort -k1,1 -k2,2 -k3,3g |
+              awk '{ k = $1 " " $2; v[k] = v[k] " " $3; n[k]++ }
+                   END { for (k in v) { split(substr(v[k], 2), a, " "); print k, a[int((n[k] + 1) / 2)] } }' |
+              sort
+          }
+          medians "$RUNNER_TEMP/head.txt" > "$RUNNER_TEMP/head.med"
+          medians "$RUNNER_TEMP/ref.txt" > "$RUNNER_TEMP/ref.med"
+          # {"Scan_Repo": {"ns/op": 1, "B/op": 2, ..., "ratio": 0.98}, ...}
+          benchmarks=$(join -j1 -a1 -e null -o 0,1.2,1.3,1.4,2.2 \
+              <(awk '{ print $1 "|" $2, $1, $2, $3 }' "$RUNNER_TEMP/head.med" | sort) \
+              <(awk '{ print $1 "|" $2, $3 }' "$RUNNER_TEMP/ref.med" | sort) |
+            jq -Rn '[inputs | split(" ") | {b: .[1], u: .[2], v: (.[3] | tonumber), r: (.[4] | fromjson? // null)}]
+                    | group_by(.b)
+                    | map({key: .[0].b, value: (
+                        (map({key: .u, value: .v}) | from_entries)
+                        + {ratio: (map(select(.u == "ns/op" and .r != null and .r > 0) | (.v / .r * 1000 | round / 1000)) | first)}
+                      )})
+                    | from_entries')
+          cpu=$(grep -m1 '^cpu:' "$RUNNER_TEMP/head.txt" | cut -d' ' -f2-)
+          jq -cn \
+            --arg sha "$GITHUB_SHA" \
+            --arg date "$(git -C head log -1 --format=%cI)" \
+            --arg tag "$TAG" \
+            --arg go "$(go env GOVERSION)" \
+            --arg cpu "${cpu:-unknown}" \
+            --argjson benchmarks "$benchmarks" \
+            '{v: 1, sha: $sha, date: $date, tag: $tag, go: $go, cpu: $cpu, benchmarks: $benchmarks}' \
+            > "$RUNNER_TEMP/line.json"
+          cat "$RUNNER_TEMP/line.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-line
+          path: ${{ runner.temp }}/line.json
+          retention-days: 7
+
+  record:
+    name: Record
+    needs: measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bench-line
+          path: ${{ runner.temp }}/line
+      # The line is data from the read-only job; check its shape before it is
+      # committed anywhere.
+      - name: Check the line
+        run: |
+          set -euo pipefail
+          line="$RUNNER_TEMP/line/line.json"
+          [[ $(wc -l < "$line") -eq 1 ]]
+          jq -e '.v == 1 and (.sha | test("^[0-9a-f]{40}$")) and (.benchmarks | type == "object" and length > 0)' "$line" > /dev/null
+      - name: Append to bench-data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git init -q data && cd data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Exit code 2 means the branch does not exist yet; anything else but 0
+          # is a failure, which must not be mistaken for "start a new branch".
+          rc=0
+          git ls-remote --exit-code --heads "$remote" bench-data > /dev/null || rc=$?
+          if [[ $rc == 0 ]]; then
+            git fetch -q --depth 1 "$remote" bench-data
+            git checkout -q -b bench-data FETCH_HEAD
+          elif [[ $rc != 2 ]]; then
+            exit "$rc"
+          else
+            git checkout -q --orphan bench-data
+            cat > README.md <<'EOF'
+          # bench-data
+
+          Benchmark history of cfgaudit, written by `.github/workflows/bench-history.yml` on `main` (#1019). Do not edit by hand.
+
+          `bench.jsonl` holds one JSON object per push to `main`:
+
+          | Field | Meaning |
+          |---|---|
+          | `v` | format version, `1` |
+          | `sha`, `date` | the `main` commit and its commit date |
+          | `tag` | the latest release when the line was written (the ratio's reference) |
+          | `go`, `cpu` | Go version and runner CPU model; a CPU change explains a jump in time |
+          | `benchmarks` | per benchmark (name without the `Benchmark` prefix and CPU suffix): the median of each unit (`ns/op`, `B/op`, `allocs/op`, and custom units such as `init-ms/op`) over 10 runs, plus `ratio`, the median `ns/op` of this commit divided by that of `tag` measured in the same job, or `null` when `tag` predates the benchmarks |
+
+          Time depends on the runner; read it through `ratio`. `B/op` and `allocs/op` do not.
+          EOF
+            git add README.md
+          fi
+          cat "$RUNNER_TEMP/line/line.json" >> bench.jsonl
+          git add bench.jsonl
+          git commit -q -m "bench: ${GITHUB_SHA::12}"
+          for attempt in 1 2 3; do
+            git push -q "$remote" HEAD:bench-data && exit 0
+            sleep $((attempt * 5))
+            git pull -q --rebase "$remote" bench-data
+          done
+          exit 1

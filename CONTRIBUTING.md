@@ -84,6 +84,8 @@ benchstat old.txt new.txt
 
 The Benchmarks workflow (`.github/workflows/bench.yml`) does the same on every pull request: it runs base and head in turns, puts the `benchstat` table on the run's summary page, and fails when a benchmark's median `allocs/op` (or `init-allocs/op`) rises by more than 20% and by more than 100 allocations. Time is shown but not gated, because hosted runners vary too much between runs.
 
+On every push to `main`, the Benchmark history workflow (`.github/workflows/bench-history.yml`) appends one line with the medians, the runner CPU and the time ratio against the latest release to `bench.jsonl` on the `bench-data` branch. The branch's README describes the format.
+
 `TestBenchCorpus_ScansClean` and `TestBenchCorpus_PrefilterPassRate` keep the corpus honest: it must produce no findings, and a few percent of its lines must still pass the literal prefilter. If a rule change makes the corpus match, adjust the rule or the corpus in a commit of its own, because a corpus change moves every benchmark number.
 
 ---
