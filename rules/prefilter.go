@@ -4,9 +4,11 @@
 package rules
 
 import (
+	"bytes"
 	"regexp"
 	"regexp/syntax"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -112,6 +114,10 @@ func shortest(set []string) int {
 // on the ASCII-lowered string is exact, except for the two characters that case-insensitive matching folds
 // to an ASCII letter: U+017F (long s) and U+212A (Kelvin sign). A string with
 // either always may match.
+//
+// The content rules call MayMatch once per line and filtered regexp, so it
+// must not allocate (#1018): a line without an upper-case ASCII letter is
+// searched as it is, and any other line is lowered into a pooled buffer.
 func (f literalFilter) MayMatch(s string) bool {
 	if f == nil {
 		return true
@@ -119,33 +125,56 @@ func (f literalFilter) MayMatch(s string) bool {
 	if !isASCII(s) && (strings.Contains(s, "\u017f") || strings.Contains(s, "\u212a")) {
 		return true
 	}
-	lower := lowerASCII(s)
+	if !hasUpperASCII(s) {
+		return f.containsAny(s)
+	}
+	bp := lowerBufs.Get().(*[]byte)
+	b := appendLowerASCII((*bp)[:0], s)
+	found := false
 	for _, lit := range f {
-		if strings.Contains(lower, lit) {
+		if bytes.Contains(b, []byte(lit)) {
+			found = true
+			break
+		}
+	}
+	*bp = b
+	lowerBufs.Put(bp)
+	return found
+}
+
+func (f literalFilter) containsAny(s string) bool {
+	for _, lit := range f {
+		if strings.Contains(s, lit) {
 			return true
 		}
 	}
 	return false
 }
 
-// lowerASCII lower-cases the ASCII letters of s and leaves every other byte as
-// it is, so the bytes of a multi-byte character stay intact. It returns s
-// itself when there is nothing to change.
-func lowerASCII(s string) string {
-	i := 0
-	for i < len(s) && (s[i] < 'A' || s[i] > 'Z') {
-		i++
-	}
-	if i == len(s) {
-		return s
-	}
-	b := []byte(s)
-	for ; i < len(b); i++ {
-		if c := b[i]; c >= 'A' && c <= 'Z' {
-			b[i] = c + 'a' - 'A'
+// lowerBufs holds the buffers MayMatch lowers a line into. A pool rather than
+// one buffer, because the rules run for several targets at once (#1017).
+var lowerBufs = sync.Pool{New: func() any { b := make([]byte, 0, 256); return &b }}
+
+func hasUpperASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= 'A' && c <= 'Z' {
+			return true
 		}
 	}
-	return string(b)
+	return false
+}
+
+// appendLowerASCII appends s to b with its ASCII letters lower-cased and every
+// other byte as it is, so the bytes of a multi-byte character stay intact.
+func appendLowerASCII(b []byte, s string) []byte {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b = append(b, c)
+	}
+	return b
 }
 
 // filteredRegexp is a regexp with its literalFilter, for the per-line content
