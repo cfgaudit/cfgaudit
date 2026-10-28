@@ -14,8 +14,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/cfgaudit/cfgaudit/internal/color"
 	"github.com/cfgaudit/cfgaudit/internal/config"
@@ -170,10 +172,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}
 
-	var all []finding.Finding
-	for _, target := range targets {
-		all = append(all, rules.Run(target, detected, accept)...)
-	}
+	all := runRules(targets, detected, accept)
 	locateKeyLines(all)
 	all = cfg.PostProcess(all, dir)
 
@@ -421,6 +420,29 @@ func unreadableTargets(dir string) []*rules.Target {
 		})
 	}
 	return out
+}
+
+// runRules runs the rules over every target and returns the findings in target
+// order. Targets share nothing a rule writes to, so they run concurrently, at
+// most one per available CPU (#1017); each result goes into its own slot, which
+// keeps the output identical to a sequential run.
+func runRules(targets []*rules.Target, detected *version.Version, accept func(rules.Rule) bool) []finding.Finding {
+	per := make([][]finding.Finding, len(targets))
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	var wg sync.WaitGroup
+	for i, t := range targets {
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			per[i] = rules.Run(t, detected, accept)
+		})
+	}
+	wg.Wait()
+	var all []finding.Finding
+	for _, f := range per {
+		all = append(all, f...)
+	}
+	return all
 }
 
 // escapedLinkTargets turns the symlinks scanroot refused to follow into one
