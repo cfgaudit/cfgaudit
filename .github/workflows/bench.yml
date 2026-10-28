@@ -60,7 +60,7 @@ jobs:
           LC_ALL: C
         run: |
           set -euo pipefail
-          cpu=$(grep -m1 '^cpu:' "$RUNNER_TEMP/head.txt" | cut -d' ' -f2-)
+          cpu=$(grep -m1 '^cpu:' "$RUNNER_TEMP/head.txt" | cut -d' ' -f2- | sed 's/[[:space:]]*$//')
           {
             echo "## Benchmarks"
             echo
