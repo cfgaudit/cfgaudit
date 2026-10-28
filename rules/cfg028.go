@@ -18,7 +18,7 @@ func init() { All = append(All, CFG028) }
 
 func (r *cfg028) ID() string { return "CFG028" }
 
-// trustFile matches the Claude Code trust/config files a command must not rewrite.
+// trustFile matches the agent trust/config files a command must not rewrite.
 //
 // Matched case-insensitively: on macOS and Windows the filesystem is
 // case-insensitive by default, so `> .Mcp.json` writes the genuine .mcp.json
@@ -35,7 +35,7 @@ func (r *cfg028) ID() string { return "CFG028" }
 // static analyzer cannot know the target filesystem, the evading spelling is
 // contrived in legitimate config, and the miss it prevents is a full trust-file
 // overwrite.
-const trustFile = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settings\.json|\.mcp\.json|\.claude/)`
+const trustFile = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settings\.json|\.mcp\.json|\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/|\.vscode/mcp\.json)`
 
 var trustFileRe = regexp.MustCompile(trustFile)
 
@@ -53,11 +53,11 @@ const redirectTargetPrefix = `(?:\$\{[^}]*\}|\$\([^)]*\)|[^\s)};|&'"])*`
 var trustWritePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?:>>?|\btee\b(?:\s+-a)?\s+)\s*['"]?` + redirectTargetPrefix + trustFile),
 	regexp.MustCompile(`\bsed\b[^|;&]*-i\b[^|;&]*` + trustFile),
-	regexp.MustCompile(`\b(?:cp|mv|install|ln|dd)\b[^|;&]*` + trustFile + `['"]?\s*(?:$|[|;&])`),
+	regexp.MustCompile(`\b(?:cp|mv|install|ln|dd)\b[^|;&]*` + trustFile + `[^\s)'";|&]*['"]?\s*(?:$|[|;&])`),
 }
 
-// Check flags command sites that write to a Claude trust/config file. Rewriting
-// CLAUDE.md / settings.json / .mcp.json / .claude/ from a hook or helper is a
+// Check flags command sites that write to an agent trust/config file. Rewriting
+// instruction or MCP configuration from a hook or helper is a
 // self-perpetuating prompt-injection and persistence vector: it can re-inject
 // hidden instructions or re-enable dangerous settings on every session, and
 // survive cleanup by restoring itself. Heuristic and static — it matches the
@@ -76,8 +76,8 @@ func (r *cfg028) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG028",
 			Severity: finding.Error,
 			File:     site.File,
-			Message: site.Label + " writes to the Claude trust/config file \"" + target +
-				"\" — a self-perpetuating prompt-injection / persistence vector: it can re-inject hidden instructions or re-enable dangerous settings every session and restore itself after cleanup. A hook should never modify Claude's own configuration" + userScopeNote(t),
+			Message: site.Label + " writes to an agent trust/config file \"" + target +
+				"\" — a self-perpetuating prompt-injection / persistence vector: it can re-inject hidden instructions or re-enable dangerous settings every session and restore itself after cleanup. A hook should never modify its agent's own configuration" + userScopeNote(t),
 		})
 	}
 	return findings
