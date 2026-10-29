@@ -178,6 +178,7 @@ func TestCFGNNN_Trigger(t *testing.T) {
 
 **Severity:** `error` | `warn` | `info`
 **OWASP:** [LLM0X:2025 – Category](https://owasp.org/...)
+**Agents:** claude-code, cursor
 
 ## What cfgaudit checks
 ...
@@ -191,6 +192,8 @@ func TestCFGNNN_Trigger(t *testing.T) {
 ## References
 ...
 ```
+
+The **Agents** line lists every agent whose files this rule reads today, as the slugs in `knownAgents` (`cmd/cfgaudit/ruleagents.go`), which match the `agent: <slug>` issue labels. It is not the agents the rule *could* apply to: a rule over Claude Code `settings.json` lists `claude-code` only, while an instruction-content rule lists every agent whose instruction files, skills or rules files are scanned. `cfgaudit list --format json` carries the line as `agents`, and `cfgaudit list --agent cursor` filters by it. A new slug goes into `knownAgents` first; `TestList_AgentsLines` rejects any other.
 
 Give each fence under **Trigger example** the file it belongs in, after the language: ```` ```json path=.claude/settings.json ````, ```` ```markdown path=CLAUDE.md ````, and `version=2.1.300` as well when the rule is gated on a Claude Code version. `TestRuleDocTriggerExamples` (`cmd/cfgaudit`) writes every annotated fence into an empty project, scans it and fails when the rule does not fire, so the example cannot go stale. Leave a fence unannotated when it is not a complete file on its own (a second file of the same example, a safe variant, shell output); `cfgaudit explain` drops the annotations.
 

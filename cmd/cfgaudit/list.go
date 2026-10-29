@@ -8,17 +8,19 @@ import (
 	"flag"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	cfgaudit "github.com/cfgaudit/cfgaudit"
 )
 
 type ruleSummary struct {
-	ID          string `json:"id"`
-	Severity    string `json:"severity"`
-	OWASP       string `json:"owasp"`
-	OWASPMCP    string `json:"owasp_mcp,omitempty"`
-	Description string `json:"description"`
+	ID          string   `json:"id"`
+	Severity    string   `json:"severity"`
+	OWASP       string   `json:"owasp"`
+	OWASPMCP    string   `json:"owasp_mcp,omitempty"`
+	Description string   `json:"description"`
+	Agents      []string `json:"agents"` // slugs from the doc's "**Agents:**" line (#1036)
 }
 
 var (
@@ -30,7 +32,7 @@ var (
 	mdInlineRe = regexp.MustCompile("`([^`]*)`")
 )
 
-// listOutput implements `cfgaudit list [--format json] [--owasp LLMxx]`,
+// listOutput implements `cfgaudit list [--format json] [--owasp LLMxx] [--agent slug]`,
 // returning the rendered table (or JSON) and the process exit code.
 func listOutput(args []string) (string, int) {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
@@ -38,8 +40,13 @@ func listOutput(args []string) (string, int) {
 	fs.SetOutput(&out)
 	format := fs.String("format", "text", "output format: text, json")
 	owasp := fs.String("owasp", "", "filter by OWASP category — LLM (e.g. LLM03) or MCP (e.g. MCP05)")
+	agent := fs.String("agent", "", "filter by agent, e.g. cursor or claude-code")
 	if err := fs.Parse(args); err != nil {
 		return out.String(), 2
+	}
+	agentFilter := strings.ToLower(strings.TrimSpace(*agent))
+	if agentFilter != "" && knownAgents[agentFilter] == "" {
+		return fmt.Sprintf("cfgaudit: unknown agent %q; known: %s\n", *agent, strings.Join(sortedKeys(knownAgents), ", ")), 2
 	}
 
 	filter := strings.ToUpper(*owasp)
@@ -51,6 +58,9 @@ func listOutput(args []string) (string, int) {
 		}
 		s := summarize(id, doc)
 		if filter != "" && s.OWASP != filter && s.OWASPMCP != filter {
+			continue
+		}
+		if agentFilter != "" && !contains(s.Agents, agentFilter) {
 			continue
 		}
 		rules = append(rules, s)
@@ -68,6 +78,7 @@ func listOutput(args []string) (string, int) {
 
 func summarize(id, doc string) ruleSummary {
 	s := ruleSummary{ID: id}
+	s.Agents, _ = docAgents(doc)
 	if m := docTitleRe.FindStringSubmatch(doc); m != nil {
 		s.Description = stripInlineMarkdown(m[2])
 	}
@@ -98,6 +109,15 @@ func compactSeverity(line string) string {
 		return strings.TrimSpace(stripInlineMarkdown(line))
 	}
 	return strings.Join(seen, "/")
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func stripInlineMarkdown(s string) string {
