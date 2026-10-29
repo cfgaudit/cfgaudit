@@ -4,6 +4,10 @@
 package rules
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -68,6 +72,115 @@ func TestCFG045_HappyPath(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected an SC2086 finding, got %+v", f)
+	}
+}
+
+// fakeShellcheck puts a `shellcheck` shell script printing out and exiting
+// with code first on PATH, following the fakeClaude pattern in
+// internal/version/version_test.go. Shell scripts do not run on Windows, so
+// the test skips there.
+func fakeShellcheck(t *testing.T, out string, code int) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	dir := t.TempDir()
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s' '%s'\nexit %d\n", out, code)
+	if err := os.WriteFile(filepath.Join(dir, "shellcheck"), []byte(script), 0o700); err != nil { // #nosec G306 -- the test needs an executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+// fakeShellcheckRecording is fakeShellcheck, except the script also records
+// its arguments to argsFile so the test can assert on the argv it received.
+func fakeShellcheckRecording(t *testing.T, argsFile, out string, code int) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	dir := t.TempDir()
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s' \"$*\" > '%s'\nprintf '%%s' '%s'\nexit %d\n", argsFile, out, code)
+	if err := os.WriteFile(filepath.Join(dir, "shellcheck"), []byte(script), 0o700); err != nil { // #nosec G306 -- the test needs an executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+func shellcheckTarget(t *testing.T) *Target {
+	t.Helper()
+	tg := settingsTarget(t, `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"echo $X"}]}]}}`)
+	tg.ShellCheck = true
+	return tg
+}
+
+// A fake shellcheck covers the paths a real binary never takes in CI: a
+// non-zero exit with findings (ShellCheck's normal case), a non-zero exit
+// with no findings, and output that is not JSON at all.
+func TestCFG045_FakeShellcheck(t *testing.T) {
+	canned := `[{"line":2,"column":6,"level":"error","code":2086,"message":"Double quote to prevent globbing and word splitting."},{"line":2,"column":1,"level":"warning","code":2034,"message":"X appears unused."}]`
+	cases := []struct {
+		name     string
+		out      string
+		code     int
+		want     int
+		wantSev  []finding.Severity
+		wantMsgs []string
+	}{
+		{name: "findings", out: canned, code: 1, want: 2, wantSev: []finding.Severity{finding.Error, finding.Warn}, wantMsgs: []string{"SC2086", "SC2034"}},
+		{name: "exit zero with findings", out: canned, code: 0, want: 2, wantSev: []finding.Severity{finding.Error, finding.Warn}, wantMsgs: []string{"SC2086", "SC2034"}},
+		{name: "empty array", out: `[]`, code: 1, want: 0},
+		{name: "garbage output", out: `this is not json`, code: 1, want: 0},
+		{name: "error with no output", out: ``, code: 1, want: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeShellcheck(t, tc.out, tc.code)
+			f := CFG045.Check(shellcheckTarget(t))
+			if len(f) != tc.want {
+				t.Fatalf("expected %d findings, got %+v", tc.want, f)
+			}
+			for i, want := range tc.wantSev {
+				if f[i].RuleID != "CFG045" || f[i].Severity != want {
+					t.Errorf("finding %d = %+v, want CFG045 with severity %s", i, f[i], want)
+				}
+			}
+			for i, want := range tc.wantMsgs {
+				if !strings.Contains(f[i].Message, want) {
+					t.Errorf("finding %d message %q does not contain %q", i, f[i].Message, want)
+				}
+			}
+		})
+	}
+}
+
+// Exclude codes from the config must reach the fake binary's arguments.
+func TestCFG045_FakeShellcheckExcludeArgs(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	fakeShellcheckRecording(t, argsFile, `[]`, 1)
+	tg := shellcheckTarget(t)
+	tg.ShellCheckExclude = []string{"SC2086", "SC2034"}
+	if f := CFG045.Check(tg); len(f) != 0 {
+		t.Fatalf("expected no findings from the empty array, got %+v", f)
+	}
+	args, err := os.ReadFile(argsFile) // #nosec G304 -- argsFile is under t.TempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), "--exclude=SC2086,SC2034") {
+		t.Errorf("shellcheck argv = %q, want it to contain --exclude=SC2086,SC2034", string(args))
+	}
+}
+
+// No shellcheck on PATH at all: the exec error branch of Check must yield no
+// findings and no panic, the same way a binary that vanishes mid-run does.
+func TestCFG045_ShellcheckMissing(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	t.Setenv("PATH", t.TempDir())
+	if f := CFG045.Check(shellcheckTarget(t)); len(f) != 0 {
+		t.Errorf("expected no findings without a shellcheck binary, got %+v", f)
 	}
 }
 

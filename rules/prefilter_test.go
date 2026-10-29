@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -97,6 +99,62 @@ func TestPrefilter_Folding(t *testing.T) {
 	if requiredLiterals(regexp.MustCompile(`a?b*`)) != nil {
 		t.Error("a pattern that can match without a literal must give no filter")
 	}
+}
+
+// raceBuild reports whether the test binary was built with -race. It reads
+// the build settings rather than a pair of build-tagged files, because gobco
+// compiles every file regardless of build tags.
+func raceBuild() bool {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return false
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "-race" {
+			return s.Value == "true"
+		}
+	}
+	return false
+}
+
+// MayMatch runs once per line and filtered regexp, so an allocation in it
+// costs one per pair; before #1018 that was 99% of a content scan's
+// allocations.
+func TestPrefilter_MayMatchDoesNotAllocate(t *testing.T) {
+	if raceBuild() {
+		t.Skip("sync.Pool drops items at random under -race")
+	}
+	f := requiredLiterals(regexp.MustCompile(`(?i)\bskip\s+approval`))
+	for _, s := range []string{
+		"Run the Tests Before You Skip the Review step.",
+		"no upper case here at all",
+		strings.Repeat("Long Line With Upper Case. ", 100),
+	} {
+		f.MayMatch(s) // the first call may fill the pool
+		if n := testing.AllocsPerRun(100, func() { f.MayMatch(s) }); n != 0 {
+			t.Errorf("MayMatch(%.20q...) allocates %v times per call", s, n)
+		}
+	}
+}
+
+// The pooled buffer must give the same answer for a line longer than its
+// initial capacity and when the rules run for several targets at once.
+func TestPrefilter_PooledBuffer(t *testing.T) {
+	f := requiredLiterals(regexp.MustCompile(`(?i)\bskip\s+approval`))
+	long := strings.Repeat("Filler Text. ", 1000)
+	hit, miss := long+"SKIP APPROVAL", long+"nothing"
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Go(func() {
+			for j := 0; j < 200; j++ {
+				if !f.MayMatch(hit) || f.MayMatch(miss) {
+					t.Error("pooled lowering gave a wrong answer")
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
 }
 
 func FuzzPrefilter(f *testing.F) {

@@ -31,12 +31,24 @@ func TestCFG023_ColonWildcardSyntax(t *testing.T) {
 }
 
 func TestCFG023_ExecViaFlags_Warn(t *testing.T) {
-	for _, entry := range []string{"Bash(find *)", "Bash(sed *)", "Bash(awk *)", "Bash(tar *)", "Bash(env *)"} {
+	for _, entry := range []string{"Bash(find *)", "Bash(sed *)", "Bash(awk *)", "Bash(tar *)", "Bash(env *)", "Bash(rg *)", "Bash(rg:*)"} {
 		json := `{"permissions":{"allow":["` + entry + `"]}}`
 		f := CFG023.Check(settingsTarget(t, json))
 		if len(f) != 1 || f[0].Severity != finding.Warn {
 			t.Errorf("expected 1 Warn for %s, got %+v", entry, f)
 		}
+	}
+}
+
+// rg --pre runs a preprocessor command for every searched file, so an
+// open-ended rg grant reaches arbitrary command execution (#992).
+func TestCFG023_RgPreMessage(t *testing.T) {
+	f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(rg:*)"]}}`))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 Warn for Bash(rg:*), got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "rg --pre") {
+		t.Errorf("expected message to name rg --pre, got: %s", f[0].Message)
 	}
 }
 

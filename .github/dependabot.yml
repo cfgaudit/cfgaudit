@@ -44,6 +44,15 @@ updates:
     cooldown:
       default-days: 7
 
+  # benchstat for the Benchmarks job (#1016).
+  - package-ecosystem: gomod
+    directory: /.github/tools/benchstat
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: pip
     directory: /.github/tools/zizmor
     schedule:

@@ -70,7 +70,7 @@ func TestInvalidFixtures_TriggerNamedRule(t *testing.T) {
 	}
 }
 
-func globFixtures(t *testing.T, pattern string) []string {
+func globFixtures(t testing.TB, pattern string) []string {
 	t.Helper()
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
@@ -82,7 +82,7 @@ func globFixtures(t *testing.T, pattern string) []string {
 	return matches
 }
 
-func loadFixtureTarget(t *testing.T, path string) *Target {
+func loadFixtureTarget(t testing.TB, path string) *Target {
 	t.Helper()
 	data, err := os.ReadFile(path) //nolint:gosec // G304: reads known-safe local test paths
 	if err != nil {
