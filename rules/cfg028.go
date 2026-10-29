@@ -35,7 +35,11 @@ func (r *cfg028) ID() string { return "CFG028" }
 // static analyzer cannot know the target filesystem, the evading spelling is
 // contrived in legitimate config, and the miss it prevents is a full trust-file
 // overwrite.
-const trustFile = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settings\.json|\.mcp\.json|\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/|\.vscode/mcp\.json)`
+const trustName = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settings\.json|\.mcp\.json|\.vscode/mcp\.json)`
+
+const trustDir = `(?i:\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/)`
+
+const trustFile = `(?:` + trustName + `|` + trustDir + `)`
 
 var trustFileRe = regexp.MustCompile(trustFile)
 
@@ -53,7 +57,7 @@ const redirectTargetPrefix = `(?:\$\{[^}]*\}|\$\([^)]*\)|[^\s)};|&'"])*`
 var trustWritePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?:>>?|\btee\b(?:\s+-a)?\s+)\s*['"]?` + redirectTargetPrefix + trustFile),
 	regexp.MustCompile(`\bsed\b[^|;&]*-i\b[^|;&]*` + trustFile),
-	regexp.MustCompile(`\b(?:cp|mv|install|ln|dd)\b[^|;&]*` + trustFile + `[^\s)'";|&]*['"]?\s*(?:$|[|;&])`),
+	regexp.MustCompile(`\b(?:cp|mv|install|ln|dd)\b[^|;&]*(?:` + trustName + `|` + trustDir + `[^\s)'";|&]*)['"]?\s*(?:$|[|;&])`),
 }
 
 // Check flags command sites that write to an agent trust/config file. Rewriting
