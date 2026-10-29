@@ -122,16 +122,14 @@ func TestDocAgents(t *testing.T) {
 	}
 }
 
-// #1036: every rule doc's "**Agents:**" line names only known agents and at
-// least one. Docs without the line are allowed until every rule has been
-// classified; the last PR of #1036 makes the line required.
+// #1036: every rule doc has an "**Agents:**" line that names at least one
+// agent, and only known ones.
 func TestList_AgentsLines(t *testing.T) {
-	missing := 0
 	for _, id := range cfgaudit.RuleIDs() {
 		doc, _ := cfgaudit.RuleDoc(id)
 		agents, ok := docAgents(doc)
 		if !ok {
-			missing++
+			t.Errorf("%s: no **Agents:** line; add one next to Severity and OWASP (see CONTRIBUTING)", id)
 			continue
 		}
 		if len(agents) == 0 {
@@ -143,7 +141,6 @@ func TestList_AgentsLines(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("%d rule docs have no **Agents:** line yet", missing)
 }
 
 func TestList_AgentFilter(t *testing.T) {
@@ -154,6 +151,9 @@ func TestList_AgentFilter(t *testing.T) {
 	var rules []ruleSummary
 	if err := json.Unmarshal([]byte(out), &rules); err != nil {
 		t.Fatal(err)
+	}
+	if len(rules) == 0 {
+		t.Fatal("expected some rules for cursor")
 	}
 	for _, r := range rules {
 		if !contains(r.Agents, "cursor") {

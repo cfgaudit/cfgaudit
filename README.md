@@ -180,10 +180,11 @@ cfgaudit --content-paths 'README.md,CONTRIBUTING.md,docs/**/*.md'
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 
-# List all rules (filter by OWASP — LLM or MCP — or output JSON)
+# List all rules (filter by OWASP — LLM or MCP — or by agent, or output JSON)
 cfgaudit list
 cfgaudit list --owasp LLM03
 cfgaudit list --owasp MCP05
+cfgaudit list --agent cursor
 cfgaudit list --format json
 
 # Scaffold a hardened .claude/settings.json for a new project
