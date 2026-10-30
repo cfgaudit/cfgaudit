@@ -307,6 +307,8 @@ The project lives in three repositories. Only the first takes contributions; the
 | [github.com/cfgaudit/homebrew-tap](https://github.com/cfgaudit/homebrew-tap) | The Homebrew cask behind `brew install cfgaudit/tap/cfgaudit`. | GoReleaser writes the cask on each release. |
 | [gitlab.com/cfgaudit/cfgaudit](https://gitlab.com/cfgaudit/cfgaudit) | A copy of this repository that publishes the GitLab CI/CD Catalog components. | The maintainer pushes `main` and the release tags after each release. |
 
+The steps of a release, including the ones done by hand, are in [RELEASING.md](RELEASING.md).
+
 ---
 
 ## Project layout reference

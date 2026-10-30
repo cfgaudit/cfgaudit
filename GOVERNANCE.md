@@ -22,7 +22,7 @@ Release signing uses no long-lived key: archives and the image are signed keyles
 - Every change starts as an issue and lands through a pull request against `main`; direct pushes to `main` are blocked, also for administrators.
 - A pull request merges only when the required checks pass (build, lint, tests, govulncheck, zizmor). Merges are squash merges.
 - Decisions on scope, new rules and severities are the maintainer's, made in the open on the issue or pull request.
-- Releases are cut by the maintainer by tagging a commit whose CI passed on `main`; the release workflows refuse any other commit.
+- Releases are cut by the maintainer by tagging a commit whose CI passed on `main`; the release workflows refuse any other commit. The steps are in [RELEASING.md](RELEASING.md).
 
 ## Granting access
 
