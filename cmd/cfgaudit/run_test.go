@@ -192,6 +192,41 @@ func TestRun_ConfigErrors(t *testing.T) {
 	}
 }
 
+func TestRun_RepeatedConfigWarnsAndUsesLast(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".claude/settings.json": warnSettings,
+		"first.yml":             "strict: true\n",
+		"second.yml":            "strict: false\n",
+	})
+	first := filepath.Join(root, "first.yml")
+	second := filepath.Join(root, "second.yml")
+
+	code, _, stderr := runCLI(t, "--claude-version", "2.1.0", "--config", first, "--config", second, root)
+	if code != 0 {
+		t.Errorf("last --config should win with strict disabled; exit code = %d, stderr = %q", code, stderr)
+	}
+	want := "cfgaudit: --config given more than once; using " + second + ", ignoring " + first
+	if !strings.Contains(stderr, want) {
+		t.Errorf("repeated --config warning = %q, want it to contain %q", stderr, want)
+	}
+}
+
+func TestRun_OverlappingOnlyAndSkipWarnsPerRule(t *testing.T) {
+	root := runFixture(t, nil)
+	code, _, stderr := runCLI(t, "--only", "CFG001,CFG002", "--skip", "CFG002,CFG001", root)
+	if code != 0 {
+		t.Errorf("overlapping filters must not change the exit code; got %d, stderr = %q", code, stderr)
+	}
+	if got := strings.Count(stderr, "is in both --only and --skip; it does not run"); got != 2 {
+		t.Errorf("overlap warning count = %d, want 2; stderr = %q", got, stderr)
+	}
+	first := strings.Index(stderr, "cfgaudit: CFG001 is in both --only and --skip; it does not run")
+	second := strings.Index(stderr, "cfgaudit: CFG002 is in both --only and --skip; it does not run")
+	if first < 0 || second < 0 || first > second {
+		t.Errorf("overlap warnings should list IDs in sorted order: %q", stderr)
+	}
+}
+
 func TestRun_UnknownRuleIDIsReportedNotFatal(t *testing.T) {
 	root := runFixture(t, map[string]string{".claude/settings.json": errorSettings})
 	code, _, stderr := runCLI(t, "--claude-version", "2.1.0", "--skip", "CFG999", root)

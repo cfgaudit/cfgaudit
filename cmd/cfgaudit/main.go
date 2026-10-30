@@ -71,7 +71,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	format := fset.String("format", "auto", "output format: auto (table on a TTY, text otherwise), text, table, json, sarif, codeclimate")
 	user := fset.Bool("user", false, "also scan ~/.claude/settings.json")
 	claudeVersion := fset.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
-	configPath := fset.String("config", "", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
+	var configPaths stringFlagValues
+	fset.Var(&configPaths, "config", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
 	plugins := fset.String("plugins", "", "also scan a Claude Code plugin/skill package directory (SKILL.md, hooks, MCP servers)")
 	strict := fset.Bool("strict", false, "treat warn findings as errors for the exit code (also: strict: true in .cfgaudit.yml)")
 	shellcheck := fset.Bool("shellcheck", false, "run shellcheck on hook/helper commands (requires the shellcheck binary; also: shellcheck: true in .cfgaudit.yml)")
@@ -98,6 +99,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	for _, id := range overlappingRuleIDs(only, skip) {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %s is in both --only and --skip; it does not run\n", id)
+	}
 	if unknown := unknownRuleIDs(only, skip, rules.All); len(unknown) > 0 {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: --only/--skip references unknown rule(s): %s\n", strings.Join(unknown, ", "))
 	}
@@ -127,7 +131,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	defer func() { _ = scanroot.Set("") }()
 
-	cfg, cfgPath, err := loadConfig(*configPath, dir)
+	configPath := ""
+	if len(configPaths) > 0 {
+		configPath = configPaths[len(configPaths)-1]
+	}
+	if len(configPaths) > 1 {
+		ignored := strings.Join(configPaths[:len(configPaths)-1], ", ")
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: --config given more than once; using %s, ignoring %s\n", configPath, ignored)
+	}
+	cfg, cfgPath, err := loadConfig(configPath, dir)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
 		return 2
@@ -3210,6 +3222,21 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 // empty entries are tolerated. Used by `--only` and `--skip`.
 type ruleSet map[string]bool
 
+// stringFlagValues stores each occurrence of a flag and exposes the last value.
+type stringFlagValues []string
+
+func (values *stringFlagValues) String() string {
+	if values == nil || len(*values) == 0 {
+		return ""
+	}
+	return (*values)[len(*values)-1]
+}
+
+func (values *stringFlagValues) Set(value string) error {
+	*values = append(*values, value)
+	return nil
+}
+
 func (rs *ruleSet) String() string {
 	if rs == nil || *rs == nil {
 		return ""
@@ -3233,6 +3260,17 @@ func (rs *ruleSet) Set(v string) error {
 		}
 	}
 	return nil
+}
+
+func overlappingRuleIDs(only, skip ruleSet) []string {
+	var ids []string
+	for id := range only {
+		if skip[id] {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // ruleFilter builds the `accept` predicate that rules.Run consults.
