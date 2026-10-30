@@ -57,6 +57,16 @@ CI additionally runs:
 - `zizmor` against `.github/workflows/`
 - Branch coverage with `gobco` (see [Tests](#4-tests))
 - Schema validation of `testdata/settings/valid/*.json` against the live SchemaStore schema (push, PR, and nightly)
+- Schema validation of the golden reports in `cmd/cfgaudit/testdata/reports/` against the SARIF 2.1.0 schema (from SchemaStore, pinned by hash) and GitLab's Code Quality format (`testdata/schemas/gitlab-code-quality.json`)
+
+A change to the SARIF or Code Climate output makes `TestReportGoldens` fail. When the change is intended, rewrite the goldens with `go test ./cmd/cfgaudit -run TestReportGoldens -update`, check the diff, and validate them locally:
+
+```sh
+npm ci --prefix .github/tools/ajv --ignore-scripts
+curl -sSfL https://json.schemastore.org/sarif-2.1.0.json -o /tmp/sarif-2.1.0.json
+node .github/tools/ajv/validate.js /tmp/sarif-2.1.0.json cmd/cfgaudit/testdata/reports/sarif.golden.json
+node .github/tools/ajv/validate.js testdata/schemas/gitlab-code-quality.json cmd/cfgaudit/testdata/reports/codeclimate.golden.json
+```
 
 If you change anything under `.github/workflows/`, run `zizmor .github/workflows/` locally — actions must be pinned to commit SHAs and `persist-credentials: false` must stay on `actions/checkout`.
 

@@ -1,0 +1,50 @@
+[
+  {
+    "description": "CFG004: defaultMode: \"bypassPermissions\" disables all permission checks",
+    "check_name": "CFG004",
+    "fingerprint": "d790af47229de4926ec3d518308263c07226ea5bb6db40b7781070ce72a4ccbe",
+    "severity": "critical",
+    "location": {
+      "path": ".claude/settings.json",
+      "lines": {
+        "begin": 1
+      }
+    }
+  },
+  {
+    "description": "CFG006: no permissions.deny list",
+    "check_name": "CFG006",
+    "fingerprint": "7b61da8b2bd06dd0ab81625d32b3752034c614e46ce2654bd048ed7c31fbf100",
+    "severity": "minor",
+    "location": {
+      "path": ".claude/settings.json",
+      "lines": {
+        "begin": 1
+      }
+    }
+  },
+  {
+    "description": "CFG024: hidden Unicode character",
+    "check_name": "CFG024",
+    "fingerprint": "c7e20e68067b0216dc52eb05803e9afe8f993de291c64e8f208b7092675433da",
+    "severity": "critical",
+    "location": {
+      "path": "docs/CLAUDE.md",
+      "lines": {
+        "begin": 3
+      }
+    }
+  },
+  {
+    "description": "CFG040: user-scope example",
+    "check_name": "CFG040",
+    "fingerprint": "c7fe521efc4eac22ef29871038cf9cc2f85a910ed4ab9b00ef9f56fcba571b34",
+    "severity": "info",
+    "location": {
+      "path": ".mcp.json",
+      "lines": {
+        "begin": 2
+      }
+    }
+  }
+]

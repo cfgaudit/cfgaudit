@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "GitLab Code Quality report, written from the required fields in https://docs.gitlab.com/ci/testing/code_quality/#code-quality-report-format (checked 2026-10-30). GitLab publishes no schema of its own; Code Quality processes only these fields.",
+  "title": "GitLab Code Quality report",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["description", "check_name", "fingerprint", "severity", "location"],
+    "properties": {
+      "description": { "type": "string", "minLength": 1 },
+      "check_name": { "type": "string", "minLength": 1 },
+      "fingerprint": { "type": "string", "minLength": 1 },
+      "severity": { "enum": ["info", "minor", "major", "critical", "blocker"] },
+      "location": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "$comment": "A relative path in the repository, not prefixed with ./",
+            "type": "string",
+            "minLength": 1,
+            "not": { "pattern": "^(\\./|/|[A-Za-z]:)" }
+          },
+          "lines": {
+            "type": "object",
+            "required": ["begin"],
+            "properties": { "begin": { "type": "integer", "minimum": 1 } }
+          },
+          "positions": {
+            "type": "object",
+            "required": ["begin"],
+            "properties": {
+              "begin": {
+                "type": "object",
+                "required": ["line"],
+                "properties": { "line": { "type": "integer", "minimum": 1 } }
+              }
+            }
+          }
+        },
+        "anyOf": [{ "required": ["lines"] }, { "required": ["positions"] }]
+      }
+    }
+  }
+}
