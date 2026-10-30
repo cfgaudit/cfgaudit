@@ -45,12 +45,13 @@ func encodeCodeClimate(w io.Writer, findings []finding.Finding, dir string) erro
 		if begin <= 0 {
 			begin = 1
 		}
+		path := ccRelPath(dir, f.File)
 		issues = append(issues, codeClimateIssue{
 			Description: f.RuleID + ": " + f.Message,
 			CheckName:   f.RuleID,
-			Fingerprint: ccFingerprint(f),
+			Fingerprint: ccFingerprint(f, path),
 			Severity:    ccSeverity(f.Severity),
-			Location:    ccLocation{Path: ccRelPath(dir, f.File), Lines: ccLines{Begin: begin}},
+			Location:    ccLocation{Path: path, Lines: ccLines{Begin: begin}},
 		})
 	}
 	enc := json.NewEncoder(w)
@@ -71,9 +72,10 @@ func ccSeverity(s finding.Severity) string {
 }
 
 // ccFingerprint is a stable, unique-per-finding hash so GitLab can track findings
-// across pipelines.
-func ccFingerprint(f finding.Finding) string {
-	key := strings.Join([]string{f.RuleID, f.File, strconv.Itoa(f.Line), f.Message}, "|")
+// across pipelines. path is the report's repo-relative path, not f.File, so the
+// hash does not depend on how the scan directory was spelled (#1064).
+func ccFingerprint(f finding.Finding, path string) string {
+	key := strings.Join([]string{f.RuleID, path, strconv.Itoa(f.Line), f.Message}, "|")
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])
 }
