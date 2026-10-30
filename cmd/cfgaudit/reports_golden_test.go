@@ -93,6 +93,8 @@ func TestReportGoldens(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%v (run with -update to create it)", err)
 			}
+			// A Windows checkout may turn the golden's line endings into CRLF.
+			want = bytes.ReplaceAll(want, []byte("\r\n"), []byte("\n"))
 			if !bytes.Equal(b.Bytes(), want) {
 				t.Errorf("%s differs from the rendered report; run with -update if the change is intended\ngot:\n%s", path, b.String())
 			}
