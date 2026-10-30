@@ -1,19 +1,23 @@
 # Copyright the cfgaudit contributors
 # SPDX-License-Identifier: Apache-2.0
 
-name: settings.json schema validation
+name: Schema validation
 
 on:
   push:
     branches: [main]
     paths:
       - 'testdata/settings/**'
+      - 'testdata/schemas/**'
+      - 'cmd/cfgaudit/testdata/reports/**'
       - '.github/workflows/schema-validation.yml'
       - '.github/tools/ajv/**'
   pull_request:
     branches: [main]
     paths:
       - 'testdata/settings/**'
+      - 'testdata/schemas/**'
+      - 'cmd/cfgaudit/testdata/reports/**'
       - '.github/workflows/schema-validation.yml'
       - '.github/tools/ajv/**'
   schedule:
@@ -87,3 +91,36 @@ jobs:
           )
             gh issue create --title "$TITLE" --label "ci" --body "$body"
           fi
+
+  # The golden reports in cmd/cfgaudit/testdata/reports are what the encoders
+  # produce (TestReportGoldens fails otherwise), so validating them checks that
+  # GitHub code scanning and GitLab Code Quality accept cfgaudit's output
+  # (#1063). The SARIF 2.1.0 schema is the one the reports name in $schema,
+  # fetched from SchemaStore and pinned by hash (it is not vendored: it is
+  # OASIS material without an SPDX license). GitLab publishes no Code Quality
+  # schema, so testdata/schemas/gitlab-code-quality.json is written from the
+  # fields its docs require.
+  reports:
+    name: Validate reports against their schemas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install ajv
+        run: npm ci --prefix .github/tools/ajv --ignore-scripts --no-audit --no-fund
+
+      - name: SARIF
+        env:
+          # sha256 of https://json.schemastore.org/sarif-2.1.0.json, checked 2026-10-30.
+          # A mismatch means upstream changed the schema: review the diff, then
+          # update the hash.
+          SARIF_SCHEMA_SHA256: c96eb2d311c37b0a38cbd18c52d79a68f778bbd2d831abed7412d9850740f785
+        run: |
+          curl -sSfL https://json.schemastore.org/sarif-2.1.0.json -o "$RUNNER_TEMP/sarif-2.1.0.json"
+          echo "$SARIF_SCHEMA_SHA256  $RUNNER_TEMP/sarif-2.1.0.json" | sha256sum -c -
+          node .github/tools/ajv/validate.js "$RUNNER_TEMP/sarif-2.1.0.json" cmd/cfgaudit/testdata/reports/sarif.golden.json
+
+      - name: GitLab Code Quality
+        run: node .github/tools/ajv/validate.js testdata/schemas/gitlab-code-quality.json cmd/cfgaudit/testdata/reports/codeclimate.golden.json

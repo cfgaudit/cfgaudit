@@ -19,6 +19,7 @@ cfgaudit decides what a review of an AI agent's configuration reports, so a wron
 | Consistency tests (`rules/consistency_test.go`) | a rule without a docs page, README row or OWASP mapping; severities or OWASP categories that differ between code, docs page and README; mapping tables that name rules that do not exist | every pull request |
 | Doc trigger examples (`cmd/cfgaudit/triggerexamples_test.go`) | a rule change that leaves the example in its docs page behind, so the docs show a case the rule no longer reports | every pull request |
 | Fixtures (`testdata/settings/valid`, `testdata/settings/invalid`) | a rule that fires on a clean, realistic settings file; an invalid fixture that no longer triggers the rule it is named for | every pull request |
+| Report goldens and schemas (`cmd/cfgaudit/reports_golden_test.go`, `schema-validation.yml`) | a SARIF or Code Climate report that GitHub code scanning or GitLab rejects or reads only in part; an unnoticed change to either format | every pull request; schema validation when the goldens or schemas change |
 | SchemaStore validation of the fixtures (`schema-validation.yml`) | fixtures that Claude Code's published settings schema rejects, so tests pass on input no user can write; nightly, it opens an issue when the upstream schema drifts | pull requests touching the fixtures, `main`, nightly |
 | Fuzzing (`fuzz.yml`): whole scan, path parsers, JSONC stripping, Markdown instructions, key location, prefilters | crashes and hangs on broken or hostile input | short runs on pull requests and `main`, 10 minutes per target weekly |
 | Race detector, Linux, macOS and Windows | data races between rules running in parallel, platform-specific path and permission bugs | every pull request |
@@ -37,7 +38,7 @@ cfgaudit decides what a review of an AI agent's configuration reports, so a wron
 
 Scheduled jobs also watch what cfgaudit depends on from outside and open an issue when something drifts: new versions of the OWASP frameworks the rules map to (`check-framework-versions.yml`), AVE records that the mapping cites (`check-ave-ids.yml`), and the MCP reference servers behind CFG059's allowlist (`check-typosquat-allowlist.yml`).
 
-**Planned:** report schema validation (#1063), package smoke tests before publishing (#1065) and metamorphic tests across equivalent file spellings (#1066). The Code Climate fingerprints are pinned by a golden test since #1064.
+**Planned:** package smoke tests before publishing (#1065) and metamorphic tests across equivalent file spellings (#1066). The Code Climate fingerprints are pinned by a golden test since #1064.
 
 ## Adding a rule
 

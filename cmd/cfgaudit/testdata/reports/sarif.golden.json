@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "cfgaudit",
+          "version": "1.0.0",
+          "informationUri": "https://github.com/cfgaudit/cfgaudit",
+          "rules": [
+            {
+              "id": "CFG004",
+              "helpUri": "https://github.com/cfgaudit/cfgaudit/blob/main/docs/rules/CFG004.md",
+              "properties": {
+                "ave_id": "AVE-2026-00063",
+                "owasp_llm": "LLM03"
+              }
+            },
+            {
+              "id": "CFG006",
+              "helpUri": "https://github.com/cfgaudit/cfgaudit/blob/main/docs/rules/CFG006.md",
+              "properties": {
+                "owasp_llm": "LLM03"
+              }
+            },
+            {
+              "id": "CFG024",
+              "helpUri": "https://github.com/cfgaudit/cfgaudit/blob/main/docs/rules/CFG024.md",
+              "properties": {
+                "ave_id": "AVE-2026-00029",
+                "owasp_llm": "LLM01"
+              }
+            },
+            {
+              "id": "CFG040",
+              "helpUri": "https://github.com/cfgaudit/cfgaudit/blob/main/docs/rules/CFG040.md",
+              "properties": {
+                "owasp_llm": "LLM03"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CFG004",
+          "level": "error",
+          "message": {
+            "text": "defaultMode: \"bypassPermissions\" disables all permission checks"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".claude/settings.json"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 17
+                }
+              }
+            }
+          ],
+          "properties": {
+            "ave_id": "AVE-2026-00063",
+            "owasp_llm": "LLM03"
+          }
+        },
+        {
+          "ruleId": "CFG006",
+          "level": "warning",
+          "message": {
+            "text": "no permissions.deny list"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".claude/settings.json"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "owasp_llm": "LLM03"
+          }
+        },
+        {
+          "ruleId": "CFG024",
+          "level": "error",
+          "message": {
+            "text": "hidden Unicode character"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "docs/CLAUDE.md"
+                },
+                "region": {
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "properties": {
+            "ave_id": "AVE-2026-00029",
+            "owasp_llm": "LLM01"
+          }
+        },
+        {
+          "ruleId": "CFG040",
+          "level": "note",
+          "message": {
+            "text": "user-scope example"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".mcp.json"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 5
+                }
+              }
+            }
+          ],
+          "properties": {
+            "owasp_llm": "LLM03"
+          }
+        }
+      ]
+    }
+  ]
+}
