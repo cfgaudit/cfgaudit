@@ -238,6 +238,34 @@ func TestRun_UnknownRuleIDIsReportedNotFatal(t *testing.T) {
 	}
 }
 
+func TestRun_OnlyWithNoKnownRuleIsAnError(t *testing.T) {
+	root := runFixture(t, map[string]string{".claude/settings.json": errorSettings})
+	code, stdout, stderr := runCLI(t, "--claude-version", "2.1.0", "--only", "CFG0O4,CFG999", root)
+	if code != 2 {
+		t.Errorf("exit code %d, want 2: an --only that selects no rule must not pass", code)
+	}
+	if !strings.Contains(stderr, "--only selects no known rule: CFG0O4, CFG999") {
+		t.Errorf("missing error for an --only of typos: %q", stderr)
+	}
+	if stdout != "" {
+		t.Errorf("no report expected when no rule can run, got %q", stdout)
+	}
+}
+
+func TestRun_OnlyWithSomeKnownRulesRunsThem(t *testing.T) {
+	root := runFixture(t, map[string]string{".claude/settings.json": errorSettings})
+	code, stdout, stderr := runCLI(t, "--claude-version", "2.1.0", "--only", "CFG004,CFG0O4", root)
+	if code != 1 {
+		t.Errorf("exit code %d, want 1: the known ID still runs", code)
+	}
+	if !strings.Contains(stderr, "unknown rule(s): CFG0O4") {
+		t.Errorf("unknown --only id not reported: %q", stderr)
+	}
+	if !strings.Contains(stdout, "CFG004") {
+		t.Errorf("CFG004 should have run: %q", stdout)
+	}
+}
+
 func TestRun_Subcommands(t *testing.T) {
 	code, stdout, _ := runCLI(t, "explain", "CFG004")
 	if code != 0 || !strings.Contains(stdout, "CFG004") {
