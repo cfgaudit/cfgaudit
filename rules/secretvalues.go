@@ -75,8 +75,27 @@ var upperPlaceholderRe = regexp.MustCompile(`^[A-Z][A-Z_\-]{3,}$`)
 // "REDACTED", "TU_API_KEY_AQUI".
 func literalPlaceholder(v string) bool {
 	return placeholderRe.MatchString(v) || screamingPlaceholderRe.MatchString(v) ||
-		upperPlaceholderRe.MatchString(v) || strings.Contains(strings.ToLower(v), "xxx")
+		upperPlaceholderRe.MatchString(v) || envNamePlaceholderRe.MatchString(v) ||
+		markedPlaceholderRe.MatchString(v) || weakWordRe.MatchString(v) || fakeMarkerRe.MatchString(v) ||
+		strings.Contains(strings.ToLower(v), "xxx") || !isASCII(v) // a value in another script is a note to the reader
 }
+
+// fakeMarkerRe matches a value that says it is not real: "FAKE_SHOP_TOKEN",
+// "dummy-key". Narrower than fakeWordRe, which also accepts joke passwords
+// such as "hunter2" in connection strings but not as a value on its own.
+var fakeMarkerRe = regexp.MustCompile(`(?i)fake|dummy|placeholder|redacted|changeme`)
+
+// envNamePlaceholderRe matches a value that is the name of an environment
+// variable written where its value should go: CONTEXT7_API_KEY, GH_TOKEN_2.
+var envNamePlaceholderRe = regexp.MustCompile(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$`)
+
+// markedPlaceholderRe matches a value marked as something to fill in:
+// [YOUR_GITHUB_TOKEN], [CONFIGURED], ~~WP_APP_PASSWORD.
+var markedPlaceholderRe = regexp.MustCompile(`^(?:\[[^\]]*\]|~~.*)$`)
+
+// weakWordRe matches a credential word used as its own value, optionally with
+// digits: "password", "secret123", "admin".
+var weakWordRe = regexp.MustCompile(`^(?i:password|passwd|pass|secret|token|apikey|api_key|admin|test|demo)[0-9]*$`)
 
 // secretHeaderNameRe matches header names that say their value is a credential,
 // beyond the fixed authHeaderNames: dd-api-key, X-Billing-Token, x-secret.

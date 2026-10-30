@@ -76,6 +76,11 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkMarketplaceHeaders(t)...)
 	findings = append(findings, r.checkContinueRequestOptions(t)...)
 	findings = append(findings, r.checkZedEnv(t)...)
+	for _, site := range commandSites(t) {
+		for _, what := range commandSecrets(site.Command) {
+			findings = append(findings, secretFinding(site.Label, what, site.File, t))
+		}
+	}
 	for _, ref := range t.mcpServerRefs() {
 		base := "mcpServers." + ref.Name
 
@@ -92,6 +97,14 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 		}
 
 		findings = append(findings, headerSecrets(base, ref.Server.Headers, ref.File, t)...)
+
+		// The URL and the arguments carry credentials too (#1046).
+		for _, what := range urlSecrets(ref.Server.URL) {
+			findings = append(findings, secretFinding(base+".url", what, ref.File, t))
+		}
+		for _, s := range argSecrets(ref.Server.Args) {
+			findings = append(findings, secretFinding(argLabel(base, s.index), s.what, ref.File, t))
+		}
 
 		// Cursor's static OAuth auth.CLIENT_SECRET on a remote server (#649).
 		// Cursor documents the ${env:...} form as the alternative.
