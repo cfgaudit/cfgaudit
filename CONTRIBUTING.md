@@ -42,6 +42,8 @@ go run ./cmd/cfgaudit /path/to/project
 
 ## Test loop
 
+What each test layer protects against, and when it runs, is in [TESTING.md](TESTING.md).
+
 ```sh
 go test ./...                  # unit tests + cross-cutting consistency / fixture tests
 go test -run TestCFG001 ./...  # one rule
