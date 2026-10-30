@@ -105,6 +105,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if unknown := unknownRuleIDs(only, skip, rules.All); len(unknown) > 0 {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: --only/--skip references unknown rule(s): %s\n", strings.Join(unknown, ", "))
 	}
+	// An --only made of typos alone would run nothing and pass a CI gate (#1060).
+	if unknownOnly := unknownRuleIDs(only, nil, rules.All); len(only) > 0 && len(unknownOnly) == len(only) {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: --only selects no known rule: %s\n", strings.Join(unknownOnly, ", "))
+		return 2
+	}
 
 	dir := "."
 	if fset.NArg() > 0 {

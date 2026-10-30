@@ -157,7 +157,8 @@ cfgaudit --claude-version 2.1.148
 # Print cfgaudit version and exit
 cfgaudit --version
 
-# Run only specific rules (CSV or repeated; --only and --skip can be combined)
+# Run only specific rules (CSV or repeated; --only and --skip can be combined).
+# Unknown IDs are reported on stderr; an --only with no known ID exits 2.
 cfgaudit --only CFG001,CFG003
 cfgaudit --only CFG001 --only CFG003
 cfgaudit --skip CFG006,CFG009
@@ -247,7 +248,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 |------|---------|
 | `0` | No findings, or only `warn`/`info` (without `--strict`) |
 | `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
-| `2` | Usage or tool error: the scan path or the `--plugins` path is not a directory, the `--config` file is missing, or `.cfgaudit.yml` does not parse |
+| `2` | Usage or tool error: the scan path or the `--plugins` path is not a directory, the `--config` file is missing, `.cfgaudit.yml` does not parse, or `--only` names no known rule |
 
 **Suppressing a finding**
 
