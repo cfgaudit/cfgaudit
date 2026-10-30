@@ -63,6 +63,9 @@ func (r *cfg054) Check(t *Target) []finding.Finding {
 			}
 		}
 		for _, k := range sortedKeys(ref.Server.Headers) {
+			if _, reported := headerCredential(k, ref.Server.Headers[k]); reported {
+				continue // CFG050 reports it (#1053)
+			}
 			if hit, sub := looksLikeSecretEntropy(k, ref.Server.Headers[k]); hit {
 				emit(base+".headers."+k+sub, ref.File)
 			}
@@ -151,11 +154,17 @@ func leafLooksLikeSecret(key, value string) bool {
 		return false
 	}
 	// Leave the known cases to CFG007/CFG050 (no double-reporting).
-	if hasSecretSuffix(key) {
+	if secretKeyName(key) {
 		return false
+	}
+	if _, ok := envHeaders(key, v); ok {
+		return false // a header list, checked header by header by CFG007
 	}
 	if _, ok := matchSecretPattern(v); ok {
 		return false
+	}
+	if jwtRe.MatchString(v) {
+		return false // not reported above, so a public Supabase anon key (#1053)
 	}
 	// Structural exemptions: references, placeholders, prose, paths, URLs.
 	if isSecretReference(v) || placeholderRe.MatchString(v) {
