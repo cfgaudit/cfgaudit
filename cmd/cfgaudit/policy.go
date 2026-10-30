@@ -133,7 +133,7 @@ func mergeRequireDeny(path string, entries []string) ([]string, error) {
 		return nil, err
 	}
 	_ = enc.Close()
-	if err := os.WriteFile(path, []byte(sb.String()), 0o600); err != nil { // #nosec G304,G703 -- config path from a user-supplied dir/--out, by design
+	if err := writeFileAtomic(path, []byte(sb.String())); err != nil {
 		return nil, err
 	}
 	return added, nil
@@ -277,7 +277,7 @@ func appendDeny(path string, root map[string]any, entries []string) error {
 		return err
 	}
 	b = append(b, '\n')
-	return os.WriteFile(path, b, 0o600) // #nosec G304,G703 -- settings path from a user-supplied dir, by design
+	return writeFileAtomic(path, b)
 }
 
 func bulletList(items []string) string {
