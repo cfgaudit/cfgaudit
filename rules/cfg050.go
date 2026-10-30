@@ -44,7 +44,7 @@ var authHeaderNames = map[string]bool{
 // value that is nothing but the scheme word leaves an empty credential and is
 // skipped. Real configs do carry that: four header values in a 108-file Continue
 // sample are a bare "Basic", which names an auth scheme and holds no secret.
-var authSchemeRe = regexp.MustCompile(`^(?i:bearer|basic|token)(?:\s+|$)`)
+var authSchemeRe = regexp.MustCompile(`^(?i:bearer|basic|token|apikey)(?:\s+|$)`)
 
 // literalQuotes are the characters a doubly-quoted YAML or JSON string leaves
 // around its own value. They are not part of the credential, and leaving them on
@@ -309,33 +309,7 @@ func headerSecrets(base string, headers map[string]string, file string, t *Targe
 func headerSecretsAt(prefix string, headers map[string]string, file string, t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, k := range sortedKeys(headers) {
-		v := unquoteValue(strings.TrimSpace(headers[k]))
-		if v == "" || isSecretReference(v) {
-			continue
-		}
-		if label, ok := matchSecretPattern(v); ok {
-			findings = append(findings, secretFinding(prefix+"."+k, "a hardcoded "+label, file, t))
-			continue
-		}
-		// An auth header carrying a literal (non-placeholder) credential.
-		if authHeaderNames[strings.ToLower(k)] {
-			cred := strings.TrimSpace(authSchemeRe.ReplaceAllString(v, ""))
-			if cred == "" || isSecretReference(cred) || placeholderRe.MatchString(cred) {
-				continue
-			}
-			if screamingPlaceholderRe.MatchString(cred) {
-				continue // an unfilled template such as "TU_API_KEY_AQUI"
-			}
-			if len(cred) < minCredentialLen && !strings.ContainsAny(cred, "$%{") {
-				continue // "Bearer X": too short to be any real token (#852)
-			}
-			if publishableKey(cred) {
-				continue
-			}
-			what := "a hardcoded credential"
-			if label, ok := matchSecretPattern(cred); ok {
-				what = "a hardcoded " + label
-			}
+		if what, ok := headerCredential(k, headers[k]); ok {
 			findings = append(findings, secretFinding(prefix+"."+k, what, file, t))
 		}
 	}

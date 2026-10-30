@@ -582,3 +582,23 @@ func TestCFG050_ClaudeHTTPHookHeaders(t *testing.T) {
 		}
 	}
 }
+
+// A literal after Bearer or Basic is a credential whatever the header is called
+// (#1053), and so is a literal in a header whose name says it holds a
+// credential; a reference, a placeholder or the Token scheme under another name
+// is not.
+func TestCFG050_SchemeCredentialInAnyHeader(t *testing.T) {
+	f := CFG050.Check(settingsTarget(t, `{"mcpServers":{"m":{"type":"http","url":"https://x","headers":{"X-Custom":"Bearer q8Zt3LmW9pXa2RvN","X-Ref":"Bearer ${TOKEN}","X-Plain":"some value","X-Mode":"Token abcdefghijk","X-Billing-Token":"q8Zt3LmW9pXa2RvN","X-Api-Secret":"REPLACE_ME"}}}}`))
+	if len(f) != 2 || !strings.Contains(f[0].Message, "headers.X-Billing-Token contains a hardcoded credential") || !strings.Contains(f[1].Message, "headers.X-Custom contains a hardcoded credential") {
+		t.Fatalf("expected findings for X-Billing-Token and X-Custom, got %+v", f)
+	}
+}
+
+// Found in the false-positive run for #1053: a project key is an identifier,
+// and a substitution with a placeholder default commits nothing.
+func TestCFG050_HeaderNameAndDefaultRefs(t *testing.T) {
+	f := CFG050.Check(settingsTarget(t, `{"mcpServers":{"m":{"type":"http","url":"https://x","headers":{"SONARQUBE_PROJECT_KEY":"FerrariSearchService","CONTEXT7_API_KEY":"${CONTEXT7_API_KEY:-YOUR_API_KEY}","X-Api-Key":"${env.API_KEY}","Lit-Api-Key":"${TOKEN:-q8Zt3LmW9pXa2RvN}"}}}}`))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "headers.Lit-Api-Key contains a hardcoded credential") {
+		t.Fatalf("expected only the literal default to be reported, got %+v", f)
+	}
+}

@@ -133,3 +133,24 @@ func TestCFG054_NoTarget_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding for empty target, got %+v", f)
 	}
 }
+
+// A header list is left to CFG007, and a JWT is either a CFG007 finding or a
+// public Supabase anon key: CFG054 reports neither (#1053).
+func TestCFG054_SkipsHeaderListsAndJWTs(t *testing.T) {
+	for _, env := range []string{
+		`"OTEL_EXPORTER_OTLP_HEADERS":"Authorization=Basic%20dXNlcjpzM2NyZXRQYXNzMTIz"`,
+		`"SUPABASE_ANON_KEY":"eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.c2lnX3NpZ19zaWdfc2lnX3NpZ19zaWdf"`,
+	} {
+		if f := CFG054.Check(settingsTarget(t, `{"env":{`+env+`}}`)); len(f) != 0 {
+			t.Errorf("env %s: unexpected CFG054 findings %+v", env, f)
+		}
+	}
+}
+
+// A header CFG050 reports is not reported again by CFG054 (#1053).
+func TestCFG054_SkipsHeadersCFG050Reports(t *testing.T) {
+	f := CFG054.Check(settingsTarget(t, `{"mcpServers":{"m":{"type":"http","url":"https://x","headers":{"Context7-API-Key":"ctx7sk-9f8e7d6c-5b4a-3210-fedc-ba9876543210"}}}}`))
+	if len(f) != 0 {
+		t.Errorf("expected no CFG054 finding for a header CFG050 reports, got %+v", f)
+	}
+}
