@@ -221,7 +221,7 @@ func initOutput(args []string, stdin io.Reader) (string, int) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { // #nosec G703 -- dir from a user-supplied path, by design
 		return fmt.Sprintf("init: %v\n", err), 1
 	}
-	if err := os.WriteFile(path, b, 0o600); err != nil { // #nosec G304,G703 -- path from a user-supplied dir, by design
+	if err := writeFileAtomic(path, b); err != nil {
 		return fmt.Sprintf("init: %v\n", err), 1
 	}
 	return prompts + fmt.Sprintf("init: wrote %s with %d deny entries (profile: %s). Review it, then run `cfgaudit %s` to verify.\n", path, len(deny), profile, dir), 0
