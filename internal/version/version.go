@@ -7,11 +7,13 @@
 package version
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 // Version is a three-component MAJOR.MINOR.PATCH release identifier.
@@ -51,11 +53,22 @@ func Parse(s string) (Version, error) {
 	return Version{Major: maj, Minor: min, Patch: patch}, nil
 }
 
+// detectTimeout bounds `claude --version`, so a hanging binary on PATH falls
+// back to "version unknown" instead of hanging the scan (#1062).
+var detectTimeout = 5 * time.Second
+
 // Detect runs `claude --version` and parses the output.
 // The second return value is false when the `claude` binary is not on PATH —
 // callers should treat that as "no version info" rather than an error.
 func Detect() (Version, bool, error) {
-	out, err := exec.Command("claude", "--version").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), detectTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "claude", "--version")
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return Version{}, false, fmt.Errorf("claude --version did not finish within %s", detectTimeout)
+	}
 	if err != nil {
 		var execErr *exec.Error
 		if errors.As(err, &execErr) {

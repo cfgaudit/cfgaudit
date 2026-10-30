@@ -4,10 +4,15 @@
 package rules
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -39,11 +44,20 @@ func (r *cfg045) Check(t *Target) []finding.Finding {
 	}
 	var findings []finding.Finding
 	for _, site := range commandSites(t) {
+		if ShellcheckError() != nil {
+			return findings // one failure is enough; don't wait out a timeout per site
+		}
 		out, err := runShellcheck(site.Command, t.ShellCheckExclude)
 		if err != nil {
-			continue // exec error (e.g. binary vanished) — gated/handled by the CLI
+			recordShellcheckError(err)
+			continue
 		}
-		for _, c := range parseShellcheck(out) {
+		comments, err := parseShellcheck(out)
+		if err != nil {
+			recordShellcheckError(err)
+			continue
+		}
+		for _, c := range comments {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG045",
 				Severity: scSeverity(c.Level),
@@ -56,20 +70,74 @@ func (r *cfg045) Check(t *Target) []finding.Finding {
 	return findings
 }
 
+// shellcheckTimeout bounds one shellcheck call, so a hanging binary on PATH
+// cannot hang the scan (#1062). A variable so tests can shorten it.
+var shellcheckTimeout = 10 * time.Second
+
+// shellcheckFailure holds the first failed shellcheck run of the process. Rules
+// return only findings, so the CLI reads the failure through ShellcheckError
+// and exits 2 instead of reporting a scan whose shell analysis did not run.
+var shellcheckFailure struct {
+	sync.Mutex
+	err error
+}
+
+func recordShellcheckError(err error) {
+	shellcheckFailure.Lock()
+	defer shellcheckFailure.Unlock()
+	if shellcheckFailure.err == nil {
+		shellcheckFailure.err = err
+	}
+}
+
+// ShellcheckError returns the first shellcheck failure since the last
+// ResetShellcheckError, or nil.
+func ShellcheckError() error {
+	shellcheckFailure.Lock()
+	defer shellcheckFailure.Unlock()
+	return shellcheckFailure.err
+}
+
+// ResetShellcheckError clears the recorded failure before a new scan.
+func ResetShellcheckError() {
+	shellcheckFailure.Lock()
+	defer shellcheckFailure.Unlock()
+	shellcheckFailure.err = nil
+}
+
 // runShellcheck pipes a hook command (wrapped as a bash script) to
-// `shellcheck --format=json -` and returns its JSON output. ShellCheck exits
-// non-zero when it reports findings, which is not an execution error.
+// `shellcheck --format=json -` and returns its JSON output. ShellCheck exits 1
+// when it reports findings, which is not an execution error; 2 and above mean
+// it could not check the script (bad options, unsupported shell).
 func runShellcheck(command string, exclude []string) ([]byte, error) {
-	cmd := exec.Command("shellcheck", shellcheckArgs(exclude)...) // #nosec G204 -- fixed argv plus validated SC codes; the command is fed via stdin, not the shell
+	ctx, cancel := context.WithTimeout(context.Background(), shellcheckTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "shellcheck", shellcheckArgs(exclude)...) // #nosec G204 -- fixed argv plus validated SC codes; the command is fed via stdin, not the shell
 	cmd.Stdin = strings.NewReader("#!/bin/bash\n" + command + "\n")
+	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
-	if err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
-			return out, nil // non-zero exit = findings present
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("shellcheck did not finish within %s", shellcheckTimeout)
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if exitErr.ExitCode() == 1 {
+			return out, nil // findings present
 		}
+		return nil, fmt.Errorf("shellcheck failed (exit %d): %s", exitErr.ExitCode(), firstLine(exitErr.Stderr))
+	}
+	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+func firstLine(b []byte) string {
+	line, _, _ := bytes.Cut(bytes.TrimSpace(b), []byte("\n"))
+	if len(line) == 0 {
+		return "no error output"
+	}
+	return string(line)
 }
 
 // shellcheckArgs is the shellcheck argv for one command site. exclude holds
@@ -82,12 +150,12 @@ func shellcheckArgs(exclude []string) []string {
 	return append(args, "-")
 }
 
-func parseShellcheck(out []byte) []scComment {
+func parseShellcheck(out []byte) ([]scComment, error) {
 	var comments []scComment
 	if err := json.Unmarshal(out, &comments); err != nil {
-		return nil
+		return nil, fmt.Errorf("shellcheck output is not its JSON format: %s", firstLine(out))
 	}
-	return comments
+	return comments, nil
 }
 
 func scSeverity(level string) finding.Severity {

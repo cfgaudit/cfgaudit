@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestParse(t *testing.T) {
@@ -102,6 +104,27 @@ func TestDetect(t *testing.T) {
 		fakeClaude(t, "", 3)
 		if _, ok, err := Detect(); ok || err == nil {
 			t.Errorf("Detect() with a failing claude = %v, %v; want false and an error", ok, err)
+		}
+	})
+	t.Run("hangs", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("needs a POSIX shell")
+		}
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "claude"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o700); err != nil { // #nosec G306 -- the test needs an executable
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		old := detectTimeout
+		detectTimeout = 200 * time.Millisecond
+		t.Cleanup(func() { detectTimeout = old })
+		start := time.Now()
+		_, ok, err := Detect()
+		if elapsed := time.Since(start); elapsed > 5*time.Second {
+			t.Errorf("Detect took %s; the timeout did not stop claude", elapsed)
+		}
+		if ok || err == nil || !strings.Contains(err.Error(), "did not finish within") {
+			t.Errorf("Detect() with a hanging claude = %v, %v; want false and a timeout error", ok, err)
 		}
 	})
 	t.Run("no version in output", func(t *testing.T) {

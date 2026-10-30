@@ -105,7 +105,7 @@ func TestResolveClaudeVersion_UnparseableFlagUnparseableDetection(t *testing.T) 
 	if got != nil {
 		t.Errorf("resolveClaudeVersion with unparseable claude output = %v, want nil", got)
 	}
-	if want := "cfgaudit: could not parse `claude --version` output"; !strings.Contains(stderr, want) {
+	if want := "cfgaudit: could not read the version from `claude --version`"; !strings.Contains(stderr, want) {
 		t.Errorf("stderr = %q, want it to contain %q", stderr, want)
 	}
 }
