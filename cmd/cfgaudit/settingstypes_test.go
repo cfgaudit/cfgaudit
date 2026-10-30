@@ -32,3 +32,27 @@ func TestRun_SettingsFieldOfWrongType(t *testing.T) {
 		t.Errorf("a trailing comma is still CFG109, got:\n%s", out)
 	}
 }
+
+// Claude Code loads a settings file with a leading UTF-8 BOM, and an empty or
+// whitespace-only file as empty settings. The rules still run on the decoded
+// BOM-prefixed file, and CFG109 does not report either shape (#1040).
+func TestRun_ClaudeSettingsBOMAndEmpty(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, ".claude", "settings.json")
+	mustWrite(t, settings, "\xef\xbb\xbf"+`{"permissions":{"defaultMode":"bypassPermissions"}}`)
+	_, out, _ := runCLI(t, "--claude-version", "2.1.312", "--format", "text", dir)
+	if !strings.Contains(out, "CFG004") || strings.Contains(out, "CFG109") {
+		t.Errorf("BOM-prefixed settings: want CFG004 and no CFG109, got:\n%s", out)
+	}
+
+	for name, body := range map[string]string{
+		"empty":      "",
+		"whitespace": " \n\t",
+	} {
+		mustWrite(t, settings, body)
+		_, out, _ := runCLI(t, "--claude-version", "2.1.312", "--format", "text", dir)
+		if strings.Contains(out, "CFG109") {
+			t.Errorf("%s settings should load as empty, got:\n%s", name, out)
+		}
+	}
+}

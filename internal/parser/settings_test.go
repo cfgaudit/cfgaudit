@@ -183,6 +183,32 @@ func TestSettings_TolerantAccessors(t *testing.T) {
 	}
 }
 
+// Claude Code loads settings.json with a leading UTF-8 BOM, and an empty or
+// whitespace-only file as empty settings. Other JSON surfaces remain strict.
+func TestParseSettingsBytes_ClaudeBOMAndEmpty(t *testing.T) {
+	s, err := ParseSettingsBytes([]byte("\xef\xbb\xbf{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}"), "settings.json")
+	if err != nil {
+		t.Fatalf("BOM-prefixed settings should parse: %v", err)
+	}
+	if s.Permissions == nil || s.Permissions.DefaultMode != "bypassPermissions" {
+		t.Fatalf("BOM-prefixed settings were not decoded: %+v", s.Permissions)
+	}
+	for name, body := range map[string]string{
+		"empty":      "",
+		"whitespace": " \n\t",
+		"bom only":   "\xef\xbb\xbf",
+	} {
+		s, err := ParseSettingsBytes([]byte(body), "settings.json")
+		if err != nil {
+			t.Errorf("%s settings should parse: %v", name, err)
+			continue
+		}
+		if s.Raw == nil || len(s.Raw) != 0 {
+			t.Errorf("%s settings should decode as an empty object, got %#v", name, s.Raw)
+		}
+	}
+}
+
 // The canonical key wins over the alias when a file carries both, and entries
 // come back in name order.
 func TestSettings_MarketplaceEntries(t *testing.T) {

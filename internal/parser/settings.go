@@ -485,6 +485,8 @@ func ParseSettings(path string) (*Settings, error) {
 // ParseSettingsBytes decodes settings.json from an in-memory byte slice.
 // path is used only for error messages.
 //
+// Claude Code accepts one leading UTF-8 BOM and treats an empty or
+// whitespace-only file as empty settings, so both decode as a Settings object.
 // Only a file that is not a JSON object fails. The typed fields are decoded one
 // by one and leniently (#826): Claude Code 2.1.310 loads a settings file with
 // "env": {"X": 80} or "mcpServers": [...], so failing the whole file on one
@@ -492,6 +494,10 @@ func ParseSettings(path string) (*Settings, error) {
 // top-level type makes Claude Code drop the file is decided from Raw
 // (rules.SettingsDiscarded), not here.
 func ParseSettingsBytes(data []byte, path string) (*Settings, error) {
+	data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})
+	if len(bytes.TrimSpace(data)) == 0 {
+		data = []byte("{}")
+	}
 	var s Settings
 	if err := json.Unmarshal(data, &s.Raw); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
