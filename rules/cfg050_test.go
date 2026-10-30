@@ -602,3 +602,83 @@ func TestCFG050_HeaderNameAndDefaultRefs(t *testing.T) {
 		t.Fatalf("expected only the literal default to be reported, got %+v", f)
 	}
 }
+
+// Credentials outside env and headers (#1046): in the server URL, in stdio
+// arguments and in hook commands. References and placeholders are skipped,
+// and no message carries the value.
+func TestCFG050_URLArgsAndCommands(t *testing.T) {
+	gh := "ghp_" + strings.Repeat("Ab1Cd2Ef3G", 4)[:36]
+	xo := "xox" + "b-123456789012-123456789012-" + strings.Repeat("aB3c", 6)
+	lit := "q8Zt3LmW9pXa2RvN"
+	cfg := `{"mcpServers":{` +
+		`"u":{"type":"http","url":"https://bob:Xk9mQ2vLp7w@mcp.acme-corp.io/v1?api_key=` + lit + `&region=eu"},` +
+		`"uref":{"type":"http","url":"https://mcp.acme-corp.io/v1?api_key=${API_KEY}"},` +
+		`"uex":{"type":"http","url":"https://bob:Xk9mQ2vLp7w@mcp.example.com/v1"},` +
+		`"a":{"command":"npx","args":["-y","slack-mcp","--token","` + xo + `"]},` +
+		`"b":{"command":"npx","args":["-y","srv","--api-key=` + lit + `","--port","3000"]},` +
+		`"c":{"command":"npx","args":["-y","srv","--token","${TOKEN}","--password","your-password","--secret","--verbose"]},` +
+		`"d":{"command":"docker","args":["run","-e","GITHUB_TOKEN=` + gh + `","-e","GITHUB_TOKEN","img"]},` +
+		`"e":{"command":"npx","args":["mcp-remote","https://mcp.acme-corp.io/sse?token=` + lit + `"]}},` +
+		`"hooks":{"PostToolUse":[{"matcher":"Bash","hooks":[` +
+		`{"type":"command","command":"curl -s -H 'Authorization: Bearer ` + gh + `' https://api.acme-corp.io/x"},` +
+		`{"type":"command","command":"curl -H \"Authorization: Bearer $GITHUB_TOKEN\" https://api.acme-corp.io/x"}]}]}}`
+	f := CFG050.Check(settingsTarget(t, cfg))
+	var got []string
+	for _, x := range f {
+		got = append(got, strings.SplitN(x.Message, " — ", 2)[0])
+		for _, secret := range []string{gh, xo, lit, "Xk9mQ2vLp7w"} {
+			if strings.Contains(x.Message, secret) {
+				t.Errorf("message quotes the credential: %s", x.Message)
+			}
+		}
+	}
+	want := []string{
+		"hooks.PostToolUse command contains a hardcoded GitHub token in the Authorization header",
+		"mcpServers.a.args[3] contains a hardcoded Slack token",
+		"mcpServers.b.args[2] contains a credential after --api-key",
+		"mcpServers.d.args[2] contains a hardcoded GitHub token in GITHUB_TOKEN",
+		"mcpServers.e.args[1] contains a credential in the query parameter token",
+		"mcpServers.u.url contains a password in the URL",
+		"mcpServers.u.url contains a credential in the query parameter api_key",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("findings:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestCommandSecrets_FlagAndEnvAssignment(t *testing.T) {
+	for cmd, want := range map[string]string{ // #nosec G101 -- fake credentials the rule must report
+		"notify --token q8Zt3LmW9pXa2RvN":                "a credential after --token",
+		"API_TOKEN=q8Zt3LmW9pXa2RvN ./deploy.sh":         "a literal value for API_TOKEN",
+		"curl https://x.acme-corp.io/?apikey=q8Zt3LmW9p": "a credential in the query parameter apikey",
+	} {
+		got := commandSecrets(cmd)
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("commandSecrets(%q) = %q, want [%q]", cmd, got, want)
+		}
+	}
+	for _, cmd := range []string{
+		"notify --token \"$TOKEN\"",
+		"npm test -- --password-file ./pw.txt",
+		"echo token=abc",
+		"git log --format=%H",
+	} {
+		if got := commandSecrets(cmd); len(got) != 0 {
+			t.Errorf("commandSecrets(%q) = %q, want none", cmd, got)
+		}
+	}
+}
+
+// Placeholders found in the false-positive run for #1046, and URLs that only
+// reach a documentation host or the developer's own machine.
+func TestCFG050_ArgAndURLPlaceholders(t *testing.T) {
+	cfg := `{"mcpServers":{` +
+		`"a":{"command":"npx","args":["srv","--api-key","CONTEXT7_API_KEY","--token","[YOUR_GITHUB_TOKEN]","--password","password","--secret","~~WP_APP_PASSWORD","--access-token","Context7のAPIキー"]},` +
+		`"b":{"command":"npx","args":["srv","--token=FAKE_SHOP_TOKEN","API_KEY=[CONFIGURED]"]},` +
+		`"c":{"type":"http","url":"http://127.0.0.1:5163/mcp?token=q8Zt3LmW9pXa2RvN"},` +
+		`"d":{"type":"http","url":"https://mcp.example.com/api?api_key=q8Zt3LmW9pXa2RvN"},` +
+		`"e":{"type":"http","url":"https://postgres:postgres@db.acme-corp.io/x"}}}`
+	if f := CFG050.Check(settingsTarget(t, cfg)); len(f) != 0 {
+		t.Errorf("expected no findings, got %+v", f)
+	}
+}

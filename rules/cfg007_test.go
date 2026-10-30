@@ -252,6 +252,7 @@ func TestCFG007_HeaderEnvAndKnownNames(t *testing.T) {
 		f := CFG007.Check(settingsTarget(t, `{"env":{`+tc.env+`}}`))
 		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, tc.want) {
 			t.Errorf("env %s: findings %+v, want one error containing %q", tc.env, f, tc.want)
+			continue
 		}
 		if strings.Contains(f[0].Message, "q8Zt3LmW9pXa2RvN") || strings.Contains(f[0].Message, sk) {
 			t.Errorf("message quotes the credential: %s", f[0].Message)
