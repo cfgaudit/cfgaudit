@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -30,12 +31,12 @@ func TestCFG045_NoSettings_NoFinding(t *testing.T) {
 
 func TestParseShellcheck(t *testing.T) {
 	out := []byte(`[{"line":2,"column":6,"level":"info","code":2086,"message":"Double quote to prevent globbing and word splitting."}]`)
-	cs := parseShellcheck(out)
-	if len(cs) != 1 || cs[0].Code != 2086 || cs[0].Level != "info" {
-		t.Fatalf("unexpected parse: %+v", cs)
+	cs, err := parseShellcheck(out)
+	if err != nil || len(cs) != 1 || cs[0].Code != 2086 || cs[0].Level != "info" {
+		t.Fatalf("unexpected parse: %+v, %v", cs, err)
 	}
-	if parseShellcheck([]byte("not json")) != nil {
-		t.Errorf("expected nil for invalid JSON")
+	if cs, err := parseShellcheck([]byte("not json")); cs != nil || err == nil {
+		t.Errorf("parseShellcheck(not json) = %+v, %v; want nil and an error", cs, err)
 	}
 }
 
@@ -114,9 +115,19 @@ func shellcheckTarget(t *testing.T) *Target {
 	return tg
 }
 
+// checkCFG045 runs CFG045 on tg with a clean failure record and returns the
+// findings together with the shellcheck failure the run recorded, if any.
+func checkCFG045(t *testing.T, tg *Target) ([]finding.Finding, error) {
+	t.Helper()
+	ResetShellcheckError()
+	t.Cleanup(ResetShellcheckError)
+	f := CFG045.Check(tg)
+	return f, ShellcheckError()
+}
+
 // A fake shellcheck covers the paths a real binary never takes in CI: a
-// non-zero exit with findings (ShellCheck's normal case), a non-zero exit
-// with no findings, and output that is not JSON at all.
+// non-zero exit with findings (ShellCheck's normal case), an error exit, and
+// output that is not JSON at all (#1062).
 func TestCFG045_FakeShellcheck(t *testing.T) {
 	canned := `[{"line":2,"column":6,"level":"error","code":2086,"message":"Double quote to prevent globbing and word splitting."},{"line":2,"column":1,"level":"warning","code":2034,"message":"X appears unused."}]`
 	cases := []struct {
@@ -126,17 +137,27 @@ func TestCFG045_FakeShellcheck(t *testing.T) {
 		want     int
 		wantSev  []finding.Severity
 		wantMsgs []string
+		wantErr  string
 	}{
 		{name: "findings", out: canned, code: 1, want: 2, wantSev: []finding.Severity{finding.Error, finding.Warn}, wantMsgs: []string{"SC2086", "SC2034"}},
 		{name: "exit zero with findings", out: canned, code: 0, want: 2, wantSev: []finding.Severity{finding.Error, finding.Warn}, wantMsgs: []string{"SC2086", "SC2034"}},
 		{name: "empty array", out: `[]`, code: 1, want: 0},
-		{name: "garbage output", out: `this is not json`, code: 1, want: 0},
-		{name: "error with no output", out: ``, code: 1, want: 0},
+		{name: "garbage output", out: `this is not json`, code: 1, wantErr: "not its JSON format: this is not json"},
+		{name: "exit one with no output", out: ``, code: 1, wantErr: "not its JSON format"},
+		{name: "error exit", out: canned, code: 3, wantErr: "shellcheck failed (exit 3)"},
+		{name: "bad options exit", out: ``, code: 4, wantErr: "shellcheck failed (exit 4)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeShellcheck(t, tc.out, tc.code)
-			f := CFG045.Check(shellcheckTarget(t))
+			f, err := checkCFG045(t, shellcheckTarget(t))
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("recorded failure = %v, want one containing %q", err, tc.wantErr)
+				}
+			} else if err != nil {
+				t.Errorf("unexpected recorded failure: %v", err)
+			}
 			if len(f) != tc.want {
 				t.Fatalf("expected %d findings, got %+v", tc.want, f)
 			}
@@ -172,15 +193,59 @@ func TestCFG045_FakeShellcheckExcludeArgs(t *testing.T) {
 	}
 }
 
-// No shellcheck on PATH at all: the exec error branch of Check must yield no
-// findings and no panic, the same way a binary that vanishes mid-run does.
+// No shellcheck on PATH at all, as when the binary vanishes after the CLI
+// checked for it: no findings, no panic, and the failure is recorded.
 func TestCFG045_ShellcheckMissing(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a POSIX shell")
 	}
 	t.Setenv("PATH", t.TempDir())
-	if f := CFG045.Check(shellcheckTarget(t)); len(f) != 0 {
+	f, err := checkCFG045(t, shellcheckTarget(t))
+	if len(f) != 0 {
 		t.Errorf("expected no findings without a shellcheck binary, got %+v", f)
+	}
+	if err == nil {
+		t.Error("a missing shellcheck binary must be recorded as a failure")
+	}
+}
+
+// A shellcheck that never returns is killed after shellcheckTimeout, and the
+// remaining command sites are not tried, so the scan does not wait once per
+// site (#1062).
+func TestCFG045_ShellcheckTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	dir := t.TempDir()
+	calls := filepath.Join(dir, "calls")
+	script := fmt.Sprintf("#!/bin/sh\necho x >> '%s'\nexec sleep 30\n", calls)
+	if err := os.WriteFile(filepath.Join(dir, "shellcheck"), []byte(script), 0o700); err != nil { // #nosec G306 -- the test needs an executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	old := shellcheckTimeout
+	shellcheckTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { shellcheckTimeout = old })
+
+	tg := settingsTarget(t, `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"echo one"},{"type":"command","command":"echo two"}]}]}}`)
+	tg.ShellCheck = true
+	start := time.Now()
+	f, err := checkCFG045(t, tg)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("Check took %s; the timeout did not stop shellcheck", elapsed)
+	}
+	if len(f) != 0 {
+		t.Errorf("expected no findings, got %+v", f)
+	}
+	if err == nil || !strings.Contains(err.Error(), "did not finish within") {
+		t.Errorf("recorded failure = %v, want a timeout", err)
+	}
+	got, readErr := os.ReadFile(calls) // #nosec G304 -- calls is under t.TempDir()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if n := strings.Count(string(got), "x"); n != 1 {
+		t.Errorf("shellcheck ran %d times, want 1: later sites must be skipped after a failure", n)
 	}
 }
 

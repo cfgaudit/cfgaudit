@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -263,6 +264,33 @@ func TestRun_OnlyWithSomeKnownRulesRunsThem(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "CFG004") {
 		t.Errorf("CFG004 should have run: %q", stdout)
+	}
+}
+
+// A shellcheck that cannot check the script (exit 3 and up) must not pass as a
+// clean scan: cfgaudit names the failure and exits 2 (#1062).
+func TestRun_ShellcheckFailureExits2(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	root := runFixture(t, map[string]string{
+		".claude/settings.json": `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"echo hi"}]}]}}`,
+	})
+	bin := t.TempDir()
+	script := "#!/bin/sh\necho 'shellcheck: unrecognized option' >&2\nexit 3\n"
+	if err := os.WriteFile(filepath.Join(bin, "shellcheck"), []byte(script), 0o700); err != nil { // #nosec G306 -- the test needs an executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	code, stdout, stderr := runCLI(t, "--claude-version", "2.1.0", "--shellcheck", root)
+	if code != 2 {
+		t.Errorf("exit code %d, want 2 when shellcheck fails", code)
+	}
+	if want := "cfgaudit: --shellcheck: shellcheck failed (exit 3): shellcheck: unrecognized option"; !strings.Contains(stderr, want) {
+		t.Errorf("stderr = %q, want it to contain %q", stderr, want)
+	}
+	if stdout != "" {
+		t.Errorf("no report expected after a failed shell analysis, got %q", stdout)
 	}
 }
 

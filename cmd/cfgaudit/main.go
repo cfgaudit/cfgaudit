@@ -189,7 +189,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}
 
+	rules.ResetShellcheckError()
 	all := runRules(targets, detected, accept)
+	if err := rules.ShellcheckError(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: --shellcheck: %v\n", err)
+		return 2
+	}
 	locateKeyLines(all)
 	all = cfg.PostProcess(all, dir)
 
@@ -372,7 +377,7 @@ func resolveClaudeVersion(override string) *version.Version {
 	}
 	v, found, err := version.Detect()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cfgaudit: could not parse `claude --version` output (%v); running all rules without version gating\n", err)
+		fmt.Fprintf(os.Stderr, "cfgaudit: could not read the version from `claude --version` (%v); running all rules without version gating\n", err)
 		return nil
 	}
 	if !found {
