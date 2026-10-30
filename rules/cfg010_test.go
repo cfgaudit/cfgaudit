@@ -151,3 +151,49 @@ func TestCFG010_MultipleServers_SortedOutput(t *testing.T) {
 		t.Errorf("expected findings in sorted order, got: %s / %s", f[0].Message, f[1].Message)
 	}
 }
+
+func TestCFG010_NpxPackageFlagUnpinned(t *testing.T) {
+	// Two --package flags, one pinned and one not: only the unpinned extra
+	// package is reported (the pinned run package stays clean).
+	json := `{"mcpServers":{"s":{"command":"npx","args":["--package","a@1.0.0","--package","b","-y","a"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned --package, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "\"b\"") {
+		t.Errorf("expected finding to name the unpinned package b, got: %s", f[0].Message)
+	}
+}
+
+func TestCFG010_NpxPackageFlagPinned_NoFinding(t *testing.T) {
+	json := `{"mcpServers":{"s":{"command":"npx","args":["--package","b@1.0.0","-y","b"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 0 {
+		t.Errorf("expected no finding when all --package specs are pinned, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_NpxPackageFlagForms(t *testing.T) {
+	// -p <spec> and --package=<spec> are collected; both are unpinned here.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-p","b","--package=c","-y","a@1.0.0"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 2 {
+		t.Fatalf("expected 2 findings for -p and --package= unpinned specs, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_UvxWithUnpinned(t *testing.T) {
+	json := `{"mcpServers":{"py":{"command":"uvx","args":["--with","ruff","mcp-server-fetch"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 2 {
+		t.Fatalf("expected findings for unpinned --with and run package, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_UvxWithPinned_NoFinding(t *testing.T) {
+	json := `{"mcpServers":{"py":{"command":"uvx","args":["--with","ruff==0.2.0","mcp-server-fetch@0.1.0"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 0 {
+		t.Errorf("expected no finding when uvx --with is pinned, got %d: %+v", len(f), f)
+	}
+}

@@ -44,7 +44,7 @@ var pep508PinRe = regexp.MustCompile(`(===|==|~=|!=|>=|<=|>|<)\s*\d`)
 func (r *cfg010) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
-		if msg := analyzeMCPVersionPin(ref.Server.Command, ref.Server.Args); msg != "" {
+		for _, msg := range analyzeMCPVersionPins(ref.Server.Command, ref.Server.Args) {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG010",
 				Severity: finding.Warn,
@@ -56,38 +56,112 @@ func (r *cfg010) Check(t *Target) []finding.Finding {
 	return findings
 }
 
-func analyzeMCPVersionPin(command string, args []string) string {
+// analyzeMCPVersionPins reports every unpinned package named by a runner
+// invocation: the run package itself plus any extra package installed through
+// a repeated package flag (`npx --package/-p`, `uvx --with`).
+func analyzeMCPVersionPins(command string, args []string) []string {
 	for _, a := range args {
 		if strings.HasSuffix(a, "@latest") || strings.HasSuffix(a, ":latest") {
-			return "argument \"" + a + "\" uses unpinned :latest/@latest tag — pin to an exact version to prevent silent supply-chain compromise"
+			return []string{"argument \"" + a + "\" uses unpinned :latest/@latest tag — pin to an exact version to prevent silent supply-chain compromise"}
 		}
 	}
 
 	runner := filepath.Base(command)
 	npm, py := npmPackageRunners[runner], pyPackageRunners[runner]
 	if !npm && !py {
-		return ""
+		return nil
 	}
-	pkg := mcpPackageArg(runner, args)
-	if pkg == "" || isPathLikeArg(pkg) {
-		return ""
-	}
-	if py {
-		// uvx also accepts the npm-style `pkg@version`, so check both grammars.
-		if pep508PinRe.MatchString(pkg) || hasNpmVersionPin(pkg) {
-			return ""
+	var msgs []string
+	for _, pkg := range collectPackageSpecs(runner, args) {
+		if isPathLikeArg(pkg) {
+			continue
 		}
-		return "package \"" + pkg + "\" passed to " + runner + " has no version pin (e.g. \"" + pkg + "==1.2.3\") — supply-chain compromise propagates silently to every agent that loads this server"
+		if py {
+			// uvx also accepts the npm-style `pkg@version`, so check both grammars.
+			if pep508PinRe.MatchString(pkg) || hasNpmVersionPin(pkg) {
+				continue
+			}
+			msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" has no version pin (e.g. \""+pkg+"==1.2.3\") — supply-chain compromise propagates silently to every agent that loads this server")
+			continue
+		}
+		if hasNpmVersionPin(pkg) {
+			continue
+		}
+		msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" has no @version pin — supply-chain compromise propagates silently to every agent that loads this server")
 	}
-	if hasNpmVersionPin(pkg) {
-		return ""
+	return msgs
+}
+
+// packageFlagValue returns the package spec carried by an inline package flag
+// (`--package=<spec>`, `-p=<spec>`, `--with=<spec>`), or "" if a is not one.
+func packageFlagValue(a string) string {
+	for _, prefix := range []string{"--package=", "-p=", "--with="} {
+		if strings.HasPrefix(a, prefix) {
+			return strings.TrimPrefix(a, prefix)
+		}
 	}
-	return "package \"" + pkg + "\" passed to " + runner + " has no @version pin — supply-chain compromise propagates silently to every agent that loads this server"
+	return ""
+}
+
+// collectPackageSpecs returns the run package (first positional, after any
+// runner subcommand) plus every extra package named by a repeated package
+// flag: `--package <spec>` / `-p <spec>` for npm runners and `--with <spec>`
+// for uvx. Duplicates are dropped so a spec named twice is reported once.
+func collectPackageSpecs(runner string, args []string) []string {
+	var specs []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if s == "" || seen[s] {
+			return
+		}
+		seen[s] = true
+		specs = append(specs, s)
+	}
+
+	// Flags whose next argument is a package spec rather than a plain flag.
+	valueNext := map[string]bool{}
+	if npmPackageRunners[runner] {
+		valueNext["--package"] = true
+		valueNext["-p"] = true
+	}
+	if runner == "uvx" {
+		valueNext["--with"] = true
+	}
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if spec := packageFlagValue(a); spec != "" {
+			add(spec)
+			continue
+		}
+		if valueNext[a] {
+			if i+1 < len(args) {
+				add(args[i+1])
+			}
+			i++ // consumed the flag value so it is not mistaken for the run package
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		// Runner subcommand: the run package comes one position later —
+		// `dlx`/`exec` for pnpm/yarn, `run` for pipx (`pipx run <pkg>`).
+		if (runner == "pnpm" || runner == "yarn") && (a == "dlx" || a == "exec") {
+			continue
+		}
+		if runner == "pipx" && a == "run" {
+			continue
+		}
+		add(a) // first positional is the run package; later positionals are server args
+		break
+	}
+	return specs
 }
 
 // mcpPackageArg returns the first positional argument that names a package. A
 // runner subcommand is skipped so the package arg is found one position later:
-// `dlx`/`exec` for pnpm/yarn, `run` for pipx (`pipx run <pkg>`).
+// `dlx`/`exec` for pnpm/yarn, `run` for pipx (`pipx run <pkg>`). Shared with
+// CFG059's typosquat check.
 func mcpPackageArg(runner string, args []string) string {
 	for i, a := range args {
 		if strings.HasPrefix(a, "-") {
