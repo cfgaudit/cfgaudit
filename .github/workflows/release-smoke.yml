@@ -1,0 +1,129 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release smoke test
+
+# Builds the release archives the way the release does (GoReleaser, same
+# config and version, nothing published) and runs each one on its platform:
+# the checksum matches, `cfgaudit --version` prints the version GoReleaser
+# built, and a fixture scan reports CFG004 with exit code 1 (#1065). A binary
+# for the wrong platform, a missing version string or a broken archive fails
+# here instead of reaching users.
+#
+# release.yml calls this before it publishes. Pull requests that change the
+# release build run it too, against a snapshot.
+
+on:
+  workflow_call:
+  pull_request:
+    branches: [main]
+    paths:
+      - .goreleaser.yml
+      - go.mod
+      - .github/workflows/release-smoke.yml
+      - .github/workflows/release.yml
+      - .github/workflows/build-release.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build archives
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # GoReleaser derives the version from the tags
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      # The same GoReleaser version as build-release.yml, without publishing
+      # and without tokens. On a tag it builds the tag's version, the one the
+      # release then publishes; on a pull request there is no tag, so it builds
+      # a snapshot. SBOMs are skipped: they need syft and are not what this
+      # checks.
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.18.3
+          args: ${{ github.ref_type == 'tag' && 'release --clean --skip=publish,sbom' || 'release --snapshot --clean --skip=sbom' }}
+
+      - name: The version is the tag's
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: test "$(jq -r .version dist/metadata.json)" = "${TAG#v}"
+
+      - name: Record the version
+        run: jq -r .version dist/metadata.json | tee dist/VERSION
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-archives
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+            dist/VERSION
+          retention-days: 3
+
+  run:
+    name: Run archive (${{ matrix.os }}/${{ matrix.arch }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, os: linux, arch: amd64, ext: tar.gz }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: arm64, ext: tar.gz }
+          - { runner: macos-latest, os: darwin, arch: arm64, ext: tar.gz }
+          - { runner: windows-latest, os: windows, arch: amd64, ext: zip }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: testdata/settings/invalid
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-archives
+          path: dist
+
+      - name: Checksum, version and a fixture scan
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          set -euo pipefail
+          version=$(cat dist/VERSION)
+          archive="cfgaudit_${version}_${OS}_${ARCH}.${EXT}"
+          cd dist
+          grep " ${archive}\$" checksums.txt > expected.txt
+          if command -v sha256sum >/dev/null; then sha256sum -c expected.txt; else shasum -a 256 -c expected.txt; fi
+          mkdir unpacked
+          if [ "$EXT" = zip ]; then unzip -q "$archive" -d unpacked; else tar -xzf "$archive" -C unpacked; fi
+          bin=unpacked/cfgaudit
+          [ "$OS" = windows ] && bin=unpacked/cfgaudit.exe
+          got=$("$bin" --version)
+          echo "$got"
+          test "$got" = "cfgaudit $version"
+          proj=$(mktemp -d)
+          mkdir -p "$proj/.claude"
+          cp ../testdata/settings/invalid/CFG004_bypass_permissions.json "$proj/.claude/settings.json"
+          set +e
+          "$bin" --claude-version 2.1.0 --format json "$proj" > scan.json
+          rc=$?
+          set -e
+          echo "exit code $rc"
+          test "$rc" -eq 1
+          jq -e 'any(.[]; .RuleID == "CFG004")' scan.json > /dev/null

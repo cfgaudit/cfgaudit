@@ -104,6 +104,38 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
+      # Build the image locally first and run it (#1065): it must report the
+      # tag's version and find the fixture's finding before anything is pushed.
+      # The push below reuses this build from the builder's cache.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: cfgaudit:smoke
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+
+      - name: Smoke-test the image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          got=$(docker run --rm cfgaudit:smoke --version)
+          echo "$got"
+          test "$got" = "cfgaudit $VERSION"
+          proj=$(mktemp -d)
+          mkdir -p "$proj/.claude"
+          cp testdata/settings/invalid/CFG004_bypass_permissions.json "$proj/.claude/settings.json"
+          chmod -R a+rX "$proj" # the image runs as uid 65532
+          set +e
+          docker run --rm -v "$proj:/work:ro" -w /work cfgaudit:smoke --claude-version 2.1.0 --format json . > scan.json
+          rc=$?
+          set -e
+          echo "exit code $rc"
+          test "$rc" -eq 1
+          jq -e 'any(.[]; .RuleID == "CFG004")' scan.json > /dev/null
+
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:

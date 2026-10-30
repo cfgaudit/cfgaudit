@@ -68,12 +68,23 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
+  # Builds the archives for this tag without publishing and runs each one on
+  # its platform (#1065). Nothing is published unless they start, report the
+  # tag's version and find the fixture's finding.
+  smoke:
+    name: Smoke-test the archives
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    permissions:
+      contents: read
+    uses: $/.github/workflows/release-smoke.yml
+
   # The build, attestation and upload run in build-release.yml, so that file
   # signs the provenance (SLSA Build Level 3, #724). This job only calls it and
   # grants it the permissions it needs.
   goreleaser:
     name: GoReleaser
-    needs: gate
+    needs: [gate, smoke]
     if: needs.gate.outputs.publish == 'true'
     permissions:
       contents: write # create the GitHub release and upload archives/checksums
