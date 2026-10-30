@@ -23,6 +23,7 @@ on:
       - .github/workflows/release-smoke.yml
       - .github/workflows/release.yml
       - .github/workflows/build-release.yml
+      - .github/scripts/smoke-test.sh
 
 permissions:
   contents: read
@@ -90,7 +91,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: testdata/settings/invalid
+          sparse-checkout: |
+            .github/scripts
+            testdata/settings/invalid
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -114,16 +117,5 @@ jobs:
           if [ "$EXT" = zip ]; then unzip -q "$archive" -d unpacked; else tar -xzf "$archive" -C unpacked; fi
           bin=unpacked/cfgaudit
           [ "$OS" = windows ] && bin=unpacked/cfgaudit.exe
-          got=$("$bin" --version)
-          echo "$got"
-          test "$got" = "cfgaudit $version"
-          proj=$(mktemp -d)
-          mkdir -p "$proj/.claude"
-          cp ../testdata/settings/invalid/CFG004_bypass_permissions.json "$proj/.claude/settings.json"
-          set +e
-          "$bin" --claude-version 2.1.0 --format json "$proj" > scan.json
-          rc=$?
-          set -e
-          echo "exit code $rc"
-          test "$rc" -eq 1
-          jq -e 'any(.[]; .RuleID == "CFG004")' scan.json > /dev/null
+          cd ..
+          .github/scripts/smoke-test.sh "$version" "dist/$bin"

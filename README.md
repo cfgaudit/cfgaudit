@@ -30,6 +30,15 @@ Homebrew (macOS / Linux):
 brew install cfgaudit/tap/cfgaudit
 ```
 
+With Python tooling (the wheel carries the prebuilt binary, no Python code):
+
+```sh
+pipx install cfgaudit      # or: uv tool install cfgaudit
+uvx cfgaudit .             # run once without installing
+```
+
+Pin it next to your other linters with `cfgaudit==X.Y.Z` in a requirements file.
+
 With the Go toolchain:
 
 ```sh
