@@ -44,8 +44,10 @@ inputs:
   fail-on:
     description: >-
       "error" (default) fails the step when cfgaudit exits non-zero (findings at
-      or above the configured threshold). "never" runs in advisory mode and always
-      succeeds — typical for "format: sarif", where Code Scanning surfaces findings.
+      or above the configured threshold). "never" runs in advisory mode: findings
+      do not fail the step, typical for "format: sarif", where Code Scanning
+      surfaces them. A tool error (exit code 2) still fails the step, since the
+      report is then missing or incomplete.
     required: false
     default: error
   image:
@@ -121,6 +123,12 @@ runs:
         echo "exit-code=$rc" >> "$GITHUB_OUTPUT"
         echo "output-file=$IN_OUTPUT" >> "$GITHUB_OUTPUT"
 
+        # Exit 2 is a usage or I/O error: the report is empty or incomplete, so
+        # advisory mode must not turn it green (#1061).
+        if [ "$rc" -eq 2 ]; then
+          echo "::error::cfgaudit exited 2; the report is incomplete"
+          exit 2
+        fi
         if [ "$IN_FAIL_ON" = "never" ]; then
           exit 0
         fi
