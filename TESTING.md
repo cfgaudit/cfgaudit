@@ -28,6 +28,7 @@ cfgaudit decides what a review of an AI agent's configuration reports, so a wron
 | Benchmarks (`bench.yml`), pull request against its base | allocation regressions beyond the limit (a gate); time is reported, history is recorded on `main` ([benchmarks page](https://cfgaudit.github.io/benchmarks/)) | pull requests; `main` |
 | Action smoke test | an `action.yml` that does not run, writes no valid SARIF, reads the scanned project's own config when a separate one is given, or passes a tool error in advisory mode | every pull request |
 | Docker build, hadolint, dockle | an image that does not build or does not ship ShellCheck for CFG045, Dockerfile mistakes, an image that runs as root | every pull request |
+| Package smoke tests (`release-smoke.yml`, and a step in `build-image.yml`) | an archive or image that does not start, reports the wrong version or finds nothing: each archive is unpacked and run on its platform (Linux amd64 and arm64, macOS arm64, Windows amd64), the image is run before it is pushed | before every release publishes; the archives also on pull requests that change the release build |
 | Static analysis: golangci-lint (with gosec), CodeQL | bugs and insecure patterns in cfgaudit's own code | every pull request; CodeQL also weekly |
 | Dependency checks: govulncheck, dependency review; Dependabot security alerts | a known vulnerability in a Go module or a CI tool | every pull request and push; alerts when an advisory is published |
 | Workflow security: zizmor, and the released cfgaudit on the repository's own agent configuration and plugin | injection, excessive permissions and unpinned actions in the workflows; a weakened rule passing its own check | every pull request |
@@ -39,7 +40,7 @@ cfgaudit decides what a review of an AI agent's configuration reports, so a wron
 
 Scheduled jobs also watch what cfgaudit depends on from outside and open an issue when something drifts: new versions of the OWASP frameworks the rules map to (`check-framework-versions.yml`), AVE records that the mapping cites (`check-ave-ids.yml`), and the MCP reference servers behind CFG059's allowlist (`check-typosquat-allowlist.yml`).
 
-**Planned:** package smoke tests before publishing (#1065). The Code Climate fingerprints are pinned by a golden test since #1064.
+The Code Climate fingerprints are pinned by a golden test since #1064.
 
 ## Adding a rule
 

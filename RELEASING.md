@@ -26,7 +26,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
    git push origin vX.Y.Z
    ```
 
-   The Release and Docker workflows refuse a commit whose CI did not pass. They build the archives, checksums, SBOMs and the container image, sign them with build provenance, create the GitHub release and update the Homebrew cask in `cfgaudit/homebrew-tap`. Check that exactly one run of each workflow ran for the tag and that both succeeded.
+   The Release and Docker workflows refuse a commit whose CI did not pass. Before anything is published, the Release workflow runs every archive on its platform and the Docker workflow runs the image, both checking the version and a fixture scan. They then build the archives, checksums, SBOMs and the container image, sign them with build provenance, create the GitHub release and update the Homebrew cask in `cfgaudit/homebrew-tap`. Check that exactly one run of each workflow ran for the tag and that both succeeded.
 7. **Release notes.** Above the generated changelog, write the hand-written part:
    - **Can turn a passing pipeline red**: new rules at `error`, stricter checks, new exit-code cases.
    - **Output changes**: changed messages, paths, fingerprints or report fields that make existing findings show up as new.
