@@ -152,6 +152,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if cfgPath != "" {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: using config %s\n", cfgPath)
 	}
+	for _, u := range cfg.UnknownRuleIDs(knownRuleIDs(rules.All)) {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %s:%d: rules references unknown rule %s; the override has no effect\n", cfgPath, u.Line, u.ID)
+	}
 	cfg = withStrict(cfg, *strict)
 
 	accept := acceptWith(ruleFilter(only, skip), cfg)
@@ -3300,13 +3303,19 @@ func ruleFilter(only, skip ruleSet) func(rules.Rule) bool {
 	}
 }
 
-// unknownRuleIDs returns any IDs in only or skip that no registered rule reports.
-// Used to warn the user about typos like `--only CFG999`.
-func unknownRuleIDs(only, skip ruleSet, all []rules.Rule) []string {
+// knownRuleIDs returns the IDs of the registered rules.
+func knownRuleIDs(all []rules.Rule) map[string]bool {
 	known := make(map[string]bool, len(all))
 	for _, r := range all {
 		known[r.ID()] = true
 	}
+	return known
+}
+
+// unknownRuleIDs returns any IDs in only or skip that no registered rule reports.
+// Used to warn the user about typos like `--only CFG999`.
+func unknownRuleIDs(only, skip ruleSet, all []rules.Rule) []string {
+	known := knownRuleIDs(all)
 	seen := map[string]bool{}
 	var unknown []string
 	for _, set := range []ruleSet{only, skip} {

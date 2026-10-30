@@ -446,3 +446,37 @@ func TestRun_SymlinksLeavingTheRepositoryAreNotRead(t *testing.T) {
 		t.Error("AGENTS.md, a link to a file inside the repository, was not scanned")
 	}
 }
+
+// A typo in .cfgaudit.yml stops the scan with exit 2 and names the file, the
+// line and the key, instead of silently turning strict mode off (#1051).
+func TestRun_ConfigTypoIsAnError(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".claude/settings.json": errorSettings,
+		".cfgaudit.yml":         "stirct: true\n",
+	})
+	code, stdout, stderr := runCLI(t, "--claude-version", "2.1.0", root)
+	if code != 2 {
+		t.Errorf("exit code %d, want 2", code)
+	}
+	if !strings.Contains(stderr, `.cfgaudit.yml:1: unknown key "stirct"`) {
+		t.Errorf("missing file:line error: %q", stderr)
+	}
+	if stdout != "" {
+		t.Errorf("no report expected for a rejected config, got %q", stdout)
+	}
+}
+
+// A rule ID under rules that no rule reports is a warning, and the scan runs.
+func TestRun_ConfigUnknownRuleIDWarns(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".claude/settings.json": errorSettings,
+		".cfgaudit.yml":         "rules:\n  CFG999: off\n",
+	})
+	code, _, stderr := runCLI(t, "--claude-version", "2.1.0", root)
+	if code != 1 {
+		t.Errorf("exit code %d, want 1: an unknown rule ID must not stop the scan", code)
+	}
+	if !strings.Contains(stderr, ".cfgaudit.yml:2: rules references unknown rule CFG999") {
+		t.Errorf("unknown rule ID not reported: %q", stderr)
+	}
+}
