@@ -388,6 +388,26 @@ jobs:
       - name: The project's own config was not used
         shell: bash
         run: jq -e 'any(.[]; .RuleID == "CFG004")' config-fixture.json > /dev/null
+      # Advisory mode ignores findings, not tool errors (#1061): a path that
+      # does not exist makes cfgaudit exit 2, and the step must fail.
+      - id: scan-error
+        uses: $/
+        continue-on-error: true
+        with:
+          path: does-not-exist
+          format: sarif
+          output: error.sarif
+          fail-on: never
+          image: ghcr.io/cfgaudit/cfgaudit:latest
+      - name: Exit 2 failed the step despite fail-on never
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.scan-error.outcome }}
+          EXIT_CODE: ${{ steps.scan-error.outputs.exit-code }}
+        run: |
+          echo "outcome=$OUTCOME exit-code=$EXIT_CODE"
+          test "$OUTCOME" = failure
+          test "$EXIT_CODE" = 2
 
   # Every file has a copyright and license, from its own header or REUSE.toml,
   # and the license texts are in LICENSES/ (#789).

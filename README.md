@@ -349,7 +349,7 @@ For pull requests, take the config from the base branch so the change cannot rew
 ```
 
 **Inputs:** `path` (default `.`), `format` (`text`/`json`/`sarif`), `strict`, `user`, `config` (replaces the scanned directory's `.cfgaudit.yml`; relative to the workspace, or an absolute path outside it), `plugins`, `output`, `fail-on` (`error`/`never`), `image`.
-**Outputs:** `exit-code`, `output-file`. By default the step fails on findings at or above the configured threshold; set `fail-on: never` for advisory mode.
+**Outputs:** `exit-code`, `output-file`. By default the step fails on findings at or above the configured threshold; set `fail-on: never` for advisory mode. A tool error (exit code 2: a missing path or config, a file that does not parse) fails the step in both modes, because the report is then incomplete.
 
 ---
 
