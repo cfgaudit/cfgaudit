@@ -257,7 +257,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 |------|---------|
 | `0` | No findings, or only `warn`/`info` (without `--strict`) |
 | `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
-| `2` | Usage or tool error: the scan path or the `--plugins` path is not a directory, the `--config` file is missing, `.cfgaudit.yml` does not parse, `--only` names no known rule, or `--shellcheck` analysis fails |
+| `2` | Usage or tool error: the scan path or the `--plugins` path is not a directory, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, or `--shellcheck` analysis fails |
 
 **Suppressing a finding**
 
@@ -317,6 +317,8 @@ policy:
   forbid-allow:
     - "Bash(git commit:*)"   # must not be grantable by permissions.allow
 ```
+
+cfgaudit rejects a `.cfgaudit.yml` with a key it does not know or a severity other than `error`, `warn` or `info`, and exits 2 with the file and the line: `cfgaudit: .cfgaudit.yml:1: unknown key "stirct"`. A typo in the file that sets your exit code must not turn a check off without a word. A key added in a newer cfgaudit therefore fails on an older one; pin the cfgaudit version your CI runs together with the config. A rule ID under `rules` that no rule reports is only a warning, so a config that names a rule from a newer release still loads.
 
 ---
 

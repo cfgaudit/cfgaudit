@@ -6,6 +6,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -253,16 +254,17 @@ func TestDiscover_Errors(t *testing.T) {
 }
 
 func TestPostProcess_SeverityOverrides(t *testing.T) {
-	c := parseT(t, "rules:\n  A: error\n  B: loud\n")
-	out := c.PostProcess([]finding.Finding{
-		{RuleID: "A", Severity: finding.Info},
-		{RuleID: "B", Severity: finding.Warn},
-	}, ".")
+	c := parseT(t, "rules:\n  A: error\n")
+	out := c.PostProcess([]finding.Finding{{RuleID: "A", Severity: finding.Info}}, ".")
 	if out[0].Severity != finding.Error {
 		t.Errorf("A: want error, got %s", out[0].Severity)
 	}
-	if out[1].Severity != finding.Warn {
-		t.Errorf("B: an unknown severity must leave the finding unchanged, got %s", out[1].Severity)
+	// parse rejects an invalid severity (#1051); a Config built in code that
+	// carries one still leaves the finding unchanged.
+	c = &Config{Rules: map[string]RuleConfig{"B": {Severity: "loud"}}}
+	out = c.PostProcess([]finding.Finding{{RuleID: "B", Severity: finding.Warn}}, ".")
+	if out[0].Severity != finding.Warn {
+		t.Errorf("B: an unknown severity must leave the finding unchanged, got %s", out[0].Severity)
 	}
 }
 
@@ -301,5 +303,74 @@ func TestMatchGlob(t *testing.T) {
 func TestParse_DecoderPanic(t *testing.T) {
 	if _, err := parse([]byte("? -\n? <<\n"), "test"); err == nil {
 		t.Fatal("expected a parse error")
+	}
+}
+
+// The rows of #1051: each config the decoder used to accept without a word is
+// rejected, naming the file, the line and the key.
+func TestParse_RejectsUnknownKeysAndInvalidValues(t *testing.T) {
+	cases := []struct{ yaml, want string }{
+		{"stirct: true\n", `test:1: unknown key "stirct"`},
+		{"only: [CFG006]\n", `test:1: unknown key "only"`},
+		{"min-severity: bogus\n", `test:1: min-severity: "bogus" is not a severity`},
+		{"rules:\n  CFG001:\n    severity: bogus\n", `test:3: rules.CFG001.severity: "bogus" is not a severity`},
+		{"rules:\n  CFG006: {of: true}\n", `test:2: unknown key "rules.CFG006.of"`},
+		{"rules:\n  CFG006: false\n", `test:2: rules.CFG006: "false" is neither off nor a severity`},
+		{"policy:\n  require-deny: [x]\n  forbid-alow: [y]\n", `test:3: unknown key "policy.forbid-alow"`},
+		{"strict: true\nexclude-path: [vendor/]\n", `test:2: unknown key "exclude-path"`},
+	}
+	for _, tc := range cases {
+		_, err := parse([]byte(tc.yaml), "test")
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("parse(%q) = %v, want an error containing %q", tc.yaml, err, tc.want)
+		}
+	}
+}
+
+// Every documented key keeps parsing, in both rule override forms, and so do
+// an empty file, a merge key and an alias.
+func TestParse_AcceptsEveryKey(t *testing.T) {
+	valid := `rules:
+  CFG003: off
+  CFG004: warn
+  CFG005: {severity: INFO}
+  CFG006: {off: true}
+  CFG007: {off: false, severity: error}
+min-severity: Warn
+strict: true
+no-exit-codes: false
+exclude-paths: [vendor/]
+policy:
+  require-deny: ["Bash(rm -rf *)"]
+  forbid-allow: ["Bash(curl *)"]
+shellcheck: true
+shellcheck-exclude: [SC2086]
+content-paths: [README.md]
+`
+	c, err := parse([]byte(valid), "test")
+	if err != nil {
+		t.Fatalf("valid config rejected: %v", err)
+	}
+	if !c.Strict || c.RuleEnabled("CFG003") || c.Rules["CFG005"].Severity != "INFO" || c.MinSeverity != "Warn" {
+		t.Errorf("valid config decoded wrong: %+v", c)
+	}
+	for _, doc := range []string{"", "# only a comment\n", "rules:\n  CFG001: &w warn\n  CFG002: *w\n", "rules:\n  <<: {CFG001: off}\n"} {
+		if _, err := parse([]byte(doc), "test"); err != nil {
+			t.Errorf("parse(%q) = %v, want no error", doc, err)
+		}
+	}
+}
+
+// A rule ID no rule reports is a warning, not an error, so a config written
+// for a newer cfgaudit still loads; UnknownRuleIDs names it with its line.
+func TestUnknownRuleIDs(t *testing.T) {
+	c := parseT(t, "strict: true\nrules:\n  CFG999: off\n  CFG001: warn\n  CFG0O6: off\n")
+	got := c.UnknownRuleIDs(map[string]bool{"CFG001": true})
+	want := []UnknownRule{{"CFG999", 3}, {"CFG0O6", 5}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("UnknownRuleIDs = %v, want %v", got, want)
+	}
+	if (*Config)(nil).UnknownRuleIDs(nil) != nil {
+		t.Error("nil config must report no unknown rules")
 	}
 }
