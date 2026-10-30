@@ -94,6 +94,23 @@ On every push to `main`, the Benchmark history workflow (`.github/workflows/benc
 
 The repo has a few cross-cutting checks (`rules/consistency_test.go`, `rules/fixtures_test.go`) that fail fast if any step below is skipped — follow them in order and the tests will keep you honest.
 
+### 0. Check whether an existing rule fits
+
+With more than a hundred rules, many shared across agents, a new rule is often the wrong fix. Two rules for the same problem report it twice, drift apart in wording and severity, and make `--skip` harder to use. Before picking an ID, search `docs/rules/` and `rules/` for the setting, key or pattern, and look at the rule table in the README.
+
+Extend an existing rule when it checks the same risk on the same kind of value:
+
+- A new package runner for the version-pin check went into CFG010 (uvx and pipx, #306), not into a rule of its own.
+- New interpreter startup variables joined CFG020's list (#242), so they apply to every surface CFG020 already reads.
+- A new place that holds a command (for example `subagentStatusLine`, #530) becomes a command site in the parser. Every rule that inspects commands then checks it, with no new rule.
+
+Add a new rule when the risk is different, or the check needs a different method:
+
+- Exfiltration over DNS in a command (CFG072, #285) is a different risk from downloading and running code (CFG014).
+- Entropy-based secret detection (CFG054) is a different method from CFG007's and CFG050's known formats; it reports only what those two miss.
+
+The pull request description says which existing rules were considered and why none of them fits.
+
 ### 1. Pick the ID
 
 Use the next free `CFG###` identifier: one above the highest `rules/cfgNNN.go` (`ls rules/cfg[0-9]*.go | grep -v _test | sort -V | tail -1`). Open an issue describing the rule, severity, and which OWASP LLM Top 10 category it falls under.
