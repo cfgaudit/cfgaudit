@@ -128,3 +128,71 @@ func TestWriteFileAtomic_Symlink(t *testing.T) {
 		t.Errorf("link target got %q, want \"new\"", b)
 	}
 }
+
+// failingTemp wraps a real temporary file and fails the step named by fail.
+type failingTemp struct {
+	*os.File
+	fail string
+}
+
+var errStep = errors.New("step failed")
+
+func (f failingTemp) Write(b []byte) (int, error) {
+	if f.fail == "write" {
+		return 0, errStep
+	}
+	return f.File.Write(b)
+}
+
+func (f failingTemp) Chmod(mode os.FileMode) error {
+	if f.fail == "chmod" {
+		return errStep
+	}
+	return f.File.Chmod(mode)
+}
+
+func (f failingTemp) Sync() error {
+	if f.fail == "sync" {
+		return errStep
+	}
+	return f.File.Sync()
+}
+
+func (f failingTemp) Close() error {
+	if f.fail == "close" {
+		_ = f.File.Close()
+		return errStep
+	}
+	return f.File.Close()
+}
+
+// A failure at any step on the temporary file returns that error, leaves the
+// original untouched and removes the temporary file (#1093).
+func TestWriteFileAtomic_StepFailures(t *testing.T) {
+	for _, step := range []string{"write", "chmod", "sync", "close"} {
+		t.Run(step, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "settings.json")
+			if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			orig := createTemp
+			createTemp = func(dir, pattern string) (tempFile, error) {
+				f, err := os.CreateTemp(dir, pattern)
+				return failingTemp{f, step}, err
+			}
+			t.Cleanup(func() { createTemp = orig })
+
+			if err := writeFileAtomic(path, []byte("new")); !errors.Is(err, errStep) {
+				t.Fatalf("err = %v, want the %s error", err, step)
+			}
+			b, _ := os.ReadFile(path) //nolint:gosec // G304: a path in the test's temp dir
+			if string(b) != "original" {
+				t.Errorf("original changed to %q", b)
+			}
+			if left := tempFiles(t, dir, "settings.json"); len(left) != 0 {
+				t.Errorf("temporary files left behind: %v", left)
+			}
+		})
+	}
+}

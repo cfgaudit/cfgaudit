@@ -34,7 +34,7 @@ func TestDuplicateKeys(t *testing.T) {
 }
 
 func TestDuplicateKeys_NoneOrInvalid(t *testing.T) {
-	for _, doc := range []string{`{"a": {"b": 1}, "b": {"a": 2}}`, `[{"a": 1}, {"a": 2}]`, `{"a": 1, "a": `, `not json`,
+	for _, doc := range []string{`{"a": {"b": 1}, "b": {"a": 2}}`, `[{"a": 1}, {"a": 2}]`, `{"a": 1, "a": `, `not json`, `{"a": 1, 1: 2}`, `[{"a": 1}, nul]`,
 		`{"//": "see docs", "//": "and this", "_comment": "x", "_comment": "y", "$comment": 1, "$comment": 2}`,
 		`{"k\"ey": 1, "x": {"k\"ey": 2}}`} {
 		if got := duplicateKeys([]byte(doc)); got != nil {

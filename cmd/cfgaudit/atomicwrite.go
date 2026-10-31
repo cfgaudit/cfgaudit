@@ -13,6 +13,19 @@ import (
 // renameFile is os.Rename, replaced in tests to fail the last step.
 var renameFile = os.Rename
 
+// tempFile is the part of *os.File that writeFileAtomic uses.
+type tempFile interface {
+	Write(b []byte) (int, error)
+	Chmod(mode fs.FileMode) error
+	Sync() error
+	Close() error
+	Name() string
+}
+
+// createTemp is os.CreateTemp, replaced in tests to fail a step on the
+// temporary file.
+var createTemp = func(dir, pattern string) (tempFile, error) { return os.CreateTemp(dir, pattern) }
+
 // writeFileAtomic replaces path with data so that a reader sees either the old
 // file or the new one, never a truncated mix (#1052). os.WriteFile truncates
 // first, so a full disk or a killed process left settings.json empty, and
@@ -34,7 +47,7 @@ func writeFileAtomic(path string, data []byte) (err error) {
 		}
 		mode = info.Mode().Perm()
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	tmp, err := createTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
 	}
