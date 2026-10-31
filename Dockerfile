@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.cfgauditVersion=${VERSION}" \
     -o cfgaudit ./cmd/cfgaudit
 
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 # Alpine's repos serve only the current patch of a package, so an exact version
 # pin breaks the build the moment upstream bumps it — and would fight the Trivy
 # base-image freshness gate in ci.yml, which exists to force those bumps.
