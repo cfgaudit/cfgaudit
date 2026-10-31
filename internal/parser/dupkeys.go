@@ -55,12 +55,9 @@ type dupWalker struct {
 // pos is the 1-based line and column of the opening quote of the key that
 // ends at byte offset end.
 func (w *dupWalker) pos(end int64) (line, col int) {
-	i := int(end) - 2
+	i := int(end) - 2 // end is at least 3 (`{""`), so i never goes below 0
 	for i > 0 && (w.data[i] != '"' || w.data[i-1] == '\\') {
 		i--
-	}
-	if i < 0 {
-		i = 0
 	}
 	line = bytes.Count(w.data[:i], []byte{'\n'}) + 1
 	return line, i - bytes.LastIndexByte(w.data[:i], '\n')

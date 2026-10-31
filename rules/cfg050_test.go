@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -680,5 +681,29 @@ func TestCFG050_ArgAndURLPlaceholders(t *testing.T) {
 		`"e":{"type":"http","url":"https://postgres:postgres@db.acme-corp.io/x"}}}`
 	if f := CFG050.Check(settingsTarget(t, cfg)); len(f) != 0 {
 		t.Errorf("expected no findings, got %+v", f)
+	}
+}
+
+// Edge cases of the URL and argument helpers (#1093): a known token format
+// is named in a query value, after --flag=, in NAME=value and as a bare arg; an empty URL,
+// a reference, an unparsable URL and a templated value report nothing.
+func TestSecretLocations_EdgeCases(t *testing.T) {
+	const tok = "ghp_abcdefghij0123456789ABCDEF" // #nosec G101 -- fake token the rule must report
+	if got := urlSecrets("https://x.acme-corp.io/?t=" + tok); len(got) != 1 || got[0] != "a hardcoded GitHub token in the query parameter t" {
+		t.Errorf("urlSecrets(token in query) = %q", got)
+	}
+	for _, raw := range []string{"", "  ", "${MCP_URL}", "http://[::1", "relative/path"} {
+		if got := urlSecrets(raw); len(got) != 0 {
+			t.Errorf("urlSecrets(%q) = %q, want none", raw, got)
+		}
+	}
+	want := []argSecret{{0, "a hardcoded GitHub token"}, {1, "a hardcoded GitHub token in GH"}, {2, "a hardcoded GitHub token"}}
+	if got := argSecrets([]string{"--auth=" + tok, "GH=" + tok, tok}); !reflect.DeepEqual(got, want) {
+		t.Errorf("argSecrets = %+v, want %+v", got, want)
+	}
+	for _, v := range []string{"tok-${ID}abcdefgh", "<token>abcdefghij"} {
+		if literalCredential(v) {
+			t.Errorf("literalCredential(%q) = true, want false for a template", v)
+		}
 	}
 }
