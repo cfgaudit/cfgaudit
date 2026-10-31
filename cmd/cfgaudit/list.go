@@ -44,6 +44,9 @@ func listOutput(args []string) (string, int) {
 	if err := fs.Parse(args); err != nil {
 		return out.String(), 2
 	}
+	if *format != "text" && *format != "json" {
+		return fmt.Sprintf("cfgaudit: unknown --format %q; use one of: text, json\n", *format), 2
+	}
 	agentFilter := strings.ToLower(strings.TrimSpace(*agent))
 	if agentFilter != "" && knownAgents[agentFilter] == "" {
 		return fmt.Sprintf("cfgaudit: unknown agent %q; known: %s\n", *agent, strings.Join(sortedKeys(knownAgents), ", ")), 2

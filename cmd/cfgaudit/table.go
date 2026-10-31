@@ -7,11 +7,26 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
+
+// scanFormats are the documented --format values; codequality is an alias
+// for codeclimate and stays out of the message.
+var scanFormats = []string{"auto", "text", "table", "json", "sarif", "codeclimate"}
+
+// checkFormat rejects a --format value no renderer handles. The output switch
+// used to send it to text, so a typo such as "sarfi" in CI wrote a text file
+// where a SARIF upload expected JSON (#1050).
+func checkFormat(v string) error {
+	if v == "codequality" || slices.Contains(scanFormats, v) {
+		return nil
+	}
+	return fmt.Errorf("unknown --format %q; use one of: %s", v, strings.Join(scanFormats, ", "))
+}
 
 // resolveFormat turns the --format value into a concrete renderer. "auto" (the
 // default) renders a table on an interactive terminal and plain text when stdout

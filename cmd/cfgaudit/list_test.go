@@ -173,3 +173,10 @@ func TestList_AgentsAlwaysArray(t *testing.T) {
 		t.Error("agents is null for some rule")
 	}
 }
+
+func TestListOutput_UnknownFormat(t *testing.T) {
+	out, code := listOutput([]string{"--format", "sarif"})
+	if code != 2 || !strings.Contains(out, `unknown --format "sarif"; use one of: text, json`) {
+		t.Errorf("listOutput(--format sarif) = %q, exit %d; want exit 2 with the accepted values", out, code)
+	}
+}

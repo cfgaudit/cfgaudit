@@ -149,10 +149,7 @@ func TestRun_Formats(t *testing.T) {
 	if out := scan("auto"); strings.Contains(out, "SEVERITY") || !strings.Contains(out, "2 findings") {
 		t.Errorf("auto on a non-terminal is not the text format:\n%s", out)
 	}
-	// An unrecognised format falls back to text rather than failing.
-	if out := scan("yaml"); !strings.Contains(out, "2 findings") {
-		t.Errorf("unknown format did not fall back to text:\n%s", out)
-	}
+	// An unknown format is rejected: TestRun_UnknownFormat.
 }
 
 func TestRun_Version(t *testing.T) {
@@ -478,5 +475,22 @@ func TestRun_ConfigUnknownRuleIDWarns(t *testing.T) {
 	}
 	if !strings.Contains(stderr, ".cfgaudit.yml:2: rules references unknown rule CFG999") {
 		t.Errorf("unknown rule ID not reported: %q", stderr)
+	}
+}
+
+// An unknown --format is exit 2 with the accepted values and no report,
+// where it used to fall back to text (#1050). TestRun_Formats covers every
+// accepted value.
+func TestRun_UnknownFormat(t *testing.T) {
+	root := runFixture(t, map[string]string{".claude/settings.json": errorSettings})
+	code, stdout, stderr := runCLI(t, "--format", "sarfi", "--claude-version", "2.1.0", root)
+	if code != 2 {
+		t.Errorf("exit code %d, want 2", code)
+	}
+	if want := `cfgaudit: unknown --format "sarfi"; use one of: auto, text, table, json, sarif, codeclimate`; !strings.Contains(stderr, want) {
+		t.Errorf("stderr = %q, want %q", stderr, want)
+	}
+	if stdout != "" {
+		t.Errorf("no report expected for an unknown format, got %q", stdout)
 	}
 }
