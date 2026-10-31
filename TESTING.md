@@ -38,6 +38,7 @@ cfgaudit decides what a review of an AI agent's configuration reports, so a wron
 | Link check | dead links in the README and docs | pull requests touching Markdown, weekly |
 | OpenSSF Scorecard | a regression in the repository's supply-chain practices, reported as a code scanning alert | weekly and on pushes to `main` |
 | False-positive run on real repositories | findings that crafted fixtures don't show | before each release, see [RELEASING.md](RELEASING.md) |
+| Precision of new and changed rules: 20 random findings from different repositories judged in context, the rule's premise checked against a primary source (50 findings for a rule a publication quotes) | a rule that matches what its page says while the page is wrong, such as a premise the agent already handles | before each release, see [RELEASING.md](RELEASING.md#before-the-release) |
 
 Scheduled jobs also watch what cfgaudit depends on from outside and open an issue when something drifts: new versions of the OWASP frameworks the rules map to (`check-framework-versions.yml`), AVE records that the mapping cites (`check-ave-ids.yml`), and the MCP reference servers behind CFG059's allowlist (`check-typosquat-allowlist.yml`).
 
