@@ -107,6 +107,11 @@ func packageFlagValue(a string) string {
 // runner subcommand) plus every extra package named by a repeated package
 // flag: `--package <spec>` / `-p <spec>` for npm runners and `--with <spec>`
 // for uvx. Duplicates are dropped so a spec named twice is reported once.
+//
+// For npm runners the first positional is only a package when no package flag
+// is present (`npx cowsay hi`). Once any `--package` / `-p` appears, the
+// positional names the bin to execute from those packages (`npx -y -p
+// @scope/pkg@1.2.3 pkg-bin`), so it is not a package and is skipped.
 func collectPackageSpecs(runner string, args []string) []string {
 	var specs []string
 	seen := map[string]bool{}
@@ -116,6 +121,18 @@ func collectPackageSpecs(runner string, args []string) []string {
 		}
 		seen[s] = true
 		specs = append(specs, s)
+	}
+
+	// With a package flag present, the npm positional is the command/bin to
+	// run, not a package — check only the package specs.
+	npmRunAsCommand := false
+	if npmPackageRunners[runner] {
+		for _, a := range args {
+			if a == "--package" || a == "-p" || strings.HasPrefix(a, "--package=") || strings.HasPrefix(a, "-p=") {
+				npmRunAsCommand = true
+				break
+			}
+		}
 	}
 
 	// Flags whose next argument is a package spec rather than a plain flag.
@@ -151,6 +168,10 @@ func collectPackageSpecs(runner string, args []string) []string {
 		}
 		if runner == "pipx" && a == "run" {
 			continue
+		}
+		if npmRunAsCommand {
+			// positional is the bin to execute, not a package — stop here
+			break
 		}
 		add(a) // first positional is the run package; later positionals are server args
 		break
