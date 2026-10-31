@@ -65,9 +65,10 @@ func TestSensitivePathsFilter(t *testing.T) {
 		".pre-commit-hooks.yaml", "SECURITY.md", "go.mod", "go.sum", "lychee.toml",
 		".markdownlint-cli2.jsonc", ".markdownlint-site.jsonc", ".github/deadcode-allow.txt",
 		".github/framework-versions.json", ".github/mcp-reference-servers.txt", "docs/SECURITY.md",
+		".github/allowed_signers", // #1098
 	}, "\n") + "\n"
 	got, code := sensitivePathsScript(t, "", in, "filter")
-	want := ".github/deadcode-allow.txt\n.github/framework-versions.json\n.github/mcp-reference-servers.txt\n" +
+	want := ".github/allowed_signers\n.github/deadcode-allow.txt\n.github/framework-versions.json\n.github/mcp-reference-servers.txt\n" +
 		".github/scripts/sensitive-paths.sh\n.github/workflows/ci.yml\n.markdownlint-cli2.jsonc\n.markdownlint-site.jsonc\n" +
 		".pre-commit-hooks.yaml\nAGENTS.md\nSECURITY.md\naction.yml\ngo.mod\nhooks/hooks.json\nlychee.toml\nsub/CLAUDE.md\n"
 	if code != 0 || got != want {

@@ -28,12 +28,13 @@ jobs:
   # this exact SHA before anything is published. Fails closed: no completed run
   # means no release.
   gate:
-    name: Require green CI
+    name: Require green CI and a signed tag
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.dedupe.outputs.publish }}
     permissions:
       actions: read # read this repo's workflow-run history
+      contents: read # read the gate script and .github/allowed_signers from main
     steps:
       - name: Require a successful CI run for this commit
         env:
@@ -49,6 +50,21 @@ jobs:
             echo "::error::Release blocked: CI for $SHA concluded '$conclusion', expected 'success'. If CI is still running for this commit, wait for it to finish and re-run this workflow; otherwise tag a commit whose CI passed on main."
             exit 1
           fi
+
+      # The workflow file comes from the tagged commit, so the gate script and
+      # the list of keys allowed to sign come from main instead (#1098). The
+      # script also requires the commit to be on main.
+      - name: Require a tag signed by a listed maintainer key, on a commit on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh api "repos/$REPO/contents/.github/scripts/verify-release-tag.sh?ref=$DEFAULT_BRANCH" \
+            -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/verify-release-tag.sh"
+          bash "$RUNNER_TEMP/verify-release-tag.sh" gate "$REPO" "$TAG" "$SHA" "$DEFAULT_BRANCH"
 
       - name: Skip a duplicate run of this tag
         id: dedupe

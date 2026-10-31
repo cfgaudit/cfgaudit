@@ -1,0 +1,5 @@
+# Keys allowed to sign release tags (git verify-tag, gpg.format ssh). The
+# Release and Docker workflows read this file from main, never from the
+# tagged commit, so a new key takes effect once its pull request is merged
+# (#1098). One line per key: <principal> <key type> <public key>.
+245527909+predictor2718@users.noreply.github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKCG4uycY72NN0zcvr+QQeyj5Cpp09bq3v/CO3BrXBgt
