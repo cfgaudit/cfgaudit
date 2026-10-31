@@ -5,7 +5,6 @@ package parser
 
 import (
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -41,7 +40,7 @@ var skillNameRe = regexp.MustCompile(`(?m)^name:\s*["']?([^"'\n]+?)["']?\s*$`)
 // Only entries with a frontmatter name are indexed. A file without one falls
 // back to its directory name, which cannot collide with another directory.
 func SkillNameCollisions(root string) (map[string][]SkillFileEntry, error) {
-	entries, err := os.ReadDir(root)
+	entries, err := scanroot.ReadDir(root)
 	if err != nil {
 		if scanroot.IsAbsent(err) {
 			return nil, nil

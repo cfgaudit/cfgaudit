@@ -48,9 +48,9 @@ func contentPathTargets(dir string, globs []string, targets []*rules.Target) ([]
 		}
 	}
 	var out []*rules.Target
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error { // #nosec G703 -- dir is the directory the user asked to scan; reads go through scanroot
+	err := scanroot.WalkDir(dir, func(path string, d fs.DirEntry, err error) error { // dir is the directory the user asked to scan; reads go through scanroot
 		if err != nil {
-			return nil // an unreadable directory is skipped, not fatal
+			return nil
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {

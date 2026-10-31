@@ -143,7 +143,7 @@ func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unr
 		}
 	}
 	for _, d := range skillDirs {
-		_ = filepath.WalkDir(d, func(path string, e fs.DirEntry, err error) error {
+		_ = scanroot.WalkDir(d, func(path string, e fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -178,7 +178,7 @@ func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unr
 // which also reads its manifest.
 func rootSkillTargets(dir string, have []*rules.Target) []*rules.Target {
 	root := filepath.Join(dir, "skills")
-	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+	if info, err := scanroot.Stat(root); err != nil || !info.IsDir() {
 		return nil
 	}
 	seen := map[string]bool{}
@@ -188,7 +188,7 @@ func rootSkillTargets(dir string, have []*rules.Target) []*rules.Target {
 		}
 	}
 	var targets []*rules.Target
-	_ = filepath.WalkDir(root, func(path string, e fs.DirEntry, err error) error {
+	_ = scanroot.WalkDir(root, func(path string, e fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -316,7 +316,7 @@ func pluginRoots(dir, explicit string, includeUser bool) ([]string, error) {
 // manifest's name, not the folder's: on 2.1.288 a setting keyed by the folder
 // name changed nothing while one keyed by the manifest name disabled the plugin.
 func skillsDirPlugins(skillsDir string, chain []map[string]json.RawMessage) []string {
-	entries, err := os.ReadDir(skillsDir)
+	entries, err := scanroot.ReadDir(skillsDir)
 	if err != nil {
 		return nil
 	}
@@ -426,7 +426,7 @@ func scanPluginRoot(root string, unreadable func(path string, err error)) ([]*ru
 		unreadable(path, err)
 		return nil
 	}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err := scanroot.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -640,7 +640,7 @@ func pluginComponentFiles(root string, named json.RawMessage, defaultDir string)
 		}
 	}
 	for _, d := range dirs {
-		_ = filepath.WalkDir(d, func(path string, e fs.DirEntry, err error) error {
+		_ = scanroot.WalkDir(d, func(path string, e fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -711,11 +711,11 @@ func pluginMCPTarget(path string) (*rules.Target, error) {
 }
 
 func dirExists(p string) bool {
-	info, err := os.Stat(p)
+	info, err := scanroot.Stat(p)
 	return err == nil && info.IsDir()
 }
 
 func fileExists(p string) bool {
-	info, err := os.Stat(p)
+	info, err := scanroot.Stat(p)
 	return err == nil && !info.IsDir()
 }

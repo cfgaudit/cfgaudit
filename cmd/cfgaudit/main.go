@@ -210,7 +210,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// "0 findings" for a directory without any agent config reads like a clean
 	// repository, so a scan in the wrong directory or after a failed checkout
 	// looks like a pass (#1044). The machine formats stay unchanged.
-	if len(targets) == 0 && (resolved == "text" || resolved == "table") {
+	// Paths that exist but could not be read leave the scan incomplete (#1043).
+	readErrs := scanroot.ReadErrors()
+	if len(targets) == 0 && len(readErrs) == 0 && (resolved == "text" || resolved == "table") {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: no agent configuration found in %s; nothing was audited\n", dir)
 	}
 	switch resolved {
@@ -248,6 +250,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stdout, "\ncfgaudit %s — %d %s\n", cfgauditVersion, len(all), pluralize("finding", len(all)))
 	}
 
+	// A path that exists but cannot be read, usually for lack of permission on
+	// the scanning machine, used to stop the scan, turn into CFG109, or be
+	// skipped without a word (#1043). The scan now covers everything else and
+	// names every such path; exit 2 because the result is incomplete.
+	if len(readErrs) > 0 {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: could not read %d %s, results are incomplete:\n", len(readErrs), pluralize("path", len(readErrs)))
+		for _, p := range readErrs {
+			_, _ = fmt.Fprintf(stderr, "  %s\n", p)
+		}
+		return 2
+	}
 	return cfg.ExitCode(all)
 }
 
@@ -846,7 +859,7 @@ func continueBlockFiles(dir string) []string {
 // extensions, skipping the directories Continue's walkDir ignores by default.
 func continueFiles(root string, exts ...string) []string {
 	var out []string
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	_ = scanroot.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -1375,8 +1388,8 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		// to the same file as "AGENTS.md" (a case-insensitive filesystem,
 		// or a symlinked alias), so the file is never read twice.
 		if rel == "agents.md" {
-			upper, upperErr := os.Stat(filepath.Join(dir, "AGENTS.md"))
-			lower, lowerErr := os.Stat(filepath.Join(dir, "agents.md"))
+			upper, upperErr := scanroot.Stat(filepath.Join(dir, "AGENTS.md"))
+			lower, lowerErr := scanroot.Stat(filepath.Join(dir, "agents.md"))
 			if upperErr == nil && lowerErr == nil && os.SameFile(upper, lower) {
 				continue
 			}
@@ -1385,7 +1398,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	addGlobs := func(base string, globs []string, scope finding.Scope) error {
 		for _, pat := range globs {
-			matches, err := filepath.Glob(filepath.Join(base, pat))
+			matches, err := scanroot.Glob(filepath.Join(base, pat))
 			if err != nil {
 				return err
 			}
@@ -1788,7 +1801,7 @@ func isAgentDefinitionFile(path, parent string) bool {
 // frontmatter's mcpServers block is attached separately (see attachSubagentBlocks).
 func geminiAgentFiles(base string) ([]string, error) {
 	dir := filepath.Join(base, ".gemini", "agents")
-	entries, err := os.ReadDir(dir)
+	entries, err := scanroot.ReadDir(dir)
 	if err != nil {
 		if scanroot.IsAbsent(err) {
 			return nil, nil
@@ -1924,7 +1937,7 @@ func filteredInstructionFiles(base string) ([]string, error) {
 	var out []string
 	for _, fd := range filteredInstructionDirs {
 		root := filepath.Join(base, fd.dir)
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		err := scanroot.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				if scanroot.IsAbsent(err) {
 					return nil
@@ -1957,7 +1970,7 @@ func filteredInstructionFiles(base string) ([]string, error) {
 func kimiSkillFiles(base string) []string {
 	var out []string
 	brand := filepath.Join(base, ".kimi-code", "skills")
-	_ = filepath.WalkDir(brand, func(path string, d fs.DirEntry, err error) error {
+	_ = scanroot.WalkDir(brand, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -1974,7 +1987,7 @@ func kimiSkillFiles(base string) []string {
 		return nil
 	})
 	for _, root := range []string{brand, filepath.Join(base, ".agents", "skills")} {
-		entries, err := os.ReadDir(root)
+		entries, err := scanroot.ReadDir(root)
 		if err != nil {
 			continue
 		}
@@ -1983,7 +1996,7 @@ func kimiSkillFiles(base string) []string {
 			if e.IsDir() || name == "SKILL.md" || !strings.HasSuffix(name, ".md") {
 				continue
 			}
-			if info, err := os.Stat(filepath.Join(root, strings.TrimSuffix(name, ".md"), "SKILL.md")); err == nil && !info.IsDir() {
+			if info, err := scanroot.Stat(filepath.Join(root, strings.TrimSuffix(name, ".md"), "SKILL.md")); err == nil && !info.IsDir() {
 				continue
 			}
 			out = append(out, filepath.Join(root, name))
@@ -2006,7 +2019,7 @@ var devinAgentFileNames = []string{"AGENT.md", "AGENTS.md", "agent.md", "agents.
 // reads, is already walked for Kimi.
 func devinAgentDirFiles(base string) []string {
 	root := filepath.Join(base, ".devin", "agents")
-	entries, err := os.ReadDir(root)
+	entries, err := scanroot.ReadDir(root)
 	if err != nil {
 		return nil
 	}
@@ -2017,7 +2030,7 @@ func devinAgentDirFiles(base string) []string {
 		}
 		for _, name := range devinAgentFileNames {
 			p := filepath.Join(root, e.Name(), name)
-			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			if info, err := scanroot.Stat(p); err == nil && !info.IsDir() {
 				out = append(out, p)
 				break
 			}
@@ -2088,15 +2101,15 @@ var clineRulesExts = map[string]bool{".md": true, ".markdown": true, ".txt": tru
 func clineRulesFiles(base string) ([]string, error) {
 	var out []string
 	single := filepath.Join(base, ".clinerules")
-	if info, err := os.Stat(single); err == nil && !info.IsDir() {
+	if info, err := scanroot.Stat(single); err == nil && !info.IsDir() {
 		out = append(out, single)
 	}
 	for _, root := range []string{single, filepath.Join(base, ".cline", "rules")} {
-		info, err := os.Stat(root)
+		info, err := scanroot.Stat(root)
 		if err != nil || !info.IsDir() {
 			continue
 		}
-		err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		err = scanroot.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -2141,7 +2154,7 @@ func agentSkillsFiles(base string, dirs []string) ([]string, error) {
 	var out []string
 	for _, rel := range dirs {
 		root := filepath.Join(base, rel)
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		err := scanroot.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				if scanroot.IsAbsent(err) {
 					return nil
@@ -2177,7 +2190,7 @@ func kimiAgentFiles(base string) ([]string, error) {
 		filepath.Join(".agents", "agents"),
 	} {
 		root := filepath.Join(base, rel)
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		err := scanroot.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				if scanroot.IsAbsent(err) {
 					return nil
@@ -2201,7 +2214,7 @@ func agentRulesFiles(base string, dirs []string) ([]string, error) {
 	var out []string
 	for _, dir := range dirs {
 		root := filepath.Join(base, dir)
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		err := scanroot.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				// A missing rules directory is the common case — not an error.
 				if scanroot.IsAbsent(err) {
@@ -2366,7 +2379,7 @@ func agentHookTargets(dir string) ([]*rules.Target, error) {
 	targets = append(targets, copilotHookTargets...)
 
 	// Copilot reads every *.json in .github/hooks, not one fixed filename.
-	matches, err := filepath.Glob(filepath.Join(dir, ".github", "hooks", "*.json"))
+	matches, err := scanroot.Glob(filepath.Join(dir, ".github", "hooks", "*.json"))
 	if err != nil {
 		return nil, fmt.Errorf("glob copilot hooks: %w", err)
 	}
@@ -2654,7 +2667,7 @@ func openCodeAgentPermissionTargets(dir string) ([]*rules.Target, error) {
 // missing directory yields nothing.
 func markdownFiles(root string, recursive bool) ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err := scanroot.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if scanroot.IsAbsent(err) {
 				return nil
@@ -2697,12 +2710,12 @@ func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
 	var targets []*rules.Target
 	for _, cd := range openCodeCodeDirs {
 		for _, ext := range []string{"*.ts", "*.js"} {
-			matches, err := filepath.Glob(filepath.Join(dir, cd.dir, ext))
+			matches, err := scanroot.Glob(filepath.Join(dir, cd.dir, ext))
 			if err != nil {
 				return nil, err
 			}
 			for _, m := range matches {
-				if info, err := os.Stat(m); err != nil || info.IsDir() {
+				if info, err := scanroot.Stat(m); err != nil || info.IsDir() {
 					continue
 				}
 				targets = append(targets, &rules.Target{
@@ -2725,7 +2738,7 @@ func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
 // set for -p).
 func copilotExtensionTargets(dir string) []*rules.Target {
 	var targets []*rules.Target
-	entries, err := os.ReadDir(filepath.Join(dir, ".github", "extensions"))
+	entries, err := scanroot.ReadDir(filepath.Join(dir, ".github", "extensions"))
 	if err != nil {
 		return nil
 	}
@@ -2735,7 +2748,7 @@ func copilotExtensionTargets(dir string) []*rules.Target {
 		}
 		for _, name := range []string{"extension.mjs", "extension.cjs", "extension.js"} {
 			p := filepath.Join(dir, ".github", "extensions", e.Name(), name)
-			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			if info, err := scanroot.Stat(p); err == nil && !info.IsDir() {
 				targets = append(targets, &rules.Target{
 					Scope:     finding.ScopeProject,
 					AgentCode: &rules.AgentCodeFile{Path: p, Kind: "copilot-extension"},
@@ -3062,7 +3075,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// execution", additive to the session's permissions. Each .devin/skills
 	// SKILL.md with one rides a Devin target, so CFG104 judges it like the block
 	// in .devin/config.json.
-	skillFiles, _ := filepath.Glob(filepath.Join(dir, ".devin", "skills", "*", "SKILL.md"))
+	skillFiles, _ := scanroot.Glob(filepath.Join(dir, ".devin", "skills", "*", "SKILL.md"))
 	for _, path := range skillFiles {
 		data, err := scanroot.ReadFile(path)
 		if err != nil {
@@ -3228,7 +3241,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// Grok .grok/hooks/*.json — committable hook files whose command handlers run
 	// shell commands. Routed through commandSites so the command-content rules
 	// apply, one target per file, attributed to the file the command came from.
-	grokHookFiles, err := filepath.Glob(filepath.Join(dir, ".grok", "hooks", "*.json"))
+	grokHookFiles, err := scanroot.Glob(filepath.Join(dir, ".grok", "hooks", "*.json"))
 	if err != nil {
 		return nil, fmt.Errorf("glob grok hooks: %w", err)
 	}
