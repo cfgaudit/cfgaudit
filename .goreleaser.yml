@@ -17,8 +17,12 @@ builds:
     binary: cfgaudit
     env:
       - CGO_ENABLED=0
+    # A rebuild of the tag gives the same bytes: -trimpath drops the build
+    # machine's paths (the build ID is then derived from the content), and the
+    # binary's mtime is the commit time rather than the build time (#1103).
     flags:
       - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
     # Mirror the Dockerfile's ldflags so binaries report the same version string.
     ldflags:
       - -s -w -X main.cfgauditVersion={{ .Version }}
@@ -40,10 +44,25 @@ archives:
       - goos: windows
         formats:
           - zip
+    # Fixed metadata for every entry, so the archive does not carry the
+    # checkout's file times or the build user (#1103).
+    builds_info:
+      mtime: "{{ .CommitDate }}"
+      owner: root
+      group: root
     files:
-      - README.md
-      - LICENSE
-      - docs/rules/*.md
+      - src: README.md
+        info: &fileinfo
+          mtime: "{{ .CommitDate }}"
+          owner: root
+          group: root
+          mode: 0644
+      - src: LICENSE
+        info: *fileinfo
+      - src: docs/rules/*.md
+        dst: docs/rules
+        strip_parent: true
+        info: *fileinfo
 
 checksum:
   name_template: checksums.txt
