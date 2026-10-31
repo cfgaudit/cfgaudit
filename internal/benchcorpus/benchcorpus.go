@@ -236,3 +236,24 @@ func LargeSettings(n int) string {
 	}
 	return `{"permissions":{"allow":[` + strings.Join(allow, ",") + `],"deny":[` + strings.Join(deny, ",") + `]}}`
 }
+
+// ManyMCPServers is a settings.json with n MCP servers, each pinned, with an
+// argument list and an env block, so the per-server rules do their full work
+// without reporting anything (#1105).
+func ManyMCPServers(n int) string {
+	servers := make([]string, n)
+	for i := range servers {
+		servers[i] = fmt.Sprintf(`"server-%d":{"command":"npx","args":["-y","@example/server-%d@1.2.%d","--root","./data-%d"],"env":{"LOG_LEVEL":"info","DATA_DIR":"./data-%d"}}`, i, i, i, i, i)
+	}
+	return `{"mcpServers":{` + strings.Join(servers, ",") + `}}`
+}
+
+// ManyHooks is a settings.json with n PreToolUse hook commands, each a plain
+// local script call (#1105).
+func ManyHooks(n int) string {
+	hooks := make([]string, n)
+	for i := range hooks {
+		hooks[i] = fmt.Sprintf(`{"matcher":"Edit","hooks":[{"type":"command","command":"./scripts/format-%d.sh --check"}]}`, i)
+	}
+	return `{"hooks":{"PreToolUse":[` + strings.Join(hooks, ",") + `]}}`
+}
