@@ -151,3 +151,118 @@ func TestCFG010_MultipleServers_SortedOutput(t *testing.T) {
 		t.Errorf("expected findings in sorted order, got: %s / %s", f[0].Message, f[1].Message)
 	}
 }
+
+func TestCFG010_NpxPackageFlagUnpinned(t *testing.T) {
+	// Two --package flags, one pinned and one not: only the unpinned extra
+	// package is reported (the pinned run package stays clean).
+	json := `{"mcpServers":{"s":{"command":"npx","args":["--package","a@1.0.0","--package","b","-y","a"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned --package, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "\"b\"") {
+		t.Errorf("expected finding to name the unpinned package b, got: %s", f[0].Message)
+	}
+}
+
+func TestCFG010_NpxPackageFlagPinned_NoFinding(t *testing.T) {
+	json := `{"mcpServers":{"s":{"command":"npx","args":["--package","b@1.0.0","-y","b"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 0 {
+		t.Errorf("expected no finding when all --package specs are pinned, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_NpxPackageFlagForms(t *testing.T) {
+	// -p <spec> and --package=<spec> are collected; both are unpinned here.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-p","b","--package=c","-y","a@1.0.0"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 2 {
+		t.Fatalf("expected 2 findings for -p and --package= unpinned specs, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_UvxWithUnpinned(t *testing.T) {
+	json := `{"mcpServers":{"py":{"command":"uvx","args":["--with","ruff","mcp-server-fetch"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 2 {
+		t.Fatalf("expected findings for unpinned --with and run package, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_UvxWithPinned_NoFinding(t *testing.T) {
+	json := `{"mcpServers":{"py":{"command":"uvx","args":["--with","ruff==0.2.0","mcp-server-fetch@0.1.0"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 0 {
+		t.Errorf("expected no finding when uvx --with is pinned, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_NpxPackageFlagBinCommand_NoFinding(t *testing.T) {
+	// With -p present the positional is the bin to execute, not a package:
+	// npx -y -p @scope/pkg@1.2.3 pkg-bin must not report pkg-bin as unpinned.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-y","-p","@scope/pkg@1.2.3","pkg-bin"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 0 {
+		t.Errorf("expected no finding when the positional is a bin command, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_NpxPackageFlagBinCommand_UnpinnedSpecStillReported(t *testing.T) {
+	// The positional stays a bin command, but the unpinned -p spec is still reported.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-y","-p","@scope/pkg","pkg-bin"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned -p spec, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "\"@scope/pkg\"") {
+		t.Errorf("expected finding to name the unpinned spec @scope/pkg, got: %s", f[0].Message)
+	}
+}
+
+func TestCFG010_NpxNoPackageFlag_StillChecksRunPackage(t *testing.T) {
+	// Without any --package/-p the first positional is the run package and is checked.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-y","cowsay"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned run package, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "\"cowsay\"") {
+		t.Errorf("expected finding to name the run package cowsay, got: %s", f[0].Message)
+	}
+}
+
+func TestCFG010_NpxServerFlagAfterPositional_StillChecksRunPackage(t *testing.T) {
+	// `-p 3000` after the positional belongs to the executed server, not npx:
+	// the run package must still be reported as unpinned.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-y","@acme/mcp-server","-p","3000"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned run package, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "\"@acme/mcp-server\"") {
+		t.Errorf("expected finding to name the run package @acme/mcp-server, got: %s", f[0].Message)
+	}
+}
+
+func TestCFG010_UvxPythonFlagNotPackageSpec(t *testing.T) {
+	// For uvx, `-p` is --python, not a package flag: `-p=3.12` must not be
+	// reported as an unpinned package, and the pinned run package stays clean.
+	json := `{"mcpServers":{"py":{"command":"uvx","args":["-p=3.12","ruff==0.1.0"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 0 {
+		t.Errorf("expected no finding when uvx -p is a python flag, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_UvxWithEquals_UnpinnedSpecReported(t *testing.T) {
+	// uvx --with=<spec> is a package spec and must be checked like --with <spec>.
+	json := `{"mcpServers":{"py":{"command":"uvx","args":["--with=ruff","mcp-server-fetch@0.1.0"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned --with= spec, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "\"ruff\"") {
+		t.Errorf("expected finding to name the unpinned spec ruff, got: %s", f[0].Message)
+	}
+}
