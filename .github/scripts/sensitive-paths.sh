@@ -29,7 +29,7 @@ filter() {
     -e '^(\.gitignore|REUSE\.toml|\.golangci\.ya?ml|\.github/(dependabot|secret_scanning)\.yml|(\.github/|docs/)?CODEOWNERS)$' \
     -e '^(\.pre-commit-hooks\.yaml|SECURITY\.md|go\.mod)$' \
     -e '^(lychee\.toml|\.markdownlint-cli2\.jsonc|\.markdownlint-site\.jsonc)$' \
-    -e '^\.github/(deadcode-allow\.txt|framework-versions\.json|mcp-reference-servers\.txt)$' \
+    -e '^\.github/(deadcode-allow\.txt|framework-versions\.json|mcp-reference-servers\.txt|allowed_signers)$' \
     | sort -u || true
 }
 

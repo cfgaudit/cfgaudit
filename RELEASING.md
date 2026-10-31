@@ -29,14 +29,16 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
 
 ## Cutting the release
 
-8. **Tag.** Create an annotated tag on the pin commit on `main` and push it:
+8. **Tag.** Create a signed tag on the pin commit on `main` and push it:
 
    ```sh
-   git tag -a vX.Y.Z -m "cfgaudit X.Y.Z" <commit>
+   git tag -s vX.Y.Z -m "cfgaudit X.Y.Z" <commit>
    git push origin vX.Y.Z
    ```
 
-   The Release and Docker workflows refuse a commit whose CI did not pass. Before anything is published, the Release workflow runs every archive on its platform and the Docker workflow runs the image, both checking the version and a fixture scan. They then build the archives, checksums, SBOMs and the container image, sign them with build provenance, create the GitHub release and update the Homebrew cask in `cfgaudit/homebrew-tap`. Check that exactly one run of each workflow ran for the tag and that both succeeded.
+   The tag must be signed with a key listed in `.github/allowed_signers` on `main`. For an SSH key, set it up once with `git config --global gpg.format ssh` and `git config --global user.signingkey ~/.ssh/<key>.pub`, and check the tag locally with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`. A new maintainer's key goes into `.github/allowed_signers` through a pull request before their first release.
+
+   The Release and Docker workflows refuse a commit that is not on `main` or whose CI did not pass, and a tag that is not signed by a listed key; the gate reads its script and the key list from `main`, never from the tagged commit. Before anything is published, the Release workflow runs every archive on its platform and the Docker workflow runs the image, both checking the version and a fixture scan. They then build the archives, checksums, SBOMs and the container image, sign them with build provenance, create the GitHub release and update the Homebrew cask in `cfgaudit/homebrew-tap`. Check that exactly one run of each workflow ran for the tag and that both succeeded.
 9. **Release notes.** Above the generated changelog, write the hand-written part:
    - **Can turn a passing pipeline red**: new rules at `error`, stricter checks, new exit-code cases.
    - **Output changes**: changed messages, paths, fingerprints or report fields that make existing findings show up as new.
