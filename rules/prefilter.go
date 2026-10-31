@@ -214,30 +214,9 @@ func (r filteredRegexp) FindStringSubmatchIndex(s string) []int {
 	return r.Regexp.FindStringSubmatchIndex(s)
 }
 
-func (r filteredRegexp) FindStringSubmatch(s string) []string {
-	if !r.filter.MayMatch(s) {
-		return nil
-	}
-	return r.Regexp.FindStringSubmatch(s)
-}
-
 func (r filteredRegexp) FindAllStringIndex(s string, n int) [][]int {
 	if !r.filter.MayMatch(s) {
 		return nil
 	}
 	return r.Regexp.FindAllStringIndex(s, n)
-}
-
-func (r filteredRegexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
-	if !r.filter.MayMatch(s) {
-		return nil
-	}
-	return r.Regexp.FindAllStringSubmatchIndex(s, n)
-}
-
-func (r filteredRegexp) FindString(s string) string {
-	if !r.filter.MayMatch(s) {
-		return ""
-	}
-	return r.Regexp.FindString(s)
 }

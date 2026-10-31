@@ -56,6 +56,7 @@ CI additionally runs:
 - `govulncheck` against the module
 - `zizmor` against `.github/workflows/`
 - Branch coverage with `gobco` (see [Tests](#4-tests))
+- `deadcode` from `cmd/cfgaudit`: an exported function that nothing reachable calls fails the build unless `.github/deadcode-allow.txt` lists it with a reason
 - Schema validation of `testdata/settings/valid/*.json` against the live SchemaStore schema (push, PR, and nightly)
 - Schema validation of the golden reports in `cmd/cfgaudit/testdata/reports/` against the SARIF 2.1.0 schema (from SchemaStore, pinned by hash) and GitLab's Code Quality format (`testdata/schemas/gitlab-code-quality.json`)
 
@@ -66,6 +67,13 @@ npm ci --prefix .github/tools/ajv --ignore-scripts
 curl -sSfL https://json.schemastore.org/sarif-2.1.0.json -o /tmp/sarif-2.1.0.json
 node .github/tools/ajv/validate.js /tmp/sarif-2.1.0.json cmd/cfgaudit/testdata/reports/sarif.golden.json
 node .github/tools/ajv/validate.js testdata/schemas/gitlab-code-quality.json cmd/cfgaudit/testdata/reports/codeclimate.golden.json
+```
+
+When the Dead code job fails, remove the function, or call it from production code if a test was the only caller. Keep it only when there is a reason, and list it in `.github/deadcode-allow.txt`. To run the check locally:
+
+```sh
+(cd .github/tools/deadcode && go build -o /tmp/deadcode golang.org/x/tools/cmd/deadcode)
+.github/scripts/deadcode-check.sh /tmp/deadcode
 ```
 
 If you change anything under `.github/workflows/`, run `zizmor .github/workflows/` locally — actions must be pinned to commit SHAs and `persist-credentials: false` must stay on `actions/checkout`.

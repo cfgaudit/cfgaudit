@@ -42,17 +42,3 @@ func ParseIgnore(path string) ([]IgnoreLine, error) {
 	}
 	return lines, scanner.Err()
 }
-
-// HasPattern reports whether any of the ignore lines matches the given glob-style
-// substring (case-insensitive prefix/suffix match is sufficient for our checks).
-func HasPattern(lines []IgnoreLine, pattern string) bool {
-	pattern = strings.ToLower(pattern)
-	for _, l := range lines {
-		if strings.ToLower(l.Pattern) == pattern ||
-			strings.ToLower(l.Pattern) == "/"+pattern ||
-			strings.HasSuffix(strings.ToLower(l.Pattern), "/"+pattern) {
-			return true
-		}
-	}
-	return false
-}

@@ -34,6 +34,8 @@ jobs:
         working-directory: .github/tools/gobco
       - run: go mod tidy -diff
         working-directory: .github/tools/benchstat
+      - run: go mod tidy -diff
+        working-directory: .github/tools/deadcode
       - run: go build ./...
 
   test:
@@ -216,6 +218,26 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
+
+  deadcode:
+    name: Dead code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Built from .github/tools/deadcode, whose go.sum pins the version.
+      - name: Build deadcode
+        working-directory: .github/tools/deadcode
+        run: go build -o "$RUNNER_TEMP/deadcode" golang.org/x/tools/cmd/deadcode
+      # Exported functions nothing reachable from cmd/cfgaudit calls, outside
+      # .github/deadcode-allow.txt, and stale entries there (#1099).
+      - name: Check for unreachable functions
+        run: .github/scripts/deadcode-check.sh "$RUNNER_TEMP/deadcode"
 
   security:
     name: Security (govulncheck)

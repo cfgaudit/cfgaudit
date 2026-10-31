@@ -99,11 +99,7 @@ var pathParsers = []struct {
 	}},
 	{"scheduled_tasks.json", func(p string) { _, _ = ParseScheduledTasks(p) }},
 	{"skills-lock.json", func(p string) { _, _ = ParseSkillsLock(p) }},
-	{".claudeignore", func(p string) {
-		if lines, err := ParseIgnore(p); err == nil {
-			_ = HasPattern(lines, ".env")
-		}
-	}},
+	{".claudeignore", func(p string) { _, _ = ParseIgnore(p) }},
 	{"tasks.json", func(p string) {
 		_, _ = ParseVSCodeTasks(p)
 		_, _ = ParseZedTasks(p)

@@ -1,0 +1,5 @@
+# Functions deadcode reports as unreachable from cmd/cfgaudit that are kept on
+# purpose (#1099). One per line, as `<import path>.<func>` or
+# `<import path>.<Type>.<method>`, followed by `#` and the reason. The Dead code
+# job in ci.yml fails on an unreachable function that is not listed here, and
+# on an entry that is no longer reported.
