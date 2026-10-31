@@ -264,9 +264,15 @@ jobs:
       # The platform packages first, so the main package never points at a
       # version that is not there. A package already published at this version
       # is skipped, so a rerun after a partial upload finishes the rest.
+      # Trusted publishing can only be set up for a package that exists, so the
+      # very first upload of each package uses a granular access token stored
+      # as NPM_TOKEN in the `npm` environment. Delete that secret once the
+      # trusted publishers are set up; without it, npm publishes through OIDC.
+      # Provenance is attached either way.
       - name: Publish
         env:
           VERSION: ${{ needs.build.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           npm --version
