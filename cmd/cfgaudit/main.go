@@ -206,7 +206,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	all = cfg.PostProcess(all, dir)
 
 	stdoutFile, _ := stdout.(*os.File)
-	switch resolveFormat(*format, stdoutFile != nil && isTTY(stdoutFile)) {
+	resolved := resolveFormat(*format, stdoutFile != nil && isTTY(stdoutFile))
+	// "0 findings" for a directory without any agent config reads like a clean
+	// repository, so a scan in the wrong directory or after a failed checkout
+	// looks like a pass (#1044). The machine formats stay unchanged.
+	if len(targets) == 0 && (resolved == "text" || resolved == "table") {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: no agent configuration found in %s; nothing was audited\n", dir)
+	}
+	switch resolved {
 	case "json":
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
