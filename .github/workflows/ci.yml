@@ -187,7 +187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, windows-11-arm]
     defaults:
       run:
         # The Windows runner defaults to PowerShell; force bash so the go
@@ -202,7 +202,16 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go mod verify
-      - run: go test -race ./...
+      # The race detector is not supported on windows/arm64, so that leg runs
+      # the tests without it (#1126).
+      - env:
+          OS: ${{ matrix.os }}
+        run: |
+          if [ "$OS" = windows-11-arm ]; then
+            go test ./...
+          else
+            go test -race ./...
+          fi
 
   lint:
     name: Lint

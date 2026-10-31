@@ -41,7 +41,7 @@ Whether the output stays readable for the tools that consume it, and existing fi
 | Layer | Protects against | Runs |
 |---|---|---|
 | Fuzzing (`fuzz.yml`): whole scan, path parsers, JSONC stripping, Markdown instructions, key location, prefilters | crashes and hangs on broken or hostile input | short runs on pull requests and `main`, 10 minutes per target weekly |
-| Race detector, Linux, macOS and Windows | data races between rules running in parallel, platform-specific path and permission bugs | every pull request |
+| Race detector, Linux, macOS and Windows; the tests also run on Windows on ARM, where Go has no race detector | data races between rules running in parallel, platform-specific path and permission bugs | every pull request |
 | Linear scaling (`rules/scaling_test.go`): every rule on generated inputs of n and 8·n instruction lines, permission entries, MCP servers and hook commands (`internal/benchcorpus`) | a rule whose allocations or run time grow faster than its input, such as a nested loop over the servers of one file, which a fixed-size benchmark corpus does not show | every pull request |
 | Benchmarks (`bench.yml`), pull request against its base | allocation regressions beyond the limit (a gate); time is reported, history is recorded on `main` ([benchmarks page](https://cfgaudit.github.io/benchmarks/)) | pull requests; `main` |
 
@@ -73,7 +73,7 @@ Whether cfgaudit's own dependencies, workflows and releases can be trusted.
 | Layer | Protects against | Runs |
 |---|---|---|
 | Action smoke test | an `action.yml` that does not run, writes no valid SARIF, reads the scanned project's own config when a separate one is given, or passes a tool error in advisory mode | every pull request |
-| Package smoke tests (`release-smoke.yml`, `pypi.yml`, a step in `build-image.yml`, all through `.github/scripts/smoke-test.sh`) | an archive, wheel or image that does not start, reports the wrong version or finds nothing: each archive is unpacked and run on its platform (Linux amd64 and arm64, macOS arm64, Windows amd64), each wheel is installed into a fresh virtual environment on its platform (also musl in Alpine) before upload, the image is run before it is pushed | before every release and PyPI upload; on pull requests that change the release build or the packaging |
+| Package smoke tests (`release-smoke.yml`, `pypi.yml`, a step in `build-image.yml`, all through `.github/scripts/smoke-test.sh`) | an archive, wheel or image that does not start, reports the wrong version or finds nothing: each archive is unpacked and run on its platform (Linux amd64 and arm64, macOS arm64, Windows amd64 and arm64), each wheel is installed into a fresh virtual environment on its platform (also musl in Alpine) before upload, the image is run before it is pushed | before every release and PyPI upload; on pull requests that change the release build or the packaging |
 
 ### Documentation
 
