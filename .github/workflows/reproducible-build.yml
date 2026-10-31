@@ -1,0 +1,89 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Reproducible build
+
+# Builds the release archives twice, on two different runners (amd64 and
+# arm64 hosts), with the release's GoReleaser config and version, and fails
+# unless every archive has the same checksum (#1103). A release binary can
+# then be checked against its source: rebuild the tag with the same Go
+# version (`go version -m cfgaudit` prints it) and compare checksums.txt.
+#
+# SBOMs are skipped: syft writes a timestamp and a random document ID, and
+# they are not part of checksums.txt.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .goreleaser.yml
+      - go.mod
+      - go.sum
+      - "cmd/**"
+      - "!cmd/**/*_test.go"
+      - .github/workflows/reproducible-build.yml
+      - .github/workflows/build-release.yml
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.runner }})
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # GoReleaser derives the version from the tags
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      # The same GoReleaser version as build-release.yml, nothing published.
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.18.3
+          args: release --snapshot --clean --skip=sbom
+
+      - name: Record the Go version
+        run: go version | tee dist/GO_VERSION
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: checksums-${{ matrix.runner }}
+          path: |
+            dist/checksums.txt
+            dist/GO_VERSION
+          retention-days: 3
+
+  compare:
+    name: Compare checksums
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: checksums-*
+      - name: Every archive has the same checksum on both runners
+        run: |
+          set -euo pipefail
+          cat checksums-*/GO_VERSION
+          a=checksums-ubuntu-latest/checksums.txt
+          b=checksums-ubuntu-24.04-arm/checksums.txt
+          if diff -u "$a" "$b"; then
+            echo "Reproducible: $(wc -l < "$a") archives match."
+          else
+            echo "::error::The two builds differ; see the diff above."
+            exit 1
+          fi

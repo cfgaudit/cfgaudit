@@ -120,6 +120,8 @@ sha256sum cfgaudit-rebuilt ../cfgaudit   # the binary from the release archive
 
 Build from a fresh clone of the tag: Go records the commit and whether the working tree is clean in the binary, so a modified checkout or a `git worktree` gives a different hash.
 
+The archives are reproducible too, for releases after v1.19.0: every entry carries the commit time and `root` ownership instead of the build machine's, so rebuilding the tag with GoReleaser (`goreleaser release --clean --skip=publish,sbom`) and the same Go version gives the checksums in `checksums.txt`. The Reproducible build workflow builds the archives on two runners for every push to `main` and fails when they differ.
+
 ### A note on SBOMs
 
 The container image carries its SBOM as a signed attestation. The per-archive `.sbom.json` files, by contrast, are published as **plain release assets, not attestations** — deliberately.
