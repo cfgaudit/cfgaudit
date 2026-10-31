@@ -177,7 +177,7 @@ func Load(path string) (*Config, error) {
 func Discover(dir string) (*Config, string, error) {
 	for _, name := range FileNames {
 		p := filepath.Join(dir, name)
-		data, err := scanroot.ReadFile(p)
+		data, err := scanroot.ReadOwnFile(p)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue

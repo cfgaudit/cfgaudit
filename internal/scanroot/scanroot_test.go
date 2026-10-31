@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -193,5 +195,115 @@ func TestReadFile_FileDirectoryMixups(t *testing.T) {
 	}
 	if _, err := os.ReadDir(filepath.Join(dir, ".codex", "skills")); !IsAbsent(err) {
 		t.Errorf("IsAbsent should cover a directory read through a file, got %v", err)
+	}
+}
+
+// lock removes every permission bit from path until the test ends. It skips
+// where permission bits do not stop reads: on Windows and for root.
+func lock(t *testing.T, path string) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("permission bits do not stop reads here")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, info.Mode().Perm()) })
+}
+
+// A path that exists but cannot be read reads as absent from every helper and
+// is recorded once, against the path that blocks it (#1043). Set forgets it.
+func TestReadErrors(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "locked.json"), "{}")
+	write(t, filepath.Join(dir, "hooks", "h.json"), "{}")
+	write(t, filepath.Join(dir, "skills", "x", "SKILL.md"), "x")
+	write(t, filepath.Join(dir, "skills", "y", "SKILL.md"), "y")
+	if err := os.Mkdir(filepath.Join(dir, "vscode"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := Set(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+	for _, p := range []string{"locked.json", "hooks", "skills/x", "vscode"} {
+		lock(t, filepath.Join(dir, filepath.FromSlash(p)))
+	}
+
+	if _, err := ReadFile(filepath.Join(dir, "locked.json")); !IsAbsent(err) {
+		t.Errorf("ReadFile: %v, want absent", err)
+	}
+	if f, err := Open(filepath.Join(dir, "locked.json")); !IsAbsent(err) {
+		_ = f.Close()
+		t.Errorf("Open: %v, want absent", err)
+	}
+	if _, err := ReadOwnFile(filepath.Join(dir, "locked.json")); err == nil || IsAbsent(err) {
+		t.Errorf("ReadOwnFile: %v, want the permission error", err)
+	}
+	if m, err := Glob(filepath.Join(dir, "hooks", "*.json")); err != nil || len(m) != 0 {
+		t.Errorf("Glob = %v, %v; want no match", m, err)
+	}
+	if m, _ := Glob(filepath.Join(dir, "skills", "*", "SKILL.md")); len(m) != 1 || filepath.Base(filepath.Dir(m[0])) != "y" {
+		t.Errorf("Glob over skills = %v, want only y", m)
+	}
+	var walked []string
+	_ = WalkDir(filepath.Join(dir, "skills"), func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			walked = append(walked, filepath.Base(filepath.Dir(path)))
+		}
+		return err
+	})
+	if len(walked) != 1 || walked[0] != "y" {
+		t.Errorf("WalkDir saw %v, want only y", walked)
+	}
+	// Two files that do not exist in a locked directory are one entry for it.
+	for _, name := range []string{"mcp.json", "settings.json"} {
+		if _, err := Stat(filepath.Join(dir, "vscode", name)); !IsAbsent(err) {
+			t.Errorf("Stat(vscode/%s): %v, want absent", name, err)
+		}
+	}
+	if _, err := ReadDir(filepath.Join(dir, "vscode")); !IsAbsent(err) {
+		t.Errorf("ReadDir(vscode): %v, want absent", err)
+	}
+	// A path that does not exist at all is not a read error.
+	if _, err := ReadFile(filepath.Join(dir, "missing.json")); !IsAbsent(err) {
+		t.Errorf("missing file: %v", err)
+	}
+
+	want := []string{"hooks", "locked.json", "skills/x", "vscode"}
+	for i := range want {
+		want[i] = filepath.Join(dir, filepath.FromSlash(want[i]))
+	}
+	if got := ReadErrors(); !reflect.DeepEqual(got, want) {
+		t.Errorf("ReadErrors =\n%v\nwant\n%v", got, want)
+	}
+	if err := Set(dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadErrors(); len(got) != 0 {
+		t.Errorf("ReadErrors after Set = %v, want none", got)
+	}
+}
+
+// Glob keeps filepath.Glob's results and its error for a bad pattern.
+func TestGlob(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "a", "x.json"), "{}")
+	write(t, filepath.Join(dir, "b", "y.json"), "{}")
+	write(t, filepath.Join(dir, "b", "z.txt"), "")
+	for _, pat := range []string{"*/*.json", "a/x.json", "a/missing.json", "*/z.*", "c/*"} {
+		pattern := filepath.Join(dir, filepath.FromSlash(pat))
+		want, _ := filepath.Glob(pattern)
+		got, err := Glob(pattern)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("Glob(%s) = %v, %v; want %v", pat, got, err, want)
+		}
+	}
+	if _, err := Glob(filepath.Join(dir, "[")); err == nil {
+		t.Error("Glob with a bad pattern: want an error")
 	}
 }
