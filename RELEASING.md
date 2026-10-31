@@ -23,7 +23,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
    - `version` in `.claude-plugin/plugin.json`
    - the default `image` in `action.yml`
    - the default version in both GitLab component templates under `templates/`
-   - the component examples in the README
+   - the component examples and the `npx cfgaudit@X.Y.Z` / `npm install … cfgaudit@X.Y.Z` examples in the README
 
    `TestVersionPinsAgree` (`pins_test.go`) fails until every one of them names the version in `bin/cfgaudit`, so a pin left behind keeps the pull request red. A new place that pins the version goes into that test and into this list. The pull request touches sensitive paths and needs the `sensitive-paths-reviewed` label. Merge it and wait for CI on `main`.
 
@@ -59,7 +59,8 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
    ```
 
 12. **PyPI.** After the Release workflow, the PyPI workflow builds the wheels from the release archives, smoke-tests them on each platform and waits for approval in the `pypi` environment. Approve it, then check that `pipx install cfgaudit==X.Y.Z` installs the release.
-13. **GitLab.** Push `main`, the new tag and `v1` to [gitlab.com/cfgaudit/cfgaudit](https://gitlab.com/cfgaudit/cfgaudit). Check `main` there, not only the tag list: the mirror is not updated automatically and has lagged behind before. When its pipelines for `main`, `vX.Y.Z` and `v1` are green, create the GitLab release on `vX.Y.Z`; the release is what publishes the component version to the CI/CD Catalog.
-14. **Website.** [cfgaudit.github.io](https://cfgaudit.github.io) is generated from the latest release by a daily build. Check the next day that it shows the new version and rules.
-15. **Advisories.** Publish any security advisory the release fixes, if it is not public yet.
-16. **AVE crosswalk.** If step 4 changed mappings, or AVE itself changed, send the updated crosswalk upstream.
+13. **npm.** After the Release workflow, the npm workflow packs the release archives into one package per platform and the `cfgaudit` package, smoke-tests them on each platform and waits for approval in the `npm` environment. Approve it, then check that `npx cfgaudit@X.Y.Z --version` prints the release.
+14. **GitLab.** Push `main`, the new tag and `v1` to [gitlab.com/cfgaudit/cfgaudit](https://gitlab.com/cfgaudit/cfgaudit). Check `main` there, not only the tag list: the mirror is not updated automatically and has lagged behind before. When its pipelines for `main`, `vX.Y.Z` and `v1` are green, create the GitLab release on `vX.Y.Z`; the release is what publishes the component version to the CI/CD Catalog.
+15. **Website.** [cfgaudit.github.io](https://cfgaudit.github.io) is generated from the latest release by a daily build. Check the next day that it shows the new version and rules.
+16. **Advisories.** Publish any security advisory the release fixes, if it is not public yet.
+17. **AVE crosswalk.** If step 4 changed mappings, or AVE itself changed, send the updated crosswalk upstream.
