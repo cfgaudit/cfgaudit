@@ -197,3 +197,37 @@ func TestCFG010_UvxWithPinned_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding when uvx --with is pinned, got %d: %+v", len(f), f)
 	}
 }
+
+func TestCFG010_NpxPackageFlagBinCommand_NoFinding(t *testing.T) {
+	// With -p present the positional is the bin to execute, not a package:
+	// npx -y -p @scope/pkg@1.2.3 pkg-bin must not report pkg-bin as unpinned.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-y","-p","@scope/pkg@1.2.3","pkg-bin"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 0 {
+		t.Errorf("expected no finding when the positional is a bin command, got %d: %+v", len(f), f)
+	}
+}
+
+func TestCFG010_NpxPackageFlagBinCommand_UnpinnedSpecStillReported(t *testing.T) {
+	// The positional stays a bin command, but the unpinned -p spec is still reported.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-y","-p","@scope/pkg","pkg-bin"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned -p spec, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "\"@scope/pkg\"") {
+		t.Errorf("expected finding to name the unpinned spec @scope/pkg, got: %s", f[0].Message)
+	}
+}
+
+func TestCFG010_NpxNoPackageFlag_StillChecksRunPackage(t *testing.T) {
+	// Without any --package/-p the first positional is the run package and is checked.
+	json := `{"mcpServers":{"s":{"command":"npx","args":["-y","cowsay"]}}}`
+	f := CFG010.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for unpinned run package, got %d: %+v", len(f), f)
+	}
+	if !strings.Contains(f[0].Message, "\"cowsay\"") {
+		t.Errorf("expected finding to name the run package cowsay, got: %s", f[0].Message)
+	}
+}
