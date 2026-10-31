@@ -2269,18 +2269,23 @@ func parseSettingsOptional(path string) (*parser.Settings, error) {
 func loadProjectMCP(dir string) (map[string]parser.MCPServer, string, error) {
 	path := filepath.Join(dir, ".mcp.json")
 	// An empty .mcp.json declares no servers: Claude Code 2.1.299 stopped reporting
-	// it as invalid, and `claude mcp list` shows no error (#746).
-	if data, err := scanroot.ReadFile(path); err == nil && len(bytes.TrimSpace(data)) == 0 {
+	// it as invalid, and `claude mcp list` shows no error (#746). Claude Code also
+	// accepts a leading BOM there (#1092), so a BOM alone is empty too.
+	if data, err := scanroot.ReadFile(path); err == nil && len(bytes.TrimSpace(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf}))) == 0 {
 		return nil, "", nil
 	}
-	servers, err := loadMCPConfigOptional(path)
+	cfg, err := parser.ParseProjectMCPConfig(path)
 	if err != nil {
-		return nil, "", err
-	}
-	if len(servers) == 0 {
+		if scanroot.IsAbsent(err) {
+			return nil, "", nil
+		}
+		skipUnreadable(path, err)
 		return nil, "", nil
 	}
-	return servers, path, nil
+	if len(cfg.MCPServers) == 0 {
+		return nil, "", nil
+	}
+	return cfg.MCPServers, path, nil
 }
 
 // agentHookTargets discovers Cursor's .cursor/hooks.json and Copilot's hooks:
