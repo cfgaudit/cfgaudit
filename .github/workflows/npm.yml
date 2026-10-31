@@ -152,8 +152,8 @@ jobs:
 
   # Each package is installed from the tarballs into an empty project on its
   # platform, the way `npm install cfgaudit` resolves it, and run through the
-  # launcher. The platform package is passed explicitly because the others are
-  # not on the registry yet for a new version.
+  # launcher. The platform package is passed explicitly and the install runs
+  # offline, so the test does not depend on what is on the registry.
   smoke:
     name: Smoke-test on ${{ matrix.os }}
     needs: build
@@ -190,8 +190,10 @@ jobs:
           set -euo pipefail
           proj=$(mktemp -d)
           (cd "$proj" && npm init -y > /dev/null)
-          npm install --prefix "$proj" --ignore-scripts --no-audit --no-fund \
-            "$PWD/packages/cfgaudit-$VERSION.tgz" "$PWD/packages/cfgaudit-$PKG-$VERSION.tgz"
+          # Only the two tarballs the build job made, offline and with an empty
+          # cache, so nothing comes from the registry.
+          npm install --prefix "$proj" --offline --cache "$RUNNER_TEMP/npm-cache" --ignore-scripts --no-audit --no-fund \
+            "$PWD/packages/cfgaudit-$VERSION.tgz" "$PWD/packages/cfgaudit-$PKG-$VERSION.tgz" # zizmor: ignore[adhoc-packages] local tarballs, offline
           .github/scripts/smoke-test.sh "$VERSION" "$proj/node_modules/.bin/cfgaudit"
           (cd "$proj" && npx --no-install cfgaudit --version)
 
