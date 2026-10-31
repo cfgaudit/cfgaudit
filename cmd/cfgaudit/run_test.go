@@ -494,3 +494,29 @@ func TestRun_UnknownFormat(t *testing.T) {
 		t.Errorf("no report expected for an unknown format, got %q", stdout)
 	}
 }
+
+// A directory without any agent configuration says so on stderr in the text
+// and table formats, and still exits 0; JSON and SARIF stay unchanged (#1044).
+func TestRun_NoAgentConfiguration(t *testing.T) {
+	root := runFixture(t, map[string]string{"README.md": "hello\n"})
+	want := "cfgaudit: no agent configuration found in " + root + "; nothing was audited"
+	for _, f := range []string{"text", "table"} {
+		code, stdout, stderr := runCLI(t, "--format", f, "--claude-version", "2.1.0", root)
+		if code != 0 || !strings.Contains(stderr, want) {
+			t.Errorf("--format %s: exit %d, stderr %q; want exit 0 and %q", f, code, stderr, want)
+		}
+		if strings.Contains(stdout, "no agent configuration") {
+			t.Errorf("--format %s: the note belongs on stderr, stdout = %q", f, stdout)
+		}
+	}
+	for _, f := range []string{"json", "sarif", "codeclimate"} {
+		if code, _, stderr := runCLI(t, "--format", f, "--claude-version", "2.1.0", root); code != 0 || strings.Contains(stderr, "no agent configuration") {
+			t.Errorf("--format %s: exit %d, stderr %q; want exit 0 and no note", f, code, stderr)
+		}
+	}
+	// A directory with config gets no note, also when nothing is reported.
+	root = runFixture(t, map[string]string{"AGENTS.md": "# Project\n"})
+	if _, _, stderr := runCLI(t, "--format", "text", "--claude-version", "2.1.0", root); strings.Contains(stderr, "no agent configuration") {
+		t.Errorf("note printed for a configured directory: %q", stderr)
+	}
+}

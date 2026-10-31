@@ -259,6 +259,8 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 | `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
 | `2` | Usage or tool error: `--format` names an unknown format, the scan path or the `--plugins` path is not a directory, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, or `--shellcheck` analysis fails |
 
+A directory without any agent configuration exits 0, because that is a valid state, but the text and table formats add `cfgaudit: no agent configuration found in <dir>; nothing was audited` on stderr. A scan in the wrong directory, or after a checkout step that failed, then does not read like a clean repository. JSON, SARIF and Code Climate output are unchanged.
+
 **Suppressing a finding**
 
 Suppression lives in `.cfgaudit.yml` (below), not in the scanned files: turn a rule off for the project with `rules: { CFG001: off }`, or drop every finding in a file or directory with `exclude-paths`. There is no inline suppression comment, so a scanned file cannot hide its own findings. Since a repository's own `.cfgaudit.yml` can do both, see [scanning a repository you do not trust](#untrusted-repositories).
