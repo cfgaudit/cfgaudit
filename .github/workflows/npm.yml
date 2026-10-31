@@ -186,14 +186,14 @@ jobs:
         env:
           VERSION: ${{ needs.build.outputs.version }}
           PKG: ${{ matrix.pkg }}
-        run: |
+        run: | # zizmor: ignore[adhoc-packages] the two local tarballs from the build job, installed offline
           set -euo pipefail
           proj=$(mktemp -d)
           (cd "$proj" && npm init -y > /dev/null)
           # Only the two tarballs the build job made, offline and with an empty
           # cache, so nothing comes from the registry.
           npm install --prefix "$proj" --offline --cache "$RUNNER_TEMP/npm-cache" --ignore-scripts --no-audit --no-fund \
-            "$PWD/packages/cfgaudit-$VERSION.tgz" "$PWD/packages/cfgaudit-$PKG-$VERSION.tgz" # zizmor: ignore[adhoc-packages] local tarballs, offline
+            "$PWD/packages/cfgaudit-$VERSION.tgz" "$PWD/packages/cfgaudit-$PKG-$VERSION.tgz"
           .github/scripts/smoke-test.sh "$VERSION" "$proj/node_modules/.bin/cfgaudit"
           (cd "$proj" && npx --no-install cfgaudit --version)
 
