@@ -34,6 +34,7 @@ cfgaudit decides what a review of an AI agent's configuration reports, so a wron
 | Dependency checks: govulncheck, dependency review; Dependabot security alerts | a known vulnerability in a Go module or a CI tool | every pull request and push; alerts when an advisory is published |
 | Workflow security: zizmor, and the released cfgaudit on the repository's own agent configuration and plugin | injection, excessive permissions and unpinned actions in the workflows; a weakened rule passing its own check | every pull request |
 | Sensitive paths gate | an unreviewed change to files that reach plugin and Action users, the release build or a maintainer's agent setup; the check fails until a maintainer sets the `sensitive-paths-reviewed` label, and a new push removes it | every pull request |
+| Version pins (`pins_test.go`): `bin/cfgaudit`, `.claude-plugin/plugin.json`, the image in `action.yml`, both GitLab component templates and the component examples in the README and docs name the same version | a release pull request that misses a pin, so the Action, the plugin or a GitLab component runs an older release than the one tagged | every pull request |
 | REUSE | a file without copyright and license information | every pull request |
 | Link check | dead links in the README and docs | pull requests touching Markdown, weekly |
 | OpenSSF Scorecard | a regression in the repository's supply-chain practices, reported as a code scanning alert | weekly and on pushes to `main` |

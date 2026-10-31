@@ -25,7 +25,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
    - the default version in both GitLab component templates under `templates/`
    - the component examples in the README
 
-   `grep` for the previous version afterwards; no pin may be left. The pull request touches sensitive paths and needs the `sensitive-paths-reviewed` label. Merge it and wait for CI on `main`.
+   `TestVersionPinsAgree` (`pins_test.go`) fails until every one of them names the version in `bin/cfgaudit`, so a pin left behind keeps the pull request red. A new place that pins the version goes into that test and into this list. The pull request touches sensitive paths and needs the `sensitive-paths-reviewed` label. Merge it and wait for CI on `main`.
 
 ## Cutting the release
 
