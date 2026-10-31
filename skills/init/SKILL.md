@@ -10,7 +10,7 @@ Steps:
 
 1. Get cfgaudit's safe-default baseline as JSON (does not write anything):
 
-   ```
+   ```text
    cfgaudit init --dry-run
    ```
 
@@ -22,7 +22,7 @@ Steps:
 
 5. Verify the result:
 
-   ```
+   ```text
    cfgaudit .
    ```
 

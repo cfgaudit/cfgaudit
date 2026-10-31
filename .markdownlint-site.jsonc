@@ -1,0 +1,10 @@
+// The pages cfgaudit.github.io renders, docs/rules/CFGxxx.md, may not contain
+// inline HTML: the site renders them with goldmark without the unsafe option,
+// which drops raw HTML without a warning (.github/workflows/markdown.yml,
+// #1100).
+{
+  "config": {
+    "default": false,
+    "MD033": true
+  }
+}

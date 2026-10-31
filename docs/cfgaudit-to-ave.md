@@ -52,6 +52,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 ## Direction 1 — CFG → AVE (covered & partial)
 
 ### Instruction / skill content
+
 | CFG | AVE |
 |---|---|
 | CFG024 hidden Unicode | AVE-2026-00029 homoglyph / Unicode obfuscation |
@@ -70,6 +71,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG031 sensitive path · CFG033 image-exfil sink | AVE-2026-00003 · AVE-2026-00013 · AVE-2026-00039 covert channel *(partial)* |
 
 ### Command content
+
 | CFG | AVE |
 |---|---|
 | CFG008 reverse shell · CFG014 curl\|sh · CFG019 inline script / eval | AVE-2026-00004 shell-pipe code execution · AVE-2026-00033 unsafe deserialization / eval |
@@ -78,6 +80,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG037 SSH keys · CFG038 env dump · CFG072 DNS exfil | AVE-2026-00003 · AVE-2026-00013 · AVE-2026-00039 |
 
 ### MCP configuration
+
 | CFG | AVE |
 |---|---|
 | CFG007 / CFG050 / CFG054 / CFG065 / CFG073 hardcoded secrets | AVE-2026-00047 hardcoded credentials in component |
