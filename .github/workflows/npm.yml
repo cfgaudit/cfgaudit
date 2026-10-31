@@ -276,7 +276,9 @@ jobs:
         run: |
           set -euo pipefail
           npm --version
-          for tgz in packages/cfgaudit-*-"$VERSION".tgz packages/cfgaudit-"$VERSION".tgz; do
+          # ./ matters: npm reads a bare packages/<file>.tgz as the GitHub
+          # shorthand user/repo and tries to clone it (#1133).
+          for tgz in ./packages/cfgaudit-*-"$VERSION".tgz ./packages/cfgaudit-"$VERSION".tgz; do
             name=$(tar -xzOf "$tgz" package/package.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
             if npm view "$name@$VERSION" version > /dev/null 2>&1; then
               echo "$name@$VERSION is already published, skipping"
