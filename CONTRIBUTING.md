@@ -6,7 +6,7 @@ cfgaudit is a small Go CLI that audits AI-agent configuration files (`settings.j
 
 ## Reporting a bug
 
-Open an issue at https://github.com/cfgaudit/cfgaudit/issues. A missed detection, a finding on config that is fine, a crash or a wrong exit code are all bugs. Please include:
+Open an issue at <https://github.com/cfgaudit/cfgaudit/issues>. A missed detection, a finding on config that is fine, a crash or a wrong exit code are all bugs. Please include:
 
 - the cfgaudit version (`cfgaudit --version`) and how you installed it (release binary, `go install`, Homebrew, container image, GitHub Action, GitLab component);
 - the command you ran, with its flags, and your `.cfgaudit.yml` if there is one;
@@ -74,6 +74,13 @@ When the Dead code job fails, remove the function, or call it from production co
 ```sh
 (cd .github/tools/deadcode && go build -o /tmp/deadcode golang.org/x/tools/cmd/deadcode)
 .github/scripts/deadcode-check.sh /tmp/deadcode
+```
+
+A change to a Markdown file is linted by the Markdown workflow, for structure and rendering only (`.markdownlint-cli2.jsonc`). The rule pages in `docs/rules/` also may not contain inline HTML, because the website drops it; write a placeholder such as `<verb>` as code. To run both checks locally:
+
+```sh
+npx markdownlint-cli2@0.23.2 "**/*.md"
+npx markdownlint-cli2@0.23.2 --config .markdownlint-site.jsonc "docs/rules/*.md"
 ```
 
 If you change anything under `.github/workflows/`, run `zizmor .github/workflows/` locally — actions must be pinned to commit SHAs and `persist-credentials: false` must stay on `actions/checkout`.
@@ -333,7 +340,7 @@ The steps of a release, including the ones done by hand, are in [RELEASING.md](R
 
 ## Project layout reference
 
-```
+```text
 cmd/cfgaudit/        # CLI entrypoint, output formatters (text/JSON/SARIF), flag parsing
 internal/parser/     # settings.json + .claudeignore parsing
 internal/finding/    # Finding/Severity/Scope types

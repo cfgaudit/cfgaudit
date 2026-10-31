@@ -8,7 +8,7 @@ The user wants to understand a cfgaudit rule, usually one a scan just reported.
 
 If the user provided a rule ID (e.g. CFG036), run:
 
-```
+```text
 cfgaudit explain CFG036
 ```
 

@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 Run cfgaudit against the current project and report the findings to the user:
 
-```
+```text
 cfgaudit .
 ```
 
