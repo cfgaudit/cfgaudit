@@ -61,9 +61,15 @@ func TestSensitivePathsFilter(t *testing.T) {
 		"rules/cfg001.go", "hooks/hooks.json", ".github/workflows/ci.yml",
 		".github/scripts/sensitive-paths.sh", "docs/rules/CFG001.md", "AGENTS.md",
 		"sub/CLAUDE.md", "action.yml", "README.md", "hooks/hooks.json",
+		// #1122
+		".pre-commit-hooks.yaml", "SECURITY.md", "go.mod", "go.sum", "lychee.toml",
+		".markdownlint-cli2.jsonc", ".markdownlint-site.jsonc", ".github/deadcode-allow.txt",
+		".github/framework-versions.json", ".github/mcp-reference-servers.txt", "docs/SECURITY.md",
 	}, "\n") + "\n"
 	got, code := sensitivePathsScript(t, "", in, "filter")
-	want := ".github/scripts/sensitive-paths.sh\n.github/workflows/ci.yml\nAGENTS.md\naction.yml\nhooks/hooks.json\nsub/CLAUDE.md\n"
+	want := ".github/deadcode-allow.txt\n.github/framework-versions.json\n.github/mcp-reference-servers.txt\n" +
+		".github/scripts/sensitive-paths.sh\n.github/workflows/ci.yml\n.markdownlint-cli2.jsonc\n.markdownlint-site.jsonc\n" +
+		".pre-commit-hooks.yaml\nAGENTS.md\nSECURITY.md\naction.yml\ngo.mod\nhooks/hooks.json\nlychee.toml\nsub/CLAUDE.md\n"
 	if code != 0 || got != want {
 		t.Errorf("filter = %q (exit %d), want %q", got, code, want)
 	}

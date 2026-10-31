@@ -27,6 +27,9 @@ filter() {
     -e '^(\.claude|\.agents|\.cursor|\.vscode|\.devcontainer)/' \
     -e '^(\.mcp\.json|\.envrc|\.cursorrules|\.github/copilot-instructions\.md)$' \
     -e '^(\.gitignore|REUSE\.toml|\.golangci\.ya?ml|\.github/(dependabot|secret_scanning)\.yml|(\.github/|docs/)?CODEOWNERS)$' \
+    -e '^(\.pre-commit-hooks\.yaml|SECURITY\.md|go\.mod)$' \
+    -e '^(lychee\.toml|\.markdownlint-cli2\.jsonc|\.markdownlint-site\.jsonc)$' \
+    -e '^\.github/(deadcode-allow\.txt|framework-versions\.json|mcp-reference-servers\.txt)$' \
     | sort -u || true
 }
 

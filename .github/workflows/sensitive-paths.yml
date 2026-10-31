@@ -18,7 +18,7 @@ name: Sensitive paths
 # labels through the API.
 
 on:
-  pull_request_target: # zizmor: ignore[dangerous-triggers] no checkout, API reads only (see above)
+  pull_request_target: # zizmor: ignore[dangerous-triggers] checks out main only, never the pull request (see above)
     types: [opened, reopened, synchronize, labeled, unlabeled]
 
 permissions: {}
