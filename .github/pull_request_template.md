@@ -13,6 +13,7 @@ Closes #
 - [ ] Docs match the change (README, `docs/rules/CFGNNN.md`, rule table)
 - [ ] New source files start with the copyright and SPDX header
 - [ ] Deviations from the issue's acceptance criteria are noted above
+- [ ] "Allow edits by maintainers" is enabled (pull request from a fork)
 
 ## AI assistance
 
