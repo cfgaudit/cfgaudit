@@ -93,9 +93,19 @@ func analyzeMCPVersionPins(command string, args []string) []string {
 }
 
 // packageFlagValue returns the package spec carried by an inline package flag
-// (`--package=<spec>`, `-p=<spec>`, `--with=<spec>`), or "" if a is not one.
-func packageFlagValue(a string) string {
-	for _, prefix := range []string{"--package=", "-p=", "--with="} {
+// for the runner: `--package=<spec>` / `-p=<spec>` for npm runners and
+// `--with=<spec>` for uvx, or "" if a is not a package flag for that runner.
+// The prefixes are runner-specific: `-p` is `--python` for uvx, so `uvx
+// -p=3.12` must not be read as a package spec.
+func packageFlagValue(runner, a string) string {
+	var prefixes []string
+	if npmPackageRunners[runner] {
+		prefixes = append(prefixes, "--package=", "-p=")
+	}
+	if runner == "uvx" {
+		prefixes = append(prefixes, "--with=")
+	}
+	for _, prefix := range prefixes {
 		if strings.HasPrefix(a, prefix) {
 			return strings.TrimPrefix(a, prefix)
 		}
@@ -123,18 +133,6 @@ func collectPackageSpecs(runner string, args []string) []string {
 		specs = append(specs, s)
 	}
 
-	// With a package flag present, the npm positional is the command/bin to
-	// run, not a package — check only the package specs.
-	npmRunAsCommand := false
-	if npmPackageRunners[runner] {
-		for _, a := range args {
-			if a == "--package" || a == "-p" || strings.HasPrefix(a, "--package=") || strings.HasPrefix(a, "-p=") {
-				npmRunAsCommand = true
-				break
-			}
-		}
-	}
-
 	// Flags whose next argument is a package spec rather than a plain flag.
 	valueNext := map[string]bool{}
 	if npmPackageRunners[runner] {
@@ -145,9 +143,40 @@ func collectPackageSpecs(runner string, args []string) []string {
 		valueNext["--with"] = true
 	}
 
+	// A package flag seen before the first positional marks the npm positional
+	// as a bin command rather than a package. Only flags before the positional
+	// count: an argument like `npx -y @acme/mcp-server -p 3000` passes `-p
+	// 3000` to the server itself, so the run package must still be checked.
+	npmRunAsCommand := false
+	if npmPackageRunners[runner] {
+		for i := 0; i < len(args); i++ {
+			a := args[i]
+			if a == "--package" || a == "-p" || strings.HasPrefix(a, "--package=") || strings.HasPrefix(a, "-p=") {
+				npmRunAsCommand = true
+				break
+			}
+			if valueNext[a] {
+				i++ // skip the flag's value so it is not mistaken for a positional
+				continue
+			}
+			if strings.HasPrefix(a, "-") {
+				continue
+			}
+			// Runner subcommand: the run package comes one position later.
+			if (runner == "pnpm" || runner == "yarn") && (a == "dlx" || a == "exec") {
+				continue
+			}
+			if runner == "pipx" && a == "run" {
+				continue
+			}
+			// First positional reached; later flags belong to the executed server.
+			break
+		}
+	}
+
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if spec := packageFlagValue(a); spec != "" {
+		if spec := packageFlagValue(runner, a); spec != "" {
 			add(spec)
 			continue
 		}
