@@ -25,8 +25,8 @@ import (
 //
 // Only rewrites the agents accept are valid. Comments and trailing commas are
 // out: Claude Code drops a settings file that has them (#1040 to #1042). A BOM
-// is only applied to Claude Code settings files, the one place it is measured
-// to load.
+// is only applied to Claude Code settings files and the repository-root
+// .mcp.json, the places it is measured to load (#1092).
 
 // metaSource is one file to rewrite: where it goes in the project, the Claude
 // Code version to gate rules on, and its content.
@@ -129,7 +129,7 @@ func metaRewrites() []metaRewrite {
 			return strings.ReplaceAll(strings.ReplaceAll(src.content, "\r\n", "\n"), "\n", "\r\n"), true
 		}},
 		{"bom", func(src metaSource) (string, bool) {
-			if src.path != ".claude/settings.json" && src.path != ".claude/settings.local.json" {
+			if src.path != ".claude/settings.json" && src.path != ".claude/settings.local.json" && src.path != ".mcp.json" {
 				return "", false
 			}
 			return "\xef\xbb\xbf" + src.content, true

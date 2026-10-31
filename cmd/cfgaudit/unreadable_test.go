@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -45,5 +48,45 @@ func TestUnreadableReason_Other(t *testing.T) {
 	// The 'ï' message without a BOM in the file is left as it is.
 	if got := unreadableReason(path, errors.New(bomJSONError)); got != bomJSONError {
 		t.Errorf("unreadableReason = %q", got)
+	}
+}
+
+// A repository-root .mcp.json with a BOM loads in Claude Code, so it gives the
+// findings of the same file without one; .github/mcp.json with a BOM, which
+// Copilot CLI skips, stays CFG109 (#1092).
+func TestRun_MCPJSONWithBOM(t *testing.T) {
+	const mcp = `{"mcpServers":{"fs":{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem@latest","/"]}}}`
+	ids := func(files map[string]string) []string {
+		t.Helper()
+		root := runFixture(t, files)
+		_, stdout, stderr := runCLI(t, "--format", "json", "--claude-version", "2.1.314", root)
+		var findings []struct{ RuleID, File string }
+		if err := json.Unmarshal([]byte(stdout), &findings); err != nil {
+			t.Fatalf("json: %v\n%s\n%s", err, stdout, stderr)
+		}
+		var out []string
+		for _, f := range findings {
+			rel, err := filepath.Rel(root, f.File)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, f.RuleID+" "+filepath.ToSlash(rel))
+		}
+		sort.Strings(out)
+		return out
+	}
+	plain := ids(map[string]string{".mcp.json": mcp})
+	if len(plain) == 0 {
+		t.Fatal("the plain .mcp.json gives no findings; the test needs one")
+	}
+	if bom := ids(map[string]string{".mcp.json": "\xef\xbb\xbf" + mcp}); !reflect.DeepEqual(bom, plain) {
+		t.Errorf("with a BOM: %v\nwithout: %v", bom, plain)
+	}
+	if got := ids(map[string]string{".mcp.json": "\xef\xbb\xbf \n"}); len(got) != 0 {
+		t.Errorf("a .mcp.json with only a BOM and whitespace declares no servers, got %v", got)
+	}
+	got := ids(map[string]string{".github/mcp.json": "\xef\xbb\xbf" + mcp})
+	if !slices.Contains(got, "CFG109 .github/mcp.json") {
+		t.Errorf(".github/mcp.json with a BOM: %v, want CFG109", got)
 	}
 }

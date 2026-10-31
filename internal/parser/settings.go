@@ -417,6 +417,25 @@ func ParseMCPConfig(path string) (*MCPConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	return parseMCPConfigBytes(data, path)
+}
+
+// ParseProjectMCPConfig is ParseMCPConfig for the repository-root .mcp.json,
+// which Claude Code loads with one leading UTF-8 BOM: on 2.1.314 and 2.1.316,
+// `claude mcp get` lists the server of the same file with and without one
+// (#1092). The other MCP files keep ParseMCPConfig and stay strict. A plugin's
+// .mcp.json, with the same name, is rejected with a BOM: on 2.1.316 a
+// --plugin-dir plugin lists its server without the BOM and none with it.
+// Copilot CLI skips a .github/mcp.json with one (#747).
+func ParseProjectMCPConfig(path string) (*MCPConfig, error) {
+	data, err := scanroot.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return parseMCPConfigBytes(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf}), path)
+}
+
+func parseMCPConfigBytes(data []byte, path string) (*MCPConfig, error) {
 	// VS Code reads .vscode/mcp.json as JSON with comments, like its other
 	// workspace files (#829). The other MCP files stay strict: with a comment
 	// in .mcp.json, Claude Code 2.1.310 lists "[Failed to parse] Project config"
