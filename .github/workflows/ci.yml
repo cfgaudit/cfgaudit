@@ -36,6 +36,8 @@ jobs:
         working-directory: .github/tools/benchstat
       - run: go mod tidy -diff
         working-directory: .github/tools/deadcode
+      - run: go mod tidy -diff
+        working-directory: .github/tools/pinact
       - run: go build ./...
 
   test:
@@ -247,6 +249,33 @@ jobs:
       # .github/deadcode-allow.txt, and stale entries there (#1099).
       - name: Check for unreachable functions
         run: .github/scripts/deadcode-check.sh "$RUNNER_TEMP/deadcode"
+
+  pinact:
+    name: Security (pinact)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The tool module's go.mod, not the repository's: pinact needs a newer Go.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .github/tools/pinact/go.mod
+          cache: false
+      # Built from .github/tools/pinact, whose go.sum pins the version.
+      - name: Build pinact
+        working-directory: .github/tools/pinact
+        run: go build -o "$RUNNER_TEMP/pinact" github.com/suzuki-shunsuke/pinact/v5/cmd/pinact
+      # zizmor and cfgaudit require a SHA pin; this also checks that each
+      # action's version comment resolves to the pinned SHA, so a pin cannot
+      # claim a version it is not (#1127). --check reports and never rewrites.
+      # codeql-action is excluded here on the command line, not in a config a
+      # pull request could edit: it is SHA-pinned, but its comment
+      # (# codeql-bundle-vX.Y.Z) is not a tag pinact can resolve.
+      - name: Verify action pins and their version comments
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/pinact" run --check --verify-comment --exclude "github/codeql-action/.*"'
 
   security:
     name: Security (govulncheck)
