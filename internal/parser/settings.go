@@ -24,6 +24,10 @@ type Settings struct {
 
 	// Raw holds the full decoded document for rules that need arbitrary access.
 	Raw map[string]json.RawMessage `json:"-"`
+
+	// DuplicateKeys lists the keys the file defines more than once, in file
+	// order; Claude Code keeps the last occurrence of each (CFG117, #1042).
+	DuplicateKeys []DuplicateKey `json:"-"`
 }
 
 // CommandHelper is the {"type":"command","command":"…"} shape used by the
@@ -509,6 +513,7 @@ func ParseSettingsBytes(data []byte, path string) (*Settings, error) {
 	s.Env = lenientEnv(s.Raw["env"])
 	s.Hooks = lenientHooks(s.Raw["hooks"])
 	s.MCPServers = lenientMap[MCPServer](s.Raw["mcpServers"])
+	s.DuplicateKeys = duplicateKeys(data)
 	return &s, nil
 }
 
