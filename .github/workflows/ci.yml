@@ -248,6 +248,43 @@ jobs:
       - name: Check for unreachable functions
         run: .github/scripts/deadcode-check.sh "$RUNNER_TEMP/deadcode"
 
+  pinact:
+    name: Security (pinact)
+    runs-on: ubuntu-latest
+    env:
+      # pinact is installed from its release and checked against this digest,
+      # as lychee is in linkcheck.yml. A Go tool module would pull in Go 1.27
+      # and an MPL-2.0 dependency the dependency review rejects. Bump both
+      # together, after the 7-day cooldown.
+      PINACT_VERSION: "5.0.1"
+      PINACT_SHA256: 12500c0fff5db94a0155e2e76ed959d1dc0e899056ee168d8fb7b4840e7c04f0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinact
+        run: |
+          set -euo pipefail
+          archive=pinact_linux_amd64.tar.gz
+          curl -sSfLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/suzuki-shunsuke/pinact/releases/download/v${PINACT_VERSION}/$archive"
+          echo "$PINACT_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" pinact
+          "$RUNNER_TEMP/pinact" --version
+      # zizmor and cfgaudit require a SHA pin; this also checks that each
+      # action's version comment resolves to the pinned SHA, so a pin cannot
+      # claim a version it is not (#1127). --check reports and never rewrites.
+      # The exclusions are here on the command line, not in a config a pull
+      # request could edit, and zizmor and cfgaudit still enforce the pins:
+      # - codeql-action's comment (# codeql-bundle-vX.Y.Z) is not a tag pinact
+      #   can resolve;
+      # - the aquasecurity organization has an IP allow list that refuses the
+      #   API from GitHub's runners (403), so its tags cannot be resolved here.
+      - name: Verify action pins and their version comments
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/pinact" run --check --verify-comment --exclude "github/codeql-action/.*" --exclude "aquasecurity/.*"'
+
   security:
     name: Security (govulncheck)
     runs-on: ubuntu-latest
