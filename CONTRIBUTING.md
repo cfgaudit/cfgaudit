@@ -289,6 +289,8 @@ Every change, including the maintainer's own, lands through a pull request; noth
 
 **What makes a change acceptable:** all required checks pass, every review comment is resolved, and the title is a conventional commit line that references the issue. The pull request is then squash-merged.
 
+**Allow edits by maintainers.** Open a pull request from a fork with "Allow edits by maintainers" enabled; the checkbox is on the pull request page, and you can turn it on later in the right sidebar. A branch has to be up to date with `main` before it can be merged, and when several pull requests land in a row, yours falls behind after each one. With the option on, the maintainer brings your branch up to date right before the squash merge, so you do not have to rebase after every other merge. The maintainer only updates the branch with `main`; a change to your code is asked for in the pull request, not pushed. GitHub does not offer the option for a fork owned by an organization; there you rebase when asked.
+
 **New contributors** can start with an issue labelled [`good first issue`](https://github.com/cfgaudit/cfgaudit/labels/good%20first%20issue): small, self-contained changes with the expected result spelled out.
 
 ---
