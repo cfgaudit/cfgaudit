@@ -233,10 +233,7 @@ func isSkillsDirPlugin(root string) bool {
 // unreadablePluginTarget is the CFG109 target for a skills-directory plugin file
 // that does not parse, built the same way unreadableTargets builds one.
 func unreadablePluginTarget(dir, path string, err error) *rules.Target {
-	reason := err.Error()
-	if i := strings.Index(reason, ": "); i >= 0 && strings.HasPrefix(reason, "parse ") {
-		reason = reason[i+2:]
-	}
+	reason := unreadableReason(path, err)
 	scope := finding.ScopeProject
 	if !strings.HasPrefix(path, dir) {
 		scope = finding.ScopeUser

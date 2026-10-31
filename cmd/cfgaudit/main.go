@@ -421,11 +421,30 @@ var unreadable []unreadableFile
 // .cfgaudit.yml that does not parse changes what cfgaudit itself does, so it
 // stays a hard error.
 func skipUnreadable(path string, err error) {
+	unreadable = append(unreadable, unreadableFile{path: path, reason: unreadableReason(path, err)})
+}
+
+// bomJSONError is how encoding/json reports a document that starts with a
+// UTF-8 byte order mark: it reads the first byte, 0xEF, as 'ï'.
+const bomJSONError = "invalid character 'ï' looking for beginning of value"
+
+// unreadableReason is the parser's message for a file that does not parse,
+// without the "parse <path>: " prefix, since the finding names the file. A
+// JSON parser that stops on a leading BOM gets a message that says what to
+// fix instead of Go's "invalid character 'ï'" (#1042). Claude Code's own
+// settings accept a BOM (#1040) and never get here; a surface whose parser
+// rejects one, such as a plugin's hooks.json (Claude Code rejects it too), does.
+func unreadableReason(path string, err error) string {
 	reason := err.Error()
 	if i := strings.Index(reason, ": "); i >= 0 && strings.HasPrefix(reason, "parse ") {
-		reason = reason[i+2:] // drop the "parse <path>: " prefix; the file is named by the finding
+		reason = reason[i+2:]
 	}
-	unreadable = append(unreadable, unreadableFile{path: path, reason: reason})
+	if strings.Contains(reason, bomJSONError) {
+		if data, readErr := scanroot.ReadFile(path); readErr == nil && bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf}) {
+			return "the file starts with a UTF-8 byte order mark (BOM), which is not valid at the start of a JSON document and which the parser for this file stops on; save it as UTF-8 without BOM"
+		}
+	}
+	return reason
 }
 
 // unreadableTargets turns the collected files into one target each, carrying

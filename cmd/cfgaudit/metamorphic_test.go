@@ -136,7 +136,19 @@ func metaRewrites() []metaRewrite {
 		}},
 		{"minified", jsonOnly(func(n *jsonNode) string { return n.render("", "", false, false) })},
 		{"tab-indented", jsonOnly(func(n *jsonNode) string { return n.render("", "\t", false, false) + "\n" })},
-		{"keys-reversed", jsonOnly(func(n *jsonNode) string { return n.render("", "  ", true, false) + "\n" })},
+		// Reversing keys keeps the meaning only when no object repeats a key:
+		// with a duplicate, the last occurrence wins, and reversing swaps it
+		// (CFG117).
+		{"keys-reversed", func(src metaSource) (string, bool) {
+			content, ok := jsonOnly(func(n *jsonNode) string { return n.render("", "  ", true, false) + "\n" })(src)
+			if !ok {
+				return "", false
+			}
+			if n, _ := parseJSONNode(src.content); n.hasDuplicateKeys() {
+				return "", false
+			}
+			return content, true
+		}},
 		{"unicode-escaped", jsonOnly(func(n *jsonNode) string { return n.render("", "  ", false, true) + "\n" })},
 	}
 }
@@ -239,6 +251,23 @@ func decodeJSONNode(dec *json.Decoder) (*jsonNode, error) {
 // render writes n back as JSON. indent "" with prefix "" gives minified output;
 // reverse writes object keys in reverse order; escape writes every ASCII
 // letter in strings and keys as a \u escape.
+// hasDuplicateKeys reports whether any object in n repeats a key.
+func (n *jsonNode) hasDuplicateKeys() bool {
+	seen := map[string]bool{}
+	for _, k := range n.keys {
+		if seen[k] {
+			return true
+		}
+		seen[k] = true
+	}
+	for _, it := range n.items {
+		if it.hasDuplicateKeys() {
+			return true
+		}
+	}
+	return false
+}
+
 func (n *jsonNode) render(prefix, indent string, reverse, escape bool) string {
 	var b bytes.Buffer
 	n.write(&b, prefix, indent, reverse, escape)
