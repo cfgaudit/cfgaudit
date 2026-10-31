@@ -4,6 +4,7 @@
 package cfgaudit
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -31,7 +32,7 @@ func TestVersionPinsAgree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := wrapperVersionRe.FindSubmatch(data)
+	m := wrapperVersionRe.FindSubmatch(lf(data))
 	if m == nil {
 		t.Fatal(`bin/cfgaudit: no VERSION="X.Y.Z" line`)
 	}
@@ -71,7 +72,7 @@ func TestVersionPinsAgree(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := string(data)
+		text := string(lf(data))
 		var found []string
 		for _, m := range componentPinRe.FindAllStringSubmatch(text, -1) {
 			found = append(found, m[1])
@@ -97,4 +98,10 @@ func TestVersionPinsAgree(t *testing.T) {
 			}
 		}
 	}
+}
+
+// lf turns CRLF line ends into LF: a Windows checkout with core.autocrlf has
+// them, and the patterns anchor on the end of the line.
+func lf(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 }
