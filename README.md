@@ -422,7 +422,7 @@ The hook scans the whole repository on every commit: cfgaudit audits a directory
 
 The repo doubles as a Claude Code plugin marketplace. Install it to get an on-demand scan command plus automatic scans when config files change:
 
-```
+```text
 /plugin marketplace add cfgaudit/cfgaudit
 /plugin install cfgaudit@cfgaudit
 ```
