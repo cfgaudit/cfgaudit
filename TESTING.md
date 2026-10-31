@@ -74,7 +74,7 @@ Whether cfgaudit's own dependencies, workflows and releases can be trusted.
 | Layer | Protects against | Runs |
 |---|---|---|
 | Action smoke test | an `action.yml` that does not run, writes no valid SARIF, reads the scanned project's own config when a separate one is given, or passes a tool error in advisory mode | every pull request |
-| Package smoke tests (`release-smoke.yml`, `pypi.yml`, a step in `build-image.yml`, all through `.github/scripts/smoke-test.sh`) | an archive, wheel or image that does not start, reports the wrong version or finds nothing: each archive is unpacked and run on its platform (Linux amd64 and arm64, macOS arm64, Windows amd64 and arm64), each wheel is installed into a fresh virtual environment on its platform (also musl in Alpine) before upload, the image is run before it is pushed | before every release and PyPI upload; on pull requests that change the release build or the packaging |
+| Package smoke tests (`release-smoke.yml`, `pypi.yml`, `npm.yml`, a step in `build-image.yml`, all through `.github/scripts/smoke-test.sh`) | an archive, wheel or image that does not start, reports the wrong version or finds nothing: each archive is unpacked and run on its platform (Linux amd64 and arm64, macOS arm64, Windows amd64 and arm64), each wheel is installed into a fresh virtual environment on its platform (also musl in Alpine) before upload, each npm platform package is installed with the `cfgaudit` package into an empty project and run through its launcher, the image is run before it is pushed | before every release, PyPI and npm upload; on pull requests that change the release build or the packaging |
 
 ### Documentation
 

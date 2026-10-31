@@ -19,7 +19,9 @@ var (
 	// docs, templates and action.yml pin them.
 	componentPinRe = regexp.MustCompile(`gitlab\.com/cfgaudit/cfgaudit/[a-z-]+@v(\d+\.\d+\.\d+)`)
 	imagePinRe     = regexp.MustCompile(`ghcr\.io/cfgaudit/cfgaudit:(\d+\.\d+\.\d+)(@sha256:[0-9a-f]+)?`)
-	templateDefRe  = regexp.MustCompile(`(?m)^\s+default: "(\d+\.\d+\.\d+)"$`)
+	// The npm package, as the README pins it for npx and npm install (#1084).
+	npmPinRe      = regexp.MustCompile(`(?:^|[\s(])cfgaudit@(\d+\.\d+\.\d+)`)
+	templateDefRe = regexp.MustCompile(`(?m)^\s+default: "(\d+\.\d+\.\d+)"$`)
 )
 
 // TestVersionPinsAgree checks that every place the release pull request moves
@@ -75,6 +77,9 @@ func TestVersionPinsAgree(t *testing.T) {
 		text := string(lf(data))
 		var found []string
 		for _, m := range componentPinRe.FindAllStringSubmatch(text, -1) {
+			found = append(found, m[1])
+		}
+		for _, m := range npmPinRe.FindAllStringSubmatch(text, -1) {
 			found = append(found, m[1])
 		}
 		for _, m := range imagePinRe.FindAllStringSubmatch(text, -1) {

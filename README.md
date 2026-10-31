@@ -39,6 +39,15 @@ uvx cfgaudit .             # run once without installing
 
 Pin it next to your other linters with `cfgaudit==X.Y.Z` in a requirements file.
 
+With Node.js (the package runs the prebuilt binary for your platform, no install script):
+
+```sh
+npx cfgaudit@1.19.0 .                                   # run once without installing
+npm install --save-dev --save-exact cfgaudit@1.19.0     # pin it in a JavaScript project
+```
+
+Keep the version pinned: cfgaudit reports an unpinned `npx` package in an MCP server ([CFG010](docs/rules/CFG010.md)) for the same reason.
+
 With the Go toolchain:
 
 ```sh
