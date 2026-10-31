@@ -73,3 +73,16 @@ func TestTruncateRunes(t *testing.T) {
 		t.Errorf("expected 5 runes ending in ellipsis, got %q", got)
 	}
 }
+
+func TestCheckFormat(t *testing.T) {
+	for _, f := range []string{"auto", "text", "table", "json", "sarif", "codeclimate", "codequality"} {
+		if err := checkFormat(f); err != nil {
+			t.Errorf("checkFormat(%q) = %v, want nil", f, err)
+		}
+	}
+	for _, f := range []string{"", "sarfi", "yaml", "JSON"} {
+		if err := checkFormat(f); err == nil {
+			t.Errorf("checkFormat(%q) = nil, want an error", f)
+		}
+	}
+}

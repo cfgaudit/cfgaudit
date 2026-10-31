@@ -98,6 +98,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stdout, "cfgaudit %s\n", cfgauditVersion)
 		return 0
 	}
+	if err := checkFormat(*format); err != nil {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
+	}
 
 	for _, id := range overlappingRuleIDs(only, skip) {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %s is in both --only and --skip; it does not run\n", id)

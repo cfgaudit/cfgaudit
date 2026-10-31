@@ -257,7 +257,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 |------|---------|
 | `0` | No findings, or only `warn`/`info` (without `--strict`) |
 | `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
-| `2` | Usage or tool error: the scan path or the `--plugins` path is not a directory, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, or `--shellcheck` analysis fails |
+| `2` | Usage or tool error: `--format` names an unknown format, the scan path or the `--plugins` path is not a directory, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, or `--shellcheck` analysis fails |
 
 **Suppressing a finding**
 
