@@ -41,10 +41,11 @@ func (r *cfg041) Check(t *Target) []finding.Finding {
 	if denyReadsCovered(deny, envCoverRe, envSecretPaths, t.ClaudeVersion) {
 		return nil
 	}
+	sev, note := credentialCoverage(t, deny, false)
 	return []finding.Finding{{
 		RuleID:   "CFG041",
-		Severity: finding.Error,
+		Severity: sev,
 		File:     t.SettingsFile,
-		Message:  "permissions.deny does not restrict access to .env files — Claude can read credentials they contain; add \"Read(**/.env)\" and \"Read(**/.env.*)\" to permissions.deny" + userScopeNote(t),
+		Message:  "permissions.deny does not restrict access to .env files — Claude can read credentials they contain; add \"Read(**/.env)\" and \"Read(**/.env.*)\" to permissions.deny" + note + userScopeNote(t),
 	}}
 }
