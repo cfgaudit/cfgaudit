@@ -22,7 +22,7 @@ func TestCFG119_Severity(t *testing.T) {
 		{"obfuscated plus environment dump", obf + "JSON.stringify(process.env) https://x", []string{".claude/settings.json"}, finding.Error},
 		{"download and run plus credentials", "https://x/releases/download/a.zip execSync .npmrc", []string{".claude/settings.json"}, finding.Error},
 		{"obfuscated alone, one tool", obf, []string{".claude/settings.json"}, ""},
-		{"obfuscated alone, two tools", obf, []string{".claude/settings.json", ".vscode/tasks.json"}, finding.Warn},
+		{"obfuscated alone, two tools", obf, []string{".claude/settings.json", ".vscode/tasks.json"}, finding.Error}, // #1270: hidden code that several tools start
 		{"download and run, two tools", "https://x/releases/download/a.zip execFileSync", []string{".claude/settings.json", ".vscode/tasks.json"}, finding.Warn},
 		{"token prefix without network", "const re = /ghp_/", []string{".claude/settings.json", ".vscode/tasks.json"}, ""},
 		{"29 obfuscator identifiers", strings.Repeat("_0x4d2c1a ", 29) + "ghp_ fetch(", []string{".claude/settings.json"}, ""},
@@ -71,6 +71,15 @@ func TestCFG119_DisguiseKinds(t *testing.T) {
 		"bun run public/fonts/x.woff2":   "disguised as a font",
 		"node -e \"require('x')\" a.png": "",
 		"node scripts/build.js":          "",
+		// Any non-script extension, including invented ones (#1267).
+		"node ./x/public/fonts/fa-brand-400.orc": "a file with a non-script extension",
+		"node dist/index.js":                     "",
+		"bun run src/main.tsx":                   "",
+		"bun run build.prod":                     "",
+		"python app.pyz":                         "",
+		"perl cgi-bin/x.cgi":                     "",
+		"node server":                            "",
+		"node app.config.js":                     "",
 	} {
 		tg := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":`+strconv.Quote(cmd)+`}]}]}}`)
 		f := CFG119.Check(tg)
@@ -80,5 +89,25 @@ func TestCFG119_DisguiseKinds(t *testing.T) {
 		case want != "" && (len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, want)):
 			t.Errorf("%q: want one error with %q, got %+v", cmd, want, f)
 		}
+	}
+}
+
+// A payload kept as an array of character codes and run with eval (#1270).
+// A large numeric table without fromCharCode and eval is not one.
+func TestScanPayload_CharCodeArray(t *testing.T) {
+	codes := strings.TrimSuffix(strings.Repeat("40,100,118,98,113,", 250), ",")
+	payload := "try{eval(function(s,n){return s}([" + codes + "].map(function(c){return String.fromCharCode(c)}).join(\"\"),23))}catch(e){}"
+	if m := scanPayload(payload); !m.obfuscated || !strings.Contains(m.obfShape, "character codes") {
+		t.Errorf("char-code payload: %+v", m)
+	}
+	if m := scanPayload("var crcTable=[" + codes + "];function crc(b){return crcTable[b&255]}"); m.obfuscated {
+		t.Errorf("lookup table: %+v", m)
+	}
+	short := strings.TrimSuffix(strings.Repeat("40,100,", 300), ",")
+	if m := scanPayload("eval([" + short + "].map(function(c){return String.fromCharCode(c)}).join(''))"); m.obfuscated {
+		t.Errorf("600 codes: %+v", m)
+	}
+	if !charCodeArray("["+codes+"]") || charCodeArray("[1,2,3]") || charCodeArray("[1000,2000]") {
+		t.Error("charCodeArray")
 	}
 }
