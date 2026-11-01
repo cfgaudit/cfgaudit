@@ -144,8 +144,39 @@ func TestCFG012_Issue894(t *testing.T) {
 			t.Errorf("%s: expected no finding, got %+v", k, f)
 		}
 	}
-	for _, k := range []string{`"_comment":"x"`, `"// env":"x"`, `"prompt":"x"`} {
+	for _, k := range []string{`"// env":"x"`, `"prompt":"x"`} {
 		if f := CFG012.Check(settingsTarget(t, "{"+k+"}")); len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("%s: expected one unknown-key warn, got %+v", k, f)
+		}
+	}
+}
+
+// #1208: keys of the 2.1.316 schema, annotation keys, and hardening keys one
+// level too high.
+func TestCFG012_Issue1208(t *testing.T) {
+	for _, k := range []string{`"autoDreamEnabled":true`, `"autoCompactWindow":100000`, `"enableWorkflows":true`, `"bashOutputMaxChars":30000`, `"skipAutoPermissionPrompt":true`, `"$comment":"Shared team settings."`, `"_comment":"x"`} {
+		if f := CFG012.Check(settingsTarget(t, "{"+k+"}")); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %+v", k, f)
+		}
+	}
+	for _, tc := range []struct {
+		key, where string
+		sev        finding.Severity
+	}{
+		{`"allowUnsandboxedCommands":false`, "sandbox.allowUnsandboxedCommands", finding.Error},
+		{`"disableBypassPermissionsMode":true`, "permissions.disableBypassPermissionsMode", finding.Error},
+		{`"allowedTools":["Bash"]`, "permissions.allow", finding.Warn},
+		{`"deny":["Bash(rm *)"]`, "permissions.deny", finding.Warn},
+		{`"excludedCommands":["docker"]`, "sandbox.excludedCommands", finding.Warn},
+	} {
+		f := CFG012.Check(settingsTarget(t, "{"+tc.key+"}"))
+		if len(f) != 1 || f[0].Severity != tc.sev || !strings.Contains(f[0].Message, "Did you mean "+tc.where) {
+			t.Errorf("%s: want one %s finding naming %s, got %+v", tc.key, tc.sev, tc.where, f)
+		}
+	}
+	for _, k := range []string{`"skills":[]`, `"plugins":[]`, `"testCommand":"make test"`, `"description":"team settings"`} {
+		f := CFG012.Check(settingsTarget(t, "{"+k+"}"))
+		if len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, "unknown top-level key") {
 			t.Errorf("%s: expected one unknown-key warn, got %+v", k, f)
 		}
 	}
