@@ -210,6 +210,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	locateKeyLines(all)
+	// A message never repeats a credential written in a URL (#1045). After
+	// locateKeyLines, which finds the line by the value the message quotes.
+	for i := range all {
+		all[i].Message = rules.RedactURLs(all[i].Message)
+	}
 	all = cfg.PostProcess(all, dir)
 
 	stdoutFile, _ := stdout.(*os.File)

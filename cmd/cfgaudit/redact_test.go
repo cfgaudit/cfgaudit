@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -30,5 +31,25 @@ func TestFindingsRedactURLCredentials(t *testing.T) {
 				t.Errorf("%s output lacks %q", format, want)
 			}
 		}
+	}
+}
+
+// The redaction comes after the finding lines are located, which look for the
+// value the message quotes: a URL with a query string keeps the line of its
+// url key (#1151).
+func TestRedactedFindingKeepsItsLine(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".mcp.json": "{\n  \"mcpServers\": {\n    \"supabase\": {\n      \"type\": \"http\",\n      \"url\": \"https://mcp.supabase.com/mcp?project_ref=MARKREF\"\n    }\n  }\n}\n",
+	})
+	_, out, _ := runCLI(t, "--claude-version", "2.1.316", "--format", "json", "--only", "CFG049", root)
+	var fs []struct {
+		RuleID, Message string
+		Line            int
+	}
+	if err := json.Unmarshal([]byte(out), &fs); err != nil || len(fs) != 1 {
+		t.Fatalf("want one CFG049 finding, got %v: %s", err, out)
+	}
+	if fs[0].Line != 5 || !strings.Contains(fs[0].Message, "?project_ref=***") || strings.Contains(out, "MARKREF") {
+		t.Errorf("want line 5 and a redacted message, got line %d: %s", fs[0].Line, fs[0].Message)
 	}
 }

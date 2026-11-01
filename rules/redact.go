@@ -24,7 +24,9 @@ var redactPlaceholderRe = regexp.MustCompile(`^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$`)
 // in the query, and in a fragment written as key=value pairs, becomes ***;
 // the keys stay so the message still explains itself. Findings go to SARIF,
 // CI artifacts and logs that reach more people than the repository, so a
-// message must not repeat the secret it warns about.
+// message must not repeat the secret it warns about. The scan applies it once
+// the finding lines are located, since that looks for the quoted value in the
+// file.
 func RedactURLs(s string) string {
 	if !strings.Contains(s, "://") {
 		return s
