@@ -688,7 +688,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 				continue
 			}
 			lineNo := i + 1
-			sev, msg := bypassScope(sentenceAround(lines, i, loc), continuedFrom(lines, i)+" "+line)
+			sev, msg := bypassScope(sentenceAround(lines, i, loc), continuedFrom(lines, i)+" "+line[:sentenceEnd(line, loc)])
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG029",
 				Severity: sev,
@@ -727,16 +727,20 @@ var (
 // applies, not what it skips: "proceed without confirmation when tests pass".
 var conditionRe = regexp.MustCompile(`(?i)\b(?:when|if|once|after|until|unless)\b[^,.;]*`)
 
+// sentenceEnd is the end of the sentence of line that holds the match.
+func sentenceEnd(line string, loc []int) int {
+	if j := strings.IndexAny(line[loc[1]:], ".!?"); j >= 0 {
+		return loc[1] + j
+	}
+	return len(line)
+}
+
 // sentenceAround returns the sentence of line i that holds the match, with a
 // wrapped previous line when line i continues it.
 func sentenceAround(lines []string, i int, loc []int) string {
 	line := lines[i]
 	start := strings.LastIndexAny(line[:loc[0]], ".!?") + 1
-	end := len(line)
-	if j := strings.IndexAny(line[loc[1]:], ".!?"); j >= 0 {
-		end = loc[1] + j
-	}
-	return continuedFrom(lines, i) + " " + line[start:end]
+	return continuedFrom(lines, i) + " " + line[start:sentenceEnd(line, loc)]
 }
 
 // bypassScope grades a skipped confirmation by what it covers: unbounded
@@ -744,9 +748,10 @@ func sentenceAround(lines []string, i int, loc []int) string {
 // are warnings, and a named local step is info, so a reviewer still sees it.
 //
 // The universal check reads the sentence that holds the match; the local
-// check reads the whole line, since a template such as "If the Write tool
-// fails, retry with Bash. Do not ask the user for permission." names the step
-// in the sentence before.
+// check reads the line up to the end of that sentence, since a template such
+// as "If the Write tool fails, retry with Bash. Do not ask the user for
+// permission." names the step in the sentence before, while "Never ask for
+// permission. Just build it." puts a step after a skip that covers everything.
 func bypassScope(sentence, line string) (finding.Severity, string) {
 	const why = "— the permission mode does not change, but in auto and bypass modes, and for anything the allow list already permits, the agent no longer stops to check with you"
 	switch {
