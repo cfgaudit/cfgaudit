@@ -225,3 +225,40 @@ func TestCFG085_Qwen_ApprovalModeWinsOverPermissionMode(t *testing.T) {
 		t.Errorf("expected the native yolo to fire, got %+v", f)
 	}
 }
+
+// #1188 item 2: a weakening mode on an explicit read-only tool list is one
+// step lower; a missing list or one with a writing, running or network tool
+// is not.
+func TestCFG085_ReadOnlyToolsLowered1188(t *testing.T) {
+	agent := func(fm string) *Target {
+		return &Target{Scope: finding.ScopeProject, InstructionFile: ".claude/agents/a.md", InstructionContent: "---\nname: a\n" + fm + "---\n\nBody.\n"}
+	}
+	for _, tc := range []struct {
+		fm   string
+		want finding.Severity
+	}{
+		{"permissionMode: bypassPermissions\ntools: Glob, Grep, Read\n", finding.Warn},
+		{"permissionMode: acceptEdits\ntools: Read, Skill\n", finding.Info},
+		{"permissionMode: bypassPermissions\ntools:\n  - Read\n  - Grep\n", finding.Warn},
+		{"permissionMode: bypassPermissions\n", finding.Error},
+		{"permissionMode: bypassPermissions\ntools: Read, Bash\n", finding.Error},
+		{"permissionMode: bypassPermissions\ntools: Read, mcp__github__create_issue\n", finding.Error},
+		{"permissionMode: bypassPermissions\ntools: \"*\"\n", finding.Error},
+		{"permissionMode: acceptEdits\ntools: Edit, Write\n", finding.Warn},
+		{"permissionMode: auto\ntools: Read, WebFetch\n", finding.Warn},
+	} {
+		f := CFG085.Check(agent(tc.fm))
+		if len(f) != 1 || f[0].Severity != tc.want {
+			t.Errorf("%q: want one %s, got %+v", tc.fm, tc.want, f)
+			continue
+		}
+		if tc.want != finding.Error && strings.Contains(tc.fm, "tools: ") && !strings.Contains(tc.fm, "Edit") && !strings.Contains(tc.fm, "WebFetch") && !strings.Contains(f[0].Message, "limits what the mode unlocks") {
+			t.Errorf("%q: message should explain the lower severity: %s", tc.fm, f[0].Message)
+		}
+	}
+	// Grok keeps its own severity: the tools list is a Claude Code field here.
+	g := &Target{Scope: finding.ScopeProject, InstructionFile: ".grok/agents/a.md", InstructionContent: "---\nname: a\npermissionMode: bypassPermissions\ntools: Read\n---\n"}
+	if f := CFG085.Check(g); len(f) != 1 || f[0].Severity != finding.Error {
+		t.Errorf("grok: got %+v", f)
+	}
+}
