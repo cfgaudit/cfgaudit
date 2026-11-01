@@ -173,7 +173,7 @@ func TestSchema_Examples(t *testing.T) {
 			t.Errorf("%s: the parser accepts an invalid example", ex.name)
 		}
 		var v any
-		if err := safeyaml.Unmarshal([]byte(ex.yaml), &v); err != nil {
+		if err := safeyaml.Unmarshal([]byte(strings.ReplaceAll(ex.yaml, "\r\n", "\n")), &v); err != nil {
 			t.Fatalf("%s: %v", ex.name, err)
 		}
 		data, err := json.MarshalIndent(v, "", "  ")
@@ -197,7 +197,8 @@ func TestSchema_Examples(t *testing.T) {
 			continue
 		}
 		got, err := os.ReadFile(path) //nolint:gosec // G304: fixtures of this repository
-		if err != nil || string(got) != string(data) {
+		// A Windows checkout can turn the newlines into CRLF.
+		if err != nil || strings.ReplaceAll(string(got), "\r\n", "\n") != string(data) {
 			t.Errorf("%s is missing or stale; run go test ./internal/config -run TestSchema_Examples -update", path)
 		}
 	}
