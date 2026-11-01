@@ -31,15 +31,31 @@ func InstructionFrontmatter(content string) (*Frontmatter, bool) {
 }
 
 // StringList returns a frontmatter value as a list of trimmed strings, accepting
-// either a YAML list or a single string split on commas/whitespace. Missing or
-// wrongly-typed keys yield nil.
+// either a YAML list or a single string split on commas and whitespace outside
+// parentheses. Missing or wrongly-typed keys yield nil.
 func (f *Frontmatter) StringList(key string) []string {
+	return f.stringList(key, splitToolList)
+}
+
+// DenyList behaves like StringList, but keeps unclosed parentheses opaque.
+// Entries here cancel findings, so malformed input must not add entries; the
+// flat fallback in StringList may only add findings, never remove them.
+func (f *Frontmatter) DenyList(key string) []string {
+	return f.stringList(key, func(v string) []string {
+		tokens, _ := scanToolList(v)
+		return tokens
+	})
+}
+
+// stringList is the shared body of StringList and DenyList. split handles a
+// scalar value; a YAML list is taken entry by entry.
+func (f *Frontmatter) stringList(key string, split func(string) []string) []string {
 	if f == nil {
 		return nil
 	}
 	switch v := f.Raw[key].(type) {
 	case string:
-		return splitToolList(v)
+		return split(v)
 	case []any:
 		out := make([]string, 0, len(v))
 		for _, e := range v {
@@ -104,7 +120,51 @@ func (f *Frontmatter) String(key string) string {
 	return strings.TrimSpace(s)
 }
 
+// splitToolList splits a scalar tool list outside parentheses, so that
+// Bash(git -C * status) stays one entry. When a parenthesis is left open it
+// falls back to splitToolListFlat.
 func splitToolList(v string) []string {
+	tokens, balanced := scanToolList(v)
+	if !balanced {
+		// Scanned files are hostile: an unclosed parenthesis must not hide a grant such as a bare *.
+		return splitToolListFlat(v)
+	}
+	return tokens
+}
+
+// scanToolList splits v on commas and whitespace at parenthesis depth 0. A
+// stray ) is ignored. balanced is false when a parenthesis is left open; the
+// text after it is then one token.
+func scanToolList(v string) (tokens []string, balanced bool) {
+	tokens = make([]string, 0)
+	depth := 0
+	start := 0
+	for i, r := range v {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',', ' ', '\t', '\n':
+			if depth == 0 {
+				if token := strings.TrimSpace(v[start:i]); token != "" {
+					tokens = append(tokens, token)
+				}
+				start = i + 1
+			}
+		}
+	}
+	if token := strings.TrimSpace(v[start:]); token != "" {
+		tokens = append(tokens, token)
+	}
+	return tokens, depth == 0
+}
+
+// splitToolListFlat splits v on every comma and whitespace character, ignoring
+// parentheses.
+func splitToolListFlat(v string) []string {
 	fields := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' })
 	out := make([]string, 0, len(fields))
 	for _, f := range fields {

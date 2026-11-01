@@ -4,6 +4,8 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"regexp"
 
 	cfgaudit "github.com/cfgaudit/cfgaudit"
@@ -20,6 +22,14 @@ type jsonFinding struct {
 	finding.Finding
 	OWASP string `json:"OWASP,omitempty"`
 	AVEID string `json:"AVEID,omitempty"`
+}
+
+// encodeJSON writes the --format json report: the findings with their OWASP
+// and AVE ids, in the shape schema/findings.schema.json describes (#1078).
+func encodeJSON(w io.Writer, findings []finding.Finding) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(withTaxonomy(findings))
 }
 
 // withTaxonomy wraps each finding with its OWASP LLM and AVE ids for JSON output.

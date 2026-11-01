@@ -45,10 +45,11 @@ func goldenRules(t *testing.T) []rules.Rule {
 	return out
 }
 
-// TestReportGoldens renders the SARIF and Code Climate reports for
+// TestReportGoldens renders the SARIF, Code Climate and JSON reports for
 // goldenFindings and compares them with testdata/reports. The schema
 // validation workflow checks the same files against the SARIF 2.1.0 schema and
-// GitLab's Code Quality format (#1063), so a report change has to pass both:
+// GitLab's Code Quality format (#1063), and the JSON one against
+// schema/findings.schema.json (#1078), so a report change has to pass both:
 // this test makes it visible, the schemas make sure GitHub and GitLab still
 // accept it. Run `go test ./cmd/cfgaudit -run TestReportGoldens -update` after
 // an intended change.
@@ -72,6 +73,10 @@ func TestReportGoldens(t *testing.T) {
 		}},
 		{"codeclimate.golden.json", func(b *bytes.Buffer) error {
 			return encodeCodeClimate(b, goldenFindings(), "/proj")
+		}},
+		// --format json carries the file as given, like SARIF (#1078).
+		{"json.golden.json", func(b *bytes.Buffer) error {
+			return encodeJSON(b, sarifFindings)
 		}},
 	}
 	for _, tc := range cases {
