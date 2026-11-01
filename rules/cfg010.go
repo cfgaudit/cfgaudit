@@ -4,11 +4,14 @@
 package rules
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 type cfg010 struct{}
@@ -104,10 +107,17 @@ var pep508PinRe = regexp.MustCompile(`(===|==|~=|!=|>=|<=|>|<)\s*\d`)
 func (r *cfg010) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
-		for _, msg := range analyzeMCPVersionPins(ref.Server.Command, ref.Server.Args) {
+		msgs := analyzeMCPVersionPins(ref.Server.Command, ref.Server.Args)
+		local := len(msgs) == 1 && localDevDependency(t, ref.Server.Command, ref.Server.Args)
+		for _, msg := range msgs {
+			sev := finding.Warn
+			if local {
+				sev = finding.Info
+				msg += " (the package is a dependency in package.json and the call has no -y, so npx runs the installed copy, which the lockfile pins)"
+			}
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG010",
-				Severity: finding.Warn,
+				Severity: sev,
 				File:     ref.File,
 				// The key points the line lookup at args, so a server named
 				// like its package is not located at its own key (#1203).
@@ -357,4 +367,59 @@ func hasNpmVersionPin(pkg string) bool {
 
 func isPathLikeArg(s string) bool {
 	return strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") || strings.HasPrefix(s, "/")
+}
+
+// localDevDependency reports whether an npx or bunx call without -y names a
+// package that the project's package.json lists as a dependency (#1203). Then
+// npx runs the installed copy, which the lockfile pins, and reaches the
+// registry only when the package is not installed. Measured with npm 11.12 and
+// Node 24: without a TTY, which is how an MCP client starts a server, npx
+// installs a missing package from the registry and runs it without asking.
+// So the finding drops to info only when package.json shows the dependency.
+func localDevDependency(t *Target, command string, args []string) bool {
+	runner := filepath.Base(strings.TrimSpace(command))
+	if runner != "npx" && runner != "bunx" {
+		return false
+	}
+	for _, a := range args {
+		if a == "-y" || a == "--yes" {
+			return false
+		}
+	}
+	pkg := mcpPackageArg(runner, args)
+	if pkg == "" || hasNpmVersionPin(pkg) {
+		return false
+	}
+	return projectDependencies(t.ProjectDir)[pkg]
+}
+
+var projectDepsCache sync.Map // dir -> map[string]bool
+
+// projectDependencies returns the package names in the dependencies,
+// devDependencies, optionalDependencies and peerDependencies of
+// <dir>/package.json, or nil when there is none.
+func projectDependencies(dir string) map[string]bool {
+	if dir == "" {
+		return nil
+	}
+	if v, ok := projectDepsCache.Load(dir); ok {
+		return v.(map[string]bool)
+	}
+	var deps map[string]bool
+	if data, err := scanroot.ReadFile(filepath.Join(dir, "package.json")); err == nil {
+		var pj map[string]json.RawMessage
+		if json.Unmarshal(data, &pj) == nil {
+			deps = map[string]bool{}
+			for _, k := range []string{"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"} {
+				var m map[string]any
+				if json.Unmarshal(pj[k], &m) == nil {
+					for name := range m {
+						deps[name] = true
+					}
+				}
+			}
+		}
+	}
+	projectDepsCache.Store(dir, deps)
+	return deps
 }

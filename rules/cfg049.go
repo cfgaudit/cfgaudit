@@ -5,6 +5,7 @@ package rules
 
 import (
 	"net"
+	"net/url"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -42,7 +43,7 @@ func (r *cfg049) Check(t *Target) []finding.Finding {
 		if host == "" || strings.Contains(host, "$") { // env-interpolated host: can't classify
 			continue
 		}
-		if proxyTargetsLoopback(v) {
+		if proxyTargetsLoopback(v) || localhostSubdomain(v) {
 			continue
 		}
 
@@ -77,4 +78,19 @@ func (r *cfg049) Check(t *Target) []finding.Finding {
 		})
 	}
 	return findings
+}
+
+// localhostSubdomain reports whether a URL's host is a subdomain of localhost
+// (my-app.localhost), which RFC 6761 reserves for loopback (#1202). Measured
+// on Linux: getaddrinfo, Node 24 (dns.lookup, behind Claude Code, Gemini CLI,
+// Qwen Code, Copilot CLI and VS Code), Python 3 and Go 1.26 all resolve it to
+// 127.0.0.1 and ::1, and systemd-resolved answers it as synthetic data, with no
+// query sent out. The host is taken from net/url, so a name that only appears
+// after an @ in the path does not count.
+func localhostSubdomain(v string) bool {
+	u, err := url.Parse(strings.TrimSpace(v))
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(u.Hostname()), ".localhost")
 }

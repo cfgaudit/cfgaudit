@@ -93,7 +93,6 @@ var aveByRule = map[string]string{
 	"CFG054": "AVE-2026-00047", // entropy secret → hardcoded credentials
 	"CFG065": "AVE-2026-00047", // Continue inline apiKey → hardcoded credentials
 	"CFG073": "AVE-2026-00047", // crypto signing key → hardcoded credentials
-	"CFG052": "AVE-2026-00017", // name shadowing → server impersonation
 	"CFG059": "AVE-2026-00017", // typosquat → server impersonation
 	"CFG019": "AVE-2026-00055", // MCP inline script → untrusted launch config command exec
 	"CFG020": "AVE-2026-00055", // MCP env code injection → untrusted launch config command exec

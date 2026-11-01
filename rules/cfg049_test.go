@@ -96,3 +96,20 @@ func TestCFG049_AttributesAndCoversProjectMCP(t *testing.T) {
 		t.Fatalf("expected finding attributed to .mcp.json, got %+v", f)
 	}
 }
+
+// A subdomain of localhost is loopback (#1202); a host that only names it
+// after an @ in the path is not.
+func TestCFG049_LocalhostSubdomain(t *testing.T) {
+	for url, want := range map[string]int{
+		"https://my-app.localhost:3000/mcp":         0,
+		"http://api.localhost/mcp":                  0,
+		"https://localhost.example.com/mcp":         1,
+		"https://my-app.localhost.example.com/mcp":  1,
+		"https://evil.example/x@my-app.localhost/m": 1,
+	} {
+		tg := settingsTarget(t, `{"mcpServers":{"s":{"type":"http","url":"`+url+`"}}}`)
+		if f := CFG049.Check(tg); len(f) != want {
+			t.Errorf("%s: got %d findings, want %d: %+v", url, len(f), want, f)
+		}
+	}
+}
