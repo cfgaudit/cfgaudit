@@ -1,0 +1,9 @@
+{
+  "policy": {
+    "forbid-allow": {
+      "read": [
+        "x"
+      ]
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "content-paths": [
+    "README.md"
+  ],
+  "exclude-paths": [
+    "vendor/"
+  ],
+  "min-severity": "Warn",
+  "no-exit-codes": false,
+  "policy": {
+    "forbid-allow": [
+      "Bash(curl *)"
+    ],
+    "require-deny": [
+      "Bash(rm -rf *)"
+    ]
+  },
+  "rules": {
+    "CFG003": "off",
+    "CFG004": "warn",
+    "CFG005": {
+      "severity": "INFO"
+    },
+    "CFG006": {
+      "off": true
+    },
+    "CFG007": {
+      "off": false,
+      "severity": "error"
+    },
+    "CFG008": null
+  },
+  "shellcheck": true,
+  "shellcheck-exclude": [
+    "SC2086",
+    "sc1090",
+    2034
+  ],
+  "strict": true
+}

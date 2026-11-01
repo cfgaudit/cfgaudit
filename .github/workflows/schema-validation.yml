@@ -12,6 +12,8 @@ on:
       - 'cmd/cfgaudit/testdata/reports/**'
       - '.github/workflows/schema-validation.yml'
       - '.github/tools/ajv/**'
+      - 'schema/**'
+      - 'testdata/config/**'
   pull_request:
     branches: [main]
     paths:
@@ -20,6 +22,8 @@ on:
       - 'cmd/cfgaudit/testdata/reports/**'
       - '.github/workflows/schema-validation.yml'
       - '.github/tools/ajv/**'
+      - 'schema/**'
+      - 'testdata/config/**'
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
@@ -124,3 +128,27 @@ jobs:
 
       - name: GitLab Code Quality
         run: node .github/tools/ajv/validate.js testdata/schemas/gitlab-code-quality.json cmd/cfgaudit/testdata/reports/codeclimate.golden.json
+
+  # schema/cfgaudit.schema.json is the published schema for .cfgaudit.yml
+  # (#1106). testdata/config/json holds the JSON form of every example the
+  # parser accepts (the annotated examples in the docs and
+  # testdata/config/valid) and of every one it rejects (testdata/config/invalid),
+  # kept current by TestSchema_Examples. The schema must accept the first and
+  # reject the second, so an editor shows the errors cfgaudit exits 2 on.
+  # Compiling the schema also checks it against the draft-07 meta-schema.
+  config-schema:
+    name: Validate the .cfgaudit.yml schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install ajv
+        run: npm ci --prefix .github/tools/ajv --ignore-scripts --no-audit --no-fund
+
+      - name: Accepted examples
+        run: node .github/tools/ajv/validate.js schema/cfgaudit.schema.json testdata/config/json/valid/*.json
+
+      - name: Rejected examples
+        run: node .github/tools/ajv/validate.js --invalid schema/cfgaudit.schema.json testdata/config/json/invalid/*.json

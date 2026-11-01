@@ -1,0 +1,2 @@
+policy:
+  agents: [claude-code, cursor]

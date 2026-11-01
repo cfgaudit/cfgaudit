@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -407,4 +408,32 @@ func githubAnchor(heading string) string {
 		}
 	}
 	return b.String()
+}
+
+// Every rule ID matches the pattern the .cfgaudit.yml schema accepts under
+// rules (#1106). The schema takes a pattern, not a list, because the binary
+// only warns about an ID it does not know, so a config written for a newer
+// release still loads.
+func TestSchemaRuleIDPattern(t *testing.T) {
+	var s struct {
+		Properties struct {
+			Rules struct {
+				PropertyNames struct {
+					Pattern string `json:"pattern"`
+				} `json:"propertyNames"`
+			} `json:"rules"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(loadFile(t, filepath.Join("..", "schema", "cfgaudit.schema.json"))), &s); err != nil {
+		t.Fatal(err)
+	}
+	re, err := regexp.Compile(s.Properties.Rules.PropertyNames.Pattern)
+	if err != nil || s.Properties.Rules.PropertyNames.Pattern == "" {
+		t.Fatalf("schema rules.propertyNames.pattern %q: %v", s.Properties.Rules.PropertyNames.Pattern, err)
+	}
+	for _, r := range All {
+		if !re.MatchString(r.ID()) {
+			t.Errorf("%s does not match the schema's rule ID pattern %s", r.ID(), re)
+		}
+	}
 }

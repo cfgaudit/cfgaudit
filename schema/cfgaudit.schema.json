@@ -1,0 +1,144 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/cfgaudit/cfgaudit/main/schema/cfgaudit.schema.json",
+  "title": "cfgaudit configuration (.cfgaudit.yml)",
+  "description": "Configuration for cfgaudit, the security auditor for AI-agent configuration files. See https://github.com/cfgaudit/cfgaudit/blob/main/docs/usage.md#configuration-file-cfgaudityml",
+  "type": ["object", "null"],
+  "additionalProperties": false,
+  "properties": {
+    "rules": {
+      "description": "Per-rule overrides: off to disable a rule, or a severity to change it. An ID no rule reports is only a warning, so a config written for a newer cfgaudit still loads.",
+      "type": ["object", "null"],
+      "propertyNames": { "pattern": "^CFG[0-9]{3}$" },
+      "additionalProperties": { "$ref": "#/definitions/ruleOverride" }
+    },
+    "min-severity": {
+      "description": "Drop findings below this severity.",
+      "$ref": "#/definitions/severity"
+    },
+    "strict": {
+      "description": "Treat warn findings as errors for the exit code.",
+      "type": "boolean"
+    },
+    "no-exit-codes": {
+      "description": "Always exit 0 on a successful run (advisory mode for non-blocking CI).",
+      "type": "boolean"
+    },
+    "exclude-paths": {
+      "description": "Path globs, relative to the scanned directory, whose findings are dropped. Supports *, ** and a trailing / for directory prefixes.",
+      "$ref": "#/definitions/stringList"
+    },
+    "policy": { "$ref": "#/definitions/policy" },
+    "shellcheck": {
+      "description": "Run shellcheck on hook and helper commands (CFG045; needs the shellcheck binary).",
+      "type": "boolean"
+    },
+    "shellcheck-exclude": {
+      "description": "ShellCheck codes CFG045 never reports, with or without the SC prefix.",
+      "type": ["array", "null"],
+      "items": {
+        "anyOf": [
+          { "type": "string", "pattern": "^\\s*([Ss][Cc])?[0-9]{4}\\s*$" },
+          { "type": "integer", "minimum": 0, "maximum": 9999 }
+        ]
+      }
+    },
+    "content-paths": {
+      "description": "Globs naming files that agents read while they work but that are not instruction files, such as README.md. The high-precision instruction-content rules scan them too.",
+      "$ref": "#/definitions/stringList"
+    }
+  },
+  "definitions": {
+    "severity": {
+      "description": "error, warn or info, in any case.",
+      "type": "string",
+      "pattern": "^([Ee][Rr][Rr][Oo][Rr]|[Ww][Aa][Rr][Nn]|[Ii][Nn][Ff][Oo])$"
+    },
+    "ruleOverride": {
+      "anyOf": [
+        {
+          "description": "off, or a severity.",
+          "type": "string",
+          "pattern": "^([Oo][Ff][Ff]|[Ee][Rr][Rr][Oo][Rr]|[Ww][Aa][Rr][Nn]|[Ii][Nn][Ff][Oo])$"
+        },
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "off": { "type": "boolean" },
+            "severity": { "$ref": "#/definitions/severity" }
+          }
+        }
+      ]
+    },
+    "stringList": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "policy": {
+      "description": "The organisation's permission policy, checked by CFG025 and CFG118.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "require-deny": {
+          "description": "Claude Code permission entries that .claude/settings.json permissions.deny must cover, such as Bash(git push:*).",
+          "$ref": "#/definitions/stringList"
+        },
+        "forbid-allow": {
+          "description": "Either Claude Code permission entries that permissions.allow must not grant, or agent-neutral commands and MCP tools that no agent's allow list may grant.",
+          "anyOf": [
+            { "$ref": "#/definitions/stringList" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "commands": { "$ref": "#/definitions/policyCommands" },
+                "mcp-tools": { "$ref": "#/definitions/policyMCPTools" }
+              }
+            }
+          ]
+        },
+        "deny": {
+          "description": "Agent-neutral entries every agent in scope must deny, checked against each agent's committed permission file.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "commands": { "$ref": "#/definitions/policyCommands" },
+            "read": { "$ref": "#/definitions/policyPaths" },
+            "write": { "$ref": "#/definitions/policyPaths" },
+            "fetch": {
+              "description": "Domains, with *. for every subdomain.",
+              "type": ["array", "null"],
+              "items": {
+                "type": "string",
+                "pattern": "^(\\*\\.)?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"
+              }
+            },
+            "mcp-tools": { "$ref": "#/definitions/policyMCPTools" }
+          }
+        },
+        "agents": {
+          "description": "The agents the agent-neutral policy applies to. Without it, every agent with configuration in the repository.",
+          "type": ["array", "null"],
+          "items": { "enum": ["claude-code", "devin", "zed", "continue"] }
+        }
+      }
+    },
+    "policyCommands": {
+      "description": "Shell commands, matched by word prefix: git push covers git push origin main.",
+      "type": ["array", "null"],
+      "items": { "type": "string", "pattern": "^[^*()]*\\S[^*()]*$" }
+    },
+    "policyPaths": {
+      "description": "Path globs relative to the repository, or to the home directory with a leading ~/.",
+      "type": ["array", "null"],
+      "items": { "type": "string", "pattern": "^(?!/)[\\s\\S]*\\S[\\s\\S]*$" }
+    },
+    "policyMCPTools": {
+      "description": "server:tool pairs; the tool may be * or end in *.",
+      "type": ["array", "null"],
+      "items": { "type": "string", "pattern": "^[^:*]+:([^*]+\\*?|\\*)$" }
+    }
+  }
+}

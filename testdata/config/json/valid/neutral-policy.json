@@ -1,0 +1,38 @@
+{
+  "policy": {
+    "agents": [
+      "claude-code",
+      "devin",
+      "zed",
+      "continue"
+    ],
+    "deny": {
+      "commands": [
+        "git push"
+      ],
+      "fetch": [
+        "*.example.com",
+        "example.org"
+      ],
+      "mcp-tools": [
+        "github:delete_*",
+        "linear:*"
+      ],
+      "read": [
+        "**/.env",
+        "~/.ssh/**"
+      ],
+      "write": [
+        "src/generated/**"
+      ]
+    },
+    "forbid-allow": {
+      "commands": [
+        "curl"
+      ],
+      "mcp-tools": [
+        "github:create_issue"
+      ]
+    }
+  }
+}

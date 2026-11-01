@@ -1,0 +1,3 @@
+policy:
+  forbid-allow:
+    mcp-tools: ["github:*_repo"]

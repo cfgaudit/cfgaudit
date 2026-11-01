@@ -148,6 +148,14 @@ Suppression lives in `.cfgaudit.yml` (below), not in the scanned files: turn a r
 
 cfgaudit auto-discovers a `.cfgaudit.yml` (or `.cfgaudit.yaml`) in the scanned directory; `--config <path>` overrides discovery. CLI flags take precedence over the file.
 
+<a id="schema"></a>**Schema.** [`schema/cfgaudit.schema.json`](../schema/cfgaudit.schema.json) is a JSON Schema for the file, so an editor with YAML schema support (VS Code with the YAML extension, JetBrains IDEs) completes the keys and marks an unknown key, an invalid severity or a malformed policy entry while you type, the same mistakes cfgaudit exits 2 on. Point the file at it with a first line such as:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/cfgaudit/cfgaudit/main/schema/cfgaudit.schema.json
+```
+
+Replace `main` with the tag of the release your CI runs, so the editor checks against the keys that release accepts. Rule IDs under `rules` are checked by their form (`CFG` and three digits), not against a list, since cfgaudit only warns about an ID it does not know.
+
 <a id="untrusted-repositories"></a>**Scanning a repository you do not trust.** The discovered file belongs to the repository being scanned, and it decides which rules run and whether findings fail the exit code. A hostile repository can ship one that turns the relevant rules off or sets `no-exit-codes: true`; cfgaudit only names the file it uses on stderr. When you audit a repository before trusting it, such as a fresh clone before you open it with an agent, do not let it configure its own audit:
 
 ```sh
@@ -156,7 +164,7 @@ cfgaudit --config /dev/null path/to/repo     # an empty config; use NUL on Windo
 
 In CI the same applies to changes from people you do not fully trust. Both the [GitHub Action](ci-integration.md#github-action) and the [GitLab components](ci-integration.md#gitlab-cicd-component) take a `config` that the change cannot edit. That protects the scan as far as the pipeline definition is not part of the change too: a pull request that can edit `.cfgaudit.yml` can usually edit the workflow, so review changes to either like code, and use required workflows or protected pipeline configuration where the scan must hold against the change itself.
 
-```yaml
+```yaml path=.cfgaudit.yml
 # Per-rule overrides
 rules:
   CFG003: off           # disable a rule (flat form)
@@ -201,7 +209,7 @@ policy:
 
 For a team on more than one agent, the policy can be written once and checked against each agent's committed permission file. Claude Code and Devin CLI are checked today; Zed and Continue, which keep permission rules in user settings only, get a CFG118 info finding:
 
-```yaml
+```yaml path=.cfgaudit.yml
 policy:
   deny:
     commands: ["git push"]

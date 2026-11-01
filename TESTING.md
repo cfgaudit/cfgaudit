@@ -34,6 +34,7 @@ Whether the output stays readable for the tools that consume it, and existing fi
 
 | Layer | Protects against | Runs |
 |---|---|---|
+| Configuration schema (`internal/config/schema_test.go`, `schema-validation.yml`): the schema's keys against the parser's, its agent list against `PolicyAgents`, and the JSON form of every `.cfgaudit.yml` example in the docs and `testdata/config`, accepted or rejected by the schema as the parser accepts or rejects it | an editor that marks a valid config as wrong, or misses a mistake that makes cfgaudit exit 2 (#1106) | every pull request; schema validation when the schema or the examples change |
 | Report goldens and schemas (`cmd/cfgaudit/reports_golden_test.go`, `schema-validation.yml`) | a SARIF or Code Climate report that GitHub code scanning or GitLab rejects or reads only in part; an unnoticed change to either format, including the Code Climate fingerprints that identify a finding across runs (#1064) | every pull request; schema validation when the goldens or schemas change |
 
 ### Robustness and performance

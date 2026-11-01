@@ -1,0 +1,5 @@
+{
+  "shellcheck-exclude": [
+    "SC20"
+  ]
+}
