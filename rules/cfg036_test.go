@@ -519,6 +519,8 @@ func TestCFG036_Issue978(t *testing.T) {
 		"Run `cat .env.schema` to see which variables the app expects.",
 		"```bash\ncat .env.schema\n```",
 		"```bash\necho $(wc -l < .env)\n```",
+		// The issue's span, in a shell fence: the count inside the backticks.
+		"```bash\nN=`echo $(wc -l < .env)`\n```",
 		"```bash\nN=`wc -c .env`\n```",
 		"```bash\nLINES=$(wc -l -w .env)\n```",
 	} {
