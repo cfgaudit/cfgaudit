@@ -205,3 +205,28 @@ func TestCFG023_Issue874(t *testing.T) {
 		}
 	}
 }
+
+// A language interpreter running a named script or a non-runner module
+// passes the wildcard to that program (#1205).
+func TestCFG023_InterpreterOperandPinned1205(t *testing.T) {
+	for _, e := range []string{
+		"Bash(python -m pytest *)", "Bash(python3 -m my_tool.cli *)", "Bash(node tools/report.js *)",
+		"Bash(python scripts/check.py:*)", "Bash(python3 -m pytest:*)", "Bash(ruby bin/setup.rb *)",
+		"Bash(deno ./scripts/build.ts *)", "Bash(/usr/bin/python3 manage.py *)",
+	} {
+		if _, _, ok := dangerousAllowBinary(e); ok {
+			t.Errorf("expected %q to be exempt", e)
+		}
+	}
+	for _, e := range []string{
+		"Bash(python -m pip install *)", "Bash(python3 -m http.server *)", "Bash(python -m venv *)",
+		"Bash(python -m pip._internal *)", "Bash(python -m runpy *)", "Bash(python -m *)", "Bash(python -m:*)",
+		"Bash(python -c:*)", "Bash(node -e *)", "Bash(node --import ./x.mjs tools/report.js *)",
+		"Bash(python scripts/*.py *)", "Bash(python *)", "Bash(python:*)", "Bash(deno run *)",
+		"Bash(node build *)", "Bash(python $SCRIPT *)",
+	} {
+		if _, _, ok := dangerousAllowBinary(e); !ok {
+			t.Errorf("expected %q to be reported", e)
+		}
+	}
+}
