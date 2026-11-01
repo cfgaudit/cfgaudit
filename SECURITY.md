@@ -37,7 +37,7 @@ A rule missing a detection, or firing on benign config, is a **correctness bug**
 
 ## Verifying a release
 
-Every release is signed and carries build provenance. See [Verifying a release](README.md#verifying-a-release) for the commands.
+Every release is signed and carries build provenance. See [Verifying a release](docs/verifying-releases.md) for the commands.
 
 ## Supported versions
 

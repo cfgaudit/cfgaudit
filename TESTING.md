@@ -22,7 +22,7 @@ Whether cfgaudit reports the right findings, and only those.
 |---|---|---|
 | Rule unit tests (`rules/cfgNNN_test.go`) | wrong findings, severities or messages; missed edge cases; findings where the rule must stay silent | every pull request |
 | CLI tests through `run()` (`cmd/cfgaudit/run_test.go` and neighbors) | wrong exit codes, flags that are ignored or conflict, discovery and output format mistakes | every pull request |
-| Consistency tests (`rules/consistency_test.go`) | a rule without a docs page, README row or OWASP mapping; severities or OWASP categories that differ between code, docs page and README; mapping tables that name rules that do not exist | every pull request |
+| Consistency tests (`rules/consistency_test.go`) | a rule without a docs page, a row in the rule index (`docs/rules/README.md`) or OWASP mapping; severities or OWASP categories that differ between code, docs page and rule index; a rule index section the README overview does not link; mapping tables that name rules that do not exist | every pull request |
 | Doc trigger examples (`cmd/cfgaudit/triggerexamples_test.go`) | a rule change that leaves the example in its docs page behind, so the docs show a case the rule no longer reports | every pull request |
 | Fixtures (`testdata/settings/valid`, `testdata/settings/invalid`) | a rule that fires on a clean, realistic settings file; an invalid fixture that no longer triggers the rule it is named for | every pull request |
 | SchemaStore validation of the fixtures (`schema-validation.yml`) | fixtures that Claude Code's published settings schema rejects, so tests pass on input no user can write; nightly, it opens an issue when the upstream schema drifts | pull requests touching the fixtures, `main`, nightly |
@@ -100,3 +100,14 @@ Scheduled jobs watch what cfgaudit depends on from outside and open an issue whe
 ## Adding a rule
 
 A new rule needs unit tests for what it reports and for the cases it must stay silent on, a docs page with a trigger example that the doc test runs (the metamorphic test then rewrites that example without extra work), and a real-repository false-positive run before it is released. Check first whether an existing rule fits. The steps are in [Adding a new rule](CONTRIBUTING.md#adding-a-new-rule).
+
+## Test fixtures
+
+Real-world `settings.json` examples live under `testdata/settings/`:
+
+- `valid/` — configurations that must produce **zero** cfgaudit findings (minimal, fully-populated, team, managed-org).
+- `invalid/` — one fixture per rule, named `CFG###_<slug>.json`. Each must trigger the rule encoded in its prefix.
+
+`rules/fixtures_test.go` enforces both invariants on every Go test run, so fixtures and rule implementations stay in lockstep.
+
+A separate workflow (`.github/workflows/schema-validation.yml`) validates every file in `valid/` against the [SchemaStore Claude Code settings schema](https://json.schemastore.org/claude-code-settings.json) on push, on pull request, and nightly. If the upstream schema changes, the nightly run opens (or comments on) a tracking issue so the fixtures and rules can be brought back in sync before silent breakage.

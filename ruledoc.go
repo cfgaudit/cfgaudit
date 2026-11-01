@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package cfgaudit embeds the per-rule documentation so the `cfgaudit explain`
-// subcommand can render it offline, keeping docs/rules/*.md the single source.
+// subcommand can render it offline, keeping docs/rules/CFG*.md the single
+// source. docs/rules/README.md, the rule index, is not a rule doc.
 package cfgaudit
 
 import (
@@ -11,7 +12,7 @@ import (
 	"strings"
 )
 
-//go:embed docs/rules/*.md
+//go:embed docs/rules/CFG*.md
 var ruleDocs embed.FS
 
 // RuleDoc returns the raw Markdown for a rule ID (e.g. "CFG001"), or ok=false.

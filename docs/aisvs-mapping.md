@@ -42,7 +42,7 @@ The strongest overlap. cfgaudit's reason for existing, keeping agent **action po
 
 ## C10: Model Context Protocol (MCP) Security
 
-Overlaps cfgaudit's MCP-server rules; see also the **[OWASP MCP Top 10 mapping](../README.md#owasp-mcp-top-10-mapping-secondary)** (#173) for the same rules under the MCP-specific taxonomy.
+Overlaps cfgaudit's MCP-server rules; see also the **[OWASP MCP Top 10 mapping](rules/README.md#owasp-mcp-top-10-mapping-secondary)** (#173) for the same rules under the MCP-specific taxonomy.
 
 | AISVS requirement | cfgaudit (config-layer evidence) |
 |---|---|

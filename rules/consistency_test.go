@@ -12,9 +12,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 var ruleIDPattern = regexp.MustCompile(`^CFG\d{3}$`)
+
+// ruleIndex is the rule index with the rule tables per agent and the OWASP
+// mapping, moved out of the README in #1138.
+var ruleIndex = filepath.Join("..", "docs", "rules", "README.md")
 var readmeRuleIDRe = regexp.MustCompile(`\bCFG\d{3}\b`)
 var llmRe = regexp.MustCompile(`LLM\d{2}`)
 var sevTokenRe = regexp.MustCompile(`(?i)\b(error|warn|info)\b`)
@@ -23,7 +28,7 @@ var findingSevRe = regexp.MustCompile(`finding\.(Error|Warn|Info)\b`)
 func TestRuleConsistency(t *testing.T) {
 	checkNoDuplicateIDs(t)
 
-	readme := loadFile(t, filepath.Join("..", "README.md"))
+	readme := loadFile(t, ruleIndex)
 	codeSev := codeSeverities(t)
 
 	for _, r := range All {
@@ -41,14 +46,15 @@ func TestRuleConsistency(t *testing.T) {
 		})
 	}
 
-	checkNoPhantomREADMEIDs(t, readme)
+	checkNoPhantomREADMEIDs(t, "docs/rules/README.md", readme)
+	checkNoPhantomREADMEIDs(t, "README.md", loadFile(t, filepath.Join("..", "README.md")))
 }
 
-// checkSeverityAndOWASP guards against doc/README drift the existence checks miss:
-//   - the doc-header severity must match the README rule-table severity, and
+// checkSeverityAndOWASP guards against doc/rule-index drift the existence checks miss:
+//   - the doc-header severity must match the rule-index table severity, and
 //   - every severity the rule actually emits in code must be documented in one of
 //     them (catches e.g. a warn→error scope escalation that the docs omit), and
-//   - the OWASP risk in the doc header must match the README rule-table row.
+//   - the OWASP risk in the doc header must match the rule-index table row.
 func checkSeverityAndOWASP(t *testing.T, id, readme string, codeSev map[string]bool) {
 	t.Helper()
 	doc, err := os.ReadFile(filepath.Join("..", "docs", "rules", id+".md")) //nolint:gosec // G304: known-safe local test path
@@ -58,7 +64,7 @@ func checkSeverityAndOWASP(t *testing.T, id, readme string, codeSev map[string]b
 
 	row := readmeRuleRow(readme, id)
 	if row == "" {
-		t.Errorf("%s: no README rule-table row found", id)
+		t.Errorf("%s: no rule-index table row found", id)
 		return
 	}
 	cells := strings.Split(row, "|")
@@ -69,17 +75,17 @@ func checkSeverityAndOWASP(t *testing.T, id, readme string, codeSev map[string]b
 	docSev := sevSet(severityHeader(string(doc)))
 
 	if !eqSevSet(docSev, readmeSev) {
-		t.Errorf("%s: severity mismatch — doc header %v vs README table %v", id, sevList(docSev), sevList(readmeSev))
+		t.Errorf("%s: severity mismatch — doc header %v vs rule-index table %v", id, sevList(docSev), sevList(readmeSev))
 	}
 	documented := func(s string) bool { return docSev[s] || readmeSev[s] }
 	for s := range codeSev {
 		if !documented(s) {
-			t.Errorf("%s: code emits %q severity but neither the doc header nor the README table mentions it", id, s)
+			t.Errorf("%s: code emits %q severity but neither the doc header nor the rule-index table mentions it", id, s)
 		}
 	}
 
 	if docLLM, readmeLLM := llmRe.FindString(string(doc)), llmRe.FindString(row); docLLM != readmeLLM {
-		t.Errorf("%s: OWASP mismatch — doc %q vs README %q", id, docLLM, readmeLLM)
+		t.Errorf("%s: OWASP mismatch — doc %q vs rule index %q", id, docLLM, readmeLLM)
 	}
 }
 
@@ -156,9 +162,9 @@ func sevList(s map[string]bool) []string {
 	return out
 }
 
-// readmeRuleRow returns the README rule-table row that links to the rule's doc.
+// readmeRuleRow returns the rule-index table row that links to the rule's doc.
 func readmeRuleRow(readme, id string) string {
-	anchor := "](docs/rules/" + id + ".md)"
+	anchor := "](" + id + ".md)"
 	for _, line := range strings.Split(readme, "\n") {
 		if strings.Contains(line, anchor) && strings.HasPrefix(strings.TrimSpace(line), "|") {
 			return line
@@ -174,24 +180,24 @@ var (
 )
 
 // TestMCPMappingConsistency keeps the provisional OWASP MCP Top 10 mapping in
-// sync between each rule's doc header (**OWASP MCP:** MCPxx) and the README MCP
+// sync between each rule's doc header (**OWASP MCP:** MCPxx) and the rule-index MCP
 // mapping table — the same drift guard the LLM mapping gets, so the two never
 // diverge as the (still-beta) taxonomy shifts.
 func TestMCPMappingConsistency(t *testing.T) {
-	readme := loadFile(t, filepath.Join("..", "README.md"))
+	readme := loadFile(t, ruleIndex)
 
 	readmeMap := map[string]string{}
 	for _, m := range readmeMCPRowRe.FindAllStringSubmatch(readme, -1) {
 		mcp := m[1]
 		for _, id := range cfgIDRe.FindAllString(m[2], -1) {
 			if prev, ok := readmeMap[id]; ok && prev != mcp {
-				t.Errorf("%s listed under both %s and %s in the README MCP table", id, prev, mcp)
+				t.Errorf("%s listed under both %s and %s in the rule-index MCP table", id, prev, mcp)
 			}
 			readmeMap[id] = mcp
 		}
 	}
 	if len(readmeMap) == 0 {
-		t.Fatal("no README MCP mapping rows parsed — has the table format changed?")
+		t.Fatal("no rule-index MCP mapping rows parsed — has the table format changed?")
 	}
 
 	docMap := map[string]string{}
@@ -207,12 +213,12 @@ func TestMCPMappingConsistency(t *testing.T) {
 
 	for id, mcp := range docMap {
 		if readmeMap[id] != mcp {
-			t.Errorf("%s: doc header maps to %s but README MCP table says %q", id, mcp, readmeMap[id])
+			t.Errorf("%s: doc header maps to %s but rule-index MCP table says %q", id, mcp, readmeMap[id])
 		}
 	}
 	for id, mcp := range readmeMap {
 		if docMap[id] != mcp {
-			t.Errorf("%s: README MCP table maps to %s but doc header says %q", id, mcp, docMap[id])
+			t.Errorf("%s: rule-index MCP table maps to %s but doc header says %q", id, mcp, docMap[id])
 		}
 	}
 }
@@ -266,13 +272,13 @@ func checkDocFile(t *testing.T, id string) {
 func checkREADMEMention(t *testing.T, id, readme string) {
 	t.Helper()
 	if !strings.Contains(readme, id) {
-		t.Errorf("%s is not mentioned in README.md", id)
+		t.Errorf("%s is not mentioned in docs/rules/README.md", id)
 	}
 }
 
-// checkNoPhantomREADMEIDs ensures every CFGxxx ID in README.md is backed by a
-// registered rule. This catches rules listed in the README before they are implemented.
-func checkNoPhantomREADMEIDs(t *testing.T, readme string) {
+// checkNoPhantomREADMEIDs ensures every CFGxxx ID in a file is backed by a
+// registered rule. This catches rules listed before they are implemented.
+func checkNoPhantomREADMEIDs(t *testing.T, name, readme string) {
 	t.Helper()
 	implemented := map[string]bool{}
 	for _, r := range All {
@@ -280,7 +286,7 @@ func checkNoPhantomREADMEIDs(t *testing.T, readme string) {
 	}
 	for _, id := range readmeRuleIDRe.FindAllString(readme, -1) {
 		if !implemented[id] {
-			t.Errorf("README.md mentions %s but no such rule is registered in All", id)
+			t.Errorf("%s mentions %s but no such rule is registered in All", name, id)
 		}
 	}
 }
@@ -299,12 +305,12 @@ var (
 	cfgRangeRe     = regexp.MustCompile(`CFG(\d{3})\s*[–-]\s*CFG(\d{3})`)
 )
 
-// TestLLMMappingTableConsistency keeps the README "OWASP mapping" table in sync
+// TestLLMMappingTableConsistency keeps the rule index's "OWASP mapping" table in sync
 // with the rules table (#804): every rule is listed in the row of each LLM
 // category its rules-table row maps it to, and no row lists a rule that is
 // mapped elsewhere. Ranges such as CFG001–CFG004 count every ID in them.
 func TestLLMMappingTableConsistency(t *testing.T) {
-	readme := loadFile(t, filepath.Join("..", "README.md"))
+	readme := loadFile(t, ruleIndex)
 	// Only the "Covered" table: the "Not covered" rows may point at rules of
 	// another category on purpose.
 	covered := readme
@@ -330,7 +336,7 @@ func TestLLMMappingTableConsistency(t *testing.T) {
 		rows[m[1]] = ids
 	}
 	if len(rows) == 0 {
-		t.Fatal("no OWASP mapping rows found in README.md")
+		t.Fatal("no OWASP mapping rows found in docs/rules/README.md")
 	}
 
 	mapped := map[string]map[string]bool{}
@@ -357,4 +363,48 @@ func TestLLMMappingTableConsistency(t *testing.T) {
 func atoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
+}
+
+// TestReadmeLinksRuleIndexSections keeps the README's "What cfgaudit checks"
+// overview complete (#1138): every section of the rule index that lists rules
+// is linked from it, so a new agent section shows on the landing page too.
+func TestReadmeLinksRuleIndexSections(t *testing.T) {
+	readme := loadFile(t, filepath.Join("..", "README.md"))
+	index := loadFile(t, ruleIndex)
+	inChecks, fence, n := false, false, 0
+	for _, line := range strings.Split(index, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fence = !fence
+		}
+		switch {
+		case fence:
+		case strings.HasPrefix(line, "## "):
+			inChecks = strings.TrimSpace(line) == "## What cfgaudit checks"
+		case inChecks && strings.HasPrefix(line, "### "):
+			n++
+			link := "](docs/rules/README.md#" + githubAnchor(strings.TrimPrefix(line, "### ")) + ")"
+			if !strings.Contains(readme, link) {
+				t.Errorf("README.md does not link the rule index section %q (%s)", line, link)
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal(`no "### " sections under "## What cfgaudit checks" in docs/rules/README.md`)
+	}
+}
+
+// githubAnchor is the id GitHub gives a Markdown heading: lower case, letters,
+// digits, hyphens and underscores kept, spaces turned into hyphens, everything
+// else dropped.
+func githubAnchor(heading string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(heading)) {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == '-', r == '_':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
 }

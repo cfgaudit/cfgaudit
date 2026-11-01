@@ -10,7 +10,7 @@ Coding agents add configuration surfaces every few weeks: new hook types, new se
 
 - Keep the weekly review of upstream releases and turn new, committable surfaces into issues within the week.
 - Current work: Claude Code settings `env` and hook handlers (#744, #745), GitHub Copilot agent hooks and MCP files (#747), OpenCode 2 (#748), Gemini CLI and Qwen Code (#749, #750), VS Code agent sandbox settings (#751).
-- Re-measure every supported agent's loader when it ships a major version, and keep the README's per-agent file lists exact.
+- Re-measure every supported agent's loader when it ships a major version, and keep the per-agent file lists in `docs/rules/README.md` exact.
 
 ### 2. Accurate findings
 

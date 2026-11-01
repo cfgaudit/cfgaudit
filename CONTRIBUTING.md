@@ -123,7 +123,7 @@ The repo has a few cross-cutting checks (`rules/consistency_test.go`, `rules/fix
 
 ### 0. Check whether an existing rule fits
 
-With more than a hundred rules, many shared across agents, a new rule is often the wrong fix. Two rules for the same problem report it twice, drift apart in wording and severity, and make `--skip` harder to use. Before picking an ID, search `docs/rules/` and `rules/` for the setting, key or pattern, and look at the rule table in the README.
+With more than a hundred rules, many shared across agents, a new rule is often the wrong fix. Two rules for the same problem report it twice, drift apart in wording and severity, and make `--skip` harder to use. Before picking an ID, search `docs/rules/` and `rules/` for the setting, key or pattern, and look at the rule tables in [`docs/rules/README.md`](docs/rules/README.md).
 
 Extend an existing rule when it checks the same risk on the same kind of value:
 
@@ -245,7 +245,7 @@ The consistency test (`rules/consistency_test.go`) requires:
 
 - A doc file at `docs/rules/CFGNNN.md` for every registered rule
 - The doc must mention "OWASP" or "LLM"
-- The rule must appear in the README's rule table
+- The rule must appear in a rule table in `docs/rules/README.md`
 
 ### 6. Add fixtures
 
@@ -254,15 +254,15 @@ The consistency test (`rules/consistency_test.go`) requires:
 
 The schema-validation workflow (`.github/workflows/schema-validation.yml`) validates `valid/*.json` against the upstream Claude Code schema on push and nightly. `invalid/*.json` is only checked for parseable JSON (with `jq empty`), since invalid fixtures are intentionally non-compliant.
 
-### 7. Update the README
+### 7. Update the rule index
 
-Add a row to the rules table in `README.md`:
+Add a row to the rule table of the agent's section in [`docs/rules/README.md`](docs/rules/README.md):
 
 ```markdown
-| [CFGNNN](docs/rules/CFGNNN.md) | severity | one-line description | LLM0X |
+| [CFGNNN](CFGNNN.md) | severity | one-line description | LLM0X |
 ```
 
-The reverse-consistency test fails if you mention `CFGNNN` in the README without registering a corresponding rule in `All`.
+The reverse-consistency test fails if you mention `CFGNNN` in the rule index without registering a corresponding rule in `All`. A new section for an agent also needs a line in the README's "What cfgaudit checks" list, which `TestReadmeLinksRuleIndexSections` checks.
 
 ---
 
@@ -286,11 +286,11 @@ Every change, including the maintainer's own, lands through a pull request; noth
 
 - **Scope.** The change does what its issue asks and nothing unrelated; a change in behaviour has an issue.
 - **Tests.** The tests cover the change, and a fix adds a test that fails without it (see [Tests](#4-tests)). Coverage stays above both floors.
-- **Rules.** A new or changed rule has its doc page, fixtures and README row, follows the agent's real loader (measured, not assumed), and its message names keys and files, never a secret value.
+- **Rules.** A new or changed rule has its doc page, fixtures and rule-index row, follows the agent's real loader (measured, not assumed), and its message names keys and files, never a secret value.
 - **The trust boundary.** Scanned content is still never executed or evaluated, every read of repository content still goes through `internal/scanroot`, and the scanner opens no network connection. A change that adds a process, a network call or a new kind of input updates [docs/design.md](docs/design.md).
 - **Dependencies.** A new or updated dependency follows [Dependencies](#dependencies).
 - **Workflows.** Actions are pinned to commit SHAs with a version comment that pinact checks against the SHA, permissions are the least the job needs, no input is interpolated into a script, and zizmor passes.
-- **Docs and style.** README, rule docs and CONTRIBUTING.md match the change.
+- **Docs and style.** README, the pages in `docs/`, rule docs and CONTRIBUTING.md match the change.
 
 **Sensitive paths.** A pull request that touches the plugin (`hooks/`, `bin/`, `skills/`), the build and release files including `go.mod`, the published Action, pre-commit hook and GitLab components, `SECURITY.md`, agent or editor config, or the files that steer the other checks and watches fails the `Sensitive paths` check until the maintainer has looked at those files and set the `sensitive-paths-reviewed` label. A new push removes the label again when it changes what the pull request does to those files; bringing the branch up to date with `main`, or a push that only touches other files, keeps it. The full list is in `.github/scripts/sensitive-paths.sh`.
 
