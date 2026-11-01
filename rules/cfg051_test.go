@@ -25,7 +25,10 @@ func TestCFG051_BroadGrants(t *testing.T) {
 		// Unrestricted shell → warn (broad but commonly legitimate).
 		{"bare-bash", "allowed-tools: Bash, Read", "unrestricted shell", finding.Warn},
 		{"bash-list", "allowed-tools:\n  - Bash\n  - Read", "unrestricted shell", finding.Warn},
-		{"shell", "allowed-tools: shell", "unrestricted shell", finding.Warn},
+		// Claude Code matches tool names case-sensitively: measured on
+		// 2.1.316, bash, shell and execute let no Bash call through (#1196).
+		{"shell", "allowed-tools: shell", "grants nothing", finding.Info},
+		{"lower-bash", "allowed-tools: bash", "grants nothing", finding.Info},
 	}
 	for _, c := range cases {
 		content := "---\ndescription: x\n" + c.fm + "\n---\nbody\n"
@@ -123,5 +126,33 @@ func TestCFG051_DevinExec(t *testing.T) {
 	profile := &Target{InstructionFile: "repo/.devin/agents/runner.md", InstructionContent: "---\nname: runner\nallowed-tools:\n  - exec\n---\nbody\n"}
 	if f := CFG051.Check(profile); len(f) != 0 {
 		t.Errorf("a Devin agent profile's allowed-tools restricts, expected no finding, got %+v", f)
+	}
+}
+
+// Skill roots by measured reader (#1196): roots only Copilot CLI or OpenCode
+// read are not reported, roots with unmeasured readers are info, and a Claude
+// Code root keeps the warning.
+func TestCFG051_SkillRoots1196(t *testing.T) {
+	content := "---\nname: release\nallowed-tools: Bash\n---\nbody\n"
+	for path, want := range map[string]string{
+		".claude/skills/release/SKILL.md":   "warn",
+		".github/skills/release/SKILL.md":   "",
+		".opencode/skills/release/SKILL.md": "",
+		".opencode/skill/release/SKILL.md":  "",
+		".agents/skills/release/SKILL.md":   "info",
+		".codex/skills/release/SKILL.md":    "info",
+		".cursor/skills/release/SKILL.md":   "info",
+		"my-plugin/skills/release/SKILL.md": "warn",
+	} {
+		f := CFG051.Check(instructionTarget(path, content))
+		got := ""
+		if len(f) == 1 {
+			got = string(f[0].Severity)
+		} else if len(f) > 1 {
+			got = "many"
+		}
+		if got != want {
+			t.Errorf("%s: got %q, want %q (%+v)", path, got, want, f)
+		}
 	}
 }

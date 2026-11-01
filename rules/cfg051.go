@@ -38,6 +38,10 @@ func (r *cfg051) Check(t *Target) []finding.Finding {
 	if t == nil || t.InstructionContent == "" || isDevinAgentProfile(t.InstructionFile) || isGeminiSkill(t.InstructionFile) {
 		return nil
 	}
+	root := skillRootKind(t.InstructionFile)
+	if root == rootIgnoresField {
+		return nil
+	}
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
 	if !ok {
 		return nil
@@ -55,6 +59,16 @@ func (r *cfg051) Check(t *Target) []finding.Finding {
 	sev, what := analyzeAllowedTools(allowed, disallowed)
 	if what == "" {
 		return nil
+	}
+	switch {
+	case root == rootUnmeasured:
+		sev = finding.Info
+		what += " (Claude Code does not read this skill root, and Copilot CLI 1.0.95 and OpenCode 1.18.18 do not treat allowed-tools as a grant; whether Codex or Cursor do is not measured)"
+	case sev == finding.Warn && !grantsClaudeShell(allowed):
+		// Claude Code matches tool names case-sensitively: measured on 2.1.316,
+		// allowed-tools: bash let no Bash call through, Bash did (#1196).
+		sev = finding.Info
+		what = "names a shell tool Claude Code does not have (\"" + strings.Join(allowed, ", ") + "\"), so it grants nothing: Claude Code matches tool names case-sensitively and the tool is Bash"
 	}
 	return []finding.Finding{{
 		RuleID:   "CFG051",
@@ -111,6 +125,46 @@ func analyzeAllowedTools(allowed, disallowed []string) (finding.Severity, string
 // does not" (Devin CLI skill docs), so reporting it as broad would be wrong.
 func isDevinAgentProfile(path string) bool {
 	return strings.Contains(filepath.ToSlash(path), "/.devin/agents/") || strings.HasPrefix(filepath.ToSlash(path), ".devin/agents/")
+}
+
+// The skill roots CFG051 distinguishes (#1196). Measured with a skill that
+// runs `touch` under allowed-tools: Bash, against a baseline without it:
+// Claude Code 2.1.316 runs it; Copilot CLI 1.0.95 (.github/skills,
+// .agents/skills, .claude/skills, also with "shell" and "shell(touch)") and
+// OpenCode 1.18.18 (.agents/skills, .opencode/skills, .claude/skills, with
+// bash set to ask) still ask. Codex and Cursor could not be measured.
+const (
+	rootClaude = iota
+	rootIgnoresField
+	rootUnmeasured
+)
+
+// skillRootKind classifies the skill root of path: read only by agents that
+// ignore allowed-tools, read by agents that were not measured, or a root
+// Claude Code reads (the default, which covers .claude/ and plugins).
+func skillRootKind(path string) int {
+	p := strings.ReplaceAll(path, `\`, "/")
+	switch {
+	case strings.Contains(p, ".github/skills/"), strings.Contains(p, ".opencode/skill/"), strings.Contains(p, ".opencode/skills/"):
+		return rootIgnoresField
+	case strings.Contains(p, ".agents/skills/"), strings.Contains(p, ".codex/"), strings.Contains(p, ".cursor/skills/"):
+		return rootUnmeasured
+	}
+	return rootClaude
+}
+
+// grantsClaudeShell reports whether an allowed-tools list names Claude Code's
+// shell tool as Claude Code spells it, or Devin's exec, which CFG051 reads in
+// the same files.
+func grantsClaudeShell(allowed []string) bool {
+	for _, raw := range allowed {
+		tool := strings.TrimSpace(raw)
+		low := strings.ToLower(tool)
+		if strings.HasPrefix(tool, "Bash") || strings.HasPrefix(low, "exec") {
+			return true
+		}
+	}
+	return false
 }
 
 // isGeminiSkill reports whether path is a skill Gemini CLI loads from a
