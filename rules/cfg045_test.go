@@ -4,7 +4,9 @@
 package rules
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -240,12 +242,15 @@ func TestCFG045_ShellcheckTimeout(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "did not finish within") {
 		t.Errorf("recorded failure = %v, want a timeout", err)
 	}
+	// The timeout can stop the stub before it writes the marker on a slow
+	// machine, so a missing file means no recorded call (#1230). What matters is
+	// that no later site starts shellcheck again.
 	got, readErr := os.ReadFile(calls) // #nosec G304 -- calls is under t.TempDir()
-	if readErr != nil {
+	if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
 		t.Fatal(readErr)
 	}
-	if n := strings.Count(string(got), "x"); n != 1 {
-		t.Errorf("shellcheck ran %d times, want 1: later sites must be skipped after a failure", n)
+	if n := strings.Count(string(got), "x"); n > 1 {
+		t.Errorf("shellcheck ran %d times, want at most 1: later sites must be skipped after a failure", n)
 	}
 }
 
