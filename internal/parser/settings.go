@@ -288,6 +288,42 @@ type HookCommand struct {
 	AllowedEnvVars []string          `json:"allowedEnvVars,omitempty"`
 }
 
+// EnvMap is an MCP server's env block. A number, a bool or null as a value is
+// read as its JSON text instead of failing the whole file (#1189): a server
+// with "MAX_TOKENS": 64000 would otherwise take every other server in the file
+// out of the scan. How the agents load such a value is not measured yet.
+type EnvMap map[string]string
+
+// UnmarshalJSON decodes the env object leniently.
+func (e *EnvMap) UnmarshalJSON(data []byte) error {
+	if string(bytes.TrimSpace(data)) == "null" {
+		*e = nil
+		return nil
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	out := make(EnvMap, len(raw))
+	for k, v := range raw {
+		var s string
+		if json.Unmarshal(v, &s) == nil {
+			out[k] = s
+			continue
+		}
+		t := strings.TrimSpace(string(v))
+		if strings.HasPrefix(t, "{") || strings.HasPrefix(t, "[") {
+			return fmt.Errorf("env %q: an object or array is not an environment value", k)
+		}
+		if t == "null" {
+			t = ""
+		}
+		out[k] = t
+	}
+	*e = out
+	return nil
+}
+
 type MCPServer struct {
 	// OAuthClientSecret is a literal OAuth client secret the server declaration
 	// carries. Filled by the Codex mapping from [mcp_servers.<name>.oauth]
@@ -305,11 +341,11 @@ type MCPServer struct {
 	// written as ${env:...}.
 	Auth *MCPStaticOAuth `json:"auth,omitempty"`
 
-	Command                 string            `json:"command,omitempty"`
-	Args                    []string          `json:"args,omitempty"`
-	AlwaysAllow             []string          `json:"alwaysAllow,omitempty"`
-	Env                     map[string]string `json:"env,omitempty"`
-	DangerouslyAllowBrowser bool              `json:"dangerouslyAllowBrowser,omitempty"`
+	Command                 string   `json:"command,omitempty"`
+	Args                    []string `json:"args,omitempty"`
+	AlwaysAllow             []string `json:"alwaysAllow,omitempty"`
+	Env                     EnvMap   `json:"env,omitempty"`
+	DangerouslyAllowBrowser bool     `json:"dangerouslyAllowBrowser,omitempty"`
 
 	// Remote-transport fields (HTTP/SSE/WebSocket MCP servers). URL is the
 	// endpoint the agent connects to; Type is the transport ("http"/"sse"/…);

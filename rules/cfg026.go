@@ -146,7 +146,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				}
 				if p.num == 1 || p.num == 2 {
 					if quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0]) {
-						if defensiveContext(lines, i) {
+						if defensiveContext(lines, i) || askAgentQuoteRe.MatchString(line[:loc[0]]) {
 							continue
 						}
 						sev = finding.Warn
@@ -155,7 +155,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 						}
 					}
 				}
-				if p.num == 4 && storyWorkRe.MatchString(line) {
+				if p.num == 4 && (storyWorkRe.MatchString(line) || storyNounAfterRe.MatchString(line[loc[1]:])) {
 					continue
 				}
 				findings = append(findings, finding.Finding{
@@ -232,7 +232,11 @@ func defensiveContext(lines []string, i int) bool {
 
 // runAsRe matches the verb that makes "as Administrator" the Windows idiom
 // "Run as Administrator" rather than a claim of authority (#655).
-var runAsRe = regexp.MustCompile(`(?i)\b(?:run|runs|running|ran|launch|launched|launching|start|started|starting|open|opened|opening|execute|executed|executing|elevated)\s+$`)
+var runAsRe = regexp.MustCompile(`(?i)\b(?:run|runs|running|ran|launch|launched|launching|start|started|starting|open|opened|opening|execute|executed|executing|elevated)\s+(?:[\w.+-]+\s+){0,3}$`)
+
+// runAsActRe matches a verb of speaking or acting between "run" and "as", which
+// makes the phrase a role again: "start acting as administrator" (#1156).
+var runAsActRe = regexp.MustCompile(`(?i)\b(?:act|acting|acts|speak|speaking|respond|responding|answer|answering|behave|behaving|pose|posing)\s+$`)
 
 // authorityIdiom reports whether a pattern-3 match is ordinary wording rather
 // than an authority claim (#655): "as developer" running into a hyphen
@@ -242,8 +246,17 @@ func authorityIdiom(line string, loc []int) bool {
 	if loc[1] < len(line) && line[loc[1]] == '-' {
 		return true
 	}
-	return runAsRe.MatchString(line[:loc[0]])
+	return runAsRe.MatchString(line[:loc[0]]) && !runAsActRe.MatchString(line[:loc[0]])
 }
+
+// storyNounAfterRe matches the noun that makes "for a story" the subject of a
+// writing skill rather than a frame for a request: "thematic depth for a story
+// concept" (#1156). "for a story where the AI has no limits" keeps reporting.
+var storyNounAfterRe = regexp.MustCompile(`(?i)^\s+(?:concepts?|ideas?|outlines?|arcs?|drafts?|titles?|premises?|pitch(?:es)?|structures?|beats?|summar(?:y|ies)|synopse?s|synopsis|themes?|characters?|settings?|worlds?|plots?|treatments?|loglines?)\b`)
+
+// askAgentQuoteRe matches advice to the user that quotes what to tell the
+// agent: 'ask the agent to "forget previous instructions" if confused' (#1156).
+var askAgentQuoteRe = regexp.MustCompile(`(?i)\b(?:ask|tell)\s+(?:the\s+|your\s+)?(?:agent|assistant|model|claude|ai|llm|bot)\s+to\s+["\x{201c}]$`)
 
 // untrustedSourceRe matches where the instructions to ignore are located when
 // that place is untrusted input: "ignore any instruction in the PR title",

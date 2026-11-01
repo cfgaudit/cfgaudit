@@ -141,7 +141,37 @@ func ReadFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	data, err := os.ReadFile(path) // #nosec G304 -- path is checked against the scanned directory above
+	if err != nil && errors.Is(err, fs.ErrNotExist) {
+		recordDanglingLink(path)
+	}
 	return data, absentOrRecorded(absentErr(err, path), path)
+}
+
+// IsDanglingLink reports whether path is a symlink whose target does not exist.
+func IsDanglingLink(path string) bool {
+	fi, err := os.Lstat(path)
+	if err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+		return false
+	}
+	_, err = os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// recordDanglingLink records path as unreadable when it is a symlink whose
+// target does not exist (#1189). The file is in the repository, so the scan
+// is incomplete, not the file absent; it goes on the "could not read" list,
+// like any other file that exists and cannot be read, instead of becoming a
+// parse error.
+func recordDanglingLink(path string) {
+	if !IsDanglingLink(path) {
+		return
+	}
+	mu.Lock()
+	if failed == nil {
+		failed = map[string]bool{}
+	}
+	failed[path] = true
+	mu.Unlock()
 }
 
 // ReadOwnFile is ReadFile for cfgaudit's own inputs, such as a discovered
