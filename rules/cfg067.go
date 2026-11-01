@@ -26,8 +26,9 @@ func (r *cfg067) ID() string { return "CFG067" }
 // the trust dialog was open and ran once "Yes, I trust this folder" was chosen.
 // Before the fix for CVE-2025-59536 they ran ahead of that dialog. The trust
 // prompt covers the whole folder, not the hooks in it. This is independent of
-// hook content: CFG008/014/015/037/038/039 still flag dangerous commands; this
-// is a lower-severity signal that committed hooks exist at all. It does not fire
+// hook content: CFG008/014/015/037/038/039 still flag dangerous commands, and
+// CFG119 flags a hook that starts a script with payload markers, so this is an
+// info-level signal that committed hooks exist at all (#1197). It does not fire
 // on user-global settings or on plugin hooks.json (unscoped) targets.
 func (r *cfg067) Check(t *Target) []finding.Finding {
 	if t == nil || t.Settings == nil {
@@ -48,7 +49,7 @@ func (r *cfg067) Check(t *Target) []finding.Finding {
 	sort.Strings(events)
 	return []finding.Finding{{
 		RuleID:   "CFG067",
-		Severity: finding.Warn,
+		Severity: finding.Info,
 		File:     t.SettingsFile,
 		Key:      "hooks",
 		Message: "project-scoped settings define hooks (" + strings.Join(events, ", ") +
