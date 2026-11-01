@@ -218,10 +218,63 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 	if shellInterpreters[tok] && shellScriptPinned(inner) {
 		return "", allowCat{}, false
 	}
+	if pinnableInterpreters[tok] && interpreterOperandPinned(inner) {
+		return "", allowCat{}, false
+	}
 	if cat, ok := dangerousAllowLookup[tok]; ok {
 		return tok, cat, true
 	}
 	return "", allowCat{}, false
+}
+
+// pinnableInterpreters are the interpreters whose first operand can pin the
+// program they run: a script path or, for Python, `-m <module>` (#1205).
+var pinnableInterpreters = map[string]bool{
+	"python": true, "python3": true, "perl": true, "ruby": true, "node": true, "deno": true,
+}
+
+// runnerModules are Python modules that run or install other code, so `-m`
+// naming one of them pins nothing: `python -m pip install <remote>`.
+var runnerModules = []string{"pip", "pipx", "uv", "ensurepip", "venv", "http.server", "runpy", "code"}
+
+var (
+	// pythonModuleRe is a dotted module name: pytest, my_tool.cli.
+	pythonModuleRe = regexp.MustCompile(`^[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*$`)
+	// scriptPathRe is a script file the interpreter runs: a path or a file
+	// with a source extension. "deno run" and "node build" are not scripts.
+	scriptPathRe = regexp.MustCompile(`(?i)^[\w./-]*\.(?:py|js|mjs|cjs|ts|mts|cts|rb|pl|pm)$`)
+)
+
+// interpreterOperandPinned reports whether a Bash(python …*) style entry
+// names the program the interpreter runs, so the wildcard only reaches that
+// program's argv (#1205), the same reasoning as #874 for shells and #850 for
+// npx. The first operand is either a script path with no wildcard or shell
+// metacharacter ("node tools/report.js *", "python scripts/check.py:*"), or
+// `-m <module>` for a module that does not run other code ("python -m pytest
+// *"). An option first ("node --import x tools/report.js *", "python -c:*")
+// keeps the entry open.
+func interpreterOperandPinned(inner string) bool {
+	fields := strings.Fields(inner)
+	if len(fields) < 2 {
+		return false
+	}
+	first := strings.TrimSuffix(fields[1], ":*")
+	if first == "-m" {
+		if len(fields) < 3 {
+			return false
+		}
+		module := strings.TrimSuffix(fields[2], ":*")
+		if !pythonModuleRe.MatchString(module) {
+			return false
+		}
+		for _, r := range runnerModules {
+			if module == r || strings.HasPrefix(module, r+".") {
+				return false
+			}
+		}
+		return true
+	}
+	return !strings.HasPrefix(first, "-") && !strings.ContainsAny(first, "*$`;|&<>") && scriptPathRe.MatchString(first)
 }
 
 // shellScriptPinned reports whether a Bash(bash …*) entry names the script

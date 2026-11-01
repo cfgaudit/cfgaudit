@@ -138,6 +138,9 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 
 		// Part C — foreign-LLM tokenizer control sequences (warn)
 		for _, loc := range foreignToken.FindAllStringIndex(c, -1) {
+			if stringInCodeFence(c, loc[0]) {
+				continue
+			}
 			add(loc[0], finding.Warn, "contains a foreign-LLM control token \""+c[loc[0]:loc[1]]+"\" (Part C) — harmless to the agent's tokenizer, but a strong sign the file was adapted from a multi-model attack payload")
 		}
 
@@ -173,4 +176,52 @@ func posOf(content string, off int) (int, int) {
 		}
 	}
 	return line, col
+}
+
+// programFenceLangs are the info strings of a fenced block in a programming
+// language, where a control token in a string literal is data the code works
+// with (#1159).
+var programFenceLangs = map[string]bool{
+	"python": true, "py": true, "python3": true, "javascript": true, "js": true, "mjs": true, "typescript": true, "ts": true,
+	"jsx": true, "tsx": true, "go": true, "rust": true, "rs": true, "java": true, "kotlin": true, "kt": true, "c": true,
+	"cpp": true, "c++": true, "csharp": true, "cs": true, "ruby": true, "rb": true, "php": true, "swift": true,
+	"scala": true, "lua": true, "julia": true, "r": true, "dart": true,
+}
+
+// stringInCodeFence reports whether off sits inside a string literal in a
+// fenced block of a programming language: the token is the subject of the code,
+// as in tokenizer documentation (`Tokenizer(BPE(unk_token="<|endoftext|>"))`),
+// not text the agent is asked to read as a turn marker (#1159). Prose, and a
+// fence without a language or in a shell or markup language, keep reporting.
+func stringInCodeFence(c string, off int) bool {
+	lang, inFence := "", false
+	lineStart := 0
+	for lineStart <= off {
+		end := strings.IndexByte(c[lineStart:], '\n')
+		if end < 0 {
+			end = len(c)
+		} else {
+			end += lineStart
+		}
+		if off < end || end == len(c) {
+			break
+		}
+		if t := strings.TrimSpace(c[lineStart:end]); isFenceDelimiter(t) {
+			if inFence {
+				inFence = false
+			} else {
+				inFence = true
+				lang = strings.ToLower(strings.Trim(strings.Fields(strings.TrimLeft(t, "`~") + " x")[0], "{}."))
+				if strings.Trim(t, "`~ ") == "" {
+					lang = ""
+				}
+			}
+		}
+		lineStart = end + 1
+	}
+	if !inFence || !programFenceLangs[lang] {
+		return false
+	}
+	before := c[lineStart:off]
+	return strings.Count(before, "\"")%2 == 1 || strings.Count(before, "'")%2 == 1
 }
