@@ -54,6 +54,36 @@ func TestCFG037_Benign_NoFinding(t *testing.T) {
 	}
 }
 
+func TestCFG037_GuardPatterns_NoFinding(t *testing.T) {
+	for _, cmd := range []string{
+		`printf '%s' "$P" | grep -qE '(id_rsa|id_ed25519)$'`,
+		`printf '%s' "$P" | egrep 'id_ecdsa$'`,
+		`printf '%s' "$P" | rg "id_dsa$"`,
+		`[[ "$P" =~ \.ssh/id_ ]] && exit 2`,
+		`[[ "$P" =~ \.ssh/(id_rsa|id_ed25519) ]] && exit 2`,
+		`case "$P" in *id_rsa*) exit 2;; esac`,
+		`case "$P" in *id_rsa*) exit 2;; *id_ed25519*) exit 3;; esac`,
+	} {
+		if f := CFG037.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("expected no finding for guard-only pattern %q, got %+v", cmd, f)
+		}
+	}
+}
+
+func TestCFG037_KeyReadsAfterGuardPatterns_Reported(t *testing.T) {
+	for _, cmd := range []string{
+		`grep -r 'PRIVATE' ~/.ssh/id_rsa`,
+		`printf '%s' "$P" | grep -qE 'id_rsa$'; cat ~/.ssh/id_rsa`,
+		`[[ "$P" =~ id_rsa ]] && cat ~/.ssh/id_ed25519`,
+		`case "$P" in *id_rsa*) cat ~/.ssh/id_dsa;; esac`,
+	} {
+		f := CFG037.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("expected 1 Error for key read %q, got %+v", cmd, f)
+		}
+	}
+}
+
 func TestCFG037_NoSettings_NoFinding(t *testing.T) {
 	if f := CFG037.Check(&Target{}); len(f) != 0 {
 		t.Errorf("expected no finding without settings, got %+v", f)
