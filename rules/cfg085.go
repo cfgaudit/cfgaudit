@@ -22,7 +22,11 @@ func (r *cfg085) ID() string { return "CFG085" }
 // permissionModeWeakening maps a subagent frontmatter permissionMode to how it
 // weakens the permission system. The documented values are default, acceptEdits,
 // auto, dontAsk, bypassPermissions, plan and manual (an alias for default);
-// default, plan and manual are absent here because they prompt normally.
+// default, plan and manual are absent here because they prompt normally, and
+// dontAsk because it is stricter than default: it denies every tool call that
+// is not pre-approved instead of asking. Measured on Claude Code 2.1.316
+// (#1188): a dontAsk subagent's Bash call was denied "because Claude Code is
+// running in don't ask mode", and the same command ran once allowed.
 //
 // Severities mirror CFG004, which reads the same modes from settings.json:
 // bypassPermissions is an error, the softer modes are warnings.
@@ -31,7 +35,6 @@ var permissionModeWeakening = map[string]struct {
 	what string
 }{
 	"bypassPermissions": {finding.Error, "disables all permission checks — the subagent runs with full autonomy and no confirmation prompts"},
-	"dontAsk":           {finding.Error, "suppresses permission prompts — the subagent proceeds without asking"},
 	"auto":              {finding.Warn, "hands permission decisions to the auto-mode classifier instead of prompting (see CFG079 for how its allow/deny lists can be weakened)"},
 	"acceptEdits":       {finding.Warn, "auto-accepts file edits, so the subagent writes to the working tree without confirmation"},
 }
@@ -158,8 +161,8 @@ var qwenNativeApprovalModes = map[string]bool{
 // (agent-frontmatter-schema.ts): a Claude permissionMode is honoured on a
 // .qwen/agents file only through this bridge, and only when approvalMode is
 // unset. dontAsk maps to default because qwen preserves its restrictive intent,
-// so it is NOT a weakening value here even though CFG085 treats dontAsk as one
-// for a Claude file. A permissionMode outside these six keys (for example the
+// so it is not a weakening value here either, as on a Claude file (#1188). A
+// permissionMode outside these six keys (for example the
 // common but invalid "yolo") is dropped and honours nothing.
 var qwenPermissionBridge = map[string]string{
 	"default":           "default",

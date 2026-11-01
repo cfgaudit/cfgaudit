@@ -18,7 +18,19 @@ func TestCredentialCoverage_Severity(t *testing.T) {
 	}{
 		{"deny list for something else", `{"permissions":{"allow":["Bash(npm run test:*)"],"deny":["Bash(git push *)","Edit(./src/generated/**)"]}}`,
 			want{"CFG041": finding.Warn, "CFG042": finding.Warn, "CFG043": finding.Warn, "CFG044": finding.Warn}},
-		{"guards .env only", `{"permissions":{"allow":["Bash(cat:*)"],"deny":["Read(./.env)"]}}`,
+		// Claude Code 2.1.316 asks before cat reads a path outside the
+		// project even under an allowed Bash(cat:*), so the home-directory
+		// classes are a warning there; a bare Read, an interpreter or an
+		// additional directory that covers home is a silent route (#1172).
+		{"guards .env only, cat allowed", `{"permissions":{"allow":["Bash(cat:*)"],"deny":["Read(./.env)"]}}`,
+			want{"CFG042": finding.Error, "CFG043": finding.Warn, "CFG044": finding.Warn}},
+		{"guards .env only, Read allowed", `{"permissions":{"allow":["Read"],"deny":["Read(./.env)"]}}`,
+			want{"CFG042": finding.Error, "CFG043": finding.Error, "CFG044": finding.Error}},
+		{"guards .env only, node allowed", `{"permissions":{"allow":["Bash(node:*)"],"deny":["Read(./.env)"]}}`,
+			want{"CFG042": finding.Error, "CFG043": finding.Error, "CFG044": finding.Error}},
+		{"guards .env only, home added", `{"permissions":{"additionalDirectories":["~"],"deny":["Read(./.env)"]}}`,
+			want{"CFG042": finding.Error, "CFG043": finding.Error, "CFG044": finding.Error}},
+		{"guards .env only, Read of home allowed", `{"permissions":{"allow":["Read(~/**)"],"deny":["Read(./.env)"]}}`,
 			want{"CFG042": finding.Error, "CFG043": finding.Error, "CFG044": finding.Error}},
 		{"bypass mode, no secret rules", `{"permissions":{"defaultMode":"bypassPermissions","deny":["Bash(git push *)"]}}`,
 			want{"CFG041": finding.Error, "CFG042": finding.Error, "CFG043": finding.Error, "CFG044": finding.Error}},
@@ -43,5 +55,12 @@ func TestCredentialCoverage_Severity(t *testing.T) {
 				t.Errorf("%s: %s = %q, want %q", tc.name, id, got[id], sev)
 			}
 		}
+	}
+}
+
+// Without a permissions block there is no allow rule that opens a route.
+func TestSilentHomeRoute_NoPermissions(t *testing.T) {
+	if silentHomeRoute(settingsTarget(t, `{"env":{"A":"1"}}`)) {
+		t.Error("no permissions block reported as a silent route")
 	}
 }
