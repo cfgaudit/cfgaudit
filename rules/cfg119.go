@@ -37,6 +37,13 @@ var (
 	// identifiers are called (#1265); none of 886 minified bundles and large
 	// node_modules files measured for #1265 contains it.
 	payloadRotationRe = regexp.MustCompile(`while\s*\(\s*!!\s*\[\s*\]\s*\)\s*\{\s*try\s*\{`)
+	// payloadCharCodeArrayRe, payloadFromCharCodeRe and payloadEvalRe find a
+	// payload kept as an array of character codes that is turned into text and
+	// run (#1270): `eval(...([40,100,118,...].map(c => String.fromCharCode(c))
+	// ...))`. The array alone is not enough: 34 of 886 measured bundles carry
+	// a large numeric table, none with fromCharCode and eval or Function.
+	payloadFromCharCodeRe = regexp.MustCompile(`\bfromCharCode\b`)
+	payloadEvalRe         = regexp.MustCompile(`\beval\s*\(|\bFunction\s*\(`)
 	// payloadHexLitRe matches the hex literals an obfuscator uses as string
 	// indices (f(0x1bf)).
 	payloadHexLitRe = regexp.MustCompile(`\b0x[0-9a-fA-F]+\b`)
@@ -144,6 +151,43 @@ const (
 	payloadMinHexLits = 100
 )
 
+// charCodeArray reports whether s holds an array literal of at least 1,000
+// numbers of up to three digits, the shape of text kept as character codes
+// (#1270).
+func charCodeArray(s string) bool {
+	const minCodes = 1000
+	for i := strings.IndexByte(s, '['); i >= 0; {
+		codes, digits, j := 0, 0, i+1
+	scan:
+		for ; j < len(s); j++ {
+			switch c := s[j]; {
+			case c >= '0' && c <= '9':
+				digits++
+				if digits > 3 {
+					break scan
+				}
+			case c == ',':
+				if digits > 0 {
+					codes++
+				}
+				digits = 0
+			case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			default:
+				break scan
+			}
+		}
+		if codes+1 >= minCodes {
+			return true
+		}
+		next := strings.IndexByte(s[j:], '[')
+		if next < 0 {
+			return false
+		}
+		i = j + next
+	}
+	return false
+}
+
 func longestLine(s string) int {
 	n := 0
 	for line := range strings.SplitSeq(s, "\n") {
@@ -161,6 +205,8 @@ func scanPayload(content string) payloadMarkers {
 		m.obfuscated, m.obfShape = true, strconv.Itoa(m.idents)+" _0x identifiers"
 	case payloadRotationRe.MatchString(content):
 		m.obfuscated, m.obfShape = true, "an obfuscator's string-array rotation loop"
+	case payloadFromCharCodeRe.MatchString(content) && payloadEvalRe.MatchString(content) && charCodeArray(content):
+		m.obfuscated, m.obfShape = true, "code kept as an array of character codes and run with eval"
 	case hexLits >= payloadMinHexLits && hexLits*1000 >= payloadHexDensity*len(content) && longestLine(content) >= payloadLongLine:
 		m.obfuscated, m.obfShape = true, strconv.Itoa(hexLits)+" hex literals in a line of "+strconv.Itoa(longestLine(content))+" characters"
 	}
@@ -203,9 +249,10 @@ func toolsOf(launchers []string) int {
 	return len(seen)
 }
 
-// Check reports at error a script with obfuscation and any other marker, or
-// with a download-and-run step and a credential hunt; at warn a script with
-// one marker that several tools start, since starting the same script from a
+// Check reports at error a script with obfuscation and any other marker, an
+// obfuscated script that several tools start, or one with a download-and-run
+// step and a credential hunt; at warn a script with one other marker that
+// several tools start, since starting the same script from a
 // VS Code task and an agent hook is rare in a legitimate repository and the
 // usual way an implant makes sure it runs.
 func (r *cfg119) Check(t *Target) []finding.Finding {
@@ -220,12 +267,19 @@ func (r *cfg119) Check(t *Target) []finding.Finding {
 		switch {
 		case m.obfuscated && other, m.fetchRun && m.credentials:
 			sev = finding.Error
+		case m.obfuscated && toolsOf(s.Launchers) >= 2:
+			// Hidden code that several tools start: a payload whose strings
+			// are all encoded shows no other marker (#1270).
+			sev = finding.Error
 		case (m.obfuscated || other) && toolsOf(s.Launchers) >= 2:
 			sev = finding.Warn
 		default:
 			continue
 		}
 		msg := s.Label + " carries the markers of a malicious payload: " + m.describe()
+		if s.Partial {
+			msg += " (the file is " + strconv.FormatInt(s.Size>>20, 10) + " MB, over the read limit, so only its first and last 64 KB were read)"
+		}
 		if n := toolsOf(s.Launchers); n >= 2 {
 			msg += "; it is started from " + strconv.Itoa(n) + " tools' configuration (" + strings.Join(s.Launchers, ", ") + ")"
 		}

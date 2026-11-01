@@ -33,6 +33,11 @@ type LaunchedScript struct {
 	// reached one step further (CFG119 only); "" for a script a command
 	// starts directly.
 	Via string
+	// Partial is set when the script is over the read limit and Content holds
+	// only its first and last bytes (CFG119 only, #1270); Size is then the
+	// file's full size.
+	Partial bool
+	Size    int64
 }
 
 // LaunchCommand is one auto-run command that may start a repository script.
@@ -92,7 +97,7 @@ func commandSitesWithScripts(t *Target) []commandSite {
 		return sites
 	}
 	for _, s := range t.LaunchedScripts {
-		if s.Via != "" || !shellScriptRe.MatchString(s.File) {
+		if s.Via != "" || s.Partial || !shellScriptRe.MatchString(s.File) {
 			continue
 		}
 		for _, line := range strings.Split(s.Content, "\n") {
