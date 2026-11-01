@@ -67,6 +67,8 @@ func analyzeAllowedTools(allowed, disallowed []string) (finding.Severity, string
 	for _, raw := range allowed {
 		tool := strings.TrimSpace(raw)
 		low := strings.ToLower(tool)
+		// Bash( * ) is the same grant as Bash(*).
+		compact := strings.Join(strings.Fields(low), "")
 		switch {
 		case tool == "*" || low == "all" || low == "full":
 			if !cancelled(tool) {
@@ -76,7 +78,7 @@ func analyzeAllowedTools(allowed, disallowed []string) (finding.Severity, string
 		// names read, edit, grep, glob and exec, and say allowed-tools entries
 		// are "auto-approved (no permission prompt) while the skill runs", so a
 		// bare exec is unrestricted shell. "exec(*)" is the same grant.
-		case low == "bash" || low == "bash(*)" || low == "shell" || low == "execute" || low == "exec" || low == "exec(*)":
+		case low == "bash" || compact == "bash(*)" || low == "shell" || low == "execute" || low == "exec" || compact == "exec(*)":
 			// Unrestricted shell: broad and worth review, but a common, often
 			// legitimate declaration for skills that genuinely need a shell — warn,
 			// not error (which is reserved for total */all access above).
