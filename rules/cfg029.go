@@ -64,7 +64,7 @@ var forbiddenMarkRe = regexp.MustCompile(`^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*)?\
 // antiPatternHeadRe matches a heading or list lead-in that introduces things not
 // to do without a negation word: "Common failure modes", "Anti-patterns",
 // "Red flags" (#623).
-var antiPatternHeadRe = regexp.MustCompile(`(?i)\b(?:anti-?patterns?|failure\s+modes?|pitfalls?|common\s+mistakes|red\s+flags|what\s+not\s+to\s+do|don'?ts|traps?)\b`)
+var antiPatternHeadRe = regexp.MustCompile(`(?i)\b(?:anti-?patterns?|failure\s+modes?|pitfalls?|common\s+mistakes|red\s+flags|what\s+not\s+to\s+do|don'?ts|traps?|issues\s+to\s+flag|risks?)\b`)
 
 // willNotHeadRe matches a list heading that opens with "Will not" or "Won't"
 // and no subject: "**Will Not:**", "**Explicitly Will NOT** (without `--force`
@@ -101,7 +101,7 @@ var doesNotRe = regexp.MustCompile(`(?i)\b(?:does\s+not|doesn'?t|did\s+not|didn'
 
 // catalogueRowRe matches a table row whose first cell is an identifier of a
 // risk or weakness catalogue: ASI06, LLM01, CWE-862, AML.T0051.
-var catalogueRowRe = regexp.MustCompile(`^\s*\|\s*(?:\*\*)?[A-Z]{2,}[-.]?(?:T)?\d{2,}(?:\.\d+)?(?:\*\*)?\s*\|`)
+var catalogueRowRe = regexp.MustCompile(`^\s*\|\s*(?:\*\*)?[A-Z]{2,}[-.]?(?:T)?\d{2,}(?:\.\d+)?(?:\*\*)?\s*(?::[^|]*)?\|`)
 
 // withoutGateRe matches the "without confirmation / approval / prompting"
 // branch. The ask-branch ("without asking for confirmation") names the agent's
@@ -672,7 +672,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 			if loc == nil {
 				continue
 			}
-			if negated(lines, i, loc) || notAPermissionBypass(line, loc) || describesState(line, loc) || readSectionSummary(lines, i, loc) {
+			if notABypassShape(lines, i, loc) || negated(lines, i, loc) || notAPermissionBypass(line, loc) || describesState(line, loc) || readSectionSummary(lines, i, loc) {
 				continue
 			}
 			// A # comment in a fenced code block says what the next command
@@ -764,4 +764,88 @@ func bypassScope(sentence, line string) (finding.Severity, string) {
 	default:
 		return finding.Error, why + ". Name the steps it covers, or remove it"
 	}
+}
+
+// The shapes of #1170, from the pre-release corpus run for v1.20.0: lines
+// that forbid the skip, describe a program, list a risk, recommend the allow
+// list or use the words in another sense.
+var (
+	// nothingSubjectRe: "Post nothing, label nothing and close nothing
+	// without approval" forbids, with the negation in the subject.
+	nothingSubjectRe = regexp.MustCompile(`(?i)\b(?:nothing|none|no\s+one|nobody)\b`)
+	// onlyConditionRe: "Skip confirmation only when the request says so"
+	// keeps the confirmation by default.
+	onlyConditionAfterRe  = regexp.MustCompile(`(?i)^[^.;]{0,25}?\bonly\s+(?:when|if)\b`)
+	onlyConditionBeforeRe = regexp.MustCompile(`(?i)\b(?:only\s+(?:when|if)|unless)\b`)
+	// stopAfterRe: "Do not ask for approval, end the turn at the handoff"
+	// tells the agent to stop, not to go on.
+	stopAfterRe = regexp.MustCompile(`(?i)^[^.]{0,40}?\b(?:end(?:s)?\s+(?:the\s+)?(?:turn|session|run)|stop(?:s|ping)?\b)`)
+	// modeHeaderRe: a list header naming a user-passed flag or mode.
+	modeHeaderRe = regexp.MustCompile("(?i)(?:`?--?[a-z][\\w-]*`?|\\b(?:yolo|auto)\\s+mode\\b)[^:]*:\\s*$")
+	// programSubjectRe: a program or mode as the subject, in the third
+	// person: "The command detects the project type and runs ... without
+	// prompting", "Destructive commands run without confirmation".
+	programSubjectRe = regexp.MustCompile(`(?i)^\s*(?:[-*+]\s+)?(?:the\s+)?(?:command|skill|cli|installer|wizard|binary|mode|destructive\s+commands?|mutations?)\s+(?:\w+\s+){0,12}?(?:runs|executes|installs|proceeds|completes|applies|detects|works|run|execute|proceed)\b`)
+	// definitionLabelRe: a definition list label: "- `bypass`: mutations
+	// execute without confirmation".
+	definitionLabelRe = regexp.MustCompile("^\\s*[-*+]\\s+(?:\\*\\*)?`[^`]+`(?:\\*\\*)?\\s*[:\\x{2014}-]")
+	// askCodeSubjectRe: commands in code formatting right before a negated ask:
+	// "`my-tool clean` and `my-tool optimize` do not ask for confirmation".
+	askCodeSubjectRe = regexp.MustCompile("`[^`]+`[*_]*\\s+(?:and\\s+`[^`]+`[*_]*\\s+)?$")
+	// promptObjectRe: "prompt" with a model as object, or prompt text.
+	promptObjectAfterRe = regexp.MustCompile(`(?i)^\s*(?:an?|the|another)?\s*(?:agent|model|sub-?agent|llm|claude)\b|^s?\s+(?:text|templates?|engineering|files?)\b`)
+	// allowListRe: the safe mechanism the rule doc recommends.
+	allowListRe = regexp.MustCompile(`(?i)permissions\.allow|\ballow-?\s?list|\bpre-?approved\b`)
+	// defectRowRe: a table row whose last cell names what is lost or
+	// required, the shape of an anti-pattern table.
+	defectRowRe = regexp.MustCompile(`(?i)\|\s*(?:loses|lost|requires?|risk|data\s+loss|breaks|irreversible)\b[^|]*\|\s*$`)
+	// chatFillerRe: a confirmation in the chat sense: "Skip confirmations
+	// like 'I'll continue...'".
+	chatFillerRe = regexp.MustCompile("(?i)^\\w*\\s+like\\s+[\"'\u201c`]")
+	// youApproveRe: the user as the subject of "always approve".
+	youApproveRe = regexp.MustCompile(`(?i)\byou\s+$`)
+)
+
+// notABypassShape reports the shapes of #1170.
+func notABypassShape(lines []string, i int, loc []int) bool {
+	line := lines[i]
+	match := strings.ToLower(line[loc[0]:loc[1]])
+	before := line[clauseStart(line, loc[0]):loc[0]]
+	after := line[loc[1]:]
+	switch {
+	case nothingSubjectRe.MatchString(before):
+		return true
+	case onlyConditionAfterRe.MatchString(after) || onlyConditionBeforeRe.MatchString(before):
+		return true
+	case stopAfterRe.MatchString(after):
+		return true
+	case programSubjectRe.MatchString(before) || definitionLabelRe.MatchString(line):
+		return true
+	case prohibitionRe.MatchString(match) && askCodeSubjectRe.MatchString(before):
+		return true
+	case strings.Contains(match, "prompt") && promptObjectAfterRe.MatchString(after):
+		return true
+	case allowListRe.MatchString(line):
+		return true
+	case strings.HasPrefix(strings.TrimSpace(line), "|") && defectRowRe.MatchString(line):
+		return true
+	case chatFillerRe.MatchString(after):
+		return true
+	case strings.HasSuffix(match, "approve") && youApproveRe.MatchString(before):
+		return true
+	case loc[1] < len(line) && line[loc[1]] == '_' || loc[0] > 0 && line[loc[0]-1] == '_':
+		// A snake_case or longer identifier: confirmation_token.
+		return true
+	}
+	// The negation is on the line above when the match continues it:
+	// "Never overwrite an existing config file" / "without confirmation."
+	if prev := continuedFrom(lines, i); prev != "" && strings.TrimSpace(before) == "" {
+		if prohibitionRe.MatchString(prev[clauseStart(prev, len(prev)):]) {
+			return true
+		}
+	}
+	if g := governingLine(lines, i); introducesList(g) && modeHeaderRe.MatchString(strings.TrimSpace(g)) {
+		return true
+	}
+	return false
 }

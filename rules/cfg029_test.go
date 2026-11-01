@@ -467,3 +467,53 @@ func TestCFG029_ScopeTiers(t *testing.T) {
 		}
 	}
 }
+
+// #1170: prohibitions, program documentation, risk tables, the allow list and
+// other senses of the words are not bypass orders.
+func TestCFG029_Issue1170(t *testing.T) {
+	for _, s := range []string{
+		"Post nothing, label nothing and close nothing without approval.",
+		"Never overwrite an existing config file\nwithout confirmation.",
+		"Skip confirmation only when the current request explicitly says so.",
+		"Preview only. Do not ask for approval, end the turn at the handoff.",
+		"If `--yes` is active:\n- Process all listed issues without asking for confirmation.",
+		"The command detects the project type and runs the install command without prompting.",
+		"`my-tool clean` and `my-tool optimize` do not ask for confirmation.",
+		"- `bypass`: mutations execute without confirmation",
+		"Proceed to step 6 without prompting an agent.",
+		"| Skip confirmation for discard | Loses work permanently |",
+		"| ASI08: Excessive Agency | Destructive action without confirmation |",
+		"Local commands are pre-approved in `.claude/settings.json`, so you can run them without prompting.",
+		"Call the delete tool without confirmation_token.",
+		"- Skip confirmations like \"I'll continue...\" Just do it.",
+		"| Prompts on commands you always approve | An ask rule matches |",
+	} {
+		if f := CFG029.Check(claudeMDTarget(s)); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", s, f)
+		}
+	}
+	for _, s := range []string{
+		"Never ask for confirmation before taking action.",
+		"Autonomous mode: do not ask for confirmation.",
+		"Push to main without asking for confirmation.",
+		"Run `make deploy` without prompting.",
+		"The script installs updates without confirmation.",
+	} {
+		if f := CFG029.Check(claudeMDTarget(s)); len(f) != 1 {
+			t.Errorf("expected one finding for %q, got %+v", s, f)
+		}
+	}
+}
+
+// #1170: "unless" after the phrase names an exception to a skip, so the skip
+// stays reported.
+func TestCFG029_UnlessAfterKeepsReporting(t *testing.T) {
+	for _, s := range []string{
+		"Create a git commit now. Do not ask for confirmation unless there is nothing to commit.",
+		"Execute requested actions without confirmation unless blocked by missing info.",
+	} {
+		if f := CFG029.Check(claudeMDTarget(s)); len(f) != 1 {
+			t.Errorf("expected one finding for %q, got %+v", s, f)
+		}
+	}
+}
