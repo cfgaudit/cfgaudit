@@ -49,7 +49,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG084](CFG084.md) | warn | container image trust verification disabled — `DOCKER_CONTENT_TRUST=0`, `--disable-content-trust` or `--insecure-registry` in a command site, `settings.json` `env` or an MCP server `env` — `docker pull` then accepts an unsigned or substituted image | LLM04 |
 | [CFG045](CFG045.md) | error/warn/info | ShellCheck analysis of hook/helper commands (opt-in `--shellcheck`; SC codes in the message) | LLM03 |
 | [CFG067](CFG067.md) | warn | hooks defined in a project-scoped `.claude/settings.json` — committed hooks run for every developer who trusts the folder, and the trust prompt does not show them (before the CVE-2025-59536 fix, ahead of the prompt); content checks (CFG008/014/…) fire separately | LLM04 |
-| [CFG119](CFG119.md) | error/warn | a repository script that an auto-run hook, folder-open task or MCP launch starts carries the markers of a malicious payload in combination (obfuscation, download and run, a credential hunt, an environment dump), or one starts an interpreter on a font, image or document file; warn for one marker in a script several tools start | LLM04 |
+| [CFG119](CFG119.md) | error/warn | a repository script that an auto-run hook, folder-open task or MCP launch starts carries the markers of a malicious payload in combination (obfuscation, download and run, a credential hunt, an environment dump), or one starts an interpreter on a file with a non-script extension; warn for one marker in a script several tools start | LLM04 |
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`
 

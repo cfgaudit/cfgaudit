@@ -56,12 +56,22 @@ var (
 	payloadNetworkRe = regexp.MustCompile(`https?://|\bfetch\(|https?\.request\(|XMLHttpRequest|\bcurl\b|requests\.post|urllib\.request`)
 )
 
-// disguisedRunRe matches an interpreter started on a file whose extension is
-// not a script's: a font, an image, a document or a media file (#1265). No
-// interpreter runs such a file for a legitimate reason, so an auto-run
-// command that does is a payload in disguise, whether or not the file can be
-// read. Groups: interpreter, flags, path, extension.
-var disguisedRunRe = regexp.MustCompile(`(?i)(?:^|[\s;&|(])(node|nodejs|bun|deno|python[0-9.]*|py|ruby|perl|php|bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?((?:\s+--?[A-Za-z][\w-]*)*)(?:\s+run)?\s+["']?([^\s"';&|<>]*?\.(ttf|otf|woff2?|eot|png|jpe?g|gif|bmp|webp|svg|ico|pdf|txt|docx?|xlsx?|mp3|mp4|wav|mov|avi))["']?(?:[\s;&|)]|$)`)
+// disguisedRunRe matches an interpreter started on a file with an extension.
+// Groups: interpreter, flags, "run", path, extension. disguisedRuns keeps
+// the ones whose extension is not a script's.
+var disguisedRunRe = regexp.MustCompile(`(?i)(?:^|[\s;&|(])(node|nodejs|bun|deno|python[0-9.]*|py|ruby|perl|php|bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?((?:\s+--?[A-Za-z][\w-]*)*)(\s+run)?\s+["']?([^\s"';&|<>]*?[^\s"';&|<>/]\.([A-Za-z0-9]{1,10}))["']?(?:[\s;&|)]|$)`)
+
+// scriptExts are the extensions an interpreter runs for a legitimate reason.
+// An interpreter started on anything else (a font, an image, a document, or
+// an invented extension such as .orc) is a payload in disguise (#1265,
+// #1267): the campaign that prompted this varies the extension from sample
+// to sample, so a list of suspicious extensions would always lag behind.
+var scriptExts = map[string]bool{
+	"js": true, "mjs": true, "cjs": true, "ts": true, "mts": true, "cts": true, "jsx": true, "tsx": true,
+	"py": true, "pyw": true, "pyz": true, "rb": true, "pl": true, "pm": true, "cgi": true,
+	"php": true, "phar": true, "inc": true, "sh": true, "bash": true, "zsh": true, "ksh": true, "fish": true,
+	"ps1": true, "psm1": true, "lua": true,
+}
 
 // disguiseKind names what a disguised payload pretends to be, with its article.
 func disguiseKind(ext string) string {
@@ -72,8 +82,10 @@ func disguiseKind(ext string) string {
 		return "an image"
 	case "mp3", "mp4", "wav", "mov", "avi":
 		return "a media file"
+	case "pdf", "txt", "doc", "docx", "xls", "xlsx", "md", "csv":
+		return "a document"
 	}
-	return "a document"
+	return "a file with a non-script extension"
 }
 
 // disguisedRuns reports each auto-run command of t that starts an
@@ -84,16 +96,22 @@ func disguisedRuns(t *Target) []finding.Finding {
 	seen := map[string]bool{}
 	for _, lc := range LaunchCommands(t) {
 		for _, m := range disguisedRunRe.FindAllStringSubmatch(lc.Command, -1) {
+			if scriptExts[strings.ToLower(m[5])] {
+				continue
+			}
+			if m[3] != "" && !strings.Contains(m[4], "/") {
+				continue // `bun run build.prod` names a package.json script
+			}
 			flags := strings.Fields(m[2])
 			if slices.ContainsFunc(flags, func(f string) bool { return f == "-e" || f == "-c" || f == "-m" || f == "--eval" }) {
 				continue // inline code or a module, not the file
 			}
-			path := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(m[3])), "./")
+			path := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(m[4])), "./")
 			if seen[lc.File+"\x00"+path] {
 				continue
 			}
 			seen[lc.File+"\x00"+path] = true
-			msg := lc.Label + " starts " + m[1] + " on " + path + ", a file whose extension (." + strings.ToLower(m[4]) + ") is not a script: a payload disguised as " + disguiseKind(m[4])
+			msg := lc.Label + " starts " + m[1] + " on " + path + ", a file whose extension (." + strings.ToLower(m[5]) + ") is not a script: a payload disguised as " + disguiseKind(m[5])
 			for _, s := range t.LaunchedScripts {
 				if f := filepath.ToSlash(s.File); f == path || strings.HasSuffix(f, "/"+path) {
 					if sm := scanPayload(s.Content); sm.obfuscated {
@@ -101,7 +119,7 @@ func disguisedRuns(t *Target) []finding.Finding {
 					}
 				}
 			}
-			msg += ". No interpreter runs " + disguiseKind(m[4]) + " for a legitimate reason; do not open the repository with an agent or editor until you have read the file, and if nobody in the project added it, treat the repository as compromised"
+			msg += ". No interpreter runs " + disguiseKind(m[5]) + " for a legitimate reason; do not open the repository with an agent or editor until you have read the file, and if nobody in the project added it, treat the repository as compromised"
 			out = append(out, finding.Finding{RuleID: "CFG119", Severity: finding.Error, File: lc.File, Message: msg})
 		}
 	}

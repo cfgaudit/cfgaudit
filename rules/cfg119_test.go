@@ -71,6 +71,15 @@ func TestCFG119_DisguiseKinds(t *testing.T) {
 		"bun run public/fonts/x.woff2":   "disguised as a font",
 		"node -e \"require('x')\" a.png": "",
 		"node scripts/build.js":          "",
+		// Any non-script extension, including invented ones (#1267).
+		"node ./x/public/fonts/fa-brand-400.orc": "a file with a non-script extension",
+		"node dist/index.js":                     "",
+		"bun run src/main.tsx":                   "",
+		"bun run build.prod":                     "",
+		"python app.pyz":                         "",
+		"perl cgi-bin/x.cgi":                     "",
+		"node server":                            "",
+		"node app.config.js":                     "",
 	} {
 		tg := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":`+strconv.Quote(cmd)+`}]}]}}`)
 		f := CFG119.Check(tg)
