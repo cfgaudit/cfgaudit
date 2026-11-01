@@ -79,3 +79,26 @@ func TestKeyLines927(t *testing.T) {
 		}
 	}
 }
+
+// A CFG010 finding for a server named like its package is located at the args
+// element, not at the server key (#1203).
+func TestKeyLines_CFG010ServerNamedLikePackage(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".mcp.json"), `{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "my-server"]
+    }
+  }
+}
+`)
+	_, out, _ := runCLI(t, "--claude-version", "2.1.310", "--format", "json", "--only", "CFG010", dir)
+	var fs []struct{ Line, Col int }
+	if err := json.Unmarshal([]byte(out), &fs); err != nil {
+		t.Fatalf("decode: %v\n%s", err, out)
+	}
+	if len(fs) != 1 || fs[0].Line != 5 || fs[0].Col != 22 {
+		t.Errorf("CFG010 at %+v, want line 5 col 22 (the \"my-server\" element)", fs)
+	}
+}

@@ -25,8 +25,8 @@ func TestCFG015_DollarParenSubstitution(t *testing.T) {
 
 func TestCFG015_BacktickSubstitution(t *testing.T) {
 	f := CFG015.Check(hookTarget(t, "echo `date`"))
-	if len(f) != 1 || f[0].Severity != finding.Warn {
-		t.Fatalf("expected 1 Warn finding for backtick, got %+v", f)
+	if len(f) != 1 || f[0].Severity != finding.Info {
+		t.Fatalf("expected 1 Info finding for a backtick that reads no input (#1201), got %+v", f)
 	}
 	if !strings.Contains(f[0].Message, "`date`") {
 		t.Errorf("expected message to name the backtick substitution, got: %s", f[0].Message)

@@ -97,13 +97,24 @@ func extractShellVars(cmd string) []string {
 	// A reference the shell expands as one argument and never parses again
 	// cannot break out of it: "$f" given to a program, without eval, sh -c or
 	// the like anywhere in the command (#792). Inside single quotes the shell
-	// does not expand it at all, unless the text is parsed again.
-	reparse := shellReparseRe.MatchString(cmd)
-	for _, u := range shellVarUses(cmd) {
-		if safeShellVars[u.name] || (!reparse && (u.safe || u.literal)) {
-			continue
+	// does not expand it at all, unless the text is parsed again. A variable
+	// the command assigns from something other than its input is not reported
+	// at all (#1199), and a single-quoted `sh -c` body is checked as a script
+	// of its own.
+	outerCmd, bodies := splitSingleQuotedSh(cmd)
+	outerTaint := commandTaint(outerCmd, nil)
+	check := func(text string, st, outer shellTaint) {
+		reparse := shellReparseRe.MatchString(text)
+		for _, u := range shellVarUses(text) {
+			if !st.untrusted(u.name, outer) || (!reparse && (u.safe || u.literal)) {
+				continue
+			}
+			addKey("$" + u.name)
 		}
-		addKey("$" + u.name)
+	}
+	check(outerCmd, outerTaint, nil)
+	for _, body := range bodies {
+		check(body, commandTaint(body, outerTaint), outerTaint)
 	}
 	for _, m := range cmdVarRe.FindAllStringSubmatch(dateFormatRe.ReplaceAllString(cmd, " "), -1) {
 		addKey("%" + m[1] + "%")

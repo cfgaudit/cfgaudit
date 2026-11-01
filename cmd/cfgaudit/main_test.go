@@ -2938,12 +2938,8 @@ func TestBuildTargets_DiscardedProjectSettings_DoesNotCreditSiblingDeny(t *testi
 			if local.SiblingDeny != tc.wantSibling {
 				t.Errorf("SiblingDeny = %v, want %v", local.SiblingDeny, tc.wantSibling)
 			}
-			// The visible consequence: the local file is reported as unguarded
-			// when the sibling that was carrying the deny list is not loaded.
-			gotCFG006 := len(rules.CFG006.Check(local)) > 0
-			if gotCFG006 == tc.wantSibling {
-				t.Errorf("CFG006 on the local file = %v, want %v", gotCFG006, !tc.wantSibling)
-			}
+			// CFG006 itself no longer reports a settings.local.json (#1193); the
+			// SiblingDeny value is what other rules read.
 		})
 	}
 }
