@@ -40,6 +40,37 @@ var (
 	sentenceEndRe = regexp.MustCompile(`[.!?]\s+`)
 )
 
+// patchObjectRe marks a sentence whose "apply" takes a patch or diff:
+// "fetch each commit as a patch ... and apply it with `git am`" (#1187).
+var patchObjectRe = regexp.MustCompile(`(?i)\b(?:patch(?:es)?|diffs?|git\s+am|git\s+apply)\b|\.(?:patch|diff)\b`)
+
+// userRunsSubjectRe is the person as the one who runs it: "let them run it", "ask
+// the user to run it" (#1187).
+var userRunsSubjectRe = regexp.MustCompile(`(?i)\b(?:let\s+(?:them|the\s+user|the\s+person|the\s+developer)|(?:ask|tell|have|invite)\s+(?:them|the\s+user|the\s+person|the\s+developer)\s+to)\s+$`)
+
+// agentMustNotRunRe is a negation of the agent running the command: "Don't
+// pipe it to a shell yourself", "never run it yourself".
+var agentMustNotRunRe = regexp.MustCompile(`(?i)\b(?:don'?t|do\s+not|never)\s+(?:\w+\s+){0,2}?(?:run|execute|pipe|install)\s+(?:it|this|that|the\s+command)\b`)
+
+// userRunsIt reports whether the obey verb at pos in sentence has the person
+// as its subject, or the sentence or the rest of the line (the next sentence)
+// tells the agent not to run it.
+func userRunsIt(sentence string, pos int, rest string) bool {
+	if userRunsSubjectRe.MatchString(sentence[:pos]) {
+		return true
+	}
+	return agentMustNotRunRe.MatchString(sentence[pos:]) || agentMustNotRunRe.MatchString(firstSentence(rest))
+}
+
+// firstSentence returns s up to its first sentence end.
+func firstSentence(s string) string {
+	s = strings.TrimSpace(s)
+	if loc := sentenceEndRe.FindStringIndex(s); loc != nil {
+		return s[:loc[1]]
+	}
+	return s
+}
+
 // relayVerbRe ends the text before a quotation the agent is told to pass on
 // to the person: tell the user: "...", Guide: "...", say "...".
 var relayVerbRe = regexp.MustCompile(`(?i)\b(?:tell|tells|say|says|show|shows|guide|guides|instruct|instructs|ask|asks|inform|informs|explain|explains|reply|replies|respond|responds|message|print|output|display|suggest|suggests|recommend|recommends|prompt|prompts)\b[^"“”]{0,40}$`)
@@ -124,19 +155,30 @@ func (r *cfg113) Check(t *Target) []finding.Finding {
 				if m == nil || relayedToUser(line, start+m[0]) {
 					continue
 				}
-				sev := finding.Warn
 				verb := strings.ToLower(strings.Join(strings.Fields(sentence[m[2]:m[3]]), " "))
+				if (verb == "apply" && patchObjectRe.MatchString(sentence)) || userRunsIt(sentence, m[2], line[off:]) {
+					continue // #1187: a patch to apply, or a command the user runs
+				}
+				sev := finding.Warn
 				if verb == "execute" || verb == "run" || verb == "obey" {
 					sev = finding.Error
 				}
-				url := fetchURLRe.FindString(sentence)
+				url := strings.TrimRight(fetchURLRe.FindString(sentence), ")`>].,;")
+				msg := src.Name + " line " + strconv.Itoa(ln) + " tells the agent to fetch " + quoteValue(url) + " and " + verb +
+					" what it says: the reviewed file hands the agent's behaviour to remote text nobody reviewed, which can change at any time (the external-fetch payload class). Copy the instructions into the repository, or pin them to a reviewed revision"
+				if sev == finding.Warn {
+					if owner := githubURLOwner(url); owner != "" && owner == repoGitHubOwner(t.ProjectDir) {
+						// #1187: the repository's own GitHub owner publishes it.
+						sev = finding.Info
+						msg += " (the URL is under this repository's own GitHub owner)"
+					}
+				}
 				findings = append(findings, finding.Finding{
 					RuleID:   "CFG113",
 					Severity: sev,
 					File:     src.File,
 					Line:     ln,
-					Message: src.Name + " line " + strconv.Itoa(ln) + " tells the agent to fetch " + quoteValue(strings.TrimRight(url, ")`>].,;")) + " and " + verb +
-						" what it says: the reviewed file hands the agent's behaviour to remote text nobody reviewed, which can change at any time (the external-fetch payload class). Copy the instructions into the repository, or pin them to a reviewed revision",
+					Message:  msg,
 				})
 				break
 			}
