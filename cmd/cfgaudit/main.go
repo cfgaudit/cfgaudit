@@ -559,6 +559,9 @@ var unreadable []unreadableFile
 // .cfgaudit.yml that does not parse changes what cfgaudit itself does, so it
 // stays a hard error.
 func skipUnreadable(path string, err error) {
+	if scanroot.IsDanglingLink(path) {
+		return // already on the could-not-read list (#1189)
+	}
 	unreadable = append(unreadable, unreadableFile{path: path, reason: unreadableReason(path, err)})
 }
 
