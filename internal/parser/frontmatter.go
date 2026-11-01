@@ -34,12 +34,26 @@ func InstructionFrontmatter(content string) (*Frontmatter, bool) {
 // either a YAML list or a single string split on commas and whitespace outside
 // parentheses. Missing or wrongly-typed keys yield nil.
 func (f *Frontmatter) StringList(key string) []string {
+	return f.stringList(key, splitToolList)
+}
+
+// DenyList behaves like StringList, but keeps unclosed parentheses opaque.
+// Entries here cancel findings, so malformed input must not add entries; the
+// flat fallback in StringList may only add findings, never remove them.
+func (f *Frontmatter) DenyList(key string) []string {
+	return f.stringList(key, func(v string) []string {
+		tokens, _ := scanToolList(v)
+		return tokens
+	})
+}
+
+func (f *Frontmatter) stringList(key string, split func(string) []string) []string {
 	if f == nil {
 		return nil
 	}
 	switch v := f.Raw[key].(type) {
 	case string:
-		return splitToolList(v)
+		return split(v)
 	case []any:
 		out := make([]string, 0, len(v))
 		for _, e := range v {
@@ -105,7 +119,16 @@ func (f *Frontmatter) String(key string) string {
 }
 
 func splitToolList(v string) []string {
-	out := make([]string, 0)
+	tokens, balanced := scanToolList(v)
+	if !balanced {
+		// Scanned files are hostile: an unclosed parenthesis must not hide a grant such as a bare *.
+		return splitToolListFlat(v)
+	}
+	return tokens
+}
+
+func scanToolList(v string) (tokens []string, balanced bool) {
+	tokens = make([]string, 0)
 	depth := 0
 	start := 0
 	for i, r := range v {
@@ -119,20 +142,16 @@ func splitToolList(v string) []string {
 		case ',', ' ', '\t', '\n':
 			if depth == 0 {
 				if token := strings.TrimSpace(v[start:i]); token != "" {
-					out = append(out, token)
+					tokens = append(tokens, token)
 				}
 				start = i + 1
 			}
 		}
 	}
-	if depth > 0 {
-		// Scanned files are hostile: an unclosed parenthesis must not hide a grant such as a bare *.
-		return splitToolListFlat(v)
-	}
 	if token := strings.TrimSpace(v[start:]); token != "" {
-		out = append(out, token)
+		tokens = append(tokens, token)
 	}
-	return out
+	return tokens, depth == 0
 }
 
 func splitToolListFlat(v string) []string {

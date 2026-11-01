@@ -5,6 +5,7 @@ package rules
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -14,6 +15,8 @@ import (
 type cfg051 struct{}
 
 var CFG051 = &cfg051{}
+
+var shellWildcardGrantRe = regexp.MustCompile(`^(?:bash|exec)\(\*+\)$`)
 
 func init() { All = append(All, CFG051) }
 
@@ -40,7 +43,8 @@ func (r *cfg051) Check(t *Target) []finding.Finding {
 	if len(allowed) == 0 {
 		return nil
 	}
-	disallowed := append(fm.StringList("disallowed-tools"), fm.StringList("disallowedTools")...)
+	// Unlike StringList, malformed denies must not add entries that cancel findings.
+	disallowed := append(fm.DenyList("disallowed-tools"), fm.DenyList("disallowedTools")...)
 
 	sev, what := analyzeAllowedTools(allowed, disallowed)
 	if what == "" {
@@ -67,7 +71,7 @@ func analyzeAllowedTools(allowed, disallowed []string) (finding.Severity, string
 	for _, raw := range allowed {
 		tool := strings.TrimSpace(raw)
 		low := strings.ToLower(tool)
-		// Bash( * ) is the same grant as Bash(*).
+		// Bash( * ), Bash(**) and Bash(* *) all allow any command (measured on Claude Code 2.1.316).
 		compact := strings.Join(strings.Fields(low), "")
 		switch {
 		case tool == "*" || low == "all" || low == "full":
@@ -78,7 +82,7 @@ func analyzeAllowedTools(allowed, disallowed []string) (finding.Severity, string
 		// names read, edit, grep, glob and exec, and say allowed-tools entries
 		// are "auto-approved (no permission prompt) while the skill runs", so a
 		// bare exec is unrestricted shell. "exec(*)" is the same grant.
-		case low == "bash" || compact == "bash(*)" || low == "shell" || low == "execute" || low == "exec" || compact == "exec(*)":
+		case low == "bash" || shellWildcardGrantRe.MatchString(compact) || low == "shell" || low == "execute" || low == "exec":
 			// Unrestricted shell: broad and worth review, but a common, often
 			// legitimate declaration for skills that genuinely need a shell — warn,
 			// not error (which is reserved for total */all access above).

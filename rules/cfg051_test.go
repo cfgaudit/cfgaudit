@@ -50,6 +50,14 @@ func TestCFG051_ScalarToolSpecs(t *testing.T) {
 		{"scoped-and-all", "allowed-tools: Bash(git log *), *", finding.Error},
 		{"unclosed-scope", "allowed-tools: Bash(git log, *", finding.Error},
 		{"spaced-bash-star", "allowed-tools: Bash( * )", finding.Warn},
+		{"bash-double-star", "allowed-tools: Bash(**)", finding.Warn},
+		{"bash-spaced-stars", "allowed-tools: Bash(* *)", finding.Warn},
+		{"exec-spaced-stars", "allowed-tools: Exec(* *)", finding.Warn},
+		{"bash-three-stars", "allowed-tools: Bash(* * *)", finding.Warn},
+		{"bash-colon-pattern", "allowed-tools: Bash(*:*)", ""},
+		{"bash-git-pattern", "allowed-tools: Bash(git *)", ""},
+		{"all-with-unclosed-deny", "allowed-tools: \"*\"\ndisallowed-tools: Bash(rm *", finding.Error},
+		{"bash-with-scalar-denies", "allowed-tools: Bash\ndisallowed-tools: Read, Bash", ""},
 		{"all-with-scoped-deny", "allowed-tools: \"*\"\ndisallowed-tools: Bash(rm *)", finding.Error},
 	}
 	for _, c := range cases {

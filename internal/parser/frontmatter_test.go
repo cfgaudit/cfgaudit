@@ -50,6 +50,36 @@ func TestInstructionFrontmatter_ListAndString(t *testing.T) {
 	}
 }
 
+func TestFrontmatterDenyList(t *testing.T) {
+	cases := []struct {
+		value string
+		want  []string
+	}{
+		{"Bash(rm *", []string{"Bash(rm *"}},
+		{"Read, Bash(rm *", []string{"Read", "Bash(rm *"}},
+		{"Read, Bash(rm *)", []string{"Read", "Bash(rm *)"}},
+		{`["Bash(rm *", Read]`, []string{"Bash(rm *", "Read"}},
+	}
+	for _, c := range cases {
+		t.Run(c.value, func(t *testing.T) {
+			fm, ok := InstructionFrontmatter("---\ndisallowed-tools: " + c.value + "\n---\n")
+			if !ok {
+				t.Fatal("expected frontmatter to parse")
+			}
+			if got := fm.DenyList("disallowed-tools"); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("DenyList(disallowed-tools) = %v, want %v", got, c.want)
+			}
+			if got := fm.DenyList("missing"); got != nil {
+				t.Errorf("DenyList(missing) = %v, want nil", got)
+			}
+		})
+	}
+	var fm *Frontmatter
+	if got := fm.DenyList("disallowed-tools"); got != nil {
+		t.Errorf("nil frontmatter DenyList = %v, want nil", got)
+	}
+}
+
 func TestFrontmatter_Phrases(t *testing.T) {
 	// Scalar: split on commas/newlines only — internal spaces preserved.
 	fm, _ := InstructionFrontmatter("---\ntriggers: before every request, deploy the app\n---\n")
