@@ -12,6 +12,7 @@ Closes #
 - [ ] Tests cover the change (a fix has a test that fails without it)
 - [ ] Docs match the change (README, `docs/rules/CFGNNN.md`, rule table)
 - [ ] New source files start with the copyright and SPDX header
+- [ ] Every commit is signed off (`git commit -s`, see CONTRIBUTING.md#developer-certificate-of-origin)
 - [ ] Deviations from the issue's acceptance criteria are noted above
 - [ ] "Allow edits by maintainers" is enabled (pull request from a fork)
 
