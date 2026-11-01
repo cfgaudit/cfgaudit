@@ -218,6 +218,9 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 	if shellInterpreters[tok] && shellScriptPinned(inner) {
 		return "", allowCat{}, false
 	}
+	if pinnableInterpreters[tok] && interpreterVersionOnly(inner, tok) {
+		return "", allowCat{}, false
+	}
 	if pinnableInterpreters[tok] && interpreterOperandPinned(inner) {
 		return "", allowCat{}, false
 	}
@@ -231,6 +234,19 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 // program they run: a script path or, for Python, `-m <module>` (#1205).
 var pinnableInterpreters = map[string]bool{
 	"python": true, "python3": true, "perl": true, "ruby": true, "node": true, "deno": true,
+}
+
+// Version flags exit before running a script, so a wildcard following one
+// does not grant arbitrary interpreter execution (#1204).
+func interpreterVersionOnly(inner, bin string) bool {
+    fields := strings.Fields(inner)
+    if len(fields) < 2 {
+        return false
+    }
+    flag := strings.TrimSuffix(fields[1], ":*")
+    return flag == "--version" ||
+        (bin == "node" && flag == "-v") ||
+        ((bin == "python" || bin == "python3") && flag == "-V")
 }
 
 // runnerModules are Python modules that run or install other code, so `-m`

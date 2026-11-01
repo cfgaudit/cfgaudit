@@ -230,3 +230,23 @@ func TestCFG023_InterpreterOperandPinned1205(t *testing.T) {
 		}
 	}
 }
+
+// Interpreter version-only invocations execute no scripts, even when the
+// allow pattern also accepts trailing arguments (#1204).
+func TestCFG023_InterpreterVersion1204(t *testing.T) {
+    for _, entry := range []string{
+        "Bash(node --version:*)", "Bash(node -v:*)",
+        "Bash(python --version:*)", "Bash(python3 --version:*)",
+        "Bash(python -V:*)", "Bash(python3 -V:*)",
+    } {
+        if _, _, ok := dangerousAllowBinary(entry); ok {
+            t.Errorf("version-only invocation reported: %s", entry)
+        }
+    }
+    // Python -v enables verbose imports and can still run a script.
+    for _, entry := range []string{"Bash(python -v:*)", "Bash(node -e:*)", "Bash(python --versionx:*)"} {
+        if _, _, ok := dangerousAllowBinary(entry); !ok {
+            t.Errorf("unsafe invocation exempted: %s", entry)
+        }
+    }
+}
