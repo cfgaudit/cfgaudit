@@ -27,7 +27,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG042](CFG042.md) | error/warn | `permissions.deny` does not restrict private-key / certificate files (`*.pem`/`*.key`/`*.p12`/`*.pfx`/`*.jks`) | LLM02 |
 | [CFG043](CFG043.md) | error/warn | `permissions.deny` does not restrict cloud credential files (AWS `.aws`, GCP `gcloud`, Azure `.azure`) | LLM02 |
 | [CFG044](CFG044.md) | error/warn | `permissions.deny` does not restrict SSH private keys (`.ssh/`, `id_rsa`/`id_ed25519`/…) | LLM02 |
-| [CFG007](CFG007.md) | error | `env` block contains a hardcoded secret (vendor key prefix or `*_TOKEN`/`*_SECRET`/...) | LLM02 |
+| [CFG007](CFG007.md) | error | `env` block or a `permissions` entry contains a hardcoded secret (vendor key prefix or `*_TOKEN`/`*_SECRET`/...) | LLM02 |
 | [CFG073](CFG073.md) | error | `env`/MCP `env`/`headers` value is a hardcoded cryptocurrency signing credential — Ethereum private key (`0x`+64 hex) or BIP-39 seed phrase — which **cannot be rotated**; CFG054's entropy heuristic misses both | LLM02 |
 | [CFG008](CFG008.md) | error | command matches a reverse-shell pattern (`/dev/tcp/`, `nc -e`, `bash -i …`, `mkfifo`, `socat exec`) — scans hooks, credential/runtime helpers, and MCP `headersHelper` | LLM03 |
 | [CFG009](CFG009.md) | warn/error | command interpolates a shell variable (`$VAR` / `${VAR}`) — attacker-influenced data may reach a shell; escalates to `error` at user scope | LLM01 |
