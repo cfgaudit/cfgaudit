@@ -1,0 +1,31 @@
+{
+  "content-paths": [
+    "README.md",
+    "docs/**/*.md"
+  ],
+  "exclude-paths": [
+    "vendor/",
+    "**/.claude/settings.local.json"
+  ],
+  "min-severity": "warn",
+  "no-exit-codes": false,
+  "policy": {
+    "forbid-allow": [
+      "Bash(git commit:*)"
+    ],
+    "require-deny": [
+      "Bash(git commit:*)"
+    ]
+  },
+  "rules": {
+    "CFG003": "off",
+    "CFG004": {
+      "severity": "warn"
+    }
+  },
+  "shellcheck": false,
+  "shellcheck-exclude": [
+    "SC2086"
+  ],
+  "strict": false
+}

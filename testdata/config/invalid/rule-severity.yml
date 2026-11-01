@@ -1,0 +1,3 @@
+rules:
+  CFG001:
+    severity: bogus

@@ -1,0 +1,12 @@
+{
+  "policy": {
+    "agents": [
+      "claude-code"
+    ],
+    "deny": {
+      "commands": [
+        "git push"
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "policy": {
+    "agents": [
+      "claude-code",
+      "devin"
+    ],
+    "deny": {
+      "commands": [
+        "git push"
+      ],
+      "fetch": [
+        "*.example.com"
+      ],
+      "mcp-tools": [
+        "github:delete_*"
+      ],
+      "read": [
+        "**/.env",
+        "~/.ssh/**"
+      ],
+      "write": [
+        "src/generated/**"
+      ]
+    },
+    "forbid-allow": {
+      "commands": [
+        "curl"
+      ]
+    }
+  }
+}

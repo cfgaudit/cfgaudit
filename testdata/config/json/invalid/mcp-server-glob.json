@@ -1,0 +1,9 @@
+{
+  "policy": {
+    "deny": {
+      "mcp-tools": [
+        "git*:x"
+      ]
+    }
+  }
+}

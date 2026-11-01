@@ -1,0 +1,11 @@
+policy:
+  deny:
+    commands: ["git push"]
+    read: ["**/.env", "~/.ssh/**"]
+    write: ["src/generated/**"]
+    fetch: ["*.example.com", "example.org"]
+    mcp-tools: ["github:delete_*", "linear:*"]
+  forbid-allow:
+    commands: [curl]
+    mcp-tools: ["github:create_issue"]
+  agents: [claude-code, devin, zed, continue]

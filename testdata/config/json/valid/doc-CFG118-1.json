@@ -1,0 +1,15 @@
+{
+  "policy": {
+    "agents": [
+      "zed"
+    ],
+    "deny": {
+      "commands": [
+        "git push"
+      ],
+      "read": [
+        "**/.env"
+      ]
+    }
+  }
+}

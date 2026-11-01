@@ -1,0 +1,9 @@
+{
+  "policy": {
+    "deny": {
+      "commands": [
+        "Bash(git push:*)"
+      ]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "policy": {
+    "deny": {
+      "fetch": [
+        "localhost"
+      ]
+    }
+  }
+}
