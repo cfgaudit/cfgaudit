@@ -26,7 +26,6 @@ func agentTarget(mode string) *Target {
 func TestCFG085_WeakeningModes(t *testing.T) {
 	cases := map[string]finding.Severity{
 		"bypassPermissions": finding.Error,
-		"dontAsk":           finding.Error,
 		"auto":              finding.Warn,
 		"acceptEdits":       finding.Warn,
 	}
@@ -260,5 +259,13 @@ func TestCFG085_ReadOnlyToolsLowered1188(t *testing.T) {
 	g := &Target{Scope: finding.ScopeProject, InstructionFile: ".grok/agents/a.md", InstructionContent: "---\nname: a\npermissionMode: bypassPermissions\ntools: Read\n---\n"}
 	if f := CFG085.Check(g); len(f) != 1 || f[0].Severity != finding.Error {
 		t.Errorf("grok: got %+v", f)
+	}
+}
+
+// dontAsk denies whatever is not pre-approved, so it does not weaken the
+// permission system and is not reported (#1188, measured on 2.1.316).
+func TestCFG085_DontAskNotReported(t *testing.T) {
+	if f := CFG085.Check(agentTarget("dontAsk")); len(f) != 0 {
+		t.Errorf("dontAsk: got %+v", f)
 	}
 }
