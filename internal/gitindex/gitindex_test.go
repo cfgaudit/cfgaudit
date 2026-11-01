@@ -168,3 +168,34 @@ func TestTracked_RealGit(t *testing.T) {
 		}
 	}
 }
+
+// An index that ends right after an entry's extended-flags bit returns an
+// error instead of reading past the end. The index comes from the scanned
+// directory, which is not always a fresh clone.
+func TestParse_ExtendedFlagAtEnd(t *testing.T) {
+	for _, v := range []uint32{3, 4} {
+		data := make([]byte, 12+62)
+		copy(data, "DIRC")
+		binary.BigEndian.PutUint32(data[4:8], v)
+		binary.BigEndian.PutUint32(data[8:12], 1)
+		binary.BigEndian.PutUint16(data[12+60:12+62], 0x4000)
+		if _, err := parse(data); err == nil {
+			t.Errorf("version %d: parse accepted a truncated entry", v)
+		}
+	}
+}
+
+// parse must not panic on any input: a panic would abort the whole scan.
+func FuzzParse(f *testing.F) {
+	for _, v := range []uint32{2, 3, 4} {
+		data := make([]byte, 12+62+8)
+		copy(data, "DIRC")
+		binary.BigEndian.PutUint32(data[4:8], v)
+		binary.BigEndian.PutUint32(data[8:12], 1)
+		copy(data[12+62:], "a")
+		f.Add(data)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		_, _ = parse(data)
+	})
+}

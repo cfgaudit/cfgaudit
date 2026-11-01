@@ -108,6 +108,9 @@ func parse(data []byte) (map[string]bool, error) {
 		pos += fixed
 		if version >= 3 && flags&0x4000 != 0 {
 			pos += 2 // extended flags
+			if pos > len(data) {
+				return nil, errFormat
+			}
 		}
 		var name string
 		if version == 4 {
