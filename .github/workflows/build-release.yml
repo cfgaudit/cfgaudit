@@ -135,7 +135,7 @@ jobs:
       # attestation above, one bundle whose provenance names all seven files.
       #   .sigstore.json  the Sigstore bundle: signature, signing certificate and
       #                   transparency log entry, verifiable offline with
-      #                   cosign verify-blob-attestation (see README)
+      #                   cosign verify-blob-attestation (see docs/verifying-releases.md)
       #   .intoto.jsonl   its DSSE envelope, the signed SLSA provenance statement,
       #                   in the layout SLSA tooling uses
       - name: Attach the attestation to the release

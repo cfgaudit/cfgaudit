@@ -79,9 +79,9 @@ jobs:
           if [ -z "$llm_latest" ]; then echo "::error::no <year>/final release directory found in $llm_repo; the layout may have changed"; exit 1; fi
           if [ "$llm_latest" -gt "$llm_reviewed" ]; then
             alert "Framework update: OWASP GenAI LLM Top 10 $llm_latest available" \
-          "A newer OWASP GenAI LLM Top 10 edition (\`$llm_latest/final\` in $llm_repo) exists upstream; cfgaudit's **primary** mapping targets the \`$llm_reviewed\` edition (the \`**OWASP:** LLMxx:$llm_reviewed\` lines across the rule docs and the README rule tables).
+          "A newer OWASP GenAI LLM Top 10 edition (\`$llm_latest/final\` in $llm_repo) exists upstream; cfgaudit's **primary** mapping targets the \`$llm_reviewed\` edition (the \`**OWASP:** LLMxx:$llm_reviewed\` lines across the rule docs and the rule tables in docs/rules/README.md).
 
-          Re-review the LLMxx assignments against the \`$llm_latest\` edition, which may renumber the list as 2026 did; if still the best fit, bump \`llm_top10.reviewed_year\` in \`.github/framework-versions.json\`, otherwise update the affected rule-doc headers / README rows too.
+          Re-review the LLMxx assignments against the \`$llm_latest\` edition, which may renumber the list as 2026 did; if still the best fit, bump \`llm_top10.reviewed_year\` in \`.github/framework-versions.json\`, otherwise update the affected rule-doc headers / rule-table rows in docs/rules/README.md too.
 
           Run: $RUN_URL"
           fi
@@ -112,7 +112,7 @@ jobs:
             alert "Framework update: OWASP MCP Top 10 advanced to $mcp_current" \
           "The OWASP MCP Top 10 lifecycle marker moved from \`$mcp_reviewed\` to \`$mcp_current\` (the \"We are here right now\" line in [OWASP/www-project-mcp-top-10](https://github.com/OWASP/www-project-mcp-top-10/blob/main/index.md)). cfgaudit maps to it as **provisional v0.1**; a move toward Final Release (Phase 4) means the MCPxx IDs/titles may have stabilised or changed.
 
-          Re-verify the MCP mapping (the README OWASP-MCP table, the \`**OWASP MCP:**\` rule-doc lines, and \`TestMCPMappingConsistency\`) against the current taxonomy, then bump \`mcp_top10.reviewed_phase\` in \`.github/framework-versions.json\` (and drop the \"provisional v0.1\" stamps once it is final).
+          Re-verify the MCP mapping (the OWASP-MCP table in docs/rules/README.md, the \`**OWASP MCP:**\` rule-doc lines, and \`TestMCPMappingConsistency\`) against the current taxonomy, then bump \`mcp_top10.reviewed_phase\` in \`.github/framework-versions.json\` (and drop the \"provisional v0.1\" stamps once it is final).
 
           Run: $RUN_URL"
           fi

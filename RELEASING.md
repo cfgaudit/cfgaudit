@@ -11,7 +11,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
    - **Premise.** Check what the rule claims against a primary source: the agent's documentation, its source or changelog, or a measurement on the released agent. The rule's own page, a third-party write-up or another scanner do not count. A rule whose premise does not hold is not released, even if every finding matches its page. For example, the agent may already block what the rule warns about, or the setting may not do what the page says.
    - **Result.** Note in the pin pull request how many findings were real, harmless or wrong, and which source confirmed the premise. If more than 4 of 20 findings (or 10 of 50) are wrong, fix the rule, lower its severity, or hold it back from the release.
 4. **AVE mapping.** For each rule added since the last release, decide whether it has a clean AVE behavioral class. If it does, add it to `aveByRule` in `cmd/cfgaudit/avemap.go` and to [docs/cfgaudit-to-ave.md](docs/cfgaudit-to-ave.md); if not, record why it stays unmapped. Check whether AVE published new records that change an existing mapping.
-5. **Rule descriptions.** Re-read the README rule table and the `docs/rules/` pages of new and changed rules against what the rules now report.
+5. **Rule descriptions.** Re-read the rule tables in `docs/rules/README.md` and the `docs/rules/` pages of new and changed rules against what the rules now report.
 6. **Project documentation.** Check the README, the pages in `docs/` and the project documents against the code, the workflows and the repository settings. The project documents are CONTRIBUTING, SECURITY, TESTING, GOVERNANCE, RELEASING, ROADMAP and `docs/design.md`.
    - **Code:** flags, exit codes, output formats, defaults and the scanned files.
    - **Workflows:** the jobs and their triggers, required checks and gates.
@@ -23,7 +23,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
    - `version` in `.claude-plugin/plugin.json`
    - the default `image` in `action.yml`
    - the default version in both GitLab component templates under `templates/`
-   - the component examples and the `npx cfgaudit@X.Y.Z` / `npm install … cfgaudit@X.Y.Z` examples in the README
+   - the component examples and the `npx cfgaudit@X.Y.Z` / `npm install … cfgaudit@X.Y.Z` examples in the README and in `docs/ci-integration.md`
 
    `TestVersionPinsAgree` (`pins_test.go`) fails until every one of them names the version in `bin/cfgaudit`, so a pin left behind keeps the pull request red. A new place that pins the version goes into that test and into this list. The pull request touches sensitive paths and needs the `sensitive-paths-reviewed` label. Merge it and wait for CI on `main`.
 
@@ -50,7 +50,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
 
 ## After the release
 
-10. **Check what was published.** The release has all assets and `checksums.txt` matches them; `ghcr.io/cfgaudit/cfgaudit` carries `X.Y.Z`, `X.Y` and `latest` on the same digest; the downloaded binary prints `cfgaudit X.Y.Z`; the Homebrew cask is at `X.Y.Z`. The verification commands are in [Verifying a release](README.md#verifying-a-release).
+10. **Check what was published.** The release has all assets and `checksums.txt` matches them; `ghcr.io/cfgaudit/cfgaudit` carries `X.Y.Z`, `X.Y` and `latest` on the same digest; the downloaded binary prints `cfgaudit X.Y.Z`; the Homebrew cask is at `X.Y.Z`. The verification commands are in [Verifying a release](docs/verifying-releases.md).
 11. **Move the Action tag.** Point the floating `v1` tag at the release commit and force-push it, so `uses: cfgaudit/cfgaudit@v1` picks up the release:
 
    ```sh
