@@ -76,7 +76,7 @@ The root **`.mcp.json` is not Claude-Code-only**: Kimi Code CLI reads the same r
 | [CFG050](CFG050.md) | error | a committed `env` or `headers` block, an MCP server URL or `args`, or a hook command contains a hardcoded secret (vendor key pattern, secret-like name, auth header or credential flag with a literal credential) — MCP servers, a Claude Code or Copilot `type: "http"` hook, an `extraKnownMarketplaces` entry (whose headers Claude Code sends with same-origin archive downloads), and Continue's `requestOptions.headers` on `models`/`mcpServers`/`data` plus a `data` entry's `apiKey`. CI expressions (`${{ secrets.X }}`), unfilled all-caps templates and bare auth-scheme words are **not** flagged | LLM02 |
 | [CFG054](CFG054.md) | warn | high-entropy value in `env`/`headers` that looks like a hardcoded secret under an innocuous key name (entropy fallback to CFG007/CFG050) | LLM02 |
 | [CFG112](CFG112.md) | error/info | MCP server `bearer_token_file` (Grok `.grok/config.toml`) sends a local file as the bearer token to the server's URL on every request; the path must be absolute or `~/`, so it is always a file on the reader's machine. error when it is another tool's credential store (`~/.git-credentials`, `~/.aws/credentials`, `~/.ssh/...`, `gh/hosts.yml`), info for any other token file | LLM02 |
-| [CFG052](CFG052.md) | warn | MCP server name declared in multiple sources (`settings.json` `mcpServers` + `.mcp.json`) — ambiguous precedence / shadowing | LLM04 |
+| [CFG052](CFG052.md) | info | `mcpServers` in a Claude Code `settings.json` has no effect — Claude Code reads MCP servers from `.mcp.json`, `~/.claude.json` or a plugin | LLM04 |
 | [CFG066](CFG066.md) | warn/error | MCP server `env` sets a wildcard CORS origin (`*`) — any web page can call it; error when authentication is also disabled (CVE-2026-33010) | LLM03 |
 | [CFG068](CFG068.md) | error | MCP server forwards a templated credential (`{{TOKEN}}`/`${SECRET}` in an auth header/env) to a cleartext or raw-IP endpoint — runtime expands it to a real secret sent there (CVE-2026-31951) | LLM02 |
 | [CFG069](CFG069.md) | warn | MCP server `env` enables HTTP transport without log redaction / a quiet log level — request bodies (Bearer tokens, API keys) get logged (CVE-2026-42282/41495) | LLM02 |
@@ -100,9 +100,8 @@ The MCP-server rules above carry a **secondary** mapping to the [OWASP Top 10 fo
 | MCP04 – Software Supply Chain Attacks & Dependency Tampering | CFG010, CFG055, CFG059, CFG070 |
 | MCP05 – Command Injection & Execution | CFG017, CFG019, CFG020, CFG083 |
 | MCP07 – Insufficient Authentication & Authorization | CFG018, CFG066 |
-| MCP09 – Shadow MCP Servers | CFG052 |
 
-MCP03 (Tool Poisoning), MCP06 (Intent Flow Subversion), MCP08 (Lack of Audit & Telemetry), and MCP10 (Context Injection & Over-Sharing) have no dedicated config rule yet — they involve runtime tool behaviour or live server inspection rather than a statically committed config surface.
+MCP03 (Tool Poisoning), MCP06 (Intent Flow Subversion), MCP08 (Lack of Audit & Telemetry), MCP09 (Shadow MCP Servers) and MCP10 (Context Injection & Over-Sharing) have no dedicated config rule yet — they involve runtime tool behaviour or live server inspection rather than a statically committed config surface.
 
 ### Instruction files — `CLAUDE.md` & other agents
 

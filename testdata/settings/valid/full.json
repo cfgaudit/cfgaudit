@@ -35,16 +35,13 @@
       {
         "matcher": "Bash",
         "hooks": [
-          {"type": "command", "command": "echo running tool", "timeout": 30}
+          {
+            "type": "command",
+            "command": "echo running tool",
+            "timeout": 30
+          }
         ]
       }
     ]
-  },
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem@1.2.3", "/tmp"],
-      "alwaysAllow": ["read_file", "list_directory"]
-    }
   }
 }
