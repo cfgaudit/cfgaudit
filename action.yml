@@ -81,8 +81,9 @@ runs:
       run: |
         set -euo pipefail
 
-        # Flags must precede the positional path: Go's flag parser stops at the
-        # first non-flag argument.
+        # Flags precede the positional path: releases before the fix for #1047
+        # stopped parsing flags at the first non-flag argument, and the image
+        # input can name one of them.
         args=( --format "$IN_FORMAT" )
         if [ "$IN_STRICT" = "true" ]; then args+=( --strict ); fi
         if [ "$IN_USER" = "true" ]; then args+=( --user ); fi

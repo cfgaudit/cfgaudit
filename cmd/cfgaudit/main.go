@@ -87,7 +87,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	// Same exit codes as the flag package's ExitOnError: 0 for -h, 2 for a
 	// bad flag. The error and the usage are already on stderr.
-	if err := fset.Parse(args[1:]); err != nil {
+	positional, err := parseInterleaved(fset, args[1:])
+	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
@@ -115,9 +116,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	// A second path used to be ignored without a word, so a typo in it passed
+	// a CI gate that scanned only the first (#1047).
+	if len(positional) > 1 {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: expected at most one directory, got %d: %s\n", len(positional), strings.Join(positional, " "))
+		return 2
+	}
 	dir := "."
-	if fset.NArg() > 0 {
-		dir = fset.Arg(0)
+	if len(positional) > 0 {
+		dir = positional[0]
 	}
 	// A path that is not a directory would otherwise scan nothing and exit 0,
 	// so a mistyped path in CI passes without auditing anything (#710).
@@ -337,6 +344,28 @@ func shellCheckEnabled(requested bool) bool {
 		return false
 	}
 	return true
+}
+
+// parseInterleaved parses flags before and after the positional arguments,
+// so `cfgaudit . --format sarif` applies --format (#1047). The flag package
+// stops at the first non-flag argument; parsing resumes after each one. A
+// "--" ends flag parsing as usual, and everything after it is positional.
+func parseInterleaved(fset *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	for {
+		if err := fset.Parse(args); err != nil {
+			return nil, err
+		}
+		rest := fset.Args()
+		if consumed := len(args) - len(rest); consumed > 0 && args[consumed-1] == "--" {
+			return append(positional, rest...), nil
+		}
+		if len(rest) == 0 {
+			return positional, nil
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
 }
 
 // attachPolicy wires the org policy from .cfgaudit.yml onto the targets CFG025
