@@ -27,12 +27,21 @@ func TestUnreadableReason_BOM(t *testing.T) {
 	}
 	var v any
 	jsonErr := json.Unmarshal(data, &v)
-	if jsonErr == nil || !strings.Contains(jsonErr.Error(), bomJSONError) {
-		t.Fatalf("encoding/json no longer reports a BOM as %q: %v", bomJSONError, jsonErr)
+	if jsonErr == nil {
+		t.Fatal("encoding/json accepts a leading BOM now; the hint is no longer needed")
 	}
 	got := unreadableReason(path, fmt.Errorf("parse %s: %w", path, jsonErr))
 	if !strings.Contains(got, "starts with a UTF-8 byte order mark") || !strings.Contains(got, "save it as UTF-8 without BOM") {
-		t.Errorf("unreadableReason = %q", got)
+		t.Errorf("unreadableReason(%v) = %q", jsonErr, got)
+	}
+	// Both spellings of the BOM, from go1.26 and go1.27 (#1229).
+	for _, msg := range []string{
+		"invalid character 'ï' looking for beginning of value",
+		`invalid character '\ufeff' looking for beginning of value`,
+	} {
+		if got := unreadableReason(path, errors.New("parse "+path+": "+msg)); !strings.Contains(got, "byte order mark") {
+			t.Errorf("unreadableReason(%q) = %q", msg, got)
+		}
 	}
 }
 
@@ -45,8 +54,9 @@ func TestUnreadableReason_Other(t *testing.T) {
 	if got := unreadableReason(path, errors.New("parse "+path+": unexpected end of JSON input")); got != "unexpected end of JSON input" {
 		t.Errorf("unreadableReason = %q", got)
 	}
-	// The 'ï' message without a BOM in the file is left as it is.
-	if got := unreadableReason(path, errors.New(bomJSONError)); got != bomJSONError {
+	// The same message without a BOM in the file is left as it is.
+	const leading = "invalid character 'ï' looking for beginning of value"
+	if got := unreadableReason(path, errors.New(leading)); got != leading {
 		t.Errorf("unreadableReason = %q", got)
 	}
 }
