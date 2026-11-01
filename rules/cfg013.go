@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/gitindex"
 )
 
 type cfg013 struct{}
@@ -40,9 +41,19 @@ func (r *cfg013) Check(t *Target) []finding.Finding {
 	}
 
 	rules, gitignoreExists := loadGitignoreRules(filepath.Join(t.ProjectDir, ".gitignore"))
+	// With a .git, the index says whether the file is committed. .gitignore
+	// does not untrack a committed file, so that case is reported whether or
+	// not .gitignore covers it. Without one (an archive, a checkout without
+	// history) only the .gitignore check is possible (#1206).
+	tracked, haveIndex := gitindex.Tracked(t.ProjectDir)
 
 	var findings []finding.Finding
 	for _, rel := range sensitiveLocalFiles {
+		if haveIndex && tracked[rel] {
+			covered := gitignoreExists && isGitignored(rules, rel)
+			findings = append(findings, committedLocalFile(t, rel, covered))
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(t.ProjectDir, rel)); err != nil {
 			continue
 		}
@@ -53,10 +64,24 @@ func (r *cfg013) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG013",
 			Severity: finding.Warn,
 			File:     filepath.Join(t.ProjectDir, ".gitignore"),
-			Message:  rel + " exists in the repository but is not covered by .gitignore — committing it would leak personal config or developer-specific instructions to the team. Add the path (or a matching pattern) to .gitignore.",
+			Message:  rel + " exists in the repository but is not covered by .gitignore — committing it would leak personal config or developer-specific instructions to the team. Add the path (or a matching pattern) to .gitignore; if the file is already committed, also run git rm --cached " + rel + ".",
 		})
 	}
 	return findings
+}
+
+// committedLocalFile is the finding for a local file the git index tracks.
+func committedLocalFile(t *Target, rel string, covered bool) finding.Finding {
+	fix := "Run git rm --cached " + rel + " and add the path to .gitignore."
+	if covered {
+		fix = ".gitignore already covers it, but that does not untrack a committed file: run git rm --cached " + rel + "."
+	}
+	return finding.Finding{
+		RuleID:   "CFG013",
+		Severity: finding.Warn,
+		File:     filepath.Join(t.ProjectDir, rel),
+		Message:  rel + " is committed to the repository — it holds personal config or developer-specific instructions (often with absolute home paths) that every clone now gets. " + fix,
+	}
 }
 
 // --- minimal gitignore support ----------------------------------------------

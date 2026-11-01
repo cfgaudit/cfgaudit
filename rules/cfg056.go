@@ -4,7 +4,9 @@
 package rules
 
 import (
+	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
@@ -50,6 +52,14 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 	if fm.Bool("disable-model-invocation") {
 		return nil
 	}
+	// A Cursor .mdc rule is selected by its description only as an "agent
+	// requested" rule: alwaysApply false and no globs (#1195). An always-on
+	// rule is loaded anyway, and a glob rule by the files it names, so a
+	// greedy description adds nothing there.
+	mdc := strings.EqualFold(filepath.Ext(t.InstructionFile), ".mdc")
+	if mdc && (fm.Bool("alwaysApply") || fm.String("globs") != "" || len(fm.Phrases("globs")) > 0) {
+		return nil
+	}
 
 	// Each greedy-trigger surface, in report order: the description first, then
 	// every entry of the explicit triggers field.
@@ -65,12 +75,17 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 	for _, tf := range fields {
 		for _, re := range greedyTriggerRes {
 			if loc := re.FindString(tf.text); loc != "" {
+				msg := t.instructionName() + " frontmatter " + tf.field + " is a broad/always-on invocation trigger (\"" + loc +
+					"\") — Claude auto-selects skills/commands by their description and triggers, so a universal trigger lets this run far beyond its stated purpose; scope it to the specific task it handles"
+				if mdc {
+					msg = t.instructionName() + " frontmatter " + tf.field + " is a broad/always-on trigger (\"" + loc +
+						"\") on an \"agent requested\" Cursor rule (alwaysApply: false, no globs) — Cursor's agent pulls such a rule in by its description, so a universal description makes it apply far beyond its stated purpose; scope the description, or use globs or alwaysApply on purpose"
+				}
 				return []finding.Finding{{
 					RuleID:   "CFG056",
 					Severity: finding.Warn,
 					File:     t.InstructionFile,
-					Message: t.instructionName() + " frontmatter " + tf.field + " is a broad/always-on invocation trigger (\"" + loc +
-						"\") — Claude auto-selects skills/commands by their description and triggers, so a universal trigger lets this run far beyond its stated purpose; scope it to the specific task it handles" + userScopeNote(t),
+					Message:  msg + userScopeNote(t),
 				}}
 			}
 		}
