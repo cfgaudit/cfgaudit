@@ -113,17 +113,26 @@ func (r *cfg015) Check(t *Target) []finding.Finding {
 		if len(substs) == 0 {
 			continue
 		}
-		sev := finding.Warn
+		// Option C of #1201: a substitution that reads nothing an attacker can
+		// write (hook input, $ARGUMENTS, repository text, the network) is info.
+		sev := finding.Info
+		taint := commandTaint(site.Command, nil)
 		for _, s := range substs {
 			if hookNetworkCmdRe.MatchString(s) {
 				sev = finding.Error
 				break
 			}
+			if substReadsInput(s, taint) {
+				sev = finding.Warn
+			}
 		}
 		msg := site.Label + " contains shell substitution(s) " + strings.Join(quotedList(substs), ", ") +
 			" — the output of each substituted command is spliced into the shell line at runtime; if any input is attacker-controlled this becomes a command-injection sink"
-		if sev == finding.Error {
+		switch sev {
+		case finding.Error:
 			msg += " (network call inside the substitution increases severity)"
+		case finding.Info:
+			msg += " (none of them reads hook input, $ARGUMENTS, repository text or the network)"
 		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG015",
@@ -133,6 +142,27 @@ func (r *cfg015) Check(t *Target) []finding.Finding {
 		})
 	}
 	return findings
+}
+
+// substInputRe matches a substituted command that reads text an attacker can
+// write: the hook's stdin (jq, cat, read, Python's or Node's stdin), the
+// skill's $ARGUMENTS, a repository file through cat, or git output that holds
+// commit messages, branch or tag names and file contents (#1201). `ls`, `date`,
+// `command -v`, `dirname` and a `tail` over their output do not.
+var substInputRe = regexp.MustCompile(`\bjq\b|tool_input|\bcat\b|\bread\b|/dev/stdin|sys\.stdin|json\.load|readFileSync\(\s*0|ReadToEnd|\$\{?(?:ARGUMENTS\b|input\b|[0-9@*])|\bgit\s+(?:\S+\s+)*?(?:log|show|branch|describe|for-each-ref|rev-list|shortlog|diff|status|config|name-rev|symbolic-ref|blame|grep|ls-files|cat-file|tag)\b|--abbrev-ref`)
+
+// substReadsInput reports whether substitution s reads attacker-writable text,
+// directly or through a variable that holds hook input.
+func substReadsInput(s string, taint shellTaint) bool {
+	if substInputRe.MatchString(s) {
+		return true
+	}
+	for _, u := range shellVarUses(s) {
+		if taint.untrusted(u.name, nil) {
+			return true
+		}
+	}
+	return false
 }
 
 func extractHookSubstitutions(cmd string) []string {

@@ -77,17 +77,60 @@ func (r *cfg085) Check(t *Target) []finding.Finding {
 		return nil // Grok wires only bypassPermissions at spawn; the rest are inert
 	}
 
+	sev := spec.sev
+	readOnly := ""
+	if kind == "Claude" {
+		if tools := fm.StringList("tools"); readOnlyTools(tools) {
+			sev = lowerSeverity(sev)
+			readOnly = "; its tools list (" + strings.Join(tools, ", ") + ") has no tool that writes files, runs commands or reaches the network, which limits what the mode unlocks"
+		}
+	}
 	tail := " so this is the settings.json permission mode (CFG004) reached through a different file. Remove it and let the session's mode govern"
 	if kind == "Grok" {
 		tail = " and Grok wires this mode at spawn, so a cloned repo runs the subagent with it. Remove it and let the session's mode govern"
 	}
 	return []finding.Finding{{
 		RuleID:   "CFG085",
-		Severity: spec.sev,
+		Severity: sev,
 		File:     t.InstructionFile,
 		Message: t.instructionName() + " frontmatter sets permissionMode: \"" + mode + "\" — " + spec.what +
-			". A committed subagent definition applies to everyone who runs it," + tail + userScopeNote(t),
+			". A committed subagent definition applies to everyone who runs it," + tail + readOnly + userScopeNote(t),
 	}}
+}
+
+// unlockingTools are the tools a weakening permission mode matters for: they
+// write files, run commands or reach the network (#1188). An MCP tool
+// (mcp__...) counts too, since its server can do any of these.
+var unlockingTools = map[string]bool{
+	"Bash": true, "PowerShell": true, "Write": true, "Edit": true, "MultiEdit": true,
+	"NotebookEdit": true, "WebFetch": true,
+}
+
+// readOnlyTools reports an explicit tools list with none of unlockingTools. A
+// missing or empty list, or "*", means every tool and is not read-only.
+func readOnlyTools(tools []string) bool {
+	if len(tools) == 0 {
+		return false
+	}
+	for _, tool := range tools {
+		name, _, _ := strings.Cut(tool, "(")
+		name = strings.TrimSpace(name)
+		if name == "*" || unlockingTools[name] || strings.HasPrefix(name, "mcp__") {
+			return false
+		}
+	}
+	return true
+}
+
+// lowerSeverity is one step down: error to warn, warn to info.
+func lowerSeverity(s finding.Severity) finding.Severity {
+	switch s {
+	case finding.Error:
+		return finding.Warn
+	case finding.Warn:
+		return finding.Info
+	}
+	return s
 }
 
 // qwenApprovalTiers maps a qwen effective approvalMode to how it weakens

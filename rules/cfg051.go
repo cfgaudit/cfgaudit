@@ -35,7 +35,7 @@ func (r *cfg051) ID() string { return "CFG051" }
 // permission-breadth rules (CFG002/CFG006). A grant cancelled by disallowed-tools
 // is not flagged.
 func (r *cfg051) Check(t *Target) []finding.Finding {
-	if t == nil || t.InstructionContent == "" || isDevinAgentProfile(t.InstructionFile) {
+	if t == nil || t.InstructionContent == "" || isDevinAgentProfile(t.InstructionFile) || isGeminiSkill(t.InstructionFile) {
 		return nil
 	}
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
@@ -111,4 +111,12 @@ func analyzeAllowedTools(allowed, disallowed []string) (finding.Severity, string
 // does not" (Devin CLI skill docs), so reporting it as broad would be wrong.
 func isDevinAgentProfile(path string) bool {
 	return strings.Contains(filepath.ToSlash(path), "/.devin/agents/") || strings.HasPrefix(filepath.ToSlash(path), ".devin/agents/")
+}
+
+// isGeminiSkill reports whether path is a skill Gemini CLI loads from a
+// .gemini/skills directory (project or user scope). Gemini CLI does not read
+// allowed-tools, so the field grants nothing there (#1153). .qwen/skills is
+// left in scope until Qwen Code is measured.
+func isGeminiSkill(path string) bool {
+	return strings.Contains(strings.ReplaceAll(path, `\`, "/"), ".gemini/skills/")
 }

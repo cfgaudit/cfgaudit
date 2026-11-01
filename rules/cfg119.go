@@ -6,6 +6,7 @@ package rules
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -31,6 +32,14 @@ var (
 	// payloadObfIdentRe matches the hex identifiers an obfuscator gives
 	// every variable (_0x4d2cd2). A hand-written or minified file has few.
 	payloadObfIdentRe = regexp.MustCompile(`\b_0x[0-9a-f]{4,}\b`)
+	// payloadRotationRe matches the loop an obfuscator emits to rotate its
+	// string array into place before the code runs. It is there whatever the
+	// identifiers are called (#1265); none of 886 minified bundles and large
+	// node_modules files measured for #1265 contains it.
+	payloadRotationRe = regexp.MustCompile(`while\s*\(\s*!!\s*\[\s*\]\s*\)\s*\{\s*try\s*\{`)
+	// payloadHexLitRe matches the hex literals an obfuscator uses as string
+	// indices (f(0x1bf)).
+	payloadHexLitRe = regexp.MustCompile(`\b0x[0-9a-fA-F]+\b`)
 	// payloadDownloadRe matches a download of a release asset, an archive or a
 	// binary, or a runtime installer script.
 	payloadDownloadRe = regexp.MustCompile(`https?://[^\s"'` + "`" + `]*(?:/releases/download/|\.zip\b|\.tar\.gz\b|\.tgz\b|\.exe\b|\.bin\b|/install\.sh\b|bun\.sh/install|deno\.land/install)`)
@@ -47,16 +56,96 @@ var (
 	payloadNetworkRe = regexp.MustCompile(`https?://|\bfetch\(|https?\.request\(|XMLHttpRequest|\bcurl\b|requests\.post|urllib\.request`)
 )
 
+// disguisedRunRe matches an interpreter started on a file whose extension is
+// not a script's: a font, an image, a document or a media file (#1265). No
+// interpreter runs such a file for a legitimate reason, so an auto-run
+// command that does is a payload in disguise, whether or not the file can be
+// read. Groups: interpreter, flags, path, extension.
+var disguisedRunRe = regexp.MustCompile(`(?i)(?:^|[\s;&|(])(node|nodejs|bun|deno|python[0-9.]*|py|ruby|perl|php|bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?((?:\s+--?[A-Za-z][\w-]*)*)(?:\s+run)?\s+["']?([^\s"';&|<>]*?\.(ttf|otf|woff2?|eot|png|jpe?g|gif|bmp|webp|svg|ico|pdf|txt|docx?|xlsx?|mp3|mp4|wav|mov|avi))["']?(?:[\s;&|)]|$)`)
+
+// disguiseKind names what a disguised payload pretends to be, with its article.
+func disguiseKind(ext string) string {
+	switch strings.ToLower(ext) {
+	case "ttf", "otf", "woff", "woff2", "eot":
+		return "a font"
+	case "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico":
+		return "an image"
+	case "mp3", "mp4", "wav", "mov", "avi":
+		return "a media file"
+	}
+	return "a document"
+}
+
+// disguisedRuns reports each auto-run command of t that starts an
+// interpreter on a non-script file. An obfuscated file that cfgaudit could
+// read is named as such.
+func disguisedRuns(t *Target) []finding.Finding {
+	var out []finding.Finding
+	seen := map[string]bool{}
+	for _, lc := range LaunchCommands(t) {
+		for _, m := range disguisedRunRe.FindAllStringSubmatch(lc.Command, -1) {
+			flags := strings.Fields(m[2])
+			if slices.ContainsFunc(flags, func(f string) bool { return f == "-e" || f == "-c" || f == "-m" || f == "--eval" }) {
+				continue // inline code or a module, not the file
+			}
+			path := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(m[3])), "./")
+			if seen[lc.File+"\x00"+path] {
+				continue
+			}
+			seen[lc.File+"\x00"+path] = true
+			msg := lc.Label + " starts " + m[1] + " on " + path + ", a file whose extension (." + strings.ToLower(m[4]) + ") is not a script: a payload disguised as " + disguiseKind(m[4])
+			for _, s := range t.LaunchedScripts {
+				if f := filepath.ToSlash(s.File); f == path || strings.HasSuffix(f, "/"+path) {
+					if sm := scanPayload(s.Content); sm.obfuscated {
+						msg += "; the file is obfuscated (" + sm.obfShape + ")"
+					}
+				}
+			}
+			msg += ". No interpreter runs " + disguiseKind(m[4]) + " for a legitimate reason; do not open the repository with an agent or editor until you have read the file, and if nobody in the project added it, treat the repository as compromised"
+			out = append(out, finding.Finding{RuleID: "CFG119", Severity: finding.Error, File: lc.File, Message: msg})
+		}
+	}
+	return out
+}
+
 // payloadMarkers are what CFG119 found in one script.
 type payloadMarkers struct {
 	obfuscated, fetchRun, credentials, envDump bool
 	idents, envReads                           int
+	// obfShape names the obfuscation that was found, for the message.
+	obfShape string
+}
+
+// The hex-literal density, per 1,000 characters, above which a file with a
+// very long line counts as obfuscated (#1265). Minified bundles stay below
+// it: of 886 measured, the densest with a line of 5,000 characters or more
+// had under 5; the obfuscated payload that prompted #1265 had 8.8.
+const (
+	payloadHexDensity = 5
+	payloadLongLine   = 5000
+	payloadMinHexLits = 100
+)
+
+func longestLine(s string) int {
+	n := 0
+	for line := range strings.SplitSeq(s, "\n") {
+		n = max(n, len(line))
+	}
+	return n
 }
 
 func scanPayload(content string) payloadMarkers {
 	var m payloadMarkers
 	m.idents = len(payloadObfIdentRe.FindAllStringIndex(content, -1))
-	m.obfuscated = m.idents >= 30
+	hexLits := len(payloadHexLitRe.FindAllStringIndex(content, -1))
+	switch {
+	case m.idents >= 30:
+		m.obfuscated, m.obfShape = true, strconv.Itoa(m.idents)+" _0x identifiers"
+	case payloadRotationRe.MatchString(content):
+		m.obfuscated, m.obfShape = true, "an obfuscator's string-array rotation loop"
+	case hexLits >= payloadMinHexLits && hexLits*1000 >= payloadHexDensity*len(content) && longestLine(content) >= payloadLongLine:
+		m.obfuscated, m.obfShape = true, strconv.Itoa(hexLits)+" hex literals in a line of "+strconv.Itoa(longestLine(content))+" characters"
+	}
 	m.fetchRun = payloadDownloadRe.MatchString(content) && payloadRunRe.MatchString(content)
 	network := payloadNetworkRe.MatchString(content)
 	m.credentials = network && (payloadTokenRe.MatchString(content) || payloadCredFileRe.MatchString(content))
@@ -68,7 +157,7 @@ func scanPayload(content string) payloadMarkers {
 func (m payloadMarkers) describe() string {
 	var parts []string
 	if m.obfuscated {
-		parts = append(parts, "it is obfuscated ("+strconv.Itoa(m.idents)+" _0x identifiers)")
+		parts = append(parts, "it is obfuscated ("+m.obfShape+")")
 	}
 	if m.fetchRun {
 		parts = append(parts, "it downloads a release asset, archive, binary or runtime and runs code")
@@ -105,7 +194,7 @@ func (r *cfg119) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
 	}
-	var findings []finding.Finding
+	findings := disguisedRuns(t)
 	for _, s := range t.LaunchedScripts {
 		m := scanPayload(s.Content)
 		other := m.fetchRun || m.credentials || m.envDump

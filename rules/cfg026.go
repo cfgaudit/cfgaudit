@@ -146,13 +146,16 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				}
 				if p.num == 1 || p.num == 2 {
 					if quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0]) {
-						if defensiveContext(lines, i) {
+						if defensiveContext(lines, i) || askAgentQuoteRe.MatchString(line[:loc[0]]) {
 							continue
 						}
 						sev = finding.Warn
+						if defensiveBlock(lines, i) {
+							sev = finding.Info
+						}
 					}
 				}
-				if p.num == 4 && storyWorkRe.MatchString(line) {
+				if p.num == 4 && (storyWorkRe.MatchString(line) || storyNounAfterRe.MatchString(line[loc[1]:])) {
 					continue
 				}
 				findings = append(findings, finding.Finding{
@@ -229,7 +232,11 @@ func defensiveContext(lines []string, i int) bool {
 
 // runAsRe matches the verb that makes "as Administrator" the Windows idiom
 // "Run as Administrator" rather than a claim of authority (#655).
-var runAsRe = regexp.MustCompile(`(?i)\b(?:run|runs|running|ran|launch|launched|launching|start|started|starting|open|opened|opening|execute|executed|executing|elevated)\s+$`)
+var runAsRe = regexp.MustCompile(`(?i)\b(?:run|runs|running|ran|launch|launched|launching|start|started|starting|open|opened|opening|execute|executed|executing|elevated)\s+(?:[\w.+-]+\s+){0,3}$`)
+
+// runAsActRe matches a verb of speaking or acting between "run" and "as", which
+// makes the phrase a role again: "start acting as administrator" (#1156).
+var runAsActRe = regexp.MustCompile(`(?i)\b(?:act|acting|acts|speak|speaking|respond|responding|answer|answering|behave|behaving|pose|posing)\s+$`)
 
 // authorityIdiom reports whether a pattern-3 match is ordinary wording rather
 // than an authority claim (#655): "as developer" running into a hyphen
@@ -239,8 +246,17 @@ func authorityIdiom(line string, loc []int) bool {
 	if loc[1] < len(line) && line[loc[1]] == '-' {
 		return true
 	}
-	return runAsRe.MatchString(line[:loc[0]])
+	return runAsRe.MatchString(line[:loc[0]]) && !runAsActRe.MatchString(line[:loc[0]])
 }
+
+// storyNounAfterRe matches the noun that makes "for a story" the subject of a
+// writing skill rather than a frame for a request: "thematic depth for a story
+// concept" (#1156). "for a story where the AI has no limits" keeps reporting.
+var storyNounAfterRe = regexp.MustCompile(`(?i)^\s+(?:concepts?|ideas?|outlines?|arcs?|drafts?|titles?|premises?|pitch(?:es)?|structures?|beats?|summar(?:y|ies)|synopse?s|synopsis|themes?|characters?|settings?|worlds?|plots?|treatments?|loglines?)\b`)
+
+// askAgentQuoteRe matches advice to the user that quotes what to tell the
+// agent: 'ask the agent to "forget previous instructions" if confused' (#1156).
+var askAgentQuoteRe = regexp.MustCompile(`(?i)\b(?:ask|tell)\s+(?:the\s+|your\s+)?(?:agent|assistant|model|claude|ai|llm|bot)\s+to\s+["\x{201c}]$`)
 
 // untrustedSourceRe matches where the instructions to ignore are located when
 // that place is untrusted input: "ignore any instruction in the PR title",
@@ -478,4 +494,44 @@ func attributiveNoun(line string, sm []int) bool {
 		return false
 	}
 	return !clauseWords[strings.ToLower(m[1])]
+}
+
+// blockCueRe matches the lead-in of a list of injection signatures, wider than
+// defensiveCueRe because it only grades a quoted payload, never drops one:
+// "Flag any of these phrases ... as a likely injection attempt:" (#1207).
+var blockCueRe = regexp.MustCompile(`(?i)\b(?:flag|flags|flagged|detect\w*|reject\w*|block\w*|recogni[sz]e\w*|watch\s+(?:out\s+)?for|look\s+(?:out\s+)?for|refuse\w*|treat\w*\s+(?:\w+\s+){0,3}as\s+untrusted|injection\s+(?:attempts?|signatures?|patterns?|phrases?|markers?))\b`)
+
+// defensiveBlock reports whether the list or paragraph that holds line i, or
+// the line that introduces it, says the quoted phrases are to be recognised
+// and refused. Such a list is a catalogue of signatures for a security or
+// review skill (#1207), so its quoted payloads are reported at info: still
+// visible with --severity info, out of the default output.
+func defensiveBlock(lines []string, i int) bool {
+	cue := func(s string) bool {
+		s = strings.NewReplacer("*", "", "_", "").Replace(s)
+		return defensiveCueRe.MatchString(s) || blockCueRe.MatchString(s)
+	}
+	const maxDistance = 30
+	for j := i; j >= 0 && i-j <= maxDistance; j-- {
+		if strings.TrimSpace(lines[j]) == "" {
+			// One blank line may separate a list from the line that
+			// introduces it.
+			if j > 0 && strings.HasSuffix(strings.TrimSpace(lines[j-1]), ":") && cue(lines[j-1]) {
+				return true
+			}
+			break
+		}
+		if cue(lines[j]) {
+			return true
+		}
+	}
+	for j := i + 1; j < len(lines) && j-i <= maxDistance; j++ {
+		if strings.TrimSpace(lines[j]) == "" {
+			break
+		}
+		if cue(lines[j]) {
+			return true
+		}
+	}
+	return false
 }

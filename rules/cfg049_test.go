@@ -37,6 +37,39 @@ func TestCFG049_TLSHostname_Warn(t *testing.T) {
 	}
 }
 
+// A vendor's documented endpoint is info; a lookalike, a vendor name in the
+// userinfo or the path, another path on a shared host and cleartext keep
+// their severity (#1202).
+func TestCFG049_VendorEndpoints1202(t *testing.T) {
+	for _, tc := range []struct {
+		url  string
+		want finding.Severity
+	}{
+		{"https://api.githubcopilot.com/mcp/", finding.Info},
+		{"https://api.githubcopilot.com/mcp", finding.Info},
+		{"https://mcp.sentry.dev/mcp", finding.Info},
+		{"https://learn.microsoft.com/api/mcp", finding.Info},
+		{"https://MCP.Linear.app/sse", finding.Info},
+		{"https://mcp.example-unknown.com/mcp", finding.Warn},
+		{"https://api.githubcopilot.com.example.com/mcp", finding.Warn},
+		{"https://learn.microsoft.com/en-us/docs", finding.Warn},
+		{"https://huggingface.co/someone/space", finding.Warn},
+		{"https://api.githubcopilot.com@evil.example/mcp", finding.Warn},
+		{"https://evil.example/api.githubcopilot.com/mcp", finding.Warn},
+		{"http://mcp.sentry.dev/mcp", finding.Error},
+		{"http://10.0.0.5:8080/mcp", finding.Error},
+	} {
+		f := CFG049.Check(settingsTarget(t, `{"mcpServers":{"m":{"type":"http","url":"`+tc.url+`"}}}`))
+		if len(f) != 1 || f[0].Severity != tc.want {
+			t.Errorf("%s: got %+v, want one %s", tc.url, f, tc.want)
+			continue
+		}
+		if tc.want == finding.Info && !strings.Contains(f[0].Message, "documents for its service") {
+			t.Errorf("%s: message does not name the vendor: %s", tc.url, f[0].Message)
+		}
+	}
+}
+
 func TestCFG049_NotFlagged(t *testing.T) {
 	cases := []string{
 		`{"mcpServers":{"m":{"type":"sse","url":"http://localhost:8080/sse"}}}`, // loopback cleartext is fine

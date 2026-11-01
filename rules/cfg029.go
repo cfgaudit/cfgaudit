@@ -39,7 +39,7 @@ var permissionBypassRe = mustFiltered(`(?i)(` +
 	`|auto-?approve\b` +
 	`|approve\b[^.\n]{0,30}?\b(?:permission|approval|confirmation|prompt)s?\b[^.\n]{0,25}?\b(?:automatically|without\s+asking|by\s+default)` +
 	`|bypass\s+(?:permission|confirmation|approval)` +
-	`|skip\s+(?:confirm(?:ation)?|approval|the\s+prompt)` +
+	`|skip\s+(?:confirm(?:ation)?|approval|(?:the\s+)?(?:permission|approval|confirmation|tool(?:[- ]call)?)\s+prompts?)` +
 	`|without\s+(?:confirm(?:ation)?|approval|prompt(?:ing)?)` +
 	`|never\s+(?:prompt|confirm|require\s+approval)` +
 	`|(?:without\s+asking|never\s+ask(?:ing)?|do\s+not\s+ask|don'?t\s+ask|do\s+not\s+prompt)\s+(?:the\s+user\s+)?(?:for\s+)?(?:permission|approval|confirmation|before\s+(?:running|executing|proceeding|making|applying|doing))` +
@@ -64,7 +64,7 @@ var forbiddenMarkRe = regexp.MustCompile(`^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*)?\
 // antiPatternHeadRe matches a heading or list lead-in that introduces things not
 // to do without a negation word: "Common failure modes", "Anti-patterns",
 // "Red flags" (#623).
-var antiPatternHeadRe = regexp.MustCompile(`(?i)\b(?:anti-?patterns?|failure\s+modes?|pitfalls?|common\s+mistakes|red\s+flags|what\s+not\s+to\s+do|don'?ts|traps?)\b`)
+var antiPatternHeadRe = regexp.MustCompile(`(?i)\b(?:anti-?patterns?|failure\s+modes?|pitfalls?|common\s+mistakes|red\s+flags|what\s+not\s+to\s+do|don'?ts|traps?|issues\s+to\s+flag|risks?)\b`)
 
 // willNotHeadRe matches a list heading that opens with "Will not" or "Won't"
 // and no subject: "**Will Not:**", "**Explicitly Will NOT** (without `--force`
@@ -101,7 +101,7 @@ var doesNotRe = regexp.MustCompile(`(?i)\b(?:does\s+not|doesn'?t|did\s+not|didn'
 
 // catalogueRowRe matches a table row whose first cell is an identifier of a
 // risk or weakness catalogue: ASI06, LLM01, CWE-862, AML.T0051.
-var catalogueRowRe = regexp.MustCompile(`^\s*\|\s*(?:\*\*)?[A-Z]{2,}[-.]?(?:T)?\d{2,}(?:\.\d+)?(?:\*\*)?\s*\|`)
+var catalogueRowRe = regexp.MustCompile(`^\s*\|\s*(?:\*\*)?[A-Z]{2,}[-.]?(?:T)?\d{2,}(?:\.\d+)?(?:\*\*)?\s*(?::[^|]*)?\|`)
 
 // withoutGateRe matches the "without confirmation / approval / prompting"
 // branch. The ask-branch ("without asking for confirmation") names the agent's
@@ -386,11 +386,6 @@ func notAPermissionBypass(line string, loc []int) bool {
 			return true
 		}
 	}
-	// "skip the prompt and pass `--api-key-env NAME` instead" swaps a CLI's
-	// key prompt for a flag (#914).
-	if strings.HasPrefix(match, "skip the prompt") && cliFlagRe.MatchString(clauseRest(after)) {
-		return true
-	}
 	if strings.HasPrefix(match, "never prompt") && nonInteractiveRe.MatchString(scope) {
 		return true
 	}
@@ -672,7 +667,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 			if loc == nil {
 				continue
 			}
-			if negated(lines, i, loc) || notAPermissionBypass(line, loc) || describesState(line, loc) || readSectionSummary(lines, i, loc) {
+			if notABypassShape(lines, i, loc) || negated(lines, i, loc) || notAPermissionBypass(line, loc) || describesState(line, loc) || readSectionSummary(lines, i, loc) {
 				continue
 			}
 			// A # comment in a fenced code block says what the next command
@@ -688,16 +683,164 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 				continue
 			}
 			lineNo := i + 1
+			sev, msg := bypassScope(sentenceAround(lines, i, loc), continuedFrom(lines, i)+" "+line[:sentenceEnd(line, loc)])
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG029",
-				Severity: finding.Error,
+				Severity: sev,
 				File:     src.File,
 				Line:     lineNo,
 				Col:      loc[0] + 1,
-				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs the agent to bypass permission prompts (\"" + line[loc[0]:loc[1]] +
-					"\") — this disables the permission system via system-context text, equivalent to defaultMode: bypassPermissions (CFG004). Remove it",
+				Message:  src.Name + " line " + strconv.Itoa(lineNo) + " tells the agent not to ask for confirmation (\"" + line[loc[0]:loc[1]] + "\") " + msg,
 			})
 		}
 	}
 	return findings
+}
+
+// The scope of a confirmation the text skips decides the severity (#1171).
+// Text does not change the permission mode: Claude Code still prompts for a
+// tool call the allow list does not cover. What it removes is the agent's
+// habit of checking in the conversation, which matters in auto and bypass
+// modes and for everything the allow list already permits. In the
+// pre-release corpus run for v1.20.0, 44% of the findings skipped a named
+// local step the user had already asked for and 7% were broad or
+// outward-facing skips.
+var (
+	// bypassUniversalRe marks a skip without bounds: every command, action
+	// or tool, or an autonomous mode.
+	bypassUniversalRe = regexp.MustCompile(`(?i)\b(?:(?:all|any|every)\s+(?:\w+\s+)?(?:commands?|actions?|tools?|operations?|tool\s+calls?|changes?|requests?)|everything|anything|autonomous(?:ly)?|yolo|full\s+(?:permissions?|access|autonomy)|unattended)\b`)
+	// bypassOutwardRe marks an action that leaves the machine or is hard to
+	// undo.
+	bypassOutwardRe = regexp.MustCompile(`(?i)\b(?:push(?:es|ing)?|publish(?:es|ing)?|release[sd]?|deploy(?:s|ing|ment)?|submit(?:s|ting)?|post(?:s|ing)?|send(?:s|ing)?|e-?mail|install(?:s|ing)?|uninstall|delet(?:e|es|ing)|remov(?:e|es|ing)|drop(?:s|ping)?|merg(?:e|es|ing)|force|pull\s+requests?|PRs?|issues?|another\s+repo(?:sitory)?|pay(?:ment)?|purchase|transfer)\b`)
+	// bypassLocalRe marks a named local step: a check the project runs, the
+	// next round of a loop, or each item of a batch the user asked for. A
+	// bare "edit files" or "write" is not named and stays an error.
+	bypassLocalRe = regexp.MustCompile(`(?i)\b(?:format(?:s|ting)?|fmt|lint(?:s|ing|er)?|tests?|testing|typecheck|build(?:s|ing)?|compil(?:e|es|ing)|proceed\s+to\s+the\s+next|next\s+(?:step|phase|task|file|iteration)|iterations?|loop|retr(?:y|ies|ying|ied)|continu(?:e|es|ing)|resum(?:e|es|ing)|keep\s+going|go\s+again|repeat(?:s|ing)?|each\s+(?:one|file|step|change)|per\s+file|one\s+pass|in\s+(?:a\s+)?batch)\b`)
+)
+
+// conditionRe matches a condition clause, whose words say when the skip
+// applies, not what it skips: "proceed without confirmation when tests pass".
+var conditionRe = regexp.MustCompile(`(?i)\b(?:when|if|once|after|until|unless)\b[^,.;]*`)
+
+// sentenceEnd is the end of the sentence of line that holds the match.
+func sentenceEnd(line string, loc []int) int {
+	if j := strings.IndexAny(line[loc[1]:], ".!?"); j >= 0 {
+		return loc[1] + j
+	}
+	return len(line)
+}
+
+// sentenceAround returns the sentence of line i that holds the match, with a
+// wrapped previous line when line i continues it.
+func sentenceAround(lines []string, i int, loc []int) string {
+	line := lines[i]
+	start := strings.LastIndexAny(line[:loc[0]], ".!?") + 1
+	return continuedFrom(lines, i) + " " + line[start:sentenceEnd(line, loc)]
+}
+
+// bypassScope grades a skipped confirmation by what it covers: unbounded
+// skips and skips of nothing in particular stay errors, outward-facing ones
+// are warnings, and a named local step is info, so a reviewer still sees it.
+//
+// The universal check reads the sentence that holds the match; the local
+// check reads the line up to the end of that sentence, since a template such
+// as "If the Write tool fails, retry with Bash. Do not ask the user for
+// permission." names the step in the sentence before, while "Never ask for
+// permission. Just build it." puts a step after a skip that covers everything.
+func bypassScope(sentence, line string) (finding.Severity, string) {
+	const why = "— the permission mode does not change, but in auto and bypass modes, and for anything the allow list already permits, the agent no longer stops to check with you"
+	switch {
+	case bypassUniversalRe.MatchString(sentence):
+		return finding.Error, why + ", for every action. Scope it to the steps that need no check, or remove it"
+	case bypassOutwardRe.MatchString(sentence):
+		return finding.Warn, why + ", here for an action that leaves the machine or is hard to undo (push, publish, install, delete). Keep a confirmation for it"
+	case bypassLocalRe.MatchString(conditionRe.ReplaceAllString(line, "")):
+		return finding.Info, "for a named local step — " + strings.TrimPrefix(why, "— ") + " during that step. Usually fine for a step the user asked for; listed so a reviewer sees it"
+	default:
+		return finding.Error, why + ". Name the steps it covers, or remove it"
+	}
+}
+
+// The shapes of #1170, from the pre-release corpus run for v1.20.0: lines
+// that forbid the skip, describe a program, list a risk, recommend the allow
+// list or use the words in another sense.
+var (
+	// nothingSubjectRe: "Post nothing, label nothing and close nothing
+	// without approval" forbids, with the negation in the subject.
+	nothingSubjectRe = regexp.MustCompile(`(?i)\b(?:nothing|none|no\s+one|nobody)\b`)
+	// onlyConditionRe: "Skip confirmation only when the request says so"
+	// keeps the confirmation by default.
+	onlyConditionAfterRe  = regexp.MustCompile(`(?i)^[^.;]{0,25}?\bonly\s+(?:when|if)\b`)
+	onlyConditionBeforeRe = regexp.MustCompile(`(?i)\b(?:only\s+(?:when|if)|unless)\b`)
+	// stopAfterRe: "Do not ask for approval, end the turn at the handoff"
+	// tells the agent to stop, not to go on.
+	stopAfterRe = regexp.MustCompile(`(?i)^[^.]{0,40}?\b(?:end(?:s)?\s+(?:the\s+)?(?:turn|session|run)|stop(?:s|ping)?\b)`)
+	// modeHeaderRe: a list header naming a user-passed flag or mode.
+	modeHeaderRe = regexp.MustCompile("(?i)(?:`?--?[a-z][\\w-]*`?|\\b(?:yolo|auto)\\s+mode\\b)[^:]*:\\s*$")
+	// programSubjectRe: a program or mode as the subject, in the third
+	// person: "The command detects the project type and runs ... without
+	// prompting", "Destructive commands run without confirmation".
+	programSubjectRe = regexp.MustCompile(`(?i)^\s*(?:[-*+]\s+)?(?:the\s+)?(?:command|skill|cli|installer|wizard|binary|mode|destructive\s+commands?|mutations?)\s+(?:\w+\s+){0,12}?(?:runs|executes|installs|proceeds|completes|applies|detects|works|run|execute|proceed)\b`)
+	// definitionLabelRe: a definition list label: "- `bypass`: mutations
+	// execute without confirmation".
+	definitionLabelRe = regexp.MustCompile("^\\s*[-*+]\\s+(?:\\*\\*)?`[^`]+`(?:\\*\\*)?\\s*[:\\x{2014}-]")
+	// askCodeSubjectRe: commands in code formatting right before a negated ask:
+	// "`my-tool clean` and `my-tool optimize` do not ask for confirmation".
+	askCodeSubjectRe = regexp.MustCompile("`[^`]+`[*_]*\\s+(?:and\\s+`[^`]+`[*_]*\\s+)?$")
+	// promptObjectRe: "prompt" with a model as object, or prompt text.
+	promptObjectAfterRe = regexp.MustCompile(`(?i)^\s*(?:an?|the|another)?\s*(?:agent|model|sub-?agent|llm|claude)\b|^s?\s+(?:text|templates?|engineering|files?)\b`)
+	// allowListRe: the safe mechanism the rule doc recommends.
+	allowListRe = regexp.MustCompile(`(?i)permissions\.allow|\ballow-?\s?list|\bpre-?approved\b`)
+	// defectRowRe: a table row whose last cell names what is lost or
+	// required, the shape of an anti-pattern table.
+	defectRowRe = regexp.MustCompile(`(?i)\|\s*(?:loses|lost|requires?|risk|data\s+loss|breaks|irreversible)\b[^|]*\|\s*$`)
+	// chatFillerRe: a confirmation in the chat sense: "Skip confirmations
+	// like 'I'll continue...'".
+	chatFillerRe = regexp.MustCompile("(?i)^\\w*\\s+like\\s+[\"'\u201c`]")
+	// youApproveRe: the user as the subject of "always approve".
+	youApproveRe = regexp.MustCompile(`(?i)\byou\s+$`)
+)
+
+// notABypassShape reports the shapes of #1170.
+func notABypassShape(lines []string, i int, loc []int) bool {
+	line := lines[i]
+	match := strings.ToLower(line[loc[0]:loc[1]])
+	before := line[clauseStart(line, loc[0]):loc[0]]
+	after := line[loc[1]:]
+	switch {
+	case nothingSubjectRe.MatchString(before):
+		return true
+	case onlyConditionAfterRe.MatchString(after) || onlyConditionBeforeRe.MatchString(before):
+		return true
+	case stopAfterRe.MatchString(after):
+		return true
+	case programSubjectRe.MatchString(before) || definitionLabelRe.MatchString(line):
+		return true
+	case prohibitionRe.MatchString(match) && askCodeSubjectRe.MatchString(before):
+		return true
+	case strings.Contains(match, "prompt") && promptObjectAfterRe.MatchString(after):
+		return true
+	case allowListRe.MatchString(line):
+		return true
+	case strings.HasPrefix(strings.TrimSpace(line), "|") && defectRowRe.MatchString(line):
+		return true
+	case chatFillerRe.MatchString(after):
+		return true
+	case strings.HasSuffix(match, "approve") && youApproveRe.MatchString(before):
+		return true
+	case loc[1] < len(line) && line[loc[1]] == '_' || loc[0] > 0 && (line[loc[0]-1] == '_' || isWordByte(line[loc[0]-1])):
+		// Part of an identifier: confirmation_token, matchesAutoApprove (#1154).
+		return true
+	}
+	// The negation is on the line above when the match continues it:
+	// "Never overwrite an existing config file" / "without confirmation."
+	if prev := continuedFrom(lines, i); prev != "" && strings.TrimSpace(before) == "" {
+		if prohibitionRe.MatchString(prev[clauseStart(prev, len(prev)):]) {
+			return true
+		}
+	}
+	if g := governingLine(lines, i); introducesList(g) && modeHeaderRe.MatchString(strings.TrimSpace(g)) {
+		return true
+	}
+	return false
 }

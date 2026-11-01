@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -558,12 +559,17 @@ var unreadable []unreadableFile
 // .cfgaudit.yml that does not parse changes what cfgaudit itself does, so it
 // stays a hard error.
 func skipUnreadable(path string, err error) {
+	if scanroot.IsDanglingLink(path) {
+		return // already on the could-not-read list (#1189)
+	}
 	unreadable = append(unreadable, unreadableFile{path: path, reason: unreadableReason(path, err)})
 }
 
-// bomJSONError is how encoding/json reports a document that starts with a
-// UTF-8 byte order mark: it reads the first byte, 0xEF, as 'ï'.
-const bomJSONError = "invalid character 'ï' looking for beginning of value"
+// leadingJSONErrorRe matches how encoding/json reports an unexpected first
+// character, which is how a UTF-8 byte order mark shows up. The character
+// itself is not matched: go1.26 prints the BOM as 'ï', go1.27 as '\ufeff'
+// (#1229). The BOM is then checked in the file itself.
+var leadingJSONErrorRe = regexp.MustCompile(`invalid character '[^']*' looking for beginning of value`)
 
 // unreadableReason is the parser's message for a file that does not parse,
 // without the "parse <path>: " prefix, since the finding names the file. A
@@ -576,7 +582,7 @@ func unreadableReason(path string, err error) string {
 	if i := strings.Index(reason, ": "); i >= 0 && strings.HasPrefix(reason, "parse ") {
 		reason = reason[i+2:]
 	}
-	if strings.Contains(reason, bomJSONError) {
+	if leadingJSONErrorRe.MatchString(reason) {
 		if data, readErr := scanroot.ReadFile(path); readErr == nil && bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf}) {
 			return "the file starts with a UTF-8 byte order mark (BOM), which is not valid at the start of a JSON document and which the parser for this file stops on; save it as UTF-8 without BOM"
 		}
