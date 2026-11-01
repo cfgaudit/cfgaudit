@@ -58,11 +58,12 @@ func (r *cfg043) Check(t *Target) []finding.Finding {
 	if len(missing) == 0 {
 		return nil
 	}
+	sev, note := credentialCoverage(t, deny, len(missing) < len(cloudProviders))
 	return []finding.Finding{{
 		RuleID:   "CFG043",
-		Severity: finding.Error,
+		Severity: sev,
 		File:     t.SettingsFile,
 		Message: "permissions.deny does not restrict cloud credential files for " + strings.Join(missing, ", ") +
-			" — Claude can read and exfiltrate infrastructure access keys; add " + strings.Join(suggest, ", ") + " to permissions.deny" + userScopeNote(t),
+			" — Claude can read and exfiltrate infrastructure access keys; add " + strings.Join(suggest, ", ") + " to permissions.deny" + note + userScopeNote(t),
 	}}
 }

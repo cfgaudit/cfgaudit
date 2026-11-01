@@ -39,10 +39,11 @@ func (r *cfg044) Check(t *Target) []finding.Finding {
 	if denyReadsCovered(deny, sshKeyCoverRe, sshKeySecretPaths, t.ClaudeVersion) {
 		return nil
 	}
+	sev, note := credentialCoverage(t, deny, false)
 	return []finding.Finding{{
 		RuleID:   "CFG044",
-		Severity: finding.Error,
+		Severity: sev,
 		File:     t.SettingsFile,
-		Message:  "permissions.deny does not restrict SSH private keys — Claude can read keys (id_rsa, id_ed25519, …) that grant access to remote systems; add \"Read(//**/.ssh/**)\" to permissions.deny (the // prefix anchors at the filesystem root; a bare **/ pattern is anchored at the working directory and would not reach ~/.ssh)" + userScopeNote(t),
+		Message:  "permissions.deny does not restrict SSH private keys — Claude can read keys (id_rsa, id_ed25519, …) that grant access to remote systems; add \"Read(//**/.ssh/**)\" to permissions.deny (the // prefix anchors at the filesystem root; a bare **/ pattern is anchored at the working directory and would not reach ~/.ssh)" + note + userScopeNote(t),
 	}}
 }

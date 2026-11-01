@@ -23,10 +23,10 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG005](CFG005.md) | error | `ANTHROPIC_BASE_URL` points to a non-Anthropic endpoint (CVE-2026-21852) | LLM02 |
 | [CFG046](CFG046.md) | warn/error/info | `OTEL_EXPORTER_OTLP_*ENDPOINT` redirects telemetry to a non-local collector (error for a raw IP; info in a repository settings file, which Claude Code 2.1.282+ ignores for telemetry); also a Gemini CLI or qwen-code `telemetry.otlpEndpoint` in their settings.json, which both apply from a project (Gemini once the folder is trusted) | LLM02 |
 | [CFG006](CFG006.md) | warn | `permissions.deny` is absent or empty — no guardrails block destructive operations | LLM03 |
-| [CFG041](CFG041.md) | error | `permissions.deny` exists but does not restrict `.env` files — Claude can read credentials | LLM02 |
-| [CFG042](CFG042.md) | error | `permissions.deny` does not restrict private-key / certificate files (`*.pem`/`*.key`/`*.p12`/`*.pfx`/`*.jks`) | LLM02 |
-| [CFG043](CFG043.md) | error | `permissions.deny` does not restrict cloud credential files (AWS `.aws`, GCP `gcloud`, Azure `.azure`) | LLM02 |
-| [CFG044](CFG044.md) | error | `permissions.deny` does not restrict SSH private keys (`.ssh/`, `id_rsa`/`id_ed25519`/…) | LLM02 |
+| [CFG041](CFG041.md) | error/warn | `permissions.deny` exists but does not restrict `.env` files — Claude can read credentials | LLM02 |
+| [CFG042](CFG042.md) | error/warn | `permissions.deny` does not restrict private-key / certificate files (`*.pem`/`*.key`/`*.p12`/`*.pfx`/`*.jks`) | LLM02 |
+| [CFG043](CFG043.md) | error/warn | `permissions.deny` does not restrict cloud credential files (AWS `.aws`, GCP `gcloud`, Azure `.azure`) | LLM02 |
+| [CFG044](CFG044.md) | error/warn | `permissions.deny` does not restrict SSH private keys (`.ssh/`, `id_rsa`/`id_ed25519`/…) | LLM02 |
 | [CFG007](CFG007.md) | error | `env` block contains a hardcoded secret (vendor key prefix or `*_TOKEN`/`*_SECRET`/...) | LLM02 |
 | [CFG073](CFG073.md) | error | `env`/MCP `env`/`headers` value is a hardcoded cryptocurrency signing credential — Ethereum private key (`0x`+64 hex) or BIP-39 seed phrase — which **cannot be rotated**; CFG054's entropy heuristic misses both | LLM02 |
 | [CFG008](CFG008.md) | error | command matches a reverse-shell pattern (`/dev/tcp/`, `nc -e`, `bash -i …`, `mkfifo`, `socat exec`) — scans hooks, credential/runtime helpers, and MCP `headersHelper` | LLM03 |

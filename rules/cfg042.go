@@ -50,11 +50,12 @@ func (r *cfg042) Check(t *Target) []finding.Finding {
 	if len(missing) == 0 {
 		return nil
 	}
+	sev, note := credentialCoverage(t, deny, len(missing) < len(keyCertExtensions))
 	return []finding.Finding{{
 		RuleID:   "CFG042",
-		Severity: finding.Error,
+		Severity: sev,
 		File:     t.SettingsFile,
 		Message: "permissions.deny does not restrict private-key / certificate files (" + strings.Join(missing, ", ") +
-			") — Claude can read unrotatable cryptographic material; add " + strings.Join(suggest, ", ") + " to permissions.deny" + userScopeNote(t),
+			") — Claude can read unrotatable cryptographic material; add " + strings.Join(suggest, ", ") + " to permissions.deny" + note + userScopeNote(t),
 	}}
 }
