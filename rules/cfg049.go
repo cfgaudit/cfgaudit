@@ -26,6 +26,8 @@ func (r *cfg049) ID() string { return "CFG049" }
 //     credentials/context sent unencrypted; or a raw IP literal (a hardcoded
 //     external endpoint).
 //   - warn:  TLS transport to a non-loopback hostname.
+//   - info:  TLS transport to an endpoint a vendor documents for its own
+//     service (mcpvendors.go, #1202).
 //
 // Loopback urls, empty values, and shell-variable references are exempt. Covers
 // every MCP source in scope (settings.json, .mcp.json, other agents' configs).
@@ -60,6 +62,11 @@ func (r *cfg049) Check(t *Target) []finding.Finding {
 		case rawIP:
 			sev = finding.Error
 			detail = "a raw IP — a hardcoded external endpoint; verify it is trusted or remove it"
+		default:
+			if vendor, ok := knownMCPVendor(v); ok {
+				sev = finding.Info
+				detail = "the MCP endpoint " + vendor.vendor + " documents for its service (" + vendor.doc + "); it still receives the context and headers the agent sends, so keep it only if the project uses " + vendor.vendor
+			}
 		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG049",

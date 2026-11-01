@@ -30,6 +30,105 @@ type VSCodeTask struct {
 	Command      string              `json:"command,omitempty"`
 	RunOptions   *VSCodeRunOptions   `json:"runOptions,omitempty"`
 	Presentation *VSCodePresentation `json:"presentation,omitempty"`
+	// Args, Script (an npm task's script name) and the per-OS overrides are
+	// read by CFG047 to tell a project's own build or watch task from anything
+	// else (#1181).
+	Args      []json.RawMessage   `json:"args,omitempty"`
+	Script    string              `json:"script,omitempty"`
+	DependsOn json.RawMessage     `json:"dependsOn,omitempty"`
+	Windows   *VSCodeTaskOverride `json:"windows,omitempty"`
+	Linux     *VSCodeTaskOverride `json:"linux,omitempty"`
+	OSX       *VSCodeTaskOverride `json:"osx,omitempty"`
+}
+
+// VSCodeTaskOverride is a task's per-platform command and arguments.
+type VSCodeTaskOverride struct {
+	Command string            `json:"command,omitempty"`
+	Args    []json.RawMessage `json:"args,omitempty"`
+}
+
+// CommandLines returns the task's command with its arguments, and each
+// per-platform override that sets a command or arguments, one line each. An
+// argument given as an object ({"value": "...", "quoting": ...}) contributes
+// its value.
+func (t VSCodeTask) CommandLines() []string {
+	var lines []string
+	if t.Command != "" || len(t.Args) > 0 || (t.Windows == nil && t.Linux == nil && t.OSX == nil) {
+		lines = append(lines, joinTaskCommand(t.Command, t.Args))
+	}
+	for _, o := range []*VSCodeTaskOverride{t.Windows, t.Linux, t.OSX} {
+		if o == nil || (o.Command == "" && len(o.Args) == 0) {
+			continue
+		}
+		cmd := o.Command
+		if cmd == "" {
+			cmd = t.Command
+		}
+		args := o.Args
+		if len(args) == 0 {
+			args = t.Args
+		}
+		lines = append(lines, joinTaskCommand(cmd, args))
+	}
+	return lines
+}
+
+// DependsOnLabels returns the labels in dependsOn, which is a string, an
+// array of strings, or task identifiers ({"task": "...", "type": "..."}).
+func (t VSCodeTask) DependsOnLabels() []string {
+	if len(t.DependsOn) == 0 {
+		return nil
+	}
+	var one string
+	if json.Unmarshal(t.DependsOn, &one) == nil {
+		return []string{one}
+	}
+	var many []json.RawMessage
+	if json.Unmarshal(t.DependsOn, &many) != nil {
+		return nil
+	}
+	var out []string
+	for _, m := range many {
+		var s string
+		if json.Unmarshal(m, &s) == nil {
+			out = append(out, s)
+			continue
+		}
+		var id struct {
+			Task string `json:"task"`
+		}
+		if json.Unmarshal(m, &id) == nil && id.Task != "" {
+			out = append(out, id.Task)
+		}
+	}
+	return out
+}
+
+func joinTaskCommand(cmd string, args []json.RawMessage) string {
+	parts := []string{strings.TrimSpace(cmd)}
+	for _, a := range args {
+		var s string
+		if json.Unmarshal(a, &s) == nil {
+			parts = append(parts, s)
+			continue
+		}
+		var o struct {
+			Value json.RawMessage `json:"value"`
+		}
+		if json.Unmarshal(a, &o) == nil && len(o.Value) > 0 {
+			if json.Unmarshal(o.Value, &s) == nil {
+				parts = append(parts, s)
+				continue
+			}
+			var ss []string
+			if json.Unmarshal(o.Value, &ss) == nil {
+				parts = append(parts, ss...)
+				continue
+			}
+		}
+		parts = append(parts, string(a))
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
 // UnmarshalJSON accepts every form VS Code takes for a task's command: a

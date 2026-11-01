@@ -43,10 +43,38 @@ type PropertySpec struct {
 //     extraKnownMarketplaces, "read exactly as if it were spelled" the canonical
 //     key. cfgaudit resolves it and reports on it (CFG050, CFG055), so calling it
 //     an unknown key would contradict its own output.
+//   - autoDreamEnabled, autoCompactWindow, enableWorkflows, bashOutputMaxChars,
+//     skipAutoPermissionPrompt: defined, with descriptions, in the settings
+//     schema of the Claude Code 2.1.316 binary but not in the bundled schema
+//     (#1208).
 var KnownButUnschemaed = map[string]bool{
-	"mcpServers":             true,
-	"defaultMode":            true,
-	"additionalMarketplaces": true,
+	"mcpServers":               true,
+	"defaultMode":              true,
+	"additionalMarketplaces":   true,
+	"autoDreamEnabled":         true,
+	"autoCompactWindow":        true,
+	"enableWorkflows":          true,
+	"bashOutputMaxChars":       true,
+	"skipAutoPermissionPrompt": true,
+}
+
+// NestedProperties returns the property names the schema defines under the
+// object-valued top-level key parent ("sandbox", "permissions"), so a key
+// written one level too high can be named with its real place.
+func NestedProperties(parent string) map[string]bool {
+	var doc struct {
+		Properties map[string]struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"properties"`
+	}
+	out := map[string]bool{}
+	if err := json.Unmarshal(bundled, &doc); err != nil {
+		return out
+	}
+	for name := range doc.Properties[parent].Properties {
+		out[name] = true
+	}
+	return out
 }
 
 var (
