@@ -56,6 +56,31 @@ func TestRenderTable(t *testing.T) {
 	}
 }
 
+// #1172: consecutive findings at one location show it once.
+func TestRenderTable_GroupsSameLocation(t *testing.T) {
+	var buf bytes.Buffer
+	renderTable(&buf, []finding.Finding{
+		{RuleID: "CFG041", Severity: finding.Warn, File: ".claude/settings.json", Message: "permissions.deny does not restrict access to .env files — x"},
+		{RuleID: "CFG042", Severity: finding.Warn, File: ".claude/settings.json", Message: "permissions.deny does not restrict private-key / certificate files — x"},
+		{RuleID: "CFG043", Severity: finding.Error, File: ".claude/settings.json", Message: "permissions.deny does not restrict cloud credential files — x"},
+		{RuleID: "CFG036", Severity: finding.Error, File: "CLAUDE.md", Line: 3, Message: "a"},
+		{RuleID: "CFG029", Severity: finding.Error, File: "CLAUDE.md", Line: 3, Message: "b"},
+		{RuleID: "CFG030", Severity: finding.Error, File: "CLAUDE.md", Line: 4, Message: "c"},
+	}, "1.0.3")
+	out := buf.String()
+	if n := strings.Count(out, ".claude/settings.json"); n != 1 {
+		t.Errorf("settings.json shown %d times, want 1:\n%s", n, out)
+	}
+	if n := strings.Count(out, "CLAUDE.md:3"); n != 1 {
+		t.Errorf("CLAUDE.md:3 shown %d times, want 1:\n%s", n, out)
+	}
+	for _, id := range []string{"CFG041", "CFG042", "CFG043", "CFG036", "CFG029", "CFG030", "CLAUDE.md:4", "6 findings"} {
+		if !strings.Contains(out, id) {
+			t.Errorf("missing %q:\n%s", id, out)
+		}
+	}
+}
+
 func TestRenderTable_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	renderTable(&buf, nil, "1.0.3")

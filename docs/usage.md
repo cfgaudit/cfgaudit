@@ -14,6 +14,8 @@ cfgaudit /path/to/project --format sarif
 
 # Output format defaults to "auto": a table on an interactive terminal, plain
 # text when piped or redirected. Force either with --format table / --format text.
+# The table shows a location once for consecutive findings at it, such as
+# CFG041 to CFG044 on one deny list; text keeps one full line per finding.
 cfgaudit --format table
 
 # Text and table output colour the severity and rule ID on a terminal. Turn it

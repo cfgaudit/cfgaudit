@@ -50,6 +50,10 @@ func isTTY(f *os.File) bool {
 }
 
 // renderTable writes findings as an aligned table followed by the summary line.
+// Consecutive findings at the same location are grouped: the location is shown
+// on the first row only, so one gap reported by several rules (CFG041 to
+// CFG044 on one deny list) reads as one block while each rule ID stays on its
+// own row for suppression (#1172).
 func renderTable(w io.Writer, findings []finding.Finding, version string) {
 	if len(findings) == 0 {
 		_, _ = fmt.Fprintf(w, "cfgaudit %s — no findings\n", version)
@@ -57,12 +61,18 @@ func renderTable(w io.Writer, findings []finding.Finding, version string) {
 	}
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "SEVERITY\tRULE\tLOCATION\tMESSAGE")
-	for _, f := range findings {
+	prev := ""
+	for i, f := range findings {
 		loc := f.File
 		if f.Line > 0 {
 			loc = fmt.Sprintf("%s:%d", f.File, f.Line)
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", f.Severity, f.RuleID, loc, truncateRunes(tableMessage(f.Message), 80))
+		shown := loc
+		if i > 0 && loc == prev {
+			shown = ""
+		}
+		prev = loc
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", f.Severity, f.RuleID, shown, truncateRunes(tableMessage(f.Message), 80))
 	}
 	_ = tw.Flush()
 	_, _ = fmt.Fprintf(w, "\ncfgaudit %s — %d %s\n", version, len(findings), pluralize("finding", len(findings)))
