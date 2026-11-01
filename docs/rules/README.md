@@ -48,7 +48,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG082](CFG082.md) | warn/error | Docker daemon redirected off-host — `DOCKER_HOST` env or a `docker -H`/`--host` flag pointing at a remote `tcp://`/`ssh://` daemon (error for a raw IP) — runs containers on and reads context from a machine you may not control | LLM02 |
 | [CFG084](CFG084.md) | warn | container image trust verification disabled — `DOCKER_CONTENT_TRUST=0`, `--disable-content-trust` or `--insecure-registry` in a command site, `settings.json` `env` or an MCP server `env` — `docker pull` then accepts an unsigned or substituted image | LLM04 |
 | [CFG045](CFG045.md) | error/warn/info | ShellCheck analysis of hook/helper commands (opt-in `--shellcheck`; SC codes in the message) | LLM03 |
-| [CFG067](CFG067.md) | warn | hooks defined in a project-scoped `.claude/settings.json` — committed hooks run on every developer who opens the repo (CVE-2025-59536); content checks (CFG008/014/…) fire separately | LLM04 |
+| [CFG067](CFG067.md) | warn | hooks defined in a project-scoped `.claude/settings.json` — committed hooks run for every developer who trusts the folder, and the trust prompt does not show them (before the CVE-2025-59536 fix, ahead of the prompt); content checks (CFG008/014/…) fire separately | LLM04 |
 | [CFG119](CFG119.md) | error/warn | a repository script that an auto-run hook, folder-open task or MCP launch starts carries the markers of a malicious payload in combination (obfuscation, download and run, a credential hunt, an environment dump); warn for one marker in a script several tools start | LLM04 |
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`

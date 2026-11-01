@@ -21,8 +21,11 @@ func (r *cfg067) ID() string { return "CFG067" }
 // Check flags the mere presence of hooks in a project-scoped settings file
 // (.claude/settings.json or settings.local.json). Unlike a user's global
 // settings — where hooks are self-intentional — project hooks are placed by
-// whoever committed to the repo and run on any developer who opens it, before
-// they ever interact with Claude Code (CVE-2025-59536). This is independent of
+// whoever committed to the repo and run for every developer who trusts the
+// folder. Measured with 2.1.316 (#1197): a SessionStart hook did not run while
+// the trust dialog was open and ran once "Yes, I trust this folder" was chosen.
+// Before the fix for CVE-2025-59536 they ran ahead of that dialog. The trust
+// prompt covers the whole folder, not the hooks in it. This is independent of
 // hook content: CFG008/014/015/037/038/039 still flag dangerous commands; this
 // is a lower-severity signal that committed hooks exist at all. It does not fire
 // on user-global settings or on plugin hooks.json (unscoped) targets.
@@ -49,6 +52,6 @@ func (r *cfg067) Check(t *Target) []finding.Finding {
 		File:     t.SettingsFile,
 		Key:      "hooks",
 		Message: "project-scoped settings define hooks (" + strings.Join(events, ", ") +
-			") — committed hooks run automatically on every developer who opens this repo, before they interact with Claude Code (CVE-2025-59536). Move hook definitions to your user-global ~/.claude/settings.json or a reviewed onboarding step",
+			") — committed hooks run for every developer who trusts this folder in Claude Code; the trust prompt covers the whole folder and does not show the hooks. Review what they run, and move personal hooks to your user-global ~/.claude/settings.json",
 	}}
 }

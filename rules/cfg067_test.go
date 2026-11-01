@@ -71,3 +71,18 @@ func TestCFG067_NoHooks_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding for empty target, got %+v", f)
 	}
 }
+
+// Project hooks run once the folder is trusted (measured with 2.1.316,
+// #1197); the message must not say they run before the developer interacts
+// with Claude Code.
+func TestCFG067_MessageSaysTrust(t *testing.T) {
+	tg := settingsTarget(t, `{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"npx prettier --write ."}]}]}}`)
+	tg.Scope = finding.ScopeProject
+	f := CFG067.Check(tg)
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("got %+v", f)
+	}
+	if strings.Contains(f[0].Message, "before they interact") || !strings.Contains(f[0].Message, "trusts this folder") {
+		t.Errorf("message: %s", f[0].Message)
+	}
+}
