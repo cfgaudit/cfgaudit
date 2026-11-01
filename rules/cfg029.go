@@ -688,16 +688,80 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 				continue
 			}
 			lineNo := i + 1
+			sev, msg := bypassScope(sentenceAround(lines, i, loc), continuedFrom(lines, i)+" "+line[:sentenceEnd(line, loc)])
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG029",
-				Severity: finding.Error,
+				Severity: sev,
 				File:     src.File,
 				Line:     lineNo,
 				Col:      loc[0] + 1,
-				Message: src.Name + " line " + strconv.Itoa(lineNo) + " instructs the agent to bypass permission prompts (\"" + line[loc[0]:loc[1]] +
-					"\") — this disables the permission system via system-context text, equivalent to defaultMode: bypassPermissions (CFG004). Remove it",
+				Message:  src.Name + " line " + strconv.Itoa(lineNo) + " tells the agent not to ask for confirmation (\"" + line[loc[0]:loc[1]] + "\") " + msg,
 			})
 		}
 	}
 	return findings
+}
+
+// The scope of a confirmation the text skips decides the severity (#1171).
+// Text does not change the permission mode: Claude Code still prompts for a
+// tool call the allow list does not cover. What it removes is the agent's
+// habit of checking in the conversation, which matters in auto and bypass
+// modes and for everything the allow list already permits. In the
+// pre-release corpus run for v1.20.0, 44% of the findings skipped a named
+// local step the user had already asked for and 7% were broad or
+// outward-facing skips.
+var (
+	// bypassUniversalRe marks a skip without bounds: every command, action
+	// or tool, or an autonomous mode.
+	bypassUniversalRe = regexp.MustCompile(`(?i)\b(?:(?:all|any|every)\s+(?:\w+\s+)?(?:commands?|actions?|tools?|operations?|tool\s+calls?|changes?|requests?)|everything|anything|autonomous(?:ly)?|yolo|full\s+(?:permissions?|access|autonomy)|unattended)\b`)
+	// bypassOutwardRe marks an action that leaves the machine or is hard to
+	// undo.
+	bypassOutwardRe = regexp.MustCompile(`(?i)\b(?:push(?:es|ing)?|publish(?:es|ing)?|release[sd]?|deploy(?:s|ing|ment)?|submit(?:s|ting)?|post(?:s|ing)?|send(?:s|ing)?|e-?mail|install(?:s|ing)?|uninstall|delet(?:e|es|ing)|remov(?:e|es|ing)|drop(?:s|ping)?|merg(?:e|es|ing)|force|pull\s+requests?|PRs?|issues?|another\s+repo(?:sitory)?|pay(?:ment)?|purchase|transfer)\b`)
+	// bypassLocalRe marks a named local step: a check the project runs, the
+	// next round of a loop, or each item of a batch the user asked for. A
+	// bare "edit files" or "write" is not named and stays an error.
+	bypassLocalRe = regexp.MustCompile(`(?i)\b(?:format(?:s|ting)?|fmt|lint(?:s|ing|er)?|tests?|testing|typecheck|build(?:s|ing)?|compil(?:e|es|ing)|proceed\s+to\s+the\s+next|next\s+(?:step|phase|task|file|iteration)|iterations?|loop|retr(?:y|ies|ying|ied)|continu(?:e|es|ing)|resum(?:e|es|ing)|keep\s+going|go\s+again|repeat(?:s|ing)?|each\s+(?:one|file|step|change)|per\s+file|one\s+pass|in\s+(?:a\s+)?batch)\b`)
+)
+
+// conditionRe matches a condition clause, whose words say when the skip
+// applies, not what it skips: "proceed without confirmation when tests pass".
+var conditionRe = regexp.MustCompile(`(?i)\b(?:when|if|once|after|until|unless)\b[^,.;]*`)
+
+// sentenceEnd is the end of the sentence of line that holds the match.
+func sentenceEnd(line string, loc []int) int {
+	if j := strings.IndexAny(line[loc[1]:], ".!?"); j >= 0 {
+		return loc[1] + j
+	}
+	return len(line)
+}
+
+// sentenceAround returns the sentence of line i that holds the match, with a
+// wrapped previous line when line i continues it.
+func sentenceAround(lines []string, i int, loc []int) string {
+	line := lines[i]
+	start := strings.LastIndexAny(line[:loc[0]], ".!?") + 1
+	return continuedFrom(lines, i) + " " + line[start:sentenceEnd(line, loc)]
+}
+
+// bypassScope grades a skipped confirmation by what it covers: unbounded
+// skips and skips of nothing in particular stay errors, outward-facing ones
+// are warnings, and a named local step is info, so a reviewer still sees it.
+//
+// The universal check reads the sentence that holds the match; the local
+// check reads the line up to the end of that sentence, since a template such
+// as "If the Write tool fails, retry with Bash. Do not ask the user for
+// permission." names the step in the sentence before, while "Never ask for
+// permission. Just build it." puts a step after a skip that covers everything.
+func bypassScope(sentence, line string) (finding.Severity, string) {
+	const why = "— the permission mode does not change, but in auto and bypass modes, and for anything the allow list already permits, the agent no longer stops to check with you"
+	switch {
+	case bypassUniversalRe.MatchString(sentence):
+		return finding.Error, why + ", for every action. Scope it to the steps that need no check, or remove it"
+	case bypassOutwardRe.MatchString(sentence):
+		return finding.Warn, why + ", here for an action that leaves the machine or is hard to undo (push, publish, install, delete). Keep a confirmation for it"
+	case bypassLocalRe.MatchString(conditionRe.ReplaceAllString(line, "")):
+		return finding.Info, "for a named local step — " + strings.TrimPrefix(why, "— ") + " during that step. Usually fine for a step the user asked for; listed so a reviewer sees it"
+	default:
+		return finding.Error, why + ". Name the steps it covers, or remove it"
+	}
 }

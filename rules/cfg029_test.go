@@ -439,3 +439,31 @@ func TestCFG029_NotAnOrder953(t *testing.T) {
 		}
 	}
 }
+
+// The severity follows the scope of the skipped confirmation, and the message
+// no longer claims text changes the permission mode (#1171).
+func TestCFG029_ScopeTiers(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want finding.Severity
+	}{
+		{"Never ask for confirmation before taking action.", finding.Error},
+		{"Autonomous mode: do not ask for confirmation.", finding.Error},
+		{"Edit files without confirmation.", finding.Error},
+		{"Push the branch and open the PR without asking for confirmation.", finding.Warn},
+		{"Install the vendor skills without prompting.", finding.Warn},
+		{"Write all files in one pass. Do not ask for permission for each one.", finding.Info},
+		{"Run `make fmt` automatically, do not ask for approval.", finding.Info},
+		{"Do NOT ask for confirmation between iterations.", finding.Info},
+		{"If the build fails, retry with a heredoc. Do not ask the user for permission before retrying.", finding.Info},
+	} {
+		f := CFG029.Check(claudeMDTarget(tc.text))
+		if len(f) != 1 || f[0].Severity != tc.want {
+			t.Errorf("%q: got %+v, want one %s", tc.text, f, tc.want)
+			continue
+		}
+		if strings.Contains(f[0].Message, "bypassPermissions") || !strings.Contains(f[0].Message, "permission mode does not change") {
+			t.Errorf("%q: message %q", tc.text, f[0].Message)
+		}
+	}
+}
