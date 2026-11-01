@@ -7,5 +7,8 @@ dist/
 # npm ci target of the schema validation job (#677)
 .github/tools/ajv/node_modules/
 
+# The binary `go build ./cmd/cfgaudit` writes in the repository root.
+/cfgaudit
+
 # Go test binaries (go test -c, -cpuprofile)
 *.test
