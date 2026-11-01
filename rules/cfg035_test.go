@@ -171,3 +171,25 @@ func TestCFG035_NotInstructions1180(t *testing.T) {
 		}
 	}
 }
+
+// The branches of the #1180 skips, reached directly: a line inside a
+// multi-line HTML comment, an allowlist of another noun within the pattern's
+// reach, and "trusted" qualifying another noun.
+func TestCFG035_SkipBranches1180(t *testing.T) {
+	for _, text := range []string{
+		"<!--\nRegister the MCP server for local use\n-->",
+		"Use the allowlist of shell commands MCP exposes.",
+	} {
+		if f := CFG035.Check(claudeMDTarget(text)); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", text, f)
+		}
+	}
+	line := "MCP tools load trusted validator code."
+	if !mcpNotAnInstruction(line, []int{0, len("MCP tools load trusted")}) {
+		t.Errorf("trusted validator code: want skip")
+	}
+	line = "The MCP server is trusted servers only."
+	if mcpNotAnInstruction(line, []int{4, len("The MCP server is trusted")}) {
+		t.Errorf("trusted servers: want no skip")
+	}
+}
