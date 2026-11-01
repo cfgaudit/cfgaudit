@@ -4,8 +4,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -229,5 +232,28 @@ func TestLaunchedScripts_LargeFiles(t *testing.T) {
 	})
 	if got := launchedFindings(t, root, "CFG014,CFG119"); len(got) != 0 {
 		t.Errorf("got %q", got)
+	}
+}
+
+// readEdges fails closed: a path that cannot be opened, or a file shorter
+// than the size it was given, yields no content (#1270).
+func TestReadEdges_Errors(t *testing.T) {
+	dir := t.TempDir()
+	if _, ok := readEdges(filepath.Join(dir, "missing.js"), maxLaunchedScript+1); ok {
+		t.Error("missing file read")
+	}
+	short := filepath.Join(dir, "short.js")
+	if err := os.WriteFile(short, []byte("eval(1)"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := readEdges(short, maxLaunchedScript+1); ok {
+		t.Error("file shorter than the head read")
+	}
+	mid := filepath.Join(dir, "mid.js")
+	if err := os.WriteFile(mid, bytes.Repeat([]byte("a"), launchedEdge+10), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := readEdges(mid, maxLaunchedScript+1); ok {
+		t.Error("tail past the end read")
 	}
 }
