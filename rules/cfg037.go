@@ -159,33 +159,14 @@ func maskTestGuardPatterns(masked []byte, cmd string) {
 }
 
 func containsExecutableSubstitution(span string) bool {
-	var singleQuoted, doubleQuoted, escaped bool
-	for i := 0; i < len(span); i++ {
-		if escaped {
-			escaped = false
-			continue
-		}
-		switch span[i] {
-		case '\\':
-			if !singleQuoted {
-				escaped = true
-			}
-		case '\'':
-			if !doubleQuoted {
-				singleQuoted = !singleQuoted
-			}
-		case '"':
-			if !singleQuoted {
-				doubleQuoted = !doubleQuoted
-			}
-		case '`':
-			if !singleQuoted {
-				return true
-			}
-		case '$':
-			if !singleQuoted && i+1 < len(span) && span[i+1] == '(' {
-				return true
-			}
+	trimmed := strings.Trim(span, " 	")
+	if len(trimmed) >= 2 && trimmed[0] == '\'' && trimmed[len(trimmed)-1] == '\'' &&
+		!strings.ContainsRune(trimmed[1:len(trimmed)-1], '\'') {
+		return false
+	}
+	for _, marker := range []string{"`", "$(", "${", "$'", "<(", ">("} {
+		if strings.Contains(trimmed, marker) {
+			return true
 		}
 	}
 	return false
