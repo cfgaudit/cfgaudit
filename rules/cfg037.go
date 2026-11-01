@@ -88,6 +88,10 @@ func maskSSHGuardPatterns(cmd string) string {
 			if len(match) < 4 || match[2] < 0 {
 				continue
 			}
+			span := text[match[2]:match[3]]
+			if containsExecutableSubstitution(span) {
+				continue
+			}
 			for i := base + match[2]; i < base+match[3]; i++ {
 				masked[i] = ' '
 			}
@@ -96,6 +100,9 @@ func maskSSHGuardPatterns(cmd string) string {
 
 	for _, match := range grepPatternRe.FindAllStringSubmatchIndex(cmd, -1) {
 		if len(match) < 6 || match[4] < 0 || grepUsesPatternFile(cmd[match[2]:match[3]]) {
+			continue
+		}
+		if containsExecutableSubstitution(cmd[match[4]:match[5]]) {
 			continue
 		}
 		for i := match[4]; i < match[5]; i++ {
@@ -123,26 +130,65 @@ func maskTestGuardPatterns(masked []byte, cmd string) {
 		if newline := strings.IndexByte(cmd[open:], '\n'); newline >= 0 {
 			lineEnd = open + newline
 		}
-		operator := strings.Index(cmd[open:lineEnd], "=~")
-		if operator < 0 {
+		close := strings.Index(cmd[open+2:lineEnd], "]]")
+		if close < 0 {
 			offset = open + 2
 			continue
 		}
+		close += open + 2
+		operator := strings.Index(cmd[open:close], "=~")
+		if operator < 0 {
+			offset = close + 2
+			continue
+		}
 		start := open + operator + 2
-		for start < lineEnd && (cmd[start] == ' ' || cmd[start] == '\t') {
+		for start < close && (cmd[start] == ' ' || cmd[start] == '	') {
 			start++
 		}
-		end := lineEnd
-		for _, delimiter := range []string{"]]", ";", "&&", "||", "#"} {
-			if i := strings.Index(cmd[start:lineEnd], delimiter); i >= 0 && start+i < end {
-				end = start + i
-			}
+		end := close
+		span := cmd[start:end]
+		if containsExecutableSubstitution(span) {
+			offset = close + 2
+			continue
 		}
 		for i := start; i < end; i++ {
 			masked[i] = ' '
 		}
-		offset = lineEnd
+		offset = close + 2
 	}
+}
+
+func containsExecutableSubstitution(span string) bool {
+	var singleQuoted, doubleQuoted, escaped bool
+	for i := 0; i < len(span); i++ {
+		if escaped {
+			escaped = false
+			continue
+		}
+		switch span[i] {
+		case '\\':
+			if !singleQuoted {
+				escaped = true
+			}
+		case '\'':
+			if !doubleQuoted {
+				singleQuoted = !singleQuoted
+			}
+		case '"':
+			if !singleQuoted {
+				doubleQuoted = !doubleQuoted
+			}
+		case '`':
+			if !singleQuoted {
+				return true
+			}
+		case '$':
+			if !singleQuoted && i+1 < len(span) && span[i+1] == '(' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func grepUsesPatternFile(flags string) bool {
