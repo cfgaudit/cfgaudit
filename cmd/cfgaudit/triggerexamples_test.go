@@ -119,6 +119,13 @@ func TestRuleDocTriggerExamples(t *testing.T) {
 				if err != nil {
 					t.Fatalf("buildTargets: %v", err)
 				}
+				// An example that is a .cfgaudit.yml (CFG118) is read as the
+				// project config.
+				cfg, _, err := loadConfig("", dir)
+				if err != nil {
+					t.Fatalf("example %d: %v", i+1, err)
+				}
+				targets = attachPolicy(dir, targets, cfg)
 				pluginTargets, err := buildPluginTargets(dir, "", false)
 				if err != nil {
 					t.Fatalf("buildPluginTargets: %v", err)

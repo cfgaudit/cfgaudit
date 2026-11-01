@@ -126,7 +126,7 @@ func FuzzScan(f *testing.F) {
 		if err != nil {
 			return
 		}
-		attachPolicy(targets, cfg)
+		targets = attachPolicy(dir, targets, cfg)
 		pluginTargets, err := buildPluginTargets(dir, "", false)
 		if err != nil {
 			return

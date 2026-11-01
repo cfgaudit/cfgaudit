@@ -135,7 +135,7 @@ func TestPolicy_Parse(t *testing.T) {
 	if !c.Policy.Configured() {
 		t.Fatal("expected policy configured")
 	}
-	if len(c.Policy.RequireDeny) != 1 || len(c.Policy.ForbidAllow) != 2 {
+	if len(c.Policy.RequireDeny) != 1 || len(c.Policy.ForbidAllow.Claude) != 2 {
 		t.Errorf("unexpected policy: %+v", c.Policy)
 	}
 }
@@ -372,5 +372,57 @@ func TestUnknownRuleIDs(t *testing.T) {
 	}
 	if (*Config)(nil).UnknownRuleIDs(nil) != nil {
 		t.Error("nil config must report no unknown rules")
+	}
+}
+
+// The agent-neutral policy parses next to the Claude Code lists, and
+// forbid-allow takes either form (#1081).
+func TestPolicy_Neutral(t *testing.T) {
+	c := parseT(t, `policy:
+  deny:
+    commands: ["git push"]
+    read: ["**/.env", "~/.ssh/**"]
+    write: ["src/generated/**"]
+    fetch: ["*.example.com", "example.org"]
+    mcp-tools: ["github:delete_*", "linear:*"]
+  forbid-allow:
+    commands: [curl]
+    mcp-tools: ["github:create_issue"]
+  agents: [claude-code, devin, zed, continue]
+`)
+	p := c.Policy
+	if !p.Configured() || len(p.Deny.Read) != 2 || len(p.Deny.MCPTools) != 2 || len(p.ForbidAllow.Commands) != 1 ||
+		len(p.ForbidAllow.MCPTools) != 1 || len(p.ForbidAllow.Claude) != 0 || len(p.Agents) != 4 {
+		t.Fatalf("unexpected policy: %+v", p)
+	}
+	if !parseT(t, "policy:\n  forbid-allow:\n    commands: [curl]\n").Policy.Configured() {
+		t.Error("a neutral forbid-allow alone should count as a policy")
+	}
+	if l := parseT(t, "policy:\n  forbid-allow: [\"Bash(curl:*)\"]\n").Policy.ForbidAllow; len(l.Claude) != 1 || !l.Empty() {
+		t.Errorf("list form: got %+v", l)
+	}
+}
+
+// A neutral entry the category cannot hold, an unknown category, and an agent
+// cfgaudit cannot check yet are rejected with the line (#1081).
+func TestPolicy_NeutralRejects(t *testing.T) {
+	cases := []struct{ yaml, want string }{
+		{"policy:\n  deny:\n    comands: [x]\n", `test:3: unknown key "policy.deny.comands"`},
+		{"policy:\n  forbid-allow:\n    read: [x]\n", `test:3: unknown key "policy.forbid-allow.read"`},
+		{"policy:\n  agents: [claude-code, cursor]\n", `test:2: policy.agents: "cursor" is not an agent the policy can check yet`},
+		{"policy:\n  deny:\n    commands: [\"Bash(git push:*)\"]\n", `policy.deny.commands: "Bash(git push:*)" is not a plain command`},
+		{"policy:\n  deny:\n    commands: [\"\"]\n", `policy.deny.commands: "" is empty`},
+		{"policy:\n  deny:\n    read: [/etc/passwd]\n", `policy.deny.read: "/etc/passwd" starts with /`},
+		{"policy:\n  deny:\n    fetch: [\"https://example.com\"]\n", `policy.deny.fetch: "https://example.com" is not a domain`},
+		{"policy:\n  deny:\n    fetch: [localhost]\n", `policy.deny.fetch: "localhost" is not a domain`},
+		{"policy:\n  deny:\n    mcp-tools: [github]\n", `policy.deny.mcp-tools: "github" is not server:tool`},
+		{"policy:\n  deny:\n    mcp-tools: [\"git*:x\"]\n", `is not server:tool`},
+		{"policy:\n  forbid-allow:\n    mcp-tools: [\"github:*_repo\"]\n", `is not server:tool`},
+	}
+	for _, tc := range cases {
+		_, err := parse([]byte(tc.yaml), "test")
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("parse(%q) = %v, want an error containing %q", tc.yaml, err, tc.want)
+		}
 	}
 }

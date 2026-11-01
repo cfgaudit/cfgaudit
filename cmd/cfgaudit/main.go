@@ -170,7 +170,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
 		return 2
 	}
-	attachPolicy(targets, cfg)
+	targets = attachPolicy(dir, targets, cfg)
 
 	pluginTargets, err := buildPluginTargets(dir, *plugins, *user)
 	if err != nil {
@@ -339,19 +339,98 @@ func shellCheckEnabled(requested bool) bool {
 	return true
 }
 
-// attachPolicy wires the org policy from .cfgaudit.yml onto the project-scope
-// target so CFG025 can enforce it. The project settings.json is the canonical
-// committed artifact a policy applies to; other scopes are left untouched.
-func attachPolicy(targets []*rules.Target, cfg *config.Config) {
+// attachPolicy wires the org policy from .cfgaudit.yml onto the targets CFG025
+// and CFG118 check. The Claude Code lists (require-deny and the list form of
+// forbid-allow) go on the project .claude/settings.json target only. The
+// agent-neutral entries go on the permission file of each agent in scope,
+// with a target created for an agent that has none yet, and the agents that
+// cannot carry a committed deny get one CFG118 target (#1081).
+func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*rules.Target {
 	if cfg == nil || !cfg.Policy.Configured() {
-		return
+		return targets
 	}
+	p := cfg.Policy
+	claudePath := filepath.Join(dir, ".claude", "settings.json")
+	devinPath := filepath.Join(dir, ".devin", "config.json")
+	var claude, devin *rules.Target
 	for _, t := range targets {
-		if t.Scope == finding.ScopeProject {
-			t.PolicyRequireDeny = cfg.Policy.RequireDeny
-			t.PolicyForbidAllow = cfg.Policy.ForbidAllow
+		switch {
+		case t.Scope != finding.ScopeProject:
+		case t.SettingsFile == claudePath:
+			claude = t
+		case t.DevinFile == devinPath && t.Devin != nil:
+			devin = t
 		}
 	}
+	if claude != nil {
+		claude.PolicyRequireDeny = p.RequireDeny
+		claude.PolicyForbidAllow = p.ForbidAllow.Claude
+	}
+	if p.Deny.Empty() && p.ForbidAllow.Empty() {
+		return targets
+	}
+
+	var unenforceable []rules.UnenforceableAgent
+	for _, agent := range policyAgents(dir, p.Agents, claude != nil) {
+		switch agent {
+		case "claude-code":
+			if claude == nil {
+				claude = &rules.Target{Scope: finding.ScopeProject, SettingsFile: claudePath}
+				targets = append(targets, claude)
+			}
+			claude.PolicyAgent, claude.PolicyDeny, claude.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "devin":
+			if devin == nil {
+				devin = &rules.Target{Scope: finding.ScopeProject, Devin: &parser.DevinConfig{}, DevinFile: devinPath}
+				targets = append(targets, devin)
+			}
+			devin.PolicyAgent, devin.PolicyDeny, devin.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		default:
+			a := userOnlyPolicyAgents[agent]
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: a.name, Dir: filepath.Join(dir, a.dir)})
+		}
+	}
+	if len(unenforceable) > 0 && !p.Deny.Empty() {
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, PolicyDeny: p.Deny, PolicyUnenforceable: unenforceable})
+	}
+	return targets
+}
+
+// userOnlyPolicyAgents are the agents whose permission rules live in user
+// settings only, with the directory that marks their use in a repository.
+var userOnlyPolicyAgents = map[string]struct{ name, dir string }{
+	"zed":      {"Zed", ".zed"},
+	"continue": {"Continue", ".continue"},
+}
+
+// policyAgents returns the agents the neutral policy applies to: the ones
+// listed under policy.agents, or else every agent with configuration in the
+// repository. Claude Code counts as present when the project target exists
+// (.claude/settings.json, .mcp.json or CLAUDE.md) or .claude/ does.
+func policyAgents(dir string, listed []string, claudeTarget bool) []string {
+	if len(listed) > 0 {
+		return listed
+	}
+	isDir := func(rel string) bool {
+		fi, err := scanroot.Stat(filepath.Join(dir, rel))
+		return err == nil && fi.IsDir()
+	}
+	var out []string
+	for _, agent := range config.PolicyAgents {
+		var present bool
+		switch agent {
+		case "claude-code":
+			present = claudeTarget || isDir(".claude")
+		case "devin":
+			present = isDir(".devin")
+		default:
+			present = isDir(userOnlyPolicyAgents[agent].dir)
+		}
+		if present {
+			out = append(out, agent)
+		}
+	}
+	return out
 }
 
 // withStrict applies the --strict flag: it forces warn→error for the exit code,
