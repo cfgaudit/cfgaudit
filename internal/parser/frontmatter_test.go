@@ -8,6 +8,32 @@ import (
 	"testing"
 )
 
+func TestSplitToolList(t *testing.T) {
+	cases := []struct {
+		input string
+		want  []string
+	}{
+		{"Read, Bash(git -C * status)", []string{"Read", "Bash(git -C * status)"}},
+		{"Bash(pnpm exec nx:*)", []string{"Bash(pnpm exec nx:*)"}},
+		{"Read, Bash(git log *), Bash(gh pr edit * --add-label *)", []string{"Read", "Bash(git log *)", "Bash(gh pr edit * --add-label *)"}},
+		{"Bash(a, b) Read", []string{"Bash(a, b)", "Read"}},
+		{"Bash(echo $(date)), Read", []string{"Bash(echo $(date))", "Read"}},
+		{"Read Bash", []string{"Read", "Bash"}},
+		{"Read\tBash\nGrep", []string{"Read", "Bash", "Grep"}},
+		{"Bash(*)", []string{"Bash(*)"}},
+		{"Bash(git log, *", []string{"Bash(git", "log", "*"}},
+		{"Read), *", []string{"Read)", "*"}},
+		{"", []string{}},
+	}
+	for _, c := range cases {
+		t.Run(c.input, func(t *testing.T) {
+			if got := splitToolList(c.input); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("splitToolList(%q) = %v, want %v", c.input, got, c.want)
+			}
+		})
+	}
+}
+
 func TestInstructionFrontmatter_ListAndString(t *testing.T) {
 	fm, ok := InstructionFrontmatter("---\ndescription: hi\nallowed-tools: Bash, Read\ndisable-model-invocation: true\n---\nbody\n")
 	if !ok {

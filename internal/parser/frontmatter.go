@@ -31,8 +31,8 @@ func InstructionFrontmatter(content string) (*Frontmatter, bool) {
 }
 
 // StringList returns a frontmatter value as a list of trimmed strings, accepting
-// either a YAML list or a single string split on commas/whitespace. Missing or
-// wrongly-typed keys yield nil.
+// either a YAML list or a single string split on commas and whitespace outside
+// parentheses. Missing or wrongly-typed keys yield nil.
 func (f *Frontmatter) StringList(key string) []string {
 	if f == nil {
 		return nil
@@ -105,6 +105,37 @@ func (f *Frontmatter) String(key string) string {
 }
 
 func splitToolList(v string) []string {
+	out := make([]string, 0)
+	depth := 0
+	start := 0
+	for i, r := range v {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',', ' ', '\t', '\n':
+			if depth == 0 {
+				if token := strings.TrimSpace(v[start:i]); token != "" {
+					out = append(out, token)
+				}
+				start = i + 1
+			}
+		}
+	}
+	if depth > 0 {
+		// Scanned files are hostile: an unclosed parenthesis must not hide a grant such as a bare *.
+		return splitToolListFlat(v)
+	}
+	if token := strings.TrimSpace(v[start:]); token != "" {
+		out = append(out, token)
+	}
+	return out
+}
+
+func splitToolListFlat(v string) []string {
 	fields := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' })
 	out := make([]string, 0, len(fields))
 	for _, f := range fields {
