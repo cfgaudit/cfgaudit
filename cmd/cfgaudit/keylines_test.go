@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -100,5 +101,25 @@ func TestKeyLines_CFG010ServerNamedLikePackage(t *testing.T) {
 	}
 	if len(fs) != 1 || fs[0].Line != 5 || fs[0].Col != 22 {
 		t.Errorf("CFG010 at %+v, want line 5 col 22 (the \"my-server\" element)", fs)
+	}
+}
+
+// A repeated permissions.allow value reports its own source line in each
+// finding, rather than pointing both findings to the first element (#1204).
+func TestKeyLines1204RepeatedAllowEntries(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "settings.json")
+	mustWrite(t, file, "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(find:*)\",\n      \"WebFetch\",\n      \"Bash(find:*)\",\n      \"WebFetch\"\n    ]\n  }\n}\n")
+	findings := []finding.Finding{
+		{File: file, Message: `permissions.allow grants "Bash(find:*)"`},
+		{File: file, Message: `permissions.allow contains "WebFetch"`},
+		{File: file, Message: `permissions.allow grants "Bash(find:*)"`},
+		{File: file, Message: `permissions.allow contains "WebFetch"`},
+	}
+	locateKeyLines(findings)
+	for i, want := range []int{4, 5, 6, 7} {
+		if findings[i].Line != want {
+			t.Errorf("finding %d on line %d, want %d", i, findings[i].Line, want)
+		}
 	}
 }
