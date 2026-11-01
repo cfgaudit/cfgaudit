@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -230,9 +229,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	switch resolved {
 	case "json":
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(withTaxonomy(all))
+		_ = encodeJSON(stdout, all)
 	case "sarif":
 		if err := encodeSARIF(stdout, all, cfgauditVersion, rules.All); err != nil {
 			_, _ = fmt.Fprintf(stderr, "cfgaudit: sarif encode: %v\n", err)

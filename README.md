@@ -78,7 +78,7 @@ cfgaudit list --agent cursor                 # the rules for one agent
 cfgaudit init                                # a hardened .claude/settings.json for a new project
 ```
 
-cfgaudit exits 1 when it reports an `error` finding, 0 when it reports only `warn` or `info` findings or none, and 2 on a usage or tool error. [Usage](docs/usage.md) has every flag, the output formats, the `init` and `policy` subcommands, the exit codes and the configuration file.
+cfgaudit exits 1 when it reports an `error` finding, 0 when it reports only `warn` or `info` findings or none, and 2 on a usage or tool error. [Usage](docs/usage.md) has every flag, the output formats (with the [schema of the JSON output](schema/findings.schema.json)), the `init` and `policy` subcommands, the exit codes and the configuration file.
 
 <a id="configuration-file-cfgaudityml"></a>**Configuration file.** A `.cfgaudit.yml` in the scanned directory turns rules off or changes their severity, excludes paths and sets an organisation policy: see [Configuration file](docs/usage.md#configuration-file-cfgaudityml), and point your editor at the [JSON Schema](docs/usage.md#schema) to have it checked while you type. When you scan a repository you do not trust, do not let its own file configure the audit ([Scanning a repository you do not trust](docs/usage.md#untrusted-repositories)).
 
