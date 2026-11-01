@@ -248,6 +248,9 @@ type Permissions struct {
 	// DefaultMode is the permission mode, nested under permissions in the schema
 	// (permissions.defaultMode) — NOT a top-level settings key. Read by CFG004.
 	DefaultMode string `json:"defaultMode,omitempty"`
+	// AdditionalDirectories are directories outside the project that the
+	// tools may use without asking. Read by CFG043 and CFG044 (#1172).
+	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`
 }
 
 // HookGroup is the per-event hook entry: a matcher plus the commands it triggers.
