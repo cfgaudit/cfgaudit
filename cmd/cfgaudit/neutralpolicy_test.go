@@ -5,13 +5,15 @@ package main
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 )
 
 // policyFindings scans root with only the policy rules and returns
-// "file|rule|message" lines, sorted, with root stripped.
+// "file|rule|message" lines, sorted, with the file relative to root in
+// forward slashes.
 func policyFindings(t *testing.T, root string) []string {
 	t.Helper()
 	code, out, errOut := runCLI(t, "--claude-version", "2.1.316", "--only", "CFG025,CFG118", "--format", "json", root)
@@ -24,7 +26,11 @@ func policyFindings(t *testing.T, root string) []string {
 	}
 	var lines []string
 	for _, f := range fs {
-		lines = append(lines, strings.TrimPrefix(strings.TrimPrefix(f.File, root), "/")+"|"+f.RuleID+"|"+f.Message)
+		rel, err := filepath.Rel(root, f.File)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, filepath.ToSlash(rel)+"|"+f.RuleID+"|"+f.Message)
 	}
 	sort.Strings(lines)
 	return lines
