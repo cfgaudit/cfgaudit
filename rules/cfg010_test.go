@@ -4,6 +4,8 @@
 package rules
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -313,5 +315,33 @@ func TestCFG010_UvxWithEquals_UnpinnedSpecReported(t *testing.T) {
 	}
 	if !strings.Contains(f[0].Message, "\"ruff\"") {
 		t.Errorf("expected finding to name the unpinned spec ruff, got: %s", f[0].Message)
+	}
+}
+
+// npx without -y of a package that package.json lists runs the installed,
+// lockfile-pinned copy, so it is info; without the dependency, or with -y,
+// npx installs from the registry without asking when no TTY is attached, so
+// it stays warn (#1203).
+func TestCFG010_LocalDevDependency1203(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"devDependencies":{"nx":"^19.0.0","@playwright/test":"1.48.0"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, mcp, dir string
+		want           finding.Severity
+	}{
+		{"declared, no -y", `{"command":"npx","args":["nx","mcp"]}`, dir, finding.Info},
+		{"declared scoped, bunx", `{"command":"bunx","args":["@playwright/test"]}`, dir, finding.Info},
+		{"declared, with -y", `{"command":"npx","args":["-y","nx","mcp"]}`, dir, finding.Warn},
+		{"not declared", `{"command":"npx","args":["some-mcp-server"]}`, dir, finding.Warn},
+		{"no package.json", `{"command":"npx","args":["nx","mcp"]}`, t.TempDir(), finding.Warn},
+	} {
+		tg := settingsTarget(t, `{"mcpServers":{"s":`+tc.mcp+`}}`)
+		tg.ProjectDir = tc.dir
+		f := CFG010.Check(tg)
+		if len(f) != 1 || f[0].Severity != tc.want {
+			t.Errorf("%s: got %+v, want one %s", tc.name, f, tc.want)
+		}
 	}
 }
