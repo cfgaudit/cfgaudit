@@ -9,6 +9,9 @@ cfgaudit
 # Audit a specific project root
 cfgaudit /path/to/project
 
+# Flags go before or after the directory; -- ends them, and one directory at most
+cfgaudit /path/to/project --format sarif
+
 # Output format defaults to "auto": a table on an interactive terminal, plain
 # text when piped or redirected. Force either with --format table / --format text.
 cfgaudit --format table
@@ -129,7 +132,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 |------|---------|
 | `0` | No findings, or only `warn`/`info` (without `--strict`) |
 | `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
-| `2` | Usage or tool error: `--format` names an unknown format, the scan path or the `--plugins` path is not a directory, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, `--shellcheck` analysis fails, or a path in the scan exists but cannot be read (the scan still runs and lists every such path on stderr) |
+| `2` | Usage or tool error: `--format` names an unknown format, the scan path or the `--plugins` path is not a directory, more than one scan path is given, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, `--shellcheck` analysis fails, or a path in the scan exists but cannot be read (the scan still runs and lists every such path on stderr) |
 
 A directory without any agent configuration exits 0, because that is a valid state, but the text and table formats add `cfgaudit: no agent configuration found in <dir>; nothing was audited` on stderr. A scan in the wrong directory, or after a checkout step that failed, then does not read like a clean repository. JSON, SARIF and Code Climate output are unchanged.
 
