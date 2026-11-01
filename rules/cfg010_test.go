@@ -75,6 +75,55 @@ func TestCFG010_PnpmDlxUnpinned(t *testing.T) {
 	}
 }
 
+// pnpm and yarn download a package only with dlx; uv option values are not
+// the package; a git source needs a revision (#1203).
+func TestCFG010_RunnerShapes1203(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		args    string
+		want    string // "" for no finding, else a substring of the one message
+	}{
+		{"pnpm", `["-C","packages/server","exec","node","dist/mcp.js"]`, ""},
+		{"pnpm", `["dev","mcp"]`, ""},
+		{"pnpm", `["--filter","server","start"]`, ""},
+		{"yarn", `["mcp"]`, ""},
+		{"uvx", `["--python-preference","system","my-server==1.2.0"]`, ""},
+		{"uvx", `["--refresh-package","my-server","--from","${CLAUDE_PLUGIN_ROOT}","my-server"]`, ""},
+		{"uvx", `["--from","./tools/server","my-server"]`, ""},
+		{"uvx", `["--from","git+https://github.com/my-org/my-server@0a1b2c3d","my-server"]`, ""},
+		{"pnpm", `["dlx","my-server"]`, `package "my-server" passed to pnpm`},
+		{"pnpm", `["-C","packages/server","dlx","my-server"]`, `package "my-server" passed to pnpm`},
+		{"yarn", `["dlx","my-server"]`, `package "my-server" passed to yarn`},
+		{"pnpx", `["my-server"]`, `package "my-server" passed to pnpx`},
+		{"uvx", `["--python","3.12","my-server"]`, `package "my-server" passed to uvx`},
+		{"uvx", `["-p","3.12","my-server"]`, `package "my-server" passed to uvx`},
+		{"uvx", `["--from","git+https://github.com/my-org/my-server","my-server"]`, `"git+https://github.com/my-org/my-server@<commit-sha>"`},
+		{"uvx", `["--from","git+ssh://git@github.com/my-org/my-server","my-server"]`, `@<commit-sha>`},
+		{"uvx", `["--from","git+https://github.com/my-org/tools.git#subdirectory=mcp","my-server"]`, `"git+https://github.com/my-org/tools.git@<commit-sha>#subdirectory=mcp"`},
+		{"uvx", `["--from","git+https://github.com/my-org/tools.git@v1.2.0#subdirectory=mcp","my-server"]`, ""},
+		{"uvx", `["--from","my-server","my-server-cli"]`, `package "my-server" passed to uvx`},
+		{"npx", `["-y","my-server@latest"]`, `@latest`},
+	} {
+		json := `{"mcpServers":{"s":{"command":"` + tc.command + `","args":` + tc.args + `}}}`
+		f := CFG010.Check(settingsTarget(t, json))
+		switch {
+		case tc.want == "" && len(f) != 0:
+			t.Errorf("%s %s: expected no finding, got %+v", tc.command, tc.args, f)
+		case tc.want != "" && (len(f) != 1 || !strings.Contains(f[0].Message, tc.want)):
+			t.Errorf("%s %s: expected one finding with %q, got %+v", tc.command, tc.args, tc.want, f)
+		}
+	}
+}
+
+// The line lookup is pointed at args, so a server named like its package is
+// not located at its own key (#1203).
+func TestCFG010_KeyPointsAtArgs(t *testing.T) {
+	f := CFG010.Check(settingsTarget(t, `{"mcpServers":{"my-server":{"command":"npx","args":["-y","my-server"]}}}`))
+	if len(f) != 1 || f[0].Key != "mcpServers.my-server.args" {
+		t.Fatalf("expected one finding keyed at args, got %+v", f)
+	}
+}
+
 func TestCFG010_UvxUnpinned(t *testing.T) {
 	json := `{"mcpServers":{"py":{"command":"uvx","args":["mcp-server-fetch"]}}}`
 	f := CFG010.Check(settingsTarget(t, json))
