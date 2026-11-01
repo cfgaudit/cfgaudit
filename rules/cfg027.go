@@ -127,7 +127,7 @@ func (r *cfg027) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t) {
+	for _, site := range commandSitesWithScripts(t) {
 		seen := map[string]bool{}
 		for _, p := range persistencePatterns {
 			if seen[p.label] || !p.re.MatchString(site.Command) || (p.write && !writesTo(site.Command, p.re)) {

@@ -349,6 +349,11 @@ type Target struct {
 	// covered by permissions.deny; ForbidAllow lists commands that must not be
 	// grantable by permissions.allow. Attached to the project .claude/settings.json
 	// target only.
+	// LaunchedScripts are the repository scripts this target's auto-run
+	// commands start (#1217), attached by the scan; a script started from
+	// several targets is attached to the first one only.
+	LaunchedScripts []LaunchedScript
+
 	PolicyRequireDeny []string
 	PolicyForbidAllow []string
 

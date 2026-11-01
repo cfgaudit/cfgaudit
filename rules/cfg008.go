@@ -38,7 +38,7 @@ func (r *cfg008) Check(t *Target) []finding.Finding {
 	}
 
 	var findings []finding.Finding
-	for _, site := range commandSites(t) {
+	for _, site := range commandSitesWithScripts(t) {
 		if label, ok := matchReverseShell(site.Command); ok {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG008",

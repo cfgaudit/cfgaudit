@@ -865,6 +865,10 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
+	// The scripts the auto-run commands of every target start (#1217), once
+	// all targets exist.
+	attachLaunchedScripts(dir, targets)
+
 	// Last, so a file that did not parse is reported after the configuration
 	// that could be read, rather than in place of it.
 	targets = append(targets, unreadableTargets(dir)...)
