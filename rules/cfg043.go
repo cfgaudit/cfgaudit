@@ -58,7 +58,7 @@ func (r *cfg043) Check(t *Target) []finding.Finding {
 	if len(missing) == 0 {
 		return nil
 	}
-	sev, note := credentialCoverage(t, deny, len(missing) < len(cloudProviders))
+	sev, note := credentialCoverageAt(t, deny, len(missing) < len(cloudProviders), true)
 	return []finding.Finding{{
 		RuleID:   "CFG043",
 		Severity: sev,

@@ -87,7 +87,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG | AVE |
 |---|---|
 | CFG007 / CFG050 / CFG054 / CFG065 / CFG073 hardcoded secrets | AVE-2026-00047 hardcoded credentials in component |
-| CFG052 name shadowing · CFG059 typosquat | AVE-2026-00017 server impersonation / spoofing |
+| CFG059 typosquat | AVE-2026-00017 server impersonation / spoofing |
 | CFG019 inline script · CFG020 env code injection · CFG070 repo-relative command | AVE-2026-00055 command execution via untrusted MCP launch config |
 
 **Partial, worth flagging** — AVE-2026-00002 (tool-description injection), AVE-2026-00041 (server-card injection) and AVE-2026-00046 (tool-hook hijack) describe reading a **live** tool manifest or intercepting a running registry. cfgaudit does not connect to servers, so it covers these **only** when the tool description or hook ships in a committed `--plugins` package. For live servers they are behavioral-scanner (SkillSpector / clawscan) territory.
