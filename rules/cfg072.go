@@ -59,7 +59,7 @@ func (r *cfg072) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t) {
+	for _, site := range commandSitesWithScripts(t) {
 		cmd := site.Command
 
 		dnsTool := dnsQueryToolRe.MatchString(cmd) && substDomainRe.MatchString(cmd)

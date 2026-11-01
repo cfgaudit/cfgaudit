@@ -60,6 +60,9 @@ var aveByRule = map[string]string{
 	"CFG051": "AVE-2026-00048", // allowed-tools grant → unsafe delegation
 	"CFG056": "AVE-2026-00058", // broad trigger → deceptive trigger scope
 	"CFG057": "AVE-2026-00057", // encoded payload → obfuscated payload
+	"CFG119": "AVE-2026-00057", // obfuscated payload in a script an auto-run hook or task starts.
+	//                             Imperfect fit: CFG119 also fires on download-and-run plus a
+	//                             credential hunt without obfuscation, which no record covers.
 	"CFG081": "AVE-2026-00027", // survive compaction → multi-turn persistence
 	"CFG085": "AVE-2026-00048", // subagent perm mode → unsafe delegation
 	"CFG090": "AVE-2026-00032", // network reconnaissance instruction

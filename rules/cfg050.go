@@ -76,7 +76,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkMarketplaceHeaders(t)...)
 	findings = append(findings, r.checkContinueRequestOptions(t)...)
 	findings = append(findings, r.checkZedEnv(t)...)
-	for _, site := range commandSites(t) {
+	for _, site := range commandSitesWithScripts(t) {
 		for _, what := range commandSecrets(site.Command) {
 			findings = append(findings, secretFinding(site.Label, what, site.File, t))
 		}

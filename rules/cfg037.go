@@ -36,7 +36,7 @@ func (r *cfg037) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t) {
+	for _, site := range commandSitesWithScripts(t) {
 		if !sshPrivateKeyAccess(site.Command) {
 			continue
 		}
