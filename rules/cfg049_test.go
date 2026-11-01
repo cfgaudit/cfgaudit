@@ -113,3 +113,16 @@ func TestCFG049_LocalhostSubdomain(t *testing.T) {
 		}
 	}
 }
+
+// A URL that net/url cannot parse is not taken as a localhost subdomain
+// (#1202).
+func TestLocalhostSubdomain_Unparsable(t *testing.T) {
+	for _, v := range []string{"my-app.localhost:3000/mcp", "%zz://x.localhost/"} {
+		if localhostSubdomain(v) {
+			t.Errorf("%q: want false", v)
+		}
+	}
+	if !localhostSubdomain("https://a.localhost/mcp") {
+		t.Error("https://a.localhost/mcp: want true")
+	}
+}
