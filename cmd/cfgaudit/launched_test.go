@@ -31,6 +31,12 @@ func TestLaunchedPaths(t *testing.T) {
 		"bash ~/x.sh":                                             nil,
 		"node $SOME_DIR/x.js":                                     nil,
 		"prettier --write .":                                      nil,
+		// A subshell's parentheses are not part of the path; a route group's
+		// are (#1265).
+		"(command -v node >/dev/null 2>&1 && node ./src/app/(site)/fonts/x.ttf) || echo ''": {"src/app/(site)/fonts/x.ttf"},
+		"(node ./x.js)":             {"x.js"},
+		"node 'app/(site)/page.js'": {"app/(site)/page.js"},
+		"node (site)/page.js":       {"(site)/page.js"},
 	} {
 		if got := launchedPaths(cmd); !reflect.DeepEqual(got, want) {
 			t.Errorf("launchedPaths(%q) = %q, want %q", cmd, got, want)
@@ -120,5 +126,65 @@ func TestCFG119_EndToEnd(t *testing.T) {
 	})
 	if got := launchedFindings(t, root, "CFG119"); len(got) != 0 {
 		t.Errorf("got %q", got)
+	}
+}
+
+// rotationPayload is a synthetic file in the shape of obfuscator output: the
+// string-array rotation loop and hex indices, with random identifiers and no
+// _0x names. It does nothing.
+func rotationPayload() string {
+	return "(function(aQ,bW){var cE=dR,fT=aQ();while(!![]){try{var gY=-parseInt(cE(0x1bf))/0x1+parseInt(cE(0x1a2))/0x2;if(gY===bW)break;else fT['push'](fT['shift']());}catch(hU){fT['push'](fT['shift']());}}}(jI,0x3c2a1));" +
+		strings.Repeat("var kO=dR(0x1c4)+dR(0x1b8);", 20) + "}(global,require));"
+}
+
+// An auto-run task that starts node on a file named like a font is reported
+// at error whether or not the file is there, and names the obfuscation when
+// it can be read (#1265).
+func TestCFG119_DisguisedPayload(t *testing.T) {
+	cmd := "(command -v node >/dev/null 2>&1 && node ./src/app/(site)/fonts/fa-brands-400.ttf) || (where node >nul 2>&1 && node ./src/app/(site)/fonts/fa-brands-400.ttf) || echo ''"
+	b, _ := json.Marshal(map[string]any{"version": "2.0.0", "tasks": []any{map[string]any{
+		"label": "eslint-check", "type": "shell", "command": cmd, "hide": true,
+		"presentation": map[string]any{"reveal": "never"}, "runOptions": map[string]any{"runOn": "folderOpen"},
+	}}})
+	tasks := string(b)
+	scan := func(files map[string]string) (lines, msgs []string) {
+		t.Helper()
+		root := runFixture(t, files)
+		_, out, errOut := runCLI(t, "--claude-version", "2.1.316", "--format", "json", "--only", "CFG119", root)
+		var fs []struct{ RuleID, Severity, File, Message string }
+		if err := json.Unmarshal([]byte(out), &fs); err != nil {
+			t.Fatalf("%v\n%s\n%s", err, out, errOut)
+		}
+		for _, f := range fs {
+			lines = append(lines, f.Severity+" "+strings.TrimPrefix(strings.ReplaceAll(strings.TrimPrefix(f.File, root), "\\", "/"), "/"))
+			msgs = append(msgs, f.Message)
+		}
+		return lines, msgs
+	}
+
+	lines, msgs := scan(map[string]string{
+		".vscode/tasks.json":                     tasks,
+		"src/app/(site)/fonts/fa-brands-400.ttf": rotationPayload(),
+	})
+	if len(lines) != 1 || lines[0] != "error .vscode/tasks.json" {
+		t.Fatalf("with the payload: got %q", lines)
+	}
+	for _, want := range []string{"starts node on src/app/(site)/fonts/fa-brands-400.ttf", "disguised as a font", "rotation loop"} {
+		if !strings.Contains(msgs[0], want) {
+			t.Errorf("message lacks %q: %s", want, msgs[0])
+		}
+	}
+
+	lines, msgs = scan(map[string]string{".vscode/tasks.json": tasks})
+	if len(lines) != 1 || lines[0] != "error .vscode/tasks.json" || strings.Contains(msgs[0], "obfuscated") {
+		t.Errorf("without the payload: got %q %q", lines, msgs)
+	}
+
+	lines, _ = scan(map[string]string{
+		".vscode/tasks.json": `{"version":"2.0.0","tasks":[{"label":"build","type":"shell","command":"node ./scripts/build.js","runOptions":{"runOn":"folderOpen"}}]}`,
+		"scripts/build.js":   "console.log('build')\n",
+	})
+	if len(lines) != 0 {
+		t.Errorf("a build script: got %q", lines)
 	}
 }

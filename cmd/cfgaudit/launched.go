@@ -53,7 +53,7 @@ func launchedPaths(command string) []string {
 		if i >= len(f) {
 			continue
 		}
-		head := strings.Trim(f[i], `"'`)
+		head := strings.Trim(trimGrouping(f[i]), `"'`)
 		if f[i] == "npx" || f[i] == "bunx" {
 			i++
 			for i < len(f) && strings.HasPrefix(f[i], "-") {
@@ -71,7 +71,7 @@ func launchedPaths(command string) []string {
 				j++
 			}
 			for j < len(f) {
-				a := strings.Trim(f[j], `"'`)
+				a := strings.Trim(trimGrouping(f[j]), `"'`)
 				if a == "-File" || a == "-file" {
 					j++
 					continue
@@ -96,6 +96,22 @@ func launchedPaths(command string) []string {
 		}
 	}
 	return out
+}
+
+// trimGrouping drops the shell grouping around a word that is not part of
+// it: the "(" or "{" that opens a subshell or group before an interpreter,
+// and a ")" that closes one after a path, as in `(command -v node && node
+// ./x.js) || ...` (#1265). A balanced pair inside a path, such as Next.js's
+// `app/(site)/page.js`, stays.
+func trimGrouping(w string) string {
+	w = strings.TrimLeft(w, "{")
+	for strings.HasPrefix(w, "(") && strings.Count(w, "(") > strings.Count(w, ")") {
+		w = w[1:]
+	}
+	for strings.HasSuffix(w, ")") && strings.Count(w, ")") > strings.Count(w, "(") {
+		w = w[:len(w)-1]
+	}
+	return strings.TrimRight(w, "}")
 }
 
 // repoPath turns a command operand into a repository-relative slash path, or

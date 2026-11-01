@@ -49,7 +49,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG084](CFG084.md) | warn | container image trust verification disabled — `DOCKER_CONTENT_TRUST=0`, `--disable-content-trust` or `--insecure-registry` in a command site, `settings.json` `env` or an MCP server `env` — `docker pull` then accepts an unsigned or substituted image | LLM04 |
 | [CFG045](CFG045.md) | error/warn/info | ShellCheck analysis of hook/helper commands (opt-in `--shellcheck`; SC codes in the message) | LLM03 |
 | [CFG067](CFG067.md) | info | hooks defined in a project-scoped `.claude/settings.json` — committed hooks run for every developer who trusts the folder, and the trust prompt does not show them (before the CVE-2025-59536 fix, ahead of the prompt); content checks (CFG008/014/…) fire separately | LLM04 |
-| [CFG119](CFG119.md) | error/warn | a repository script that an auto-run hook, folder-open task or MCP launch starts carries the markers of a malicious payload in combination (obfuscation, download and run, a credential hunt, an environment dump); warn for one marker in a script several tools start | LLM04 |
+| [CFG119](CFG119.md) | error/warn | a repository script that an auto-run hook, folder-open task or MCP launch starts carries the markers of a malicious payload in combination (obfuscation, download and run, a credential hunt, an environment dump), or one starts an interpreter on a font, image or document file; warn for one marker in a script several tools start | LLM04 |
 
 ### MCP servers — `settings.json` `mcpServers` & `.mcp.json`
 
@@ -114,7 +114,7 @@ AI coding agents read their instruction files as trusted system-context every se
 | [CFG026](CFG026.md) | error/warn/info | instruction file contains instruction-bypass phrases (override / persona hijack / authority impersonation → error; permissive fictional framing → warn) | LLM01 |
 | [CFG029](CFG029.md) | error/warn/info | instruction file tells the agent to stop asking for confirmation ("always approve", "without asking", …): error when unbounded, warn for an outward-facing action, info for a named local step | LLM03 |
 | [CFG030](CFG030.md) | error/warn | instruction file instructs the agent to conceal its behavior ("don't tell the user", "silently exfiltrate", …) | LLM01 |
-| [CFG031](CFG031.md) | error/warn | instruction file references a sensitive file path (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — error when read/sent (exfiltration), warn on a bare mention, a read of `/etc/passwd` alone, or a path read on a remote target (URL, `--file-read`, XML entity) | LLM02 |
+| [CFG031](CFG031.md) | error/warn/info | instruction file references a sensitive file path (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — error when read/sent (exfiltration), warn on a bare mention, a read of `/etc/passwd` alone, or a path read on a remote target (URL, `--file-read`, XML entity) | LLM02 |
 | [CFG032](CFG032.md) | error/warn | instruction file contains pseudo-system tags (`<SYSTEM>`), turn-boundary/role injection (`Human:`/`<human>`) → error; generic all-caps tags & foreign-LLM control tokens → warn | LLM01 |
 | [CFG033](CFG033.md) | error | instruction file contains a markdown image with an empty/placeholder query param (`![](https://x?d=)`) — data-exfiltration sink | LLM02 |
 | [CFG034](CFG034.md) | warn | instruction file contains Guidance/template role delimiters (`{{#system~}}` …) — role-injection markup | LLM01 |
