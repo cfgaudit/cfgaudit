@@ -269,10 +269,26 @@ The reverse-consistency test fails if you mention `CFGNNN` in the rule index wit
 ## Commit and PR conventions
 
 - **Branch names**: `<type>/<short-slug>`, e.g. `feat/cfg013-…`, `docs/contributing`, `chore/dependabot`, `ci/<name>`. No issue number required, but include it in the PR body via `Closes #N`.
-- **Commit messages**: one short imperative line (`feat: add CFG013 rule (...)`). No `Co-Authored-By` trailer.
+- **Commit messages**: one short imperative line (`feat: add CFG013 rule (...)`), signed off (see [Developer Certificate of Origin](#developer-certificate-of-origin)). No `Co-Authored-By` trailer.
 - **PR body**: the [pull request template](.github/pull_request_template.md) fills it in: short Summary section, Test plan, a checklist and a field for AI use. Note deviations from the issue's acceptance criteria.
 - **Merging**: squash-merge, delete branch.
 - **License headers**: new `.go` files, scripts, workflows and the `Dockerfile` start with `Copyright the cfgaudit contributors` and `SPDX-License-Identifier: Apache-2.0` (after the `#!` line in a script); `TestSourceHeaders` checks that. Every other file, such as Markdown, fixtures and images, gets the same license from `REUSE.toml`, so the repository follows the [REUSE specification](https://reuse.software/) and CI runs `reuse lint`. That rule assumes the file was written for cfgaudit: a file copied from another project keeps its own license and needs its own entry in `REUSE.toml`, with the license text in `LICENSES/`.
+
+## Developer Certificate of Origin
+
+Every commit must be signed off. A sign-off is a line at the end of the commit message:
+
+```text
+Signed-off-by: Your Name <you@example.com>
+```
+
+With it you certify the [Developer Certificate of Origin](https://developercertificate.org/): that you wrote the change or otherwise have the right to submit it under the project's license, Apache-2.0. `git commit -s` adds the line from your `user.name` and `user.email`; the name and email must match the commit's author.
+
+The `DCO` check on every pull request blocks commits without a sign-off. To fix them:
+
+- the last commit: `git commit --amend -s --no-edit`, then force-push;
+- several commits: `git rebase --signoff main`, then force-push;
+- or, without rewriting history, add one empty commit that signs off the earlier ones, as the check's details page describes.
 
 ---
 
@@ -311,6 +327,8 @@ You can use AI tools. What counts is the change itself and that you stand behind
 - Don't take a tool's word for how an agent behaves. Setting names, load order, trust prompts and version boundaries change often and are easy to get wrong. Back each such claim with the changelog line, the source file or a run of the agent, and name the version.
 - Run the checks from the [test loop](#test-loop) where you can, and say which ones you couldn't run.
 - Keep a pull request to one issue. Pull requests that look generated in bulk, touch unrelated code, or describe something the diff doesn't do are closed.
+
+The sign-off works the same way: with it you certify that you have the right to submit the change, however it was written.
 
 ---
 
