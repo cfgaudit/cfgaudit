@@ -172,14 +172,15 @@ var authorDirectedRe = regexp.MustCompile(`(?i)^[^.;]{0,20}?\b(?:provide|give|sh
 
 // substTemplateRe matches what looks like a secret path in a substitution but
 // is not a read of one (#623): an env-file template (.env.example and its
-// kin), an identifier ending in .env (process.env, import.meta.env), and the
+// kin, and .env.schema, which lists the expected variables, #978), an
+// identifier ending in .env (process.env, import.meta.env), and the
 // destination of a copy or move (cp .env.example .env, Copy-Item ...), a
 // permission change (chmod 600 .../.env), and a public key (id_ed25519.pub).
 // A ${Name.method(...)} or ${name.member} span is a JavaScript template
 // literal, not a shell expansion, whose variable names cannot hold a dot:
 // `Bearer ${Deno.env.get("OPENAI_API_KEY")}` (#885), `Bearer
 // ${c.env.AI_GATEWAY_TOKEN}` in a Cloudflare Worker (#955).
-var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b`)
+var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?|schema)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b`)
 
 // inlineCodeSpanRe matches a Markdown inline-code span: a pair of backticks
 // around text with no backtick in it.
@@ -287,19 +288,29 @@ func singleKeyLookup(line string, loc []int) bool {
 // nothing: -c, -l, -L, -q, alone or in a group (-qE, -cF).
 var countOnlyGrepRe = regexp.MustCompile(`^grep\s+(?:-\w+\s+)*-[A-Za-z]*[clLq][A-Za-z]*\s`)
 
+// countOnlyWcRe is a wc that prints counts only: -l, -c, -w and -m, alone or
+// grouped, and nothing else (#978). --files0-from reads names from a file.
+var countOnlyWcRe = regexp.MustCompile(`^wc\s+(?:-[lcwm]+\s+)*(?:<\s*)?[^-\s]\S*\s*$`)
+
 // countsOnly reports whether every command in the substitution sub is such a
-// grep, or a fallback that prints nothing (|| true, :). "$(grep -c
+// grep or wc, or a fallback that prints nothing (|| true, :). "$(grep -c
 // '^ACCOUNT_KEY_' .env 2>/dev/null || true)" counts keys and prints no value
-// (#885).
+// (#885), and "$(wc -l < .env)" counts lines (#978). The backtick form of a
+// substitution counts the same.
 func countsOnly(sub string) bool {
-	inner := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(sub), "$("), ")")
+	inner := strings.TrimSpace(sub)
+	if strings.HasPrefix(inner, "`") {
+		inner = strings.Trim(inner, "`")
+	} else {
+		inner = strings.TrimSuffix(strings.TrimPrefix(inner, "$("), ")")
+	}
 	inner = strings.ReplaceAll(inner, "2>&1", "")
 	greps := 0
 	for _, cmd := range splitCommands(inner) {
 		cmd = strings.TrimSpace(cmd)
 		switch {
 		case cmd == "" || cmd == "true" || cmd == ":":
-		case countOnlyGrepRe.MatchString(cmd + " "):
+		case countOnlyGrepRe.MatchString(cmd + " "), countOnlyWcRe.MatchString(cmd):
 			greps++
 		default:
 			return false
@@ -326,15 +337,22 @@ var dollarSubstRe = regexp.MustCompile(`\$\([^)]*\)?`)
 // .env.test -- vitest`", "`tsx watch --env-file=../../.env`", "`set -a; .
 // ./.env`"), searches for a pattern, or is a log line or a code expression. In
 // a fence, where the text is a shell example, every span keeps its shell
-// meaning (#849).
+// meaning (#849), except in a JavaScript or TypeScript fence, where a backtick
+// span is a template literal (#978).
 //
 // The severity is Warn for a lookup of one named key that is neither stored
 // in a variable nor part of a command that sends data out: redis-cli -a
 // "$(grep '^REDIS_PASSWORD=' .env | cut -d= -f2-)" passes a project's own
 // setting to a local tool (#885).
-func sensitiveSubstitution(line string, inFence bool) ([]int, finding.Severity) {
+func sensitiveSubstitution(line string, inFence, jsFence bool) ([]int, finding.Severity) {
 	check := func(span string) bool {
 		cleaned := substTemplateRe.ReplaceAllString(span, "")
+		cleaned = dollarSubstRe.ReplaceAllStringFunc(cleaned, func(sub string) string {
+			if countsOnly(sub) {
+				return ""
+			}
+			return sub
+		})
 		// A tool's own key read from that tool's home directory is reported by
 		// CFG031 as a mention (#866).
 		cleaned = homeToolPathRe.ReplaceAllStringFunc(cleaned, func(p string) string {
@@ -365,7 +383,13 @@ func sensitiveSubstitution(line string, inFence bool) ([]int, finding.Severity) 
 		return nil, ""
 	}
 	for _, loc := range inlineCodeSpanRe.FindAllStringIndex(line, -1) {
-		if !inFence && !readsOut(line[loc[0]+1:loc[1]-1]) {
+		// In a JavaScript or TypeScript fence a backtick span is a template
+		// literal: like code formatting in prose, it counts only when it runs a
+		// command that reads the file out, execSync(`cat ~/.ssh/id_rsa`) (#978).
+		if (!inFence || jsFence) && !readsOut(line[loc[0]+1:loc[1]-1]) {
+			continue
+		}
+		if countsOnly(line[loc[0]:loc[1]]) {
 			continue
 		}
 		if ruleExpressionRe.MatchString(line[loc[0]+1 : loc[1]-1]) {
@@ -486,6 +510,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 	for _, src := range t.instructionSources() {
 		lines := strings.Split(src.Content, "\n")
 		fenced := fencedLines(src.Content)
+		jsFenced := jsFencedLines(src.Content)
 		n := len(lines)
 
 		directive := make([][]int, n)
@@ -515,7 +540,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 			}
 			pipeShell[i] = pipeShellRe.MatchString(line)
 			network[i] = netExfilRe.MatchString(line) || pipeShell[i]
-			if loc, sev := sensitiveSubstitution(line, fenced[i+1]); loc != nil {
+			if loc, sev := sensitiveSubstitution(line, fenced[i+1], jsFenced[i+1]); loc != nil {
 				// A read the text refuses is downgraded, not dropped, as
 				// CFG031 does (#869): a refusing heading must not hide a
 				// payload.
@@ -597,4 +622,30 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 		findings = append(findings, srcFindings...)
 	}
 	return findings
+}
+
+// jsFenceLangs are the fence info strings whose backticks delimit template
+// literals.
+var jsFenceLangs = map[string]bool{"js": true, "javascript": true, "jsx": true, "mjs": true, "cjs": true, "ts": true, "typescript": true, "tsx": true}
+
+// jsFencedLines returns the 1-based numbers of the lines inside a fence whose
+// language is JavaScript or TypeScript (#978).
+func jsFencedLines(content string) map[int]bool {
+	out := map[int]bool{}
+	open, js := false, false
+	for i, line := range strings.Split(content, "\n") {
+		if isFenceDelimiter(line) {
+			if !open {
+				info := strings.TrimLeft(strings.TrimSpace(line), "`~")
+				lang, _, _ := strings.Cut(strings.TrimSpace(info), " ")
+				js = jsFenceLangs[strings.ToLower(lang)]
+			}
+			open = !open
+			continue
+		}
+		if open && js {
+			out[i+1] = true
+		}
+	}
+	return out
 }

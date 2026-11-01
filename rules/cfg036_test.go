@@ -505,3 +505,38 @@ func TestCFG036_Passwd966(t *testing.T) {
 		}
 	}
 }
+
+// #978: a template literal in a JavaScript or TypeScript fence, a .env.schema
+// file and a count of lines or bytes do not read a secret out.
+func TestCFG036_Issue978(t *testing.T) {
+	for _, s := range []string{
+		"```typescript\nthrow new Error(\n  `Missing token, check your .env file.`\n);\n```",
+		"```ts\nconsole.error(`Set it in .env or your secret manager.`);\n```",
+		"```js\nconst hint = `Set it in .env.local or your secret manager.`;\n```",
+		"```javascript\nlog(`Set it in .env.${env} or your secret manager.`);\n```",
+		"```tsx\nthrow new Error(`Create a .env.${cfg.environment} file.`);\n```",
+		"```jsx\n<p>{`Copy .env first`}</p>\n```",
+		"Run `cat .env.schema` to see which variables the app expects.",
+		"```bash\ncat .env.schema\n```",
+		"```bash\necho $(wc -l < .env)\n```",
+		"```bash\nN=`wc -c .env`\n```",
+		"```bash\nLINES=$(wc -l -w .env)\n```",
+	} {
+		if f := CFG036.Check(claudeMDTarget(s)); hasSeverityWithPart(f, finding.Error, "") || hasSeverityWithPart(f, finding.Warn, "Part A") {
+			t.Errorf("expected no Part A finding for %q, got %+v", s, f)
+		}
+	}
+	for _, s := range []string{
+		"```bash\nexport $(cat .env | xargs)\n```",
+		"`export $(cat .env | xargs)`",
+		// A template literal that a JavaScript example runs as a shell command.
+		"```ts\nexecSync(`cat ~/.ssh/id_rsa`);\n```",
+		// wc with a flag that is not a count, or a pipe on to a reader.
+		"```bash\nX=$(wc -l .env; cat .env)\n```",
+		"```bash\nX=$(wc --files0-from=.env)\n```",
+	} {
+		if f := CFG036.Check(claudeMDTarget(s)); !hasSeverityWithPart(f, finding.Error, "Part A") {
+			t.Errorf("expected a Part A error for %q, got %+v", s, f)
+		}
+	}
+}
