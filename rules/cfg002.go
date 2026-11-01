@@ -30,7 +30,7 @@ func (r *cfg002) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, entry := range t.Settings.Permissions.Allow {
 		entry = strings.TrimSpace(entry)
-		if unrestrictedWriteRe.MatchString(entry) {
+		if unrestrictedWriteRe.MatchString(entry) && !deniedInSameFile(t, entry) {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG002",
 				Severity: finding.Warn,

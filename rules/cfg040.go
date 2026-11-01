@@ -29,7 +29,7 @@ func (r *cfg040) Check(t *Target) []finding.Finding {
 	}
 	var findings []finding.Finding
 	for _, entry := range t.Settings.Permissions.Allow {
-		if !unrestrictedWebFetch(entry) {
+		if !unrestrictedWebFetch(entry) || deniedInSameFile(t, entry) {
 			continue
 		}
 		findings = append(findings, finding.Finding{
