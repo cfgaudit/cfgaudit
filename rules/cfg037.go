@@ -22,12 +22,10 @@ var (
 	// privKeyNameRe matches an SSH private-key filename token.
 	privKeyNameRe = regexp.MustCompile(`(?i)\bid_(?:rsa|ed25519|dsa|ecdsa)\b`)
 	// grepPatternRe captures a quoted pattern argument passed to grep-like tools.
-	grepPatternRe = regexp.MustCompile(`(?i)\b(?:grep|egrep|rg)\b(?:\s+(?:-[^\s]+|--[^\s]+))*\s+('[^']*'|"(?:\\.|[^"])*")`)
-	// testPatternRe captures the right-hand pattern in [[ value =~ pattern ]].
-	testPatternRe = regexp.MustCompile(`(?s)=~\s*(.*?)\s*\]\]`)
+	grepPatternRe = regexp.MustCompile(`(?i)\b(?:grep|egrep|rg)\b((?:\s+(?:-[^\s]+|--[^\s]+))*)\s+('[^']*'|"(?:\\.|[^"])*")`)
 	// caseBodyRe and casePatternRe identify case patterns without masking commands.
-	caseBodyRe    = regexp.MustCompile(`(?s)\bcase\b.*?\bin\b(.*?)\besac\b`)
-	casePatternRe = regexp.MustCompile(`(?s)(?:^|;;)\s*([^)]*)\)`)
+	caseBodyRe    = regexp.MustCompile(`(?s)(?:^|[\n;]|&&|\|\|)\s*case\s+(?:'[^']*'|"(?:\\.|[^"])*"|[^\s;|&]+)\s+in\b(.*?)\besac\b`)
+	casePatternRe = regexp.MustCompile(`(?:^|;;)\s*((?:'[^']*'|"(?:\\.|[^"])*"|[^\s;&)])+)\s*\)`)
 	// sshAccessRe matches a read/copy/archive command that touches a .ssh path.
 	sshAccessRe = regexp.MustCompile(`(?i)\b(?:cat|cp|scp|rsync|tar|mv|base64|xxd|dd|less|more|head|tail|install|gzip|zip|openssl)\b[^|;&\n]*\.ssh(?:/|\b)`)
 	// sshFileRe captures the filename referenced under .ssh/.
@@ -96,8 +94,15 @@ func maskSSHGuardPatterns(cmd string) string {
 		}
 	}
 
-	maskMatches(grepPatternRe, 0, cmd)
-	maskMatches(testPatternRe, 0, cmd)
+	for _, match := range grepPatternRe.FindAllStringSubmatchIndex(cmd, -1) {
+		if len(match) < 6 || match[4] < 0 || grepUsesPatternFile(cmd[match[2]:match[3]]) {
+			continue
+		}
+		for i := match[4]; i < match[5]; i++ {
+			masked[i] = ' '
+		}
+	}
+	maskTestGuardPatterns(masked, cmd)
 	for _, body := range caseBodyRe.FindAllStringSubmatchIndex(cmd, -1) {
 		if len(body) < 4 || body[2] < 0 {
 			continue
@@ -105,6 +110,49 @@ func maskSSHGuardPatterns(cmd string) string {
 		maskMatches(casePatternRe, body[2], cmd[body[2]:body[3]])
 	}
 	return string(masked)
+}
+
+func maskTestGuardPatterns(masked []byte, cmd string) {
+	for offset := 0; offset < len(cmd); {
+		open := strings.Index(cmd[offset:], "[[")
+		if open < 0 {
+			return
+		}
+		open += offset
+		lineEnd := len(cmd)
+		if newline := strings.IndexByte(cmd[open:], '\n'); newline >= 0 {
+			lineEnd = open + newline
+		}
+		operator := strings.Index(cmd[open:lineEnd], "=~")
+		if operator < 0 {
+			offset = open + 2
+			continue
+		}
+		start := open + operator + 2
+		for start < lineEnd && (cmd[start] == ' ' || cmd[start] == '\t') {
+			start++
+		}
+		end := lineEnd
+		for _, delimiter := range []string{"]]", ";", "&&", "||", "#"} {
+			if i := strings.Index(cmd[start:lineEnd], delimiter); i >= 0 && start+i < end {
+				end = start + i
+			}
+		}
+		for i := start; i < end; i++ {
+			masked[i] = ' '
+		}
+		offset = lineEnd
+	}
+}
+
+func grepUsesPatternFile(flags string) bool {
+	for _, flag := range strings.Fields(flags) {
+		if flag == "-f" || flag == "--file" ||
+			(strings.HasPrefix(flag, "-") && !strings.HasPrefix(flag, "--") && strings.HasSuffix(flag, "f")) {
+			return true
+		}
+	}
+	return false
 }
 
 // isNonKeySSHFile reports whether a .ssh filename is a known non-private-key file.
