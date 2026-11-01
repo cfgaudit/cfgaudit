@@ -32,7 +32,7 @@ func (r *cfg001) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, entry := range t.Settings.Permissions.Allow {
 		entry = strings.TrimSpace(entry)
-		if unrestrictedBashRe.MatchString(entry) {
+		if unrestrictedBashRe.MatchString(entry) && !deniedInSameFile(t, entry) {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG001",
 				Severity: finding.Error,

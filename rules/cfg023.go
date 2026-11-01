@@ -170,7 +170,7 @@ func (r *cfg023) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, entry := range t.Settings.Permissions.Allow {
 		bin, cat, ok := dangerousAllowBinary(entry)
-		if !ok {
+		if !ok || deniedInSameFile(t, entry) {
 			continue
 		}
 		findings = append(findings, finding.Finding{
