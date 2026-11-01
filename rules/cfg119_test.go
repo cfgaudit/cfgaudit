@@ -107,6 +107,11 @@ func TestScanPayload_CharCodeArray(t *testing.T) {
 	if m := scanPayload("eval([" + short + "].map(function(c){return String.fromCharCode(c)}).join(''))"); m.obfuscated {
 		t.Errorf("600 codes: %+v", m)
 	}
+	// A short array before the long one is skipped, and several short ones
+	// are not one.
+	if !charCodeArray("x=[1,2]; y=["+codes+"]") || charCodeArray("[1,2] and [3,4] and [5]") {
+		t.Error("charCodeArray across arrays")
+	}
 	if !charCodeArray("["+codes+"]") || charCodeArray("[1,2,3]") || charCodeArray("[1000,2000]") {
 		t.Error("charCodeArray")
 	}
