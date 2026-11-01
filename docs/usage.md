@@ -133,6 +133,10 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 
 A directory without any agent configuration exits 0, because that is a valid state, but the text and table formats add `cfgaudit: no agent configuration found in <dir>; nothing was audited` on stderr. A scan in the wrong directory, or after a checkout step that failed, then does not read like a clean repository. JSON, SARIF and Code Climate output are unchanged.
 
+**Credentials in messages**
+
+A finding that quotes a URL from the scanned file shows it with the password and every query value replaced by `***`, and a user name with no password as well, since a token is often written there (`https://***@github.com/...`). Variable references such as `${API_KEY}` stay. Findings end up in SARIF, CI artifacts and logs that more people can read than the repository, so they do not repeat the secret they report.
+
 **Suppressing a finding**
 
 Suppression lives in `.cfgaudit.yml` (below), not in the scanned files: turn a rule off for the project with `rules: { CFG001: off }`, or drop every finding in a file or directory with `exclude-paths`. There is no inline suppression comment, so a scanned file cannot hide its own findings. Since a repository's own `.cfgaudit.yml` can do both, see [scanning a repository you do not trust](#untrusted-repositories).

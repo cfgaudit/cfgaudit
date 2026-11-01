@@ -59,6 +59,8 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 		}
 		results := r.Check(target)
 		for i := range results {
+			// A message never repeats a credential written in a URL (#1045).
+			results[i].Message = RedactURLs(results[i].Message)
 			if results[i].Scope == "" {
 				results[i].Scope = target.Scope
 			}
