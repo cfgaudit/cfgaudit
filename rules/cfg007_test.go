@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -270,6 +271,44 @@ func TestCFG007_HeaderEnvAndKnownNames(t *testing.T) {
 	} {
 		if f := CFG007.Check(settingsTarget(t, `{"env":{`+env+`}}`)); len(f) != 0 {
 			t.Errorf("env %s: unexpected findings %+v", env, f)
+		}
+	}
+}
+
+// A credential in a permission entry, recorded from an approved command, is
+// reported; references, placeholders and plain values are not (#1168).
+func TestCFG007_PermissionEntries1168(t *testing.T) {
+	sk := "sk-" + strings.Repeat("aB3dE5fG7h", 5)[:48]
+	ghp := "ghp_" + strings.Repeat("Ab1Cd2Ef3G", 4)[:36]
+	entry := func(list, e string) string {
+		b, _ := json.Marshal(map[string]any{"permissions": map[string]any{list: []string{"Bash(npm run build:*)", e}}})
+		return string(b)
+	}
+	for _, tc := range []struct{ list, entry string }{
+		{"allow", `Bash(export MY_TOOL_TOKEN="` + sk + `")`},
+		{"allow", `Bash(curl -H "Authorization: Bearer ` + ghp + `" https://api.github.com/user)`},
+		{"ask", `Bash(curl -H "Authorization: Bearer ` + ghp + `" https://api.github.com/user)`},
+		{"deny", `Bash(export MY_TOOL_TOKEN=` + sk + `)`},
+		{"allow", `Bash(export DEPLOY_API_KEY="d8f7a6s5d4f3g2h1")`},
+	} {
+		f := CFG007.Check(settingsTarget(t, entry(tc.list, tc.entry)))
+		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "permissions."+tc.list+"[1]") || !strings.Contains(f[0].Message, "Rotate the key") {
+			t.Errorf("%s %q: got %+v", tc.list, tc.entry, f)
+			continue
+		}
+		if strings.Contains(f[0].Message, sk) || strings.Contains(f[0].Message, ghp) {
+			t.Errorf("message quotes the secret: %s", f[0].Message)
+		}
+	}
+	for _, e := range []string{
+		`Bash(export MY_TOOL_TOKEN="$MY_TOOL_TOKEN")`,
+		`Bash(export MY_TOOL_TOKEN=<your-token>)`,
+		`Bash(export NODE_ENV=production)`,
+		`Bash(npm run build:*)`,
+		`Read(./secrets/**)`,
+	} {
+		if f := CFG007.Check(settingsTarget(t, entry("allow", e))); len(f) != 0 {
+			t.Errorf("%q: want no finding, got %+v", e, f)
 		}
 	}
 }
