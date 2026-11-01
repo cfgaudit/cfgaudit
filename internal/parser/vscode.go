@@ -131,6 +131,51 @@ func joinTaskCommand(cmd string, args []json.RawMessage) string {
 	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
+// UnmarshalJSON accepts every form VS Code takes for a task's command: a
+// string, an array of strings, or a quoted-string object {"value": ...,
+// "quoting": ...} (#1189). An array is joined with spaces; Command stays a
+// string for every rule that reads it.
+func (t *VSCodeTask) UnmarshalJSON(data []byte) error {
+	type plain VSCodeTask
+	var v struct {
+		plain
+		Command json.RawMessage `json:"command,omitempty"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*t = VSCodeTask(v.plain)
+	t.Command = taskCommandString(v.Command)
+	return nil
+}
+
+func taskCommandString(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var parts []json.RawMessage
+	if json.Unmarshal(raw, &parts) == nil {
+		var out []string
+		for _, p := range parts {
+			if s := taskCommandString(p); s != "" {
+				out = append(out, s)
+			}
+		}
+		return strings.Join(out, " ")
+	}
+	var q struct {
+		Value json.RawMessage `json:"value"`
+	}
+	if json.Unmarshal(raw, &q) == nil {
+		return taskCommandString(q.Value)
+	}
+	return string(raw)
+}
+
 type VSCodeRunOptions struct {
 	RunOn string `json:"runOn,omitempty"`
 }
@@ -353,6 +398,11 @@ func ParseVSCodeSettings(path string) (*VSCodeSettings, error) {
 // ParseVSCodeSettingsBytes decodes settings.json content; path only labels errors.
 func ParseVSCodeSettingsBytes(data []byte, path string) (*VSCodeSettings, error) {
 	clean := stripJSONC(data)
+	// VS Code treats an empty or whitespace-only settings.json as no settings
+	// (#1189).
+	if len(bytes.TrimSpace(clean)) == 0 {
+		return &VSCodeSettings{Raw: map[string]json.RawMessage{}}, nil
+	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(clean, &raw); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
