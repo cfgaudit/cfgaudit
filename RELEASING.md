@@ -44,23 +44,23 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
 
    The Release and Docker workflows refuse a commit that is not on `main` or whose CI did not pass, and a tag that is not signed by a listed key; the gate reads its script and the key list from `main`, never from the tagged commit. Before anything is published, the Release workflow runs every archive on its platform and the Docker workflow runs the image, both checking the version and a fixture scan. They then build the archives, checksums, SBOMs and the container image, sign them with build provenance, create the GitHub release and update the Homebrew cask in `cfgaudit/homebrew-tap`. Check that exactly one run of each workflow ran for the tag and that both succeeded.
 10. **Release notes.** Above the generated changelog, write the hand-written part:
-   - **Can turn a passing pipeline red**: new rules at `error`, stricter checks, new exit-code cases.
-   - **Output changes**: changed messages, paths, fingerprints or report fields that make existing findings show up as new.
-   - **False positives fixed**, if any are worth naming.
-   - Thanks to external contributors by handle.
-   - The closing line: "If cfgaudit is useful to you, a star on GitHub helps other people find it."
+    - **Can turn a passing pipeline red**: new rules at `error`, stricter checks, new exit-code cases.
+    - **Output changes**: changed messages, paths, fingerprints or report fields that make existing findings show up as new.
+    - **False positives fixed**, if any are worth naming.
+    - Thanks to external contributors by handle.
+    - The closing line: "If cfgaudit is useful to you, a star on GitHub helps other people find it."
 
-   Name every security advisory the release fixes.
+    Name every security advisory the release fixes.
 
 ## After the release
 
 11. **Check what was published.** The release has all assets and `checksums.txt` matches them; `ghcr.io/cfgaudit/cfgaudit` carries `X.Y.Z`, `X.Y` and `latest` on the same digest; the downloaded binary prints `cfgaudit X.Y.Z`; the Homebrew cask is at `X.Y.Z`. The verification commands are in [Verifying a release](docs/verifying-releases.md).
 12. **Move the Action tag.** Point the floating `v1` tag at the release commit and force-push it, so `uses: cfgaudit/cfgaudit@v1` picks up the release:
 
-   ```sh
-   git tag -f v1 vX.Y.Z^{commit}
-   git push -f origin v1
-   ```
+    ```sh
+    git tag -f v1 vX.Y.Z^{commit}
+    git push -f origin v1
+    ```
 
 13. **PyPI.** After the Release workflow, the PyPI workflow builds the wheels from the release archives, smoke-tests them on each platform and waits for approval in the `pypi` environment. Approve it, then check that `pipx install cfgaudit==X.Y.Z` installs the release.
 14. **npm.** After the Release workflow, the npm workflow packs the release archives into one package per platform and the `cfgaudit` package, smoke-tests them on each platform and waits for approval in the `npm` environment. Approve it, then check that `npx cfgaudit@X.Y.Z --version` prints the release.
