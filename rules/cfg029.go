@@ -39,7 +39,7 @@ var permissionBypassRe = mustFiltered(`(?i)(` +
 	`|auto-?approve\b` +
 	`|approve\b[^.\n]{0,30}?\b(?:permission|approval|confirmation|prompt)s?\b[^.\n]{0,25}?\b(?:automatically|without\s+asking|by\s+default)` +
 	`|bypass\s+(?:permission|confirmation|approval)` +
-	`|skip\s+(?:confirm(?:ation)?|approval|the\s+prompt)` +
+	`|skip\s+(?:confirm(?:ation)?|approval|(?:the\s+)?(?:permission|approval|confirmation|tool(?:[- ]call)?)\s+prompts?)` +
 	`|without\s+(?:confirm(?:ation)?|approval|prompt(?:ing)?)` +
 	`|never\s+(?:prompt|confirm|require\s+approval)` +
 	`|(?:without\s+asking|never\s+ask(?:ing)?|do\s+not\s+ask|don'?t\s+ask|do\s+not\s+prompt)\s+(?:the\s+user\s+)?(?:for\s+)?(?:permission|approval|confirmation|before\s+(?:running|executing|proceeding|making|applying|doing))` +
@@ -385,11 +385,6 @@ func notAPermissionBypass(line string, loc []int) bool {
 		if programRunsRe.MatchString(scope) || programExitsRe.MatchString(scope) || plural && codeSpanRe.MatchString(scope) {
 			return true
 		}
-	}
-	// "skip the prompt and pass `--api-key-env NAME` instead" swaps a CLI's
-	// key prompt for a flag (#914).
-	if strings.HasPrefix(match, "skip the prompt") && cliFlagRe.MatchString(clauseRest(after)) {
-		return true
 	}
 	if strings.HasPrefix(match, "never prompt") && nonInteractiveRe.MatchString(scope) {
 		return true
@@ -833,8 +828,8 @@ func notABypassShape(lines []string, i int, loc []int) bool {
 		return true
 	case strings.HasSuffix(match, "approve") && youApproveRe.MatchString(before):
 		return true
-	case loc[1] < len(line) && line[loc[1]] == '_' || loc[0] > 0 && line[loc[0]-1] == '_':
-		// A snake_case or longer identifier: confirmation_token.
+	case loc[1] < len(line) && line[loc[1]] == '_' || loc[0] > 0 && (line[loc[0]-1] == '_' || isWordByte(line[loc[0]-1])):
+		// Part of an identifier: confirmation_token, matchesAutoApprove (#1154).
 		return true
 	}
 	// The negation is on the line above when the match continues it:
