@@ -117,16 +117,30 @@ func shellLaunchesProgram(shell string, args []string) bool {
 				file = true
 			}
 		}
+		// pwsh's default positional parameter is -File, so "pwsh
+		// ./scripts/start.ps1" runs a script file (#1183). Windows PowerShell
+		// 5.1 defaults to -Command and is not changed without a measurement.
+		if !file && strings.TrimSuffix(strings.ToLower(shell), ".exe") == "pwsh" {
+			file = strings.HasSuffix(strings.ToLower(pwshFirstOperand(args)), ".ps1")
+		}
 		return file
 	default:
+		login := false
 		for i, a := range args {
 			a = strings.TrimSpace(a)
+			if a == "--login" {
+				login = true
+				continue
+			}
 			if strings.HasPrefix(a, "--") {
 				continue
 			}
 			if strings.HasPrefix(a, "-") {
+				if strings.Contains(a[1:], "l") {
+					login = true
+				}
 				if strings.Contains(a[1:], "c") {
-					return i+2 == len(args) && guardedExec(args[i+1])
+					return i+2 == len(args) && guardedExec(args[i+1], login)
 				}
 				continue
 			}
@@ -136,6 +150,29 @@ func shellLaunchesProgram(shell string, args []string) bool {
 	}
 }
 
+// pwshValueFlags are the pwsh parameters that take a value, so the word after
+// them is not the script operand.
+var pwshValueFlags = map[string]bool{
+	"-executionpolicy": true, "-ex": true, "-ep": true, "-workingdirectory": true, "-wd": true,
+	"-configurationname": true, "-settingsfile": true, "-outputformat": true, "-of": true,
+	"-inputformat": true, "-if": true, "-windowstyle": true, "-w": true, "-custompipename": true,
+}
+
+// pwshFirstOperand returns pwsh's first positional argument, or "".
+func pwshFirstOperand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		a := strings.ToLower(strings.TrimSpace(args[i]))
+		if strings.HasPrefix(a, "-") {
+			if pwshValueFlags[a] {
+				i++
+			}
+			continue
+		}
+		return strings.TrimSpace(args[i])
+	}
+	return ""
+}
+
 // guardStepRe and execStepRe are the steps of a guarded launch: a test that
 // runs nothing ("[ -f \"$HOME/.sentry/mcp.json\" ]", "command -v x >/dev/null"),
 // "exit N", and exec of one named program with literal arguments.
@@ -143,12 +180,28 @@ var guardStepRe = regexp.MustCompile(`^(?:\[\s[^\]` + "`" + `]*\s\]|test\s[^` + 
 var guardSplitRe = regexp.MustCompile(`&&|\|\||;`)
 var execStepRe = regexp.MustCompile(`^exec\s+[\w./\-]+(?:\s+[\w./=:@,\-"']+)*$`)
 
+// cdStepRe is a change to a literal directory, which runs nothing (#1183).
+var cdStepRe = regexp.MustCompile(`^cd\s+[\w./~\-]+$`)
+
+// repoRootPrefixRe is `$(git rev-parse --show-toplevel)` as the start of the
+// exec target's path, quoted or not (#1183).
+var repoRootPrefixRe = regexp.MustCompile(`"?\$\(git rev-parse --show-toplevel\)/([\w./\-]+)"?`)
+
 // guardedExec reports whether a -c script only checks a condition and then
 // execs one named program: "[ -f \"$HOME/.sentry/mcp.json\" ] && exec
 // sentry-mcp --organization-slug hackerspub || exit 0" starts the server only
 // where it is configured (#874). Anything else in the script, a substitution,
 // a pipe or a redirect, keeps it an inline script.
-func guardedExec(script string) bool {
+//
+// A bare exec also counts when the wrapper only prepares where it runs
+// (#1183): a login shell for PATH ("bash -l -c 'exec npx -y pkg'"), a leading
+// "cd <literal dir> &&", or a target under "$(git rev-parse --show-toplevel)/".
+func guardedExec(script string, login bool) bool {
+	setup := login
+	if repoRootPrefixRe.MatchString(script) {
+		script = repoRootPrefixRe.ReplaceAllString(script, `ROOT/$1`)
+		setup = true
+	}
 	rest := strings.NewReplacer("||", " ", "&&", " ", ">/dev/null", " ", "> /dev/null", " ", "2>&1", " ").Replace(script)
 	if strings.ContainsAny(rest, "|<>`\n") || strings.Contains(script, "$(") {
 		return false
@@ -158,16 +211,24 @@ func guardedExec(script string) bool {
 		step = strings.TrimSpace(step)
 		switch {
 		case execStepRe.MatchString(step):
+			// exec of another shell, or of an interpreter with inline code, is
+			// still an inline script.
+			f := strings.Fields(step)[1:]
+			if shellInterpreterName(f[0]) != "" || (interpreterBasename(f[0], languageInterpreters) != "" && hasInlineEvalFlag(f[1:])) {
+				return false
+			}
 			execs++
 		case guardStepRe.MatchString(step):
 			guards++
+		case cdStepRe.MatchString(step) && execs == 0:
+			setup = true
 		default:
 			return false
 		}
 	}
-	// A bare "exec real-mcp-server" has no condition to check and is still
+	// A bare "exec real-mcp-server" with no condition and no setup is still
 	// the shell-wrapped server the rule reports.
-	return execs == 1 && guards > 0
+	return execs == 1 && (guards > 0 || setup)
 }
 
 // hasInlineEvalFlag reports whether args contain a flag that makes an interpreter
