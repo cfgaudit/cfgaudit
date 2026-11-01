@@ -22,11 +22,13 @@ func projectHooksTarget(t *testing.T, scope finding.Scope) *Target {
 	return &Target{SettingsFile: ".claude/settings.json", Settings: s, Scope: scope}
 }
 
-func TestCFG067_ProjectScope_Warn(t *testing.T) {
+// Presence alone is info since #1197: the content rules and CFG119 carry the
+// risk of what a hook runs.
+func TestCFG067_ProjectScope_Info(t *testing.T) {
 	for _, scope := range []finding.Scope{finding.ScopeProject, finding.ScopeProjectLocal} {
 		f := CFG067.Check(projectHooksTarget(t, scope))
-		if len(f) != 1 || f[0].Severity != finding.Warn {
-			t.Errorf("expected 1 Warn for scope %s, got %+v", scope, f)
+		if len(f) != 1 || f[0].Severity != finding.Info {
+			t.Errorf("expected 1 Info for scope %s, got %+v", scope, f)
 		}
 		if len(f) == 1 && !strings.Contains(f[0].Message, "PreToolUse") {
 			t.Errorf("expected event name in message, got %q", f[0].Message)
@@ -79,7 +81,7 @@ func TestCFG067_MessageSaysTrust(t *testing.T) {
 	tg := settingsTarget(t, `{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"npx prettier --write ."}]}]}}`)
 	tg.Scope = finding.ScopeProject
 	f := CFG067.Check(tg)
-	if len(f) != 1 || f[0].Severity != finding.Warn {
+	if len(f) != 1 || f[0].Severity != finding.Info {
 		t.Fatalf("got %+v", f)
 	}
 	if strings.Contains(f[0].Message, "before they interact") || !strings.Contains(f[0].Message, "trusts this folder") {
