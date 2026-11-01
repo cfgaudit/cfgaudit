@@ -120,6 +120,23 @@ Two distinctions keep this honest:
 
 **`.zed/debug.json`** is the third committed project file next to `settings.json` and `tasks.json`, and cfgaudit reads one field of it. Upstream: *"Zed will use the `build` field to run any necessary setup steps before the debugger starts"*, and *"Zed allows embedding a Zed task in the `build` field that is run before the debugger starts"*. So pressing Debug on a scenario labelled "Debug server" runs whatever that field names, under a label that describes the session rather than the command. `program`, `args` and `env` are **not** read: they name the binary the user asked to debug, which is the thing they picked, the same line `.zed/tasks.json` draws between a `create_worktree` hook task and one invoked from the task list. A `build` that names an existing task by label is resolved against `.zed/tasks.json` and the finding is attributed to that file, since that is where the command lives. Unlike `settings.json`, `debug.json` is applied **without** a worktree trust check: `update_settings` in `crates/project/src/project_settings.rs` routes only `LocalSettingsKind::Settings` through `can_trust`, while `Tasks` and `Debug` go straight to the task store (#650).
 
+<a id="json-output"></a>**JSON output**
+
+`--format json` prints an array of findings. [`schema/findings.schema.json`](../schema/findings.schema.json) describes it, and CI validates a golden report against it on every change (#1078). From v1.20.0 on the shape is stable: a field may be added in a minor release, and a rename or removal happens only in a major release, announced in the release notes.
+
+| Field | Meaning |
+| --- | --- |
+| `RuleID` | the rule, `CFG` plus three digits |
+| `Severity` | `error`, `warn` or `info`, after `.cfgaudit.yml` overrides |
+| `Scope` | `project`, `project-local` or `user` for a finding about a settings scope; omitted otherwise |
+| `File` | the file as cfgaudit reached it: the scanned directory as given on the command line joined with the path inside it, or the path of a `--user`, `--config` or `--plugins` input. It is not made relative to the scanned directory (Code Climate output is) |
+| `Line`, `Col` | 1-based position, or `0` when the finding is about the whole file or the position is not known |
+| `Message` | what was found and how to fix it, with secrets redacted. The wording can change; match on `RuleID` |
+| `OWASP` | the rule's OWASP Top 10 for LLM Applications id (`LLM01` to `LLM10`) |
+| `AVEID` | the rule's Agentic Vulnerability Enumeration id; omitted for rules without one |
+
+`cfgaudit list --format json` is meant for people and scripts that browse the rule catalogue. Its shape is not covered by the schema and may change.
+
 **Scope-aware findings**
 
 Each finding carries a `Scope` (`project`, `project-local`, or `user`) reflecting which file it came from. Rules whose blast radius is amplified when the misconfiguration lives in user-global settings append an explanatory note to the message, and `CFG009` (hook command interpolates a shell variable) escalates from `warn` to `error` at user scope — a malicious hook in `~/.claude/settings.json` fires on every project the user opens.
