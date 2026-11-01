@@ -150,6 +150,9 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 							continue
 						}
 						sev = finding.Warn
+						if defensiveBlock(lines, i) {
+							sev = finding.Info
+						}
 					}
 				}
 				if p.num == 4 && storyWorkRe.MatchString(line) {
@@ -478,4 +481,44 @@ func attributiveNoun(line string, sm []int) bool {
 		return false
 	}
 	return !clauseWords[strings.ToLower(m[1])]
+}
+
+// blockCueRe matches the lead-in of a list of injection signatures, wider than
+// defensiveCueRe because it only grades a quoted payload, never drops one:
+// "Flag any of these phrases ... as a likely injection attempt:" (#1207).
+var blockCueRe = regexp.MustCompile(`(?i)\b(?:flag|flags|flagged|detect\w*|reject\w*|block\w*|recogni[sz]e\w*|watch\s+(?:out\s+)?for|look\s+(?:out\s+)?for|refuse\w*|treat\w*\s+(?:\w+\s+){0,3}as\s+untrusted|injection\s+(?:attempts?|signatures?|patterns?|phrases?|markers?))\b`)
+
+// defensiveBlock reports whether the list or paragraph that holds line i, or
+// the line that introduces it, says the quoted phrases are to be recognised
+// and refused. Such a list is a catalogue of signatures for a security or
+// review skill (#1207), so its quoted payloads are reported at info: still
+// visible with --severity info, out of the default output.
+func defensiveBlock(lines []string, i int) bool {
+	cue := func(s string) bool {
+		s = strings.NewReplacer("*", "", "_", "").Replace(s)
+		return defensiveCueRe.MatchString(s) || blockCueRe.MatchString(s)
+	}
+	const maxDistance = 30
+	for j := i; j >= 0 && i-j <= maxDistance; j-- {
+		if strings.TrimSpace(lines[j]) == "" {
+			// One blank line may separate a list from the line that
+			// introduces it.
+			if j > 0 && strings.HasSuffix(strings.TrimSpace(lines[j-1]), ":") && cue(lines[j-1]) {
+				return true
+			}
+			break
+		}
+		if cue(lines[j]) {
+			return true
+		}
+	}
+	for j := i + 1; j < len(lines) && j-i <= maxDistance; j++ {
+		if strings.TrimSpace(lines[j]) == "" {
+			break
+		}
+		if cue(lines[j]) {
+			return true
+		}
+	}
+	return false
 }

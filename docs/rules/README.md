@@ -111,7 +111,7 @@ AI coding agents read their instruction files as trusted system-context every se
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG024](CFG024.md) | error | instruction file contains hidden Unicode control characters (Tags block, zero-width, BiDi/Trojan Source) — prompt injection / ASCII smuggling | LLM01 |
-| [CFG026](CFG026.md) | error/warn | instruction file contains instruction-bypass phrases (override / persona hijack / authority impersonation → error; permissive fictional framing → warn) | LLM01 |
+| [CFG026](CFG026.md) | error/warn/info | instruction file contains instruction-bypass phrases (override / persona hijack / authority impersonation → error; permissive fictional framing → warn) | LLM01 |
 | [CFG029](CFG029.md) | error/warn/info | instruction file tells the agent to stop asking for confirmation ("always approve", "without asking", …): error when unbounded, warn for an outward-facing action, info for a named local step | LLM03 |
 | [CFG030](CFG030.md) | error | instruction file instructs the agent to conceal its behavior ("don't tell the user", "silently exfiltrate", …) | LLM01 |
 | [CFG031](CFG031.md) | error/warn | instruction file references a sensitive file path (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, …) — error when read/sent (exfiltration), warn on a bare mention, a read of `/etc/passwd` alone, or a path read on a remote target (URL, `--file-read`, XML entity) | LLM02 |
