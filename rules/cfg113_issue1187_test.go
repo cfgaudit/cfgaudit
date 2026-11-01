@@ -56,6 +56,7 @@ func TestCFG113_SameOwner1187(t *testing.T) {
 	} {
 		tg := claudeMDTarget(tc.text)
 		tg.InstructionFile = file
+		tg.ProjectDir = dir
 		f := CFG113.Check(tg)
 		if len(f) != 1 || f[0].Severity != tc.want {
 			t.Errorf("%q: want one %s finding, got %+v", tc.text, tc.want, f)
@@ -85,7 +86,26 @@ func TestGitHubOwnerParsing1187(t *testing.T) {
 			t.Errorf("githubURLOwner(%q) = %q, want %q", url, got, want)
 		}
 	}
-	if got := repoGitHubOwner(filepath.Join(t.TempDir(), "CLAUDE.md")); got != "" {
+	if got := repoGitHubOwner(t.TempDir()); got != "" {
 		t.Errorf("repoGitHubOwner without .git = %q", got)
+	}
+	// A parent directory's .git/config belongs to another repository and is
+	// outside the scan: it is not read.
+	parent := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(parent, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, ".git", "config"), []byte("[remote \"origin\"]\n\turl = https://github.com/acme/x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(parent, "sub")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := repoGitHubOwner(sub); got != "" {
+		t.Errorf("repoGitHubOwner read the parent's .git/config: %q", got)
+	}
+	if got := repoGitHubOwner(parent); got != "acme" {
+		t.Errorf("repoGitHubOwner(project with .git) = %q, want acme", got)
 	}
 }

@@ -20,32 +20,26 @@ var configURLRe = regexp.MustCompile(`(?m)^\s*url\s*=\s*(\S+)`)
 // form.
 var githubOwnerRe = regexp.MustCompile(`(?i)^(?:https?://(?:[^@/]+@)?github\.com/|ssh://git@github\.com/|git@github\.com:)([A-Za-z0-9][A-Za-z0-9-]*)/`)
 
-var repoOwnerCache sync.Map // dir -> owner ("" when none)
+var repoOwnerCache sync.Map // project dir -> owner ("" when none)
 
-// repoGitHubOwner returns the GitHub owner of the repository that holds file,
-// read from the origin remote in the nearest .git/config above it, or "" when
-// there is none, the remote is not on GitHub, or .git is not a directory.
-func repoGitHubOwner(file string) string {
-	dir, err := filepath.Abs(filepath.Dir(file))
-	if err != nil {
+// repoGitHubOwner returns the GitHub owner of the scanned project, read from
+// the origin remote in <projectDir>/.git/config, or "" when there is none, the
+// remote is not on GitHub, or .git is not a directory. Only the scanned
+// directory is read: a parent's .git/config belongs to another repository,
+// and reading it would read outside what the user asked to scan.
+func repoGitHubOwner(projectDir string) string {
+	if projectDir == "" {
 		return ""
 	}
-	for i := 0; i < 12; i++ {
-		if v, ok := repoOwnerCache.Load(dir); ok {
-			return v.(string)
-		}
-		if data, err := scanroot.ReadFile(filepath.Join(dir, ".git", "config")); err == nil {
-			owner := githubOwnerFromConfig(string(data))
-			repoOwnerCache.Store(dir, owner)
-			return owner
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+	if v, ok := repoOwnerCache.Load(projectDir); ok {
+		return v.(string)
 	}
-	return ""
+	owner := ""
+	if data, err := scanroot.ReadFile(filepath.Join(projectDir, ".git", "config")); err == nil {
+		owner = githubOwnerFromConfig(string(data))
+	}
+	repoOwnerCache.Store(projectDir, owner)
+	return owner
 }
 
 func githubOwnerFromConfig(cfg string) string {

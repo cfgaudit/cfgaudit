@@ -167,7 +167,7 @@ func (r *cfg113) Check(t *Target) []finding.Finding {
 				msg := src.Name + " line " + strconv.Itoa(ln) + " tells the agent to fetch " + quoteValue(url) + " and " + verb +
 					" what it says: the reviewed file hands the agent's behaviour to remote text nobody reviewed, which can change at any time (the external-fetch payload class). Copy the instructions into the repository, or pin them to a reviewed revision"
 				if sev == finding.Warn {
-					if owner := githubURLOwner(url); owner != "" && owner == repoGitHubOwner(src.File) {
+					if owner := githubURLOwner(url); owner != "" && owner == repoGitHubOwner(t.ProjectDir) {
 						// #1187: the repository's own GitHub owner publishes it.
 						sev = finding.Info
 						msg += " (the URL is under this repository's own GitHub owner)"
