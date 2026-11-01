@@ -26,6 +26,66 @@ var npmPackageRunners = map[string]bool{
 	"pnpm": true,
 	"yarn": true,
 	"bunx": true,
+	"pnpx": true,
+}
+
+// workspaceValueFlags are pnpm and yarn options that take a value, which is
+// a directory or a workspace filter rather than a command (#1203).
+var workspaceValueFlags = map[string]bool{
+	"-C": true, "--dir": true, "--filter": true, "-F": true, "--cwd": true,
+}
+
+// uvValueFlags are uv options whose value is not the package to run: a
+// Python version, an index, a constraints file, a directory (#1203).
+var uvValueFlags = map[string]bool{
+	"--python": true, "-p": true, "--python-preference": true, "--refresh-package": true,
+	"--index": true, "--index-url": true, "--extra-index-url": true, "--constraint": true,
+	"--overrides": true, "--directory": true, "--project": true,
+}
+
+// dlxArgs returns the arguments after `dlx` when a pnpm or yarn invocation
+// downloads a package, and false for anything else: `pnpm dev mcp` runs a
+// package.json script and `pnpm exec node dist/mcp.js` a local binary, which
+// the lockfile pins (#1203).
+func dlxArgs(args []string) ([]string, bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if workspaceValueFlags[a] {
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "dlx" {
+			return args[i+1:], true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// isLocalSource reports whether a uvx --from value names local code: a path
+// or a variable such as ${CLAUDE_PLUGIN_ROOT}.
+func isLocalSource(s string) bool {
+	return strings.HasPrefix(s, "$") || isPathLikeArg(s)
+}
+
+// gitSourcePinned reports whether a git+ source names a revision: an `@` in
+// the last path segment, so git+ssh://git@host/... does not count as pinned
+// by its user name. A `#subdirectory=` fragment is not part of the path.
+func gitSourcePinned(s string) bool {
+	s, _, _ = strings.Cut(s, "#")
+	return strings.Contains(s[strings.LastIndexByte(s, '/')+1:], "@")
+}
+
+// gitPinSuggestion puts the revision before a `#` fragment:
+// git+https://host/repo.git@<commit-sha>#subdirectory=tools/mcp.
+func gitPinSuggestion(s string) string {
+	if base, frag, ok := strings.Cut(s, "#"); ok {
+		return base + "@<commit-sha>#" + frag
+	}
+	return s + "@<commit-sha>"
 }
 
 // pyPackageRunners are Python package runners whose first positional arg is a
@@ -49,7 +109,10 @@ func (r *cfg010) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG010",
 				Severity: finding.Warn,
 				File:     ref.File,
-				Message:  "mcpServers." + ref.Name + ": " + msg,
+				// The key points the line lookup at args, so a server named
+				// like its package is not located at its own key (#1203).
+				Key:     "mcpServers." + ref.Name + ".args",
+				Message: "mcpServers." + ref.Name + ": " + msg,
 			})
 		}
 	}
@@ -71,9 +134,24 @@ func analyzeMCPVersionPins(command string, args []string) []string {
 	if !npm && !py {
 		return nil
 	}
+	specRunner := runner
+	if runner == "pnpm" || runner == "yarn" {
+		rest, ok := dlxArgs(args)
+		if !ok {
+			return nil
+		}
+		specRunner, args = "pnpx", rest
+	}
 	var msgs []string
-	for _, pkg := range collectPackageSpecs(runner, args) {
+	for _, pkg := range collectPackageSpecs(specRunner, args) {
 		if isPathLikeArg(pkg) {
+			continue
+		}
+		if py && strings.HasPrefix(pkg, "git+") {
+			if gitSourcePinned(pkg) {
+				continue
+			}
+			msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" names no revision (e.g. \""+gitPinSuggestion(pkg)+"\") — supply-chain compromise propagates silently to every agent that loads this server")
 			continue
 		}
 		if py {
@@ -174,10 +252,39 @@ func collectPackageSpecs(runner string, args []string) []string {
 		}
 	}
 
+	// uvx --from names the package; the positional is then the command it
+	// provides. A local source (a path or a variable) installs nothing from
+	// the index.
+	fromSet := false
+	if runner == "uvx" {
+		for i := 0; i < len(args); i++ {
+			from, ok := "", false
+			switch a := args[i]; {
+			case a == "--from" && i+1 < len(args):
+				from, ok = args[i+1], true
+				i++
+			case strings.HasPrefix(a, "--from="):
+				from, ok = strings.TrimPrefix(a, "--from="), true
+			case uvValueFlags[a]:
+				i++
+			}
+			if ok {
+				fromSet = true
+				if !isLocalSource(from) {
+					add(from)
+				}
+			}
+		}
+	}
+
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if spec := packageFlagValue(runner, a); spec != "" {
 			add(spec)
+			continue
+		}
+		if runner == "uvx" && (uvValueFlags[a] || a == "--from") {
+			i++ // the value is a version, an index, a path or the --from source
 			continue
 		}
 		if valueNext[a] {
@@ -198,7 +305,7 @@ func collectPackageSpecs(runner string, args []string) []string {
 		if runner == "pipx" && a == "run" {
 			continue
 		}
-		if npmRunAsCommand {
+		if npmRunAsCommand || fromSet {
 			// positional is the bin to execute, not a package — stop here
 			break
 		}

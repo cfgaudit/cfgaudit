@@ -30,8 +30,8 @@ var (
 	// skills legitimately run their own .claude/ scripts and mention "credentials"
 	// in prose — only real secret files belong here (credentials.json is anchored).
 	cmdSubstSensitiveRe = mustFiltered("(?i)(?:\\$\\(|`)[^)`]*\\s[^)`]*(?:~/\\.ssh|~/\\.aws|~/\\.gcp|~/\\.config/gcloud|/etc/passwd|/etc/shadow|\\.env\\b|id_rsa|id_ed25519|credentials\\.json)")
-	// Auto-execution directive (Patterns B and C; Part C narrows it further, see
-	// partCDirective).
+	// Auto-execution directive (Pattern B; on its own it is no longer a finding,
+	// #1176).
 	autoExecRe = mustFiltered(`(?i)(?:before\s+(?:each|every|any)\s+(?:task|session|request|command|run|step)|always\s+(?:run|execute|do)|at\s+(?:startup|session\s+start|the\s+start)|automatically\s+(?:run|execute))`)
 	// A directive tied to a condition the agent meets in normal work (#791):
 	// "Whenever you review a pull request, first run …", "When you start
@@ -74,20 +74,13 @@ var (
 	// Network exfiltration command (Pattern B).
 	netExfilRe = mustFiltered(`(?i)\b(?:curl|wget|nc|ncat|netcat|python[23]?\s+-c.*urllib|bash\s+-i)\b.*\bhttps?://`)
 
-	// Part C only: which "at …" phrases are an order to the agent rather than
-	// prose about something else starting. Measured over 390 real CLAUDE.md files
-	// sampled from GitHub (#508): all 26 "at startup" matches described the
-	// *program's* startup ("config is read at startup", "modules are discovered at
-	// startup") and none ordered the agent to run anything, so the phrase carries no
-	// Part C warning on its own. "at the start" turns on what starts: the matches
-	// naming a session or conversation were directives ("At the start of every
-	// session, run:"), while the five naming a cycle, a drag, an analysis or a
-	// reconciliation were descriptions. Part B is unaffected: paired with a network
-	// command on a nearby line, every one of these phrases still reports at error.
-	atStartupPhraseRe  = regexp.MustCompile(`(?i)^at\s+startup$`)
-	atTheStartPhraseRe = regexp.MustCompile(`(?i)^at\s+the\s+start$`)
-	// The noun that follows "at the start", within the same sentence.
-	sessionScopeRe = regexp.MustCompile(`(?i)^[^.;]{0,40}?\b(?:session|conversation|chat)\b`)
+	// The agent-run auto-install form of Part D (#1176): a check for the tool
+	// and, when it is missing, a download piped into a shell, which runs with
+	// nobody reading the command first.
+	autoInstallRe = mustFiltered(`(?i)\b(?:command\s+-v|which|type|hash)\s+[\w.\-]+[^|\n]*\|\|\s*(?:\(\s*)?(?:curl|wget)\b`)
+	// A URL in a substitution, whose path names a file on another host: a
+	// remote probe, not a read of a local secret (#1176, as CFG031 #966).
+	substURLRe = regexp.MustCompile(`(?i)https?://[^\s"'` + "`" + `)]+`)
 )
 
 // pasteHosts are the paste sites Part G knows (#910). glot.io counts only
@@ -145,30 +138,6 @@ func passwordArchiveRun(lines []string, i int) bool {
 	}
 	return link && run
 }
-
-// partCDirective reports whether a directive match warrants a Part C warning on
-// its own. loc is autoExecRe's match on line.
-func partCDirective(line string, loc []int) bool {
-	switch phrase := line[loc[0]:loc[1]]; {
-	case atStartupPhraseRe.MatchString(phrase):
-		return false
-	case atTheStartPhraseRe.MatchString(phrase):
-		return sessionScopeRe.MatchString(line[loc[1]:]) && !authorDirectedRe.MatchString(line[loc[1]:])
-	case atSessionStartPhraseRe.MatchString(phrase):
-		return !authorDirectedRe.MatchString(line[loc[1]:])
-	}
-	return true
-}
-
-// atSessionStartPhraseRe is the "at session start" form of the directive.
-var atSessionStartPhraseRe = regexp.MustCompile(`(?i)^at\s+session\s+start$`)
-
-// authorDirectedRe matches a start-of-session line addressed to the person
-// writing the prompt rather than to the agent: "At session start, provide
-// everything the agent needs in a structured block" (#623). Reading and
-// loading stay Part C, as measured for #508: "At the start of each session,
-// read:" is an order to the agent.
-var authorDirectedRe = regexp.MustCompile(`(?i)^[^.;]{0,20}?\b(?:provide|give|share|paste|hand)\b`)
 
 // substTemplateRe matches what looks like a secret path in a substitution but
 // is not a read of one (#623): an env-file template (.env.example and its
@@ -371,6 +340,9 @@ func sensitiveSubstitution(line string, inFence, jsFence bool) ([]int, finding.S
 			if singleKeyLookup(line, loc) && !netExfilRe.MatchString(line) {
 				return loc, finding.Warn
 			}
+			if !check(substURLRe.ReplaceAllString(line[loc[0]:loc[1]], "")) {
+				return loc, finding.Warn // a remote probe (#1176)
+			}
 			if !check(passwdRe.ReplaceAllString(line[loc[0]:loc[1]], "")) && !netExfilRe.MatchString(line) {
 				return loc, finding.Warn
 			}
@@ -399,10 +371,20 @@ func sensitiveSubstitution(line string, inFence, jsFence bool) ([]int, finding.S
 			if !check(passwdRe.ReplaceAllString(line[loc[0]:loc[1]], "")) && !netExfilRe.MatchString(line) {
 				return loc, finding.Warn
 			}
+			if !check(substURLRe.ReplaceAllString(line[loc[0]:loc[1]], "")) {
+				return loc, finding.Warn // a remote probe (#1176)
+			}
 			return loc, finding.Error
 		}
 	}
 	return nil, ""
+}
+
+// remoteSensitiveURL reports whether every sensitive path in span sits inside a URL:
+// "curl -s -o /dev/null -w '%{http_code}' https://example.com/.env" asks
+// another host for its file (#1176).
+func remoteSensitiveURL(span string) bool {
+	return cmdSubstSensitiveRe.MatchString(span) && !cmdSubstSensitiveRe.MatchString(substURLRe.ReplaceAllString(span, ""))
 }
 
 // passwdRe matches /etc/passwd, which every user can read and which holds
@@ -549,7 +531,10 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 				}
 				span := strings.TrimSpace(line[loc[0]:loc[1]])
 				msg := "uses command substitution reading a sensitive path (Part A) — \"" + span + "…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it"
-				if sev == finding.Warn && passwdRe.MatchString(span) {
+				switch {
+				case sev == finding.Warn && remoteSensitiveURL(span):
+					msg = "requests a sensitive path from a remote host (Part A) — \"" + span + "…\"; the file is on another server, not on this machine. Confirm the probe is authorised"
+				case sev == finding.Warn && passwdRe.MatchString(span):
 					msg = "uses command substitution reading /etc/passwd (Part A) — \"" + span + "…\"; the file is world-readable and holds account names, not password hashes; confirm the account list is not collected for an attack"
 				}
 				add(i, loc[0], sev, msg)
@@ -597,22 +582,19 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 		for i := range lines {
 			if pipeShell[i] && !pipeCovered[i] {
 				loc := pipeShellRe.FindStringIndex(lines[i])
+				if autoInstallRe.MatchString(lines[i]) {
+					add(i, loc[0], finding.Warn, "installs a missing tool by piping a download into a shell (Part D, auto-install) — the agent runs it whenever the tool is missing, and nobody reads the command before it runs. Ask the person to install the tool, or point to a pinned, checksummed download")
+					continue
+				}
 				add(i, loc[0], finding.Warn, "pipes a download into a shell (Part D) — the agent runs whatever the server returns at that moment. If this is install documentation, point to a pinned, checksummed download or to the tool's own install docs instead")
 			}
 		}
 
-		for i := range lines {
-			if directive[i] == nil || covered[i] {
-				continue
-			}
-			loc := directive[i]
-			if !partCDirective(lines[i], loc) {
-				continue
-			}
-			if strings.Contains(lines[i][loc[0]:], ":") {
-				add(i, loc[0], finding.Warn, "contains an auto-execution directive (Part C) — \""+strings.TrimSpace(lines[i][loc[0]:loc[1]])+"\"; instruction files should describe tasks, not command the agent to auto-run things. Review it")
-			}
-		}
+		// Part C, a directive on its own, is no longer a finding (#1176 option D):
+		// in the pre-release corpus run for v1.20.0 it was 887 warnings, none of
+		// them a risk in the sample, and only 5 of the lines held a URL, curl or
+		// wget. The directive still raises Part B to error next to a network
+		// command.
 		sort.SliceStable(srcFindings, func(i, j int) bool {
 			if srcFindings[i].Line != srcFindings[j].Line {
 				return srcFindings[i].Line < srcFindings[j].Line
