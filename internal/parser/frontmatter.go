@@ -47,6 +47,8 @@ func (f *Frontmatter) DenyList(key string) []string {
 	})
 }
 
+// stringList is the shared body of StringList and DenyList. split handles a
+// scalar value; a YAML list is taken entry by entry.
 func (f *Frontmatter) stringList(key string, split func(string) []string) []string {
 	if f == nil {
 		return nil
@@ -118,6 +120,9 @@ func (f *Frontmatter) String(key string) string {
 	return strings.TrimSpace(s)
 }
 
+// splitToolList splits a scalar tool list outside parentheses, so that
+// Bash(git -C * status) stays one entry. When a parenthesis is left open it
+// falls back to splitToolListFlat.
 func splitToolList(v string) []string {
 	tokens, balanced := scanToolList(v)
 	if !balanced {
@@ -127,6 +132,9 @@ func splitToolList(v string) []string {
 	return tokens
 }
 
+// scanToolList splits v on commas and whitespace at parenthesis depth 0. A
+// stray ) is ignored. balanced is false when a parenthesis is left open; the
+// text after it is then one token.
 func scanToolList(v string) (tokens []string, balanced bool) {
 	tokens = make([]string, 0)
 	depth := 0
@@ -154,6 +162,8 @@ func scanToolList(v string) (tokens []string, balanced bool) {
 	return tokens, depth == 0
 }
 
+// splitToolListFlat splits v on every comma and whitespace character, ignoring
+// parentheses.
 func splitToolListFlat(v string) []string {
 	fields := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' })
 	out := make([]string, 0, len(fields))
