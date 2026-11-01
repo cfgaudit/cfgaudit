@@ -31,6 +31,8 @@ Rechecked 2026-09-17 for the v1.14.0 release: the AVE record set is unchanged at
 
 Rechecked 2026-09-25 against **AVE-2026-00081 through AVE-2026-00083**, the three records added since. 00081 (a task-scoped capability outliving its episode) and 00083 (a guardrail that executes but never evaluates its verdict) are both `runtime_observed`. **00082 is static and lands on a shape this crosswalk reports as a gap**: a local skill name collision resolved by load order, which is CFG102's subject. It is still not taken, for a narrower reason than before — see Direction 3. The rule added since v1.14.0, CFG109, is reported as a gap: no record covers a declared configuration that does not load.
 
+Rechecked 2026-11-01 for the v1.20.0 release: the record set is unchanged at **AVE-2026-00089**. The two rules added since v1.19.0 are left unmapped. **CFG117** (a key defined twice in a Claude Code settings file, where only the last occurrence is in force) has no record; the nearest, AVE-2026-00075, covers compiled bytecode that diverges from its reviewed source, the same "what is reviewed is not what runs" shape on a different artifact, and is not stretched onto a settings file. **CFG118** (a policy deny that an agent can only take from user settings) is informational and has no behavior of its own. Discussion aveproject/ave#234 proposes rejecting 00052, 00053, 00060 and 00061; CFG075 maps to 00061 until that lands.
+
 Rechecked 2026-10-26 for the v1.19.0 release: the record set is unchanged at **AVE-2026-00089** and no rule was added since v1.18.1, so no mapping moves.
 
 v1.18.1 (2026-10-24) republishes v1.18.0, whose release job hung before it published the archives (#816); the record set and the mappings are the same.
