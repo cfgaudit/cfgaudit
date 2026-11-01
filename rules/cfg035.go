@@ -75,10 +75,28 @@ func (r *cfg035) Check(t *Target) []finding.Finding {
 	}
 	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
-		inFence := false
-		for i, line := range strings.Split(src.Content, "\n") {
-			if isFenceDelimiter(line) {
+		inFence, inComment := false, false
+		lines := strings.Split(src.Content, "\n")
+		fmEnd, descLines := frontmatterDescription(lines)
+		for i, line := range lines {
+			// A fence inside a blockquote ("> ```") is still a fence (#1180).
+			if isFenceDelimiter(blockquoteStripRe.ReplaceAllString(line, "")) {
 				inFence = !inFence
+				continue
+			}
+			// Headings, HTML comments and a skill's frontmatter description are
+			// not instructions: setup docs title a section "Register the MCP
+			// server", and a description lists the trigger phrases its body
+			// acts on (#1180). Table cells are kept, since a table can hold the
+			// steps themselves.
+			wasComment := inComment
+			if strings.Contains(line, "<!--") {
+				inComment = true
+			}
+			if strings.Contains(line, "-->") {
+				inComment = false
+			}
+			if wasComment || inComment || strings.Contains(line, "<!--") || headingRe.MatchString(line) || (i < fmEnd && descLines[i]) {
 				continue
 			}
 			for _, p := range mcpInstructionPatterns {
@@ -92,7 +110,7 @@ func (r *cfg035) Check(t *Target) []finding.Finding {
 				if p.skipCode && inInlineCode(line, loc[0]) {
 					continue
 				}
-				if trustedOtherNoun(line, loc) {
+				if trustedOtherNoun(line, loc) || mcpNotAnInstruction(line, loc) {
 					continue
 				}
 				lineNo := i + 1
@@ -110,4 +128,103 @@ func (r *cfg035) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+var (
+	blockquoteStripRe = regexp.MustCompile(`^\s*(?:>\s?)+`)
+	headingRe         = regexp.MustCompile(`^\s{0,3}#{1,6}\s`)
+	// trustObjectAfterRe is an object of "trust ... MCP" that is not the
+	// server: "Trust MCP results as the source of truth" (#1180).
+	trustObjectAfterRe = regexp.MustCompile(`(?i)^\s+(?:results?|outputs?|responses?|data|docs?|documentation|answers?|replies)\b`)
+	// trustedFollowerRe is the noun after "trusted" when it qualifies
+	// something other than the server: "load trusted validator code".
+	trustedFollowerRe = regexp.MustCompile(`(?i)^\s+(\w+)`)
+	// sourcePathAfterRe is "MCP servers in <a source file>": developing the
+	// server, not configuring the agent (#1180).
+	sourcePathAfterRe = regexp.MustCompile("(?i)^s?\\s+in\\s+`[^`]+\\.(?:php|ts|tsx|js|mjs|cjs|py|go|rb|java|kt|cs|rs|swift)`")
+	// developToolRe is "add / register / implement ... MCP tool(s)".
+	developToolRe = regexp.MustCompile(`(?i)^(?:add|register|implement)\s+(?:the\s+)?(?:mcp|model\s+context\s+protocol)\s+tools?\b`)
+	// linkTextRe finds markdown link text.
+	linkTextRe = regexp.MustCompile(`\[[^\]]*\]\([^)]*\)`)
+)
+
+// mcpNotAnInstruction reports a CFG035 match that is about something other
+// than configuring or trusting the agent's MCP servers (#1180): a trust word
+// governing another noun, a trust boundary, a trusted-<word> compound, an
+// allowlist of something else, developing an MCP tool or server in source
+// code, or link text.
+func mcpNotAnInstruction(line string, loc []int) bool {
+	m := strings.ToLower(line[loc[0]:loc[1]])
+	after := line[loc[1]:]
+	for _, l := range linkTextRe.FindAllStringIndex(line, -1) {
+		if loc[0] >= l[0] && loc[1] <= l[1] {
+			return true
+		}
+	}
+	switch {
+	case strings.HasPrefix(m, "trust") && trustObjectAfterRe.MatchString(after):
+		return true
+	case strings.HasSuffix(m, "trusted") && strings.HasPrefix(after, "-"):
+		return true // trusted-local, trusted-only
+	case (strings.HasPrefix(m, "allowlist") || strings.HasPrefix(m, "whitelist")) && allowlistOfOther(m):
+		return true // an allowlist of console functions ... MCP SDK
+	case developToolRe.MatchString(m), sourcePathAfterRe.MatchString(after):
+		return true
+	}
+	if strings.HasSuffix(m, "trusted") {
+		if f := trustedFollowerRe.FindStringSubmatch(after); f != nil {
+			switch strings.ToLower(f[1]) {
+			case "server", "servers", "tool", "tools", "mcp", "integration", "integrations":
+			default:
+				return true // trusted validator code
+			}
+		}
+	}
+	return false
+}
+
+// allowlistOfOther reports an "allowlist of <noun> ... mcp" match whose
+// object is another noun: "allowlist of console functions in the MCP SDK".
+// "your allowlist of MCP servers" names the servers and is kept.
+func allowlistOfOther(m string) bool {
+	f := strings.Fields(m)
+	if len(f) < 3 || f[1] != "of" {
+		return false
+	}
+	for _, w := range f[2 : len(f)-1] {
+		switch w {
+		case "the", "your", "our", "its", "trusted", "approved":
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+// frontmatterDescription returns the end of a leading YAML frontmatter block
+// and the lines of its description key, including a block scalar's
+// continuation lines.
+func frontmatterDescription(lines []string) (int, map[int]bool) {
+	desc := map[int]bool{}
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return 0, desc
+	}
+	inDesc := false
+	for i := 1; i < len(lines); i++ {
+		l := lines[i]
+		if strings.TrimSpace(l) == "---" {
+			return i, desc
+		}
+		indented := strings.HasPrefix(l, " ") || strings.HasPrefix(l, "\t")
+		switch {
+		case !indented && strings.HasPrefix(strings.TrimSpace(l), "description:"):
+			inDesc = true
+		case !indented && strings.TrimSpace(l) != "":
+			inDesc = false
+		}
+		if inDesc {
+			desc[i] = true
+		}
+	}
+	return 0, map[int]bool{}
 }
