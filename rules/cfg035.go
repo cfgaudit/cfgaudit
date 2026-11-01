@@ -86,6 +86,16 @@ func (r *cfg035) Check(t *Target) []finding.Finding {
 					continue
 				}
 				loc := p.re.FindStringIndex(line)
+				// A refusal is not an instruction to install or trust a server.
+				// Keep looking: a later clause may still contain an instruction.
+				for loc != nil && prohibitionRe.MatchString(line[clauseStart(line, loc[0]):loc[0]]) {
+					next := p.re.FindStringIndex(line[loc[1]:])
+					if next == nil {
+						loc = nil
+						break
+					}
+					loc = []int{loc[1] + next[0], loc[1] + next[1]}
+				}
 				if loc == nil {
 					continue
 				}
