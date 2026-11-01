@@ -331,6 +331,23 @@ policy:
     - "Bash(git commit:*)"   # must not be grantable by permissions.allow
 ```
 
+For a team on more than one agent, the policy can be written once and checked against each agent's committed permission file. Claude Code and Devin CLI are checked today; Zed and Continue, which keep permission rules in user settings only, get a CFG118 info finding:
+
+```yaml
+policy:
+  deny:
+    commands: ["git push"]
+    read: ["**/.env", "~/.ssh/**"]
+    write: ["src/generated/**"]
+    fetch: ["*.example.com"]
+    mcp-tools: ["github:delete_*"]
+  forbid-allow:
+    commands: ["curl"]
+  agents: [claude-code, devin]   # optional; default: every agent with config in the repo
+```
+
+[CFG025](docs/rules/CFG025.md) lists the entry each agent needs for each category.
+
 cfgaudit rejects a `.cfgaudit.yml` with a key it does not know or a severity other than `error`, `warn` or `info`, and exits 2 with the file and the line: `cfgaudit: .cfgaudit.yml:1: unknown key "stirct"`. A typo in the file that sets your exit code must not turn a check off without a word. A key added in a newer cfgaudit therefore fails on an older one; pin the cfgaudit version your CI runs together with the config. A rule ID under `rules` that no rule reports is only a warning, so a config that names a rule from a newer release still loads.
 
 ---
@@ -471,7 +488,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG002](docs/rules/CFG002.md) | warn | `permissions.allow` grants unrestricted file-write — `Edit(*)`/`Write(*)` or bare `Edit`/`Write` | LLM03 |
 | [CFG040](docs/rules/CFG040.md) | warn | `permissions.allow` contains unrestricted `WebFetch` (bare / `domain:*`) — fetch-any-URL exfiltration channel | LLM03 |
 | [CFG023](docs/rules/CFG023.md) | error/warn | `permissions.allow` grants a dangerous command with wildcard args (`curl`/`sudo`/`npx`/shells → error; `find`/`sed`/`git`/interpreters/`ssh` → warn) | LLM03 |
-| [CFG025](docs/rules/CFG025.md) | error | custom org policy from `.cfgaudit.yml` violated (`require-deny` / `forbid-allow`) — inert unless a `policy:` is configured | LLM03 |
+| [CFG025](docs/rules/CFG025.md) | error | custom org policy from `.cfgaudit.yml` violated (`require-deny` / `forbid-allow`, or the agent-neutral `deny` checked against Claude Code and Devin CLI) — inert unless a `policy:` is configured | LLM03 |
 | [CFG004](docs/rules/CFG004.md) | error/warn/info | `defaultMode` set to `bypassPermissions` or `auto`, one level lower (`warn`/`info`) in the two repository-controlled scopes once the detected Claude Code stops honouring the value there (2.1.257 for bypass, already by 2.1.252 for auto); user scope and an undetected version keep `error`/`warn` | LLM03 |
 | [CFG085](docs/rules/CFG085.md) | error/warn | subagent frontmatter weakens the permission mode — `.claude/agents/*.md` `permissionMode: bypassPermissions`/`dontAsk` → error, `auto`/`acceptEdits` → warn; Grok `.grok/agents/*.md` flags only `bypassPermissions` (the sole mode Grok wires at spawn); qwen `.qwen/agents/*.md` `approvalMode: yolo` (or bridged `permissionMode: bypassPermissions`) → error, `auto-edit`/`auto` → warn (`dontAsk` bridges to `default`, inert) — CFG004's modes reached through a committed agent file | LLM03 |
 | [CFG079](docs/rules/CFG079.md) | error/warn | `autoMode` weakens the auto-mode permission classifier — a broad `allow` entry (`*`/`Bash(*)` → error) or a `soft_deny` array that drops the built-in defaults by omitting `"$defaults"` (→ warn) | LLM03 |
@@ -830,6 +847,7 @@ Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `Sessio
 | [CFG110](docs/rules/CFG110.md) | error/warn/info | a Claude Code settings `env` block sets an interpreter, linker, JVM, .NET or git variable that runs code (`BASH_ENV`, `LD_PRELOAD`, `DOTNET_STARTUP_HOOKS`, `JAVA_TOOL_OPTIONS` with `-javaagent`, a non-ssh `GIT_SSH_COMMAND`, a live `GIT_CONFIG_KEY_<n>` naming a command), or `CLAUDE_CODE_SHELL_PREFIX`: the block reaches every hook and Bash tool call. The same variables, plus Gemini's IDE stdio command, in a project `.gemini/.env`, which Gemini CLI loads unfiltered once the folder is trusted. `error` when the repository controls the value, `warn` for a committed git credential helper, `info` for a startup file outside the repository or a prefix in user settings | LLM03 |
 | [CFG111](docs/rules/CFG111.md) | error/info | a `permissions.deny` / `ask` entry or hook `matcher` holds an invisible character (zero-width, bidi control, NUL, soft hyphen, Tags block): Claude Code matches the text exactly, so the rule blocks nothing, the prompt never comes, or the hook never runs, with no warning, while the entry reads as correct in review. An allow rule with one only grants less (info). Line breaks and emoji joiners in saved rules are exempt | LLM03 |
 | [CFG117](docs/rules/CFG117.md) | warn | a Claude Code settings file defines the same key twice in one object (two top-level `"hooks"`, two `"deny"` under `permissions`): measured on 2.1.312 and 2.1.314, Claude Code keeps the last occurrence and ignores the others, so the one a reviewer reads first may not be in force. Other rules already judge the value in force; this one points at the ignored copy | LLM03 |
+| [CFG118](docs/rules/CFG118.md) | info | the agent-neutral `policy.deny` applies to an agent that reads permission rules from user settings only (Zed, Continue), so no committed file can enforce it for that agent — inert unless `policy.deny` is configured | LLM03 |
 | [CFG114](docs/rules/CFG114.md) | error/info | committed Copilot CLI project extension `.github/extensions/<name>/extension.{mjs,cjs,js}` (`info`: experimental and trust-gated), or committed OpenCode plugin or tool code: `.opencode/{plugin,plugins,tool,tools}/*.{ts,js}`. Measured on opencode 1.18.18, plugins run during any startup (a bare `opencode debug config`) and tools as soon as an agent loads, with no prompt, and OpenCode has no workspace trust step. cfgaudit does not analyse the code; the finding is the trigger, as for CFG047 and CFG086 | LLM04 |
 | [CFG115](docs/rules/CFG115.md) | warn | a config path in the scanned repository is a symbolic link, or runs through a linked directory, to a location outside it: the agent loads a file from the machine that checked the repository out. cfgaudit reports the link and does not read the target | LLM02 |
 | [CFG116](docs/rules/CFG116.md) | warn | a committed Claude Code instruction file (`CLAUDE.md`, `AGENTS.md`, `.claude/rules/…`, or a file they import) has an `@path` import that resolves outside the repository (`@~/…`, an absolute path elsewhere, `../` past the root): Claude Code loads that file from the reader's machine after a one-time approval, and nobody reviewing the repository sees it. cfgaudit does not read it | LLM01 |
@@ -876,7 +894,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM01_PromptInjection.md) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092, CFG113, CFG116 |
 | LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG058, CFG065, CFG068, CFG069, CFG071, CFG072, CFG073, CFG075, CFG078, CFG082, CFG088, CFG097, CFG099, CFG112, CFG115 |
-| LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG060, CFG061, CFG063, CFG064, CFG066, CFG076, CFG077, CFG079, CFG083, CFG085, CFG087, CFG090, CFG091, CFG093, CFG094, CFG095, CFG096, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG108, CFG109, CFG110, CFG111, CFG117 |
+| LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG060, CFG061, CFG063, CFG064, CFG066, CFG076, CFG077, CFG079, CFG083, CFG085, CFG087, CFG090, CFG091, CFG093, CFG094, CFG095, CFG096, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG108, CFG109, CFG110, CFG111, CFG117, CFG118 |
 | LLM04 | [Supply Chain](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM04_SupplyChain.md) | CFG010, CFG014, CFG052, CFG055, CFG059, CFG062, CFG067, CFG070, CFG074, CFG084, CFG086, CFG089, CFG098, CFG100, CFG102, CFG114 |
 
 The 2026 edition renumbered the list (#619): Excessive Agency moved from LLM06 to **LLM03** and Supply Chain from LLM03 to **LLM04**, while Prompt Injection and Sensitive Information Disclosure kept their numbers. LLM04:2026 also narrowed: it covers the model and data supply chain and refers agentic supply chain, *"including MCP servers and tool registries"*, to **ASI04 Agentic Supply Chain Vulnerabilities** in the [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/). The supply-chain rules keep LLM04 as their primary id and name ASI04 on an `**OWASP Agentic:**` line in their docs.

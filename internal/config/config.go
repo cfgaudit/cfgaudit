@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -115,17 +116,75 @@ func normalizeShellCheckCodes(codes []string) ([]string, error) {
 	return out, nil
 }
 
-// Policy is the organisation's custom permission policy (evaluated by CFG025):
-// commands that must be blocked by permissions.deny, and commands that must not
-// be grantable by permissions.allow.
+// Policy is the organisation's custom permission policy (evaluated by CFG025
+// and CFG118). RequireDeny and the list form of forbid-allow are written in
+// Claude Code's permission syntax and checked against .claude/settings.json.
+// Deny and the mapping form of forbid-allow are agent-neutral and checked
+// against every agent in Agents, or every agent with configuration in the
+// repository when Agents is empty (#1081).
 type Policy struct {
-	RequireDeny []string `yaml:"require-deny"`
-	ForbidAllow []string `yaml:"forbid-allow"`
+	RequireDeny []string    `yaml:"require-deny"`
+	ForbidAllow ForbidAllow `yaml:"forbid-allow"`
+	Deny        PolicyRules `yaml:"deny"`
+	Agents      []string    `yaml:"agents"`
 }
+
+// PolicyRules are agent-neutral policy entries, one list per category.
+type PolicyRules struct {
+	// Commands are shell commands matched by word prefix: "git push" covers
+	// "git push origin main" but not "git pushx".
+	Commands []string `yaml:"commands"`
+	// Read and Write are path globs relative to the repository, or to the home
+	// directory with a leading ~/.
+	Read  []string `yaml:"read"`
+	Write []string `yaml:"write"`
+	// Fetch are domains, optionally with a leading *. for every subdomain.
+	Fetch []string `yaml:"fetch"`
+	// MCPTools are server:tool pairs; the tool may be * or end in *.
+	MCPTools []string `yaml:"mcp-tools"`
+}
+
+// Empty reports whether no category has an entry.
+func (r PolicyRules) Empty() bool {
+	return len(r.Commands) == 0 && len(r.Read) == 0 && len(r.Write) == 0 && len(r.Fetch) == 0 && len(r.MCPTools) == 0
+}
+
+// forbidRules are the categories the neutral forbid-allow accepts. An overlap
+// between an allowed path glob and a forbidden one cannot be decided from the
+// strings, so read, write and fetch are not among them.
+type forbidRules struct {
+	Commands []string `yaml:"commands"`
+	MCPTools []string `yaml:"mcp-tools"`
+}
+
+// ForbidAllow is policy.forbid-allow: a list in Claude Code's permission
+// syntax, or a mapping of agent-neutral entries.
+type ForbidAllow struct {
+	Claude []string
+	PolicyRules
+}
+
+// UnmarshalYAML accepts a sequence (the Claude Code list) or a mapping.
+func (f *ForbidAllow) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.SequenceNode {
+		return node.Decode(&f.Claude)
+	}
+	var aux forbidRules
+	if err := node.Decode(&aux); err != nil {
+		return err
+	}
+	f.Commands, f.MCPTools = aux.Commands, aux.MCPTools
+	return nil
+}
+
+// PolicyAgents are the agent names policy.agents accepts. Agents that later
+// phases of #1081 will check are rejected rather than skipped, so a policy
+// never claims coverage cfgaudit does not provide.
+var PolicyAgents = []string{"claude-code", "devin", "zed", "continue"}
 
 // Configured reports whether any policy entries are set.
 func (p Policy) Configured() bool {
-	return len(p.RequireDeny) > 0 || len(p.ForbidAllow) > 0
+	return len(p.RequireDeny) > 0 || len(p.ForbidAllow.Claude) > 0 || !p.ForbidAllow.Empty() || !p.Deny.Empty()
 }
 
 // RuleConfig is a per-rule override. It accepts either the flat form
@@ -221,6 +280,8 @@ func parse(data []byte, path string) (*Config, error) {
 var (
 	topLevelKeys = yamlKeys(reflect.TypeOf(Config{}))
 	policyKeys   = yamlKeys(reflect.TypeOf(Policy{}))
+	denyKeys     = yamlKeys(reflect.TypeOf(PolicyRules{}))
+	forbidKeys   = yamlKeys(reflect.TypeOf(forbidRules{}))
 	ruleKeys     = yamlKeys(reflect.TypeOf(ruleMapping{}))
 )
 
@@ -270,7 +331,7 @@ func validate(doc *yaml.Node) (map[string]int, error) {
 			}
 		case "policy":
 			if val.Kind == yaml.MappingNode {
-				if err := checkKeys(val, policyKeys, "policy."); err != nil {
+				if err := checkPolicy(val); err != nil {
 					return nil, err
 				}
 			}
@@ -292,6 +353,91 @@ func validate(doc *yaml.Node) (map[string]int, error) {
 		}
 	}
 	return ruleLines, nil
+}
+
+// checkPolicy validates the policy mapping: its keys, the categories under
+// deny and the mapping form of forbid-allow, the agent names, and each neutral
+// entry (#1081).
+func checkPolicy(m *yaml.Node) error {
+	if err := checkKeys(m, policyKeys, "policy."); err != nil {
+		return err
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		key, val := m.Content[i].Value, deref(m.Content[i+1])
+		switch {
+		case key == "deny" && val.Kind == yaml.MappingNode:
+			if err := checkPolicyRules(val, denyKeys, "policy.deny."); err != nil {
+				return err
+			}
+		case key == "forbid-allow" && val.Kind == yaml.MappingNode:
+			if err := checkPolicyRules(val, forbidKeys, "policy.forbid-allow."); err != nil {
+				return err
+			}
+		case key == "agents" && val.Kind == yaml.SequenceNode:
+			for _, a := range val.Content {
+				a = deref(a)
+				if !slices.Contains(PolicyAgents, a.Value) {
+					return &configError{a.Line, fmt.Sprintf("policy.agents: %q is not an agent the policy can check yet (%s)", a.Value, strings.Join(PolicyAgents, ", "))}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// checkPolicyRules rejects an unknown category and an entry the category
+// cannot hold.
+func checkPolicyRules(m *yaml.Node, known map[string]bool, prefix string) error {
+	if err := checkKeys(m, known, prefix); err != nil {
+		return err
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		key, val := m.Content[i].Value, deref(m.Content[i+1])
+		if val.Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, e := range val.Content {
+			e = deref(e)
+			if e.Kind != yaml.ScalarNode {
+				continue
+			}
+			if msg := policyEntryProblem(key, e.Value); msg != "" {
+				return &configError{e.Line, fmt.Sprintf("%s%s: %q %s", prefix, key, e.Value, msg)}
+			}
+		}
+	}
+	return nil
+}
+
+// domainRe matches a domain name, optionally with a leading *. for every
+// subdomain.
+var domainRe = regexp.MustCompile(`^(?:\*\.)?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
+
+// policyEntryProblem says what is wrong with one neutral entry, or "".
+func policyEntryProblem(category, v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "is empty"
+	}
+	switch category {
+	case "commands":
+		if strings.ContainsAny(v, "*()") {
+			return "is not a plain command; commands match by word prefix, so write \"git push\" for every git push"
+		}
+	case "read", "write":
+		if strings.HasPrefix(v, "/") {
+			return "starts with /; write a path relative to the repository, or start it with ~/ for the home directory"
+		}
+	case "fetch":
+		if !domainRe.MatchString(v) {
+			return "is not a domain (example.com, or *.example.com for every subdomain)"
+		}
+	case "mcp-tools":
+		server, tool, ok := strings.Cut(v, ":")
+		if !ok || server == "" || tool == "" || strings.Contains(server, "*") || strings.Contains(strings.TrimSuffix(tool, "*"), "*") {
+			return "is not server:tool (the tool may be * or end in *)"
+		}
+	}
+	return ""
 }
 
 // deref follows a YAML alias to the node it names.

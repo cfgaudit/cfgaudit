@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/cfgaudit/cfgaudit/internal/config"
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
 	"github.com/cfgaudit/cfgaudit/internal/version"
@@ -346,9 +347,22 @@ type Target struct {
 	// Policy*, when set, carry the organisation's custom permission policy from
 	// .cfgaudit.yml (evaluated by CFG025). RequireDeny lists commands that must be
 	// covered by permissions.deny; ForbidAllow lists commands that must not be
-	// grantable by permissions.allow. Attached to the project-scope target only.
+	// grantable by permissions.allow. Attached to the project .claude/settings.json
+	// target only.
 	PolicyRequireDeny []string
 	PolicyForbidAllow []string
+
+	// PolicyAgent names the agent this target's permission file is checked as
+	// against the agent-neutral policy (#1081): "claude-code" for the project
+	// .claude/settings.json target, "devin" for .devin/config.json. PolicyDeny
+	// and PolicyForbid are the neutral entries; empty unless PolicyAgent is set.
+	PolicyAgent  string
+	PolicyDeny   config.PolicyRules
+	PolicyForbid config.PolicyRules
+
+	// PolicyUnenforceable lists the agents in the policy's scope that have no
+	// file in the repository a deny rule could be written to (CFG118).
+	PolicyUnenforceable []UnenforceableAgent
 
 	// ShellCheck enables CFG045 (running the shellcheck binary over command
 	// sites). Set by the CLI when --shellcheck / config requests it and the

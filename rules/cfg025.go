@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -27,9 +28,17 @@ func (r *cfg025) ID() string { return "CFG025" }
 // Inert unless a policy is attached (project-scope target only). Matching is
 // containment/overlap-aware so broader patterns subsume narrower ones
 // (e.g. Bash(git:*) covers Bash(git commit:*)).
+//
+// The agent-neutral policy (policy.deny and the mapping form of forbid-allow,
+// #1081) is checked against the permission file of each agent it applies to,
+// and a missing deny names the entry to add in that agent's syntax.
 func (r *cfg025) Check(t *Target) []finding.Finding {
-	if t == nil || (len(t.PolicyRequireDeny) == 0 && len(t.PolicyForbidAllow) == 0) {
+	if t == nil {
 		return nil
+	}
+	findings := checkNeutralPolicy(t)
+	if len(t.PolicyRequireDeny) == 0 && len(t.PolicyForbidAllow) == 0 {
+		return findings
 	}
 
 	var allow, deny []string
@@ -37,8 +46,6 @@ func (r *cfg025) Check(t *Target) []finding.Finding {
 		allow = t.Settings.Permissions.Allow
 		deny = t.effectiveDeny()
 	}
-
-	var findings []finding.Finding
 
 	for _, want := range t.PolicyRequireDeny {
 		target, ok := parsePerm(want)
@@ -70,6 +77,50 @@ func (r *cfg025) Check(t *Target) []finding.Finding {
 		}
 	}
 
+	return findings
+}
+
+// checkNeutralPolicy checks the agent-neutral policy against the permission
+// file of the agent t carries.
+func checkNeutralPolicy(t *Target) []finding.Finding {
+	sp, ok := policySpellings[t.PolicyAgent]
+	if !ok {
+		return nil
+	}
+	var file, note string
+	var allow, deny []string
+	switch t.PolicyAgent {
+	case "claude-code":
+		file, note = t.SettingsFile, discardedNote(t)
+		deny = t.effectiveDeny()
+		if t.Settings != nil && t.Settings.Permissions != nil && !t.discarded() {
+			allow = t.Settings.Permissions.Allow
+		}
+	case "devin":
+		file = t.DevinFile
+		if t.Devin != nil && t.Devin.Permissions != nil {
+			allow, deny = t.Devin.Permissions.Allow, t.Devin.Permissions.Deny
+		}
+	}
+
+	var findings []finding.Finding
+	add := func(msg string) {
+		findings = append(findings, finding.Finding{RuleID: "CFG025", Severity: finding.Error, File: file, Message: msg})
+	}
+	for _, c := range policyCategories {
+		for _, v := range c.entries(t.PolicyDeny) {
+			if !slices.ContainsFunc(deny, func(e string) bool { return sp.covers(c.key, e, v) }) {
+				add("policy deny." + c.key + " \"" + v + "\": no permissions.deny entry covers it, so " + sp.name +
+					" does not block it; add \"" + sp.spell(c.key, v) + "\"" + note)
+			}
+		}
+		for _, v := range c.entries(t.PolicyForbid) {
+			if i := slices.IndexFunc(allow, func(e string) bool { return sp.overlaps(c.key, e, v) }); i >= 0 {
+				add("policy forbid-allow." + c.key + " \"" + v + "\": permissions.allow grants it via \"" + allow[i] +
+					"\", so " + sp.name + " runs it without asking")
+			}
+		}
+	}
 	return findings
 }
 
