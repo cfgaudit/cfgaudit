@@ -36,6 +36,48 @@ func TestCFG051_BroadGrants(t *testing.T) {
 	}
 }
 
+func TestCFG051_ScalarToolSpecs(t *testing.T) {
+	cases := []struct {
+		name, fm string
+		sev      finding.Severity
+	}{
+		{"scoped-nx", "allowed-tools: Bash(pnpm exec nx:*)", ""},
+		{"scoped-git", "allowed-tools: Bash(git -C * status)", ""},
+		{"scoped-list", "allowed-tools: Read, Bash(git log *), Bash(gh pr edit * --add-label *)", ""},
+		{"bare-bash", "allowed-tools: Read Bash", finding.Warn},
+		{"bash-star", "allowed-tools: Bash(*)", finding.Warn},
+		{"all-list", "allowed-tools: [\"*\"]", finding.Error},
+		{"scoped-and-all", "allowed-tools: Bash(git log *), *", finding.Error},
+		{"unclosed-scope", "allowed-tools: Bash(git log, *", finding.Error},
+		{"spaced-bash-star", "allowed-tools: Bash( * )", finding.Warn},
+		{"bash-double-star", "allowed-tools: Bash(**)", finding.Warn},
+		{"bash-spaced-stars", "allowed-tools: Bash(* *)", finding.Warn},
+		{"exec-spaced-stars", "allowed-tools: Exec(* *)", finding.Warn},
+		{"bash-three-stars", "allowed-tools: Bash(* * *)", finding.Warn},
+		{"bash-colon-pattern", "allowed-tools: Bash(*:*)", ""},
+		{"bash-git-pattern", "allowed-tools: Bash(git *)", ""},
+		{"all-with-unclosed-deny", "allowed-tools: \"*\"\ndisallowed-tools: Bash(rm *", finding.Error},
+		{"bash-with-scalar-denies", "allowed-tools: Bash\ndisallowed-tools: Read, Bash", ""},
+		{"all-with-scoped-deny", "allowed-tools: \"*\"\ndisallowed-tools: Bash(rm *)", finding.Error},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			content := "---\ndescription: x\n" + c.fm + "\n---\nbody\n"
+			f := CFG051.Check(&Target{InstructionFile: ".claude/skills/deploy/SKILL.md", InstructionContent: content})
+			wantCount := 0
+			if c.sev != "" {
+				wantCount = 1
+			}
+			if len(f) != wantCount {
+				t.Fatalf("expected %d findings, got %+v", wantCount, f)
+			}
+			if len(f) == 1 && f[0].Severity != c.sev {
+				t.Errorf("expected severity %s, got %s", c.sev, f[0].Severity)
+			}
+		})
+	}
+}
+
 func TestCFG051_DisallowedCancels(t *testing.T) {
 	content := "---\ndescription: x\nallowed-tools: Bash, Read\ndisallowed-tools: Bash\n---\nbody\n"
 	if f := CFG051.Check(instructionTarget(".claude/commands/c.md", content)); len(f) != 0 {
