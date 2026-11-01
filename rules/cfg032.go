@@ -36,7 +36,7 @@ var authorityTags = map[string]bool{
 // everything else (template placeholders like <FILL>/<TASK>/<ISO>/<UUID>, field
 // names, HTML tags) is ignored, which keeps false positives low on real docs.
 var authoritySuspiciousWords = map[string]bool{
-	"MANDATORY": true, "REQUIRED": true, "FORCE": true, "FORCED": true,
+	"MANDATORY": true, "FORCE": true, "FORCED": true,
 	"OVERRIDE": true, "BYPASS": true, "ENFORCE": true, "ELEVATED": true,
 	"PRIVILEGED": true, "SUPERUSER": true, "UNRESTRICTED": true, "UNLIMITED": true,
 	"NOAUTH": true, "NOPROMPT": true, "FULLACCESS": true,
@@ -58,7 +58,7 @@ var (
 // matches are still reported.
 // exampleUserTurnRe matches a paragraph that opens an example dialogue turn
 // with "User:".
-var exampleUserTurnRe = regexp.MustCompile(`^(?:User|Me|Customer|Developer):\s`)
+var exampleUserTurnRe = regexp.MustCompile(`^(?:User|Me|Customer|Developer):(?:\s|$)`)
 
 // exampleDialogueTurn reports whether the "Assistant:" boundary at off answers
 // a "User:" paragraph, the shape of an example conversation in a skill
@@ -77,6 +77,10 @@ func exampleDialogueTurn(c string, off int) bool {
 		start++
 	}
 	for _, line := range strings.Split(strings.TrimLeft(prev[start:], "\n"), "\n") {
+		line = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), ">"))
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			continue
+		}
 		if exampleOpenerRe.MatchString(line) {
 			continue
 		}
@@ -112,6 +116,15 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 		// Part A — all-caps tags
 		for _, m := range allCapsTagRe.FindAllStringSubmatchIndex(c, -1) {
 			tag := c[m[2]:m[3]]
+			lineStart := strings.LastIndex(c[:m[0]], "\n") + 1
+			lineEnd := strings.IndexByte(c[m[1]:], '\n')
+			if lineEnd < 0 {
+				lineEnd = len(c) - m[1]
+			}
+			line := c[lineStart : m[1]+lineEnd]
+			if insideCodeSpan(line, []int{m[0] - lineStart, m[1] - lineStart}) || placeholderJoinedRe.MatchString(c[max(0, m[0]-40):min(len(c), m[1]+40)]) {
+				continue
+			}
 			switch {
 			case authorityTags[tag]:
 				add(m[0], finding.Error, "contains pseudo-system authority tag \"<"+tag+">\" (Part A) — invented markup claiming system-level authority; remove it")
@@ -151,6 +164,8 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 	}
 	return findings
 }
+
+var placeholderJoinedRe = regexp.MustCompile(`<[^>]+>[-_]<[^>]+>`)
 
 func hasAuthoritySegment(tag string) bool {
 	for _, seg := range strings.Split(tag, "_") {
