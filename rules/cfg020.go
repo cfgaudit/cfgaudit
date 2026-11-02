@@ -199,9 +199,42 @@ func codeExecEnvHits(env map[string]string, gateSearchPath bool) []envHit {
 // startup — a dynamic-linker shared library, or an interpreter startup
 // file/flag (CVE-2026-44995). Covers both settings.json mcpServers and the
 // project .mcp.json.
+// envNameShellRe matches shell syntax in an environment variable name: a
+// substitution, a backtick, a command separator, a redirection or a line
+// break. A commented-out key ("#DEBUG") or a Windows name such as
+// ProgramFiles(x86) has none; the one corpus hit of a stricter
+// [A-Za-z_][A-Za-z0-9_]* check was such a "#" key.
+var envNameShellRe = regexp.MustCompile("\\$[({]|`|[;|&<>\\n]")
+
+// invalidEnvNames reports the keys of an env block that carry shell syntax
+// (#996): a key such as ZED$(touch /tmp/marker) ran when Zed built the
+// command (CVE-2026-44461). No agent needs such a name.
+func invalidEnvNames(where, file string, env map[string]string) []finding.Finding {
+	var out []finding.Finding
+	for _, k := range sortedKeys(env) {
+		if !envNameShellRe.MatchString(k) {
+			continue
+		}
+		out = append(out, finding.Finding{RuleID: "CFG020", Severity: finding.Error, File: file, Key: where,
+			Message: where + " has the key " + strconv.Quote(k) + ", an environment variable name with shell syntax in it — it runs when an agent builds the command line from it (Zed, CVE-2026-44461). Use a plain NAME"})
+	}
+	return out
+}
+
 func (r *cfg020) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
+	if t.Settings != nil {
+		findings = append(findings, invalidEnvNames("env", t.SettingsFile, t.Settings.Env)...)
+	}
+	if zs := t.ZedSettings; zs != nil {
+		for _, name := range sortedKeys2(zs.LSP) {
+			if b := zs.LSP[name].Binary; b != nil {
+				findings = append(findings, invalidEnvNames("lsp."+name+".binary.env", t.ZedSettingsFile, b.Env)...)
+			}
+		}
+	}
 	for _, ref := range t.mcpServerRefs() {
+		findings = append(findings, invalidEnvNames("mcpServers."+ref.Name+".env", ref.File, ref.Server.Env)...)
 		for _, hit := range codeExecEnvHits(ref.Server.Env, false) {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG020",
