@@ -32,6 +32,8 @@ The subcommands `explain` and `list` print rule documentation and the rule list.
 
 Every read of repository content goes through `internal/scanroot`. A path under the scanned directory whose real location is outside it (a committed symbolic link, or a path through a linked directory) is not opened; it is reported by CFG115. Paths the user names outside the scan (`--user`, `--config`, `--plugins`) are read as given.
 
+A path that is absent under the spelling discovery asks for is looked up under other spellings of its components, as macOS and Windows open it by default: an agent there reads `.Cursor/mcp.json` as its `.cursor/mcp.json` (#990). A component with more than one other spelling is left alone. Findings in such a file name the committed spelling and say that only a case-insensitive filesystem maps it.
+
 The scanner makes no network connections.
 
 ## Release pipeline

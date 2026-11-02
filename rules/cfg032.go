@@ -144,6 +144,27 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 			add(loc[0], finding.Warn, "contains a foreign-LLM control token \""+c[loc[0]:loc[1]]+"\" (Part C) — harmless to the agent's tokenizer, but a strong sign the file was adapted from a multi-model attack payload")
 		}
 
+		// Part D — forged prompt boundaries and bracket role tags that carry
+		// an instruction (#1005)
+		lineStart := 0
+		for _, line := range strings.Split(c, "\n") {
+			if loc := forgedBoundaryRe.FindStringIndex(line); loc != nil {
+				sev := finding.Error
+				if quotedAt(line, loc[0]) {
+					sev = finding.Warn
+				}
+				add(lineStart+loc[0], sev, "contains a forged prompt boundary \""+line[loc[0]:loc[1]]+"\" (Part D) — it tells the model the trusted prompt has ended and a new one begins; remove it")
+			}
+			if m := bracketRoleRe.FindStringSubmatchIndex(line); m != nil && bracketInstruction(line[m[1]:]) {
+				sev := finding.Error
+				if quotedAt(line, m[0]) {
+					sev = finding.Warn
+				}
+				add(lineStart+m[0], sev, "contains the role tag \""+line[m[2]:m[3]]+"\" followed by an instruction (Part D) — invented markup that claims system or admin authority for the text after it; remove it")
+			}
+			lineStart += len(line) + 1
+		}
+
 		sort.SliceStable(srcFindings, func(i, j int) bool {
 			if srcFindings[i].Line != srcFindings[j].Line {
 				return srcFindings[i].Line < srcFindings[j].Line
@@ -153,6 +174,27 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 		findings = append(findings, srcFindings...)
 	}
 	return findings
+}
+
+// forgedBoundaryRe matches a forged prompt boundary in capitals: "--- END OF
+// SYSTEM PROMPT ---", "=== BEGIN NEW SYSTEM INSTRUCTIONS ===", "[USER INPUT
+// ENDS HERE]". Capitals only, since "at the end of the system prompt" is how
+// prompt-engineering docs describe a position (#1005).
+var forgedBoundaryRe = regexp.MustCompile(`\b(?:(?:END|BEGIN|START)\s+(?:OF\s+)?(?:THE\s+)?(?:NEW\s+|REAL\s+|ACTUAL\s+)?(?:SYSTEM\s+PROMPT|SYSTEM\s+INSTRUCTIONS?|SYSTEM\s+MESSAGE|USER\s+INPUT|DEVELOPER\s+INSTRUCTIONS?)|(?:SYSTEM\s+PROMPT|USER\s+INPUT|SYSTEM\s+INSTRUCTIONS?)\s+(?:ENDS|BEGINS|STARTS)\s+HERE)\b`)
+
+// bracketRoleRe matches a bracket role tag: [SYSTEM], [ADMIN], [HIDDEN
+// INSTRUCTION], [INSTRUCTION], {{SYSTEM}}, in any case.
+var bracketRoleRe = regexp.MustCompile(`(?i)(\[(?:system|admin|administrator|instructions?|hidden(?:\s+(?:instructions?|prompt|directive))?|developer|override)\]|\{\{\s*system\s*\}\})\s*:?`)
+
+// bracketImperativeRe is an instruction after a bracket role tag: "you", or an
+// imperative verb that has the agent act or change its rules.
+var bracketImperativeRe = regexp.MustCompile(`(?i)^\s*(?:you\b|ignore|disregard|forget|skip|bypass|override|disable|proceed|continue|upload|send|post|email|forward|exfiltrate|run|execute|delete|remove|install|download|fetch|read|print|reveal|output|write|grant|approve|allow|always|never|do\b|don'?t|from\s+now\s+on|the\s+(?:user|assistant)\s+(?:is|has)|new\s+instructions?)`)
+
+// bracketInstruction reports whether the text after a bracket role tag is an
+// instruction. A template placeholder ("[System]: [Integration path →
+// reason]") or a bare label is not.
+func bracketInstruction(rest string) bool {
+	return bracketImperativeRe.MatchString(rest)
 }
 
 func hasAuthoritySegment(tag string) bool {
