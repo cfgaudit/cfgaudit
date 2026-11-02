@@ -49,7 +49,12 @@ var bypassPatterns = []bypassPattern{
 	// only fired when the qualifier followed the verb directly. It is a closed set
 	// on purpose — a generic `(?:\s+\w+){0,3}` filler would drag in benign prose,
 	// because the noun list carries broad words (data, content, context, text).
-	{1, mustFiltered(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
+	{1, mustFiltered(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|override|discard|supersede|set aside|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
+		finding.Error, "instruction override", false},
+	// The same override aimed at the rules the agent works under, which needs
+	// the qualifier: "disregard all earlier guardrails", "ignore your previous
+	// rules", but not "ignore the lint rules for generated files" (#993).
+	{1, mustFiltered(`(?i)\b(ignore|disregard|forget|bypass|override|discard|supersede|set aside)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial|original|existing|system)\s+(rules|guardrails|guidelines|safeguards|policies|safety\s+rules)\b`),
 		finding.Error, "instruction override", false},
 	// Pattern 2 targets hijacking of Claude's own identity. Bare "act as <role>" /
 	// "pretend you are <role>" are the standard, legitimate way to define a skill's
@@ -81,6 +86,21 @@ var bypassPatterns = []bypassPattern{
 		finding.Error, "authority impersonation", false},
 	{4, mustFiltered(`(?i)\b(in\s+a\s+(fictional|hypothetical|alternate|imaginary)\s+(world|scenario|universe|context|story)|for\s+a\s+(story|novel|game|roleplay|simulation)\b|for\s+(roleplay|fiction)\b|hypothetically\s+speaking|in\s+this\s+(roleplay|scenario|simulation),?\s+(you\s+(can|may|should|must|are\s+allowed)))`),
 		finding.Warn, "permissive fictional / hypothetical framing", true},
+	// Pattern 5 is pattern 1 in other languages (#993): the canonical
+	// "ignore all previous instructions" in German, Spanish, French, Russian,
+	// Chinese, Japanese and Korean. One verb, qualifier and noun each.
+	{5, mustFiltered(`(?i)(?:\b(?:ignoriere|ignorieren\s+sie|vergiss|vergessen\s+sie)\s+(?:alle\s+)?(?:vorherigen|bisherigen|fr[üu]heren|obigen|vorigen)\s+(?:anweisungen|instruktionen|befehle|regeln)` +
+		`|\b(?:ignora|ignore|olvida)\s+(?:todas\s+)?las\s+(?:instrucciones|[óo]rdenes|reglas)\s+(?:anteriores|previas)` +
+		`|\b(?:ignore[sz]?|oublie[sz]?)\s+(?:toutes\s+)?les\s+(?:instructions|consignes|r[èe]gles)\s+(?:pr[ée]c[ée]dentes|ant[ée]rieures))`),
+		finding.Error, "instruction override (non-English)", false},
+	// Russian, Chinese, Japanese and Korean have no ASCII literal for the
+	// prefilter to derive, so this one has no filter and runs only on lines
+	// with a non-ASCII character.
+	{5, filteredRegexp{Regexp: regexp.MustCompile(`(?i)(?:(?:игнорируй|игнорируйте|забудь|забудьте)\s+(?:все\s+)?(?:предыдущие|прежние)\s+(?:инструкции|указания|правила)` +
+		`|(?:忽略|无视|忽視|無視)(?:所有|全部)?(?:之前|以上|先前|上面|以前)的?(?:所有|全部)?(?:指令|说明|說明|指示|命令|规则)` +
+		`|(?:以前|これまで|上記|前)の(?:すべての|全ての)?(?:指示|命令|ルール)を(?:すべて|全て)?無視` +
+		`|이전의?\s*(?:모든\s*)?(?:지시|지침|명령)(?:사항)?(?:을|를)?\s*(?:모두\s*)?무시)`)},
+		finding.Error, "instruction override (non-English)", false},
 }
 
 // Check scans CLAUDE.md line by line for prompt-injection phrase classes. Patterns
@@ -103,10 +123,23 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				continue
 			}
 			for _, p := range bypassPatterns {
-				if p.skipCode && inFence {
+				if (p.skipCode && inFence) || (p.re.filter == nil && isASCII(line)) {
 					continue
 				}
+				line := line
 				sm := p.re.FindStringSubmatchIndex(line)
+				if sm == nil && (p.num == 1 || p.num == 5) {
+					// An override wrapped onto the next line of the paragraph
+					// (#993): matched on the joined text when the match starts
+					// on this line and ends on the next.
+					if joined, ok := wrappedLine(lines, i); ok {
+						// Pattern 1 needs its qualifier here: "Ignore / the
+						// input that opened the prompt" is not an override.
+						if m := p.re.FindStringSubmatchIndex(joined); m != nil && m[0] < len(line) && m[1] > len(line) && (p.num == 5 || m[4] >= 0) {
+							line, sm = joined, m
+						}
+					}
+				}
 				if sm == nil {
 					continue
 				}
@@ -144,13 +177,16 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					}
 					sev = finding.Warn
 				}
-				if p.num == 1 || p.num == 2 {
-					if quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0]) {
+				if p.num == 1 || p.num == 2 || p.num == 5 {
+					if (quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0])) && !linkTitleAt(line, loc[0]) {
 						if defensiveContext(lines, i) || askAgentQuoteRe.MatchString(line[:loc[0]]) {
 							continue
 						}
 						sev = finding.Warn
-						if defensiveBlock(lines, i) {
+						// A quoted override in another language had a defensive
+						// rule around it in every corpus case, written in that
+						// language, which defensiveContext does not read.
+						if defensiveBlock(lines, i) || p.num == 5 {
 							sev = finding.Info
 						}
 					}
@@ -205,6 +241,7 @@ func inInlineCode(line string, idx int) bool {
 // match without one.
 var overrideOnlyQualified = map[string]bool{
 	"skip": true, "omit": true, "neglect": true, "overlook": true,
+	"override": true, "discard": true, "supersede": true, "set aside": true,
 	"do not follow": true, "do not obey": true,
 }
 
@@ -218,6 +255,32 @@ func quotedAt(line string, idx int) bool {
 	pre := line[:idx]
 	return strings.Count(pre, "\"")%2 == 1 || strings.Count(pre, "`")%2 == 1 ||
 		strings.Count(pre, "\u201c") > strings.Count(pre, "\u201d")
+}
+
+// wrappedLine returns line i joined with the next line when the sentence
+// continues there: line i does not end a sentence, and the next line is
+// neither blank, a list item, a heading nor a fence.
+func wrappedLine(lines []string, i int) (string, bool) {
+	cur := strings.TrimRight(lines[i], " \t")
+	if i+1 >= len(lines) || cur == "" || strings.HasSuffix(cur, ".") || strings.HasSuffix(cur, ":") || strings.HasSuffix(cur, "!") || strings.HasSuffix(cur, "?") {
+		return "", false
+	}
+	next := strings.TrimSpace(lines[i+1])
+	if next == "" || isFenceDelimiter(next) || strings.HasPrefix(next, "#") || strings.HasPrefix(next, "- ") || strings.HasPrefix(next, "* ") || strings.HasPrefix(next, "|") {
+		return "", false
+	}
+	return cur + " " + next, true
+}
+
+// linkTitleRe matches the start of a Markdown link or image title up to the
+// text: `[docs](https://x "` or `![logo](logo.png '`.
+var linkTitleRe = regexp.MustCompile(`!?\[[^\]]*\]\([^)\s]+\s+["']([^"')]*)$`)
+
+// linkTitleAt reports whether idx is inside the title of a Markdown link or
+// image. The title renders only as a tooltip, so text there is hidden from
+// the reader rather than cited, and keeps its severity (#993).
+func linkTitleAt(line string, idx int) bool {
+	return linkTitleRe.MatchString(line[:idx])
 }
 
 // openingQuoteBefore reports a quote right before idx, which opens a quoted
