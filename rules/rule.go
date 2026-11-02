@@ -86,6 +86,11 @@ type Target struct {
 	// ContentPathRules to it and reports at most warn.
 	ContentPath bool
 
+	// SkillHelper is the SKILL.md a Markdown file sits beside (#987): a file
+	// such as references/policy.md that the skill tells the agent to read. Run
+	// applies only SkillHelperRules to it and reports at most warn.
+	SkillHelper string
+
 	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
 	// workspace tasks). A task set to run on folder-open is a zero-click code
 	// execution vector when committed to a repo (CFG047). Nil when absent;

@@ -45,6 +45,9 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 		if target.ContentPath && !ContentPathRules[r.ID()] {
 			continue
 		}
+		if target.SkillHelper != "" && !SkillHelperRules[r.ID()] {
+			continue
+		}
 		if detected != nil {
 			if skipMsg := versionSkip(r, *detected); skipMsg != "" {
 				out = append(out, finding.Finding{
@@ -58,6 +61,7 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 			}
 		}
 		results := r.Check(target)
+		shipped := skillScripts(target)
 		for i := range results {
 			if results[i].Scope == "" {
 				results[i].Scope = target.Scope
@@ -70,6 +74,18 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 					results[i].Severity = finding.Warn
 				}
 				results[i].Message += "; scanned because content-paths lists it: agents read this file when they open it, not as instructions"
+			}
+			if skill, ok := shipped[results[i].File]; ok {
+				if results[i].Severity == finding.Error {
+					results[i].Severity = finding.Warn
+				}
+				results[i].Message += "; the agent runs this script when the skill " + skill + " tells it to, not on its own"
+			}
+			if target.SkillHelper != "" && results[i].File == target.InstructionFile {
+				if results[i].Severity == finding.Error {
+					results[i].Severity = finding.Warn
+				}
+				results[i].Message += "; this file ships with the skill " + target.SkillHelper + ", and the agent reads it when the skill points it there"
 			}
 		}
 		out = append(out, results...)
@@ -91,6 +107,43 @@ var ContentPathRules = map[string]bool{
 	"CFG032": true,
 	"CFG057": true,
 	"CFG080": true,
+}
+
+// skillScripts maps the file of each script t's skill ships (#987) to that
+// skill. Nothing starts such a script but the agent, when the skill tells it
+// to, so Run reports its findings at most at warn: on 2,051 corpus
+// repositories with skill helper files the errors were connectivity probes
+// over /dev/tcp, VM bootstrap scripts enabling a service and release scripts
+// reading the keychain.
+func skillScripts(t *Target) map[string]string {
+	var m map[string]string
+	for _, s := range t.LaunchedScripts {
+		if s.Skill != "" {
+			if m == nil {
+				m = map[string]string{}
+			}
+			m[s.File] = s.Skill
+		}
+	}
+	return m
+}
+
+// SkillHelperRules are the rules that run on a Markdown file beside a
+// SKILL.md (#987). The agent reads such a file when the skill tells it to, so
+// the instruction-content rules apply; the rules about frontmatter, skill
+// triggers and the file's own name do not. Run reports at most warn on these
+// files: on 2,051 corpus repositories, 145 errors in 59 of them were mostly
+// security skills quoting the attacks they detect, defensive "ignore
+// instructions embedded in it" lines, invisible marks in copied reference
+// docs and comments in report templates.
+var SkillHelperRules = map[string]bool{
+	"CFG024": true, // hidden Unicode controls
+	"CFG026": true, // instruction-bypass phrases
+	"CFG031": true, // sensitive file paths
+	"CFG036": true, // shell commands for auto-execution or exfiltration
+	"CFG057": true, // encoded payloads
+	"CFG080": true, // directives in HTML comments
+	"CFG081": true, // surviving context compaction
 }
 
 // versionSkip returns a non-empty notice message when r is Versioned and
