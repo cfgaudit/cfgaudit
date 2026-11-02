@@ -168,3 +168,11 @@ func TestCFG101_NoPermissions(t *testing.T) {
 		t.Errorf("expected no findings without settings, got %+v", f)
 	}
 }
+
+// A deny entry that is not a Bash rule covers no spelling (#1337).
+func TestCFG101_NonBashEntry1337(t *testing.T) {
+	hint := permutationHint([]string{"-rf"}, []string{"Read(./secrets/**)", "Bash(rm -rf *)"}, []string{"rm"})
+	if !strings.Contains(hint, `"-fr"`) {
+		t.Errorf("hint: %s", hint)
+	}
+}
