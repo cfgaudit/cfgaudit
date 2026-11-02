@@ -85,7 +85,7 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 		for _, re := range greedyTriggerRes {
 			if loc := re.FindString(tf.text); loc != "" {
 				// A relative clause after the interaction noun scopes the trigger.
-				rest := tf.text[strings.Index(strings.`oLower(tf.text), strings.`oLower(loc))+len(loc):]
+				rest := tf.text[strings.Index(strings.ToLower(tf.text), strings.ToLower(loc))+len(loc):]
 				narrowed := regexp.MustCompile(`(?i)^\s+(?:to|that|which|whose|involving|about|against|mentioning|related(?:\s+to)?|or question involving)\b`).MatchString(rest)
 				if narrowed {
 					continue
