@@ -347,6 +347,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// the scanning machine, used to stop the scan, turn into CFG109, or be
 	// skipped without a word (#1043). The scan now covers everything else and
 	// names every such path; exit 2 because the result is incomplete.
+	if links := scanroot.DanglingLinks(); len(links) > 0 {
+		verb := "points to a missing file and was"
+		if len(links) > 1 {
+			verb = "point to a missing file and were"
+		}
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %d symbolic %s %s skipped as absent:\n", len(links), pluralize("link", len(links)), verb)
+		for _, p := range links {
+			_, _ = fmt.Fprintf(stderr, "  %s\n", p)
+		}
+	}
 	if len(readErrs) > 0 {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: could not read %d %s, results are incomplete:\n", len(readErrs), pluralize("path", len(readErrs)))
 		for _, p := range readErrs {
@@ -698,7 +708,7 @@ var unreadable []unreadableFile
 // stays a hard error.
 func skipUnreadable(path string, err error) {
 	if scanroot.IsDanglingLink(path) {
-		return // already on the could-not-read list (#1189)
+		return // a dangling link reads as absent and is named on stderr (#1363)
 	}
 	unreadable = append(unreadable, unreadableFile{path: path, reason: unreadableReason(path, err)})
 }
