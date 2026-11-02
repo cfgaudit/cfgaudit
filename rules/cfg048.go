@@ -242,6 +242,7 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkTerminal(t)...)
 	findings = append(findings, r.checkPromptOverride(t)...)
 	findings = append(findings, r.checkFixedKeys(t)...)
+	findings = append(findings, r.checkRooAllowedCommands(t)...)
 	return findings
 }
 
