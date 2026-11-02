@@ -30,7 +30,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | [CFG007](CFG007.md) | error | `env` block or a `permissions` entry contains a hardcoded secret (vendor key prefix or `*_TOKEN`/`*_SECRET`/...) | LLM02 |
 | [CFG073](CFG073.md) | error | `env`/MCP `env`/`headers` value is a hardcoded cryptocurrency signing credential — Ethereum private key (`0x`+64 hex) or BIP-39 seed phrase — which **cannot be rotated**; CFG054's entropy heuristic misses both | LLM02 |
 | [CFG008](CFG008.md) | error | command matches a reverse-shell pattern (`/dev/tcp/`, `nc -e`, `bash -i …`, `mkfifo`, `socat exec`) — scans hooks, credential/runtime helpers, and MCP `headersHelper` | LLM03 |
-| [CFG009](CFG009.md) | warn/error | command interpolates a shell variable (`$VAR` / `${VAR}`) — attacker-influenced data may reach a shell; escalates to `error` at user scope | LLM01 |
+| [CFG009](CFG009.md) | info/warn/error | command interpolates a shell variable (`$VAR` / `${VAR}`) — attacker-influenced data may reach a shell; escalates to `error` at user scope | LLM01 |
 | [CFG012](CFG012.md) | error / warn | `settings.json` holds a top-level value whose type contradicts the bundled SchemaStore schema, or a `PreToolUse`/`PermissionRequest` hook entry Claude Code cannot load, either of which makes it discard the whole file (`error`), or an unknown top-level key, which it tolerates (`warn`) | LLM02 |
 | [CFG013](CFG013.md) | warn | `.claude/settings.local.json` or `CLAUDE.local.md` exists in the repo but is not excluded by `.gitignore` | LLM02 |
 | [CFG014](CFG014.md) | error | command pipes `curl`/`wget` output directly into a shell or interpreter (remote code execution) | LLM04 |

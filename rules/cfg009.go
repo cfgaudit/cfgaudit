@@ -63,10 +63,10 @@ var dateFormatRe = regexp.MustCompile(`(?:^|\s)['"]?\+%\S*`)
 // These names are commonly guessed by hook authors, but Claude Code
 // exposes hook input on stdin rather than setting these variables (#1198).
 var undefinedClaudeHookVars = map[string]bool{
-	"$CLAUDE_TOOL_INPUT": true,
-	"$CLAUDE_FILE_PATH": true,
-	"$CLAUDE_FILE_PATHS": true,
-	"$TOOL_INPUT_FILE_PATH": true,
+	"$CLAUDE_TOOL_INPUT":         true,
+	"$CLAUDE_FILE_PATH":          true,
+	"$CLAUDE_FILE_PATHS":         true,
+	"$TOOL_INPUT_FILE_PATH":      true,
 	"$CLAUDE_TOOL_ARG_file_path": true,
 }
 
@@ -91,9 +91,9 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 		}
 		if len(nonExistent) > 0 {
 			findings = append(findings, finding.Finding{
-				RuleID: "CFG009",
+				RuleID:   "CFG009",
 				Severity: finding.Info,
-				File: site.File,
+				File:     site.File,
 				Message: site.Label + " references " + strings.Join(nonExistent, ", ") +
 					" — Claude Code does not provide these hook variables; read the hook JSON from stdin instead" + userScopeNote(t),
 			})

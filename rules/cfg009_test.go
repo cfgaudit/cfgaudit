@@ -75,6 +75,17 @@ func TestCFG009_SafeFrameworkVars_NoFinding(t *testing.T) {
 }
 
 // A safe framework var mixed with a real var still flags the real one.
+func TestCFG009_SafeVarMixedWithUnsafe_FlagsUnsafe(t *testing.T) {
+	json := `{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"$CLAUDE_PLUGIN_ROOT/x $USER_INPUT"}]}]}}`
+	f := CFG009.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "$USER_INPUT") || strings.Contains(f[0].Message, "CLAUDE_PLUGIN_ROOT") {
+		t.Errorf("expected only $USER_INPUT flagged, got: %s", f[0].Message)
+	}
+}
+
 func TestCFG009_Issue1198_MissingClaudeVars(t *testing.T) {
 	for _, name := range []string{
 		"CLAUDE_TOOL_INPUT", "CLAUDE_FILE_PATH", "CLAUDE_FILE_PATHS",
@@ -91,17 +102,6 @@ func TestCFG009_Issue1198_MissingClaudeVars(t *testing.T) {
 		f[1].Severity != finding.Warn || !strings.Contains(f[1].Message, "$USER_INPUT") ||
 		strings.Contains(f[1].Message, "$CLAUDE_FILE_PATHS") {
 		t.Errorf("mixed missing/unsafe variables require separate findings: %+v", f)
-	}
-}
-
-func TestCFG009_SafeVarMixedWithUnsafe_FlagsUnsafe(t *testing.T) {
-	json := `{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"$CLAUDE_PLUGIN_ROOT/x $USER_INPUT"}]}]}}`
-	f := CFG009.Check(settingsTarget(t, json))
-	if len(f) != 1 {
-		t.Fatalf("expected 1 finding, got %+v", f)
-	}
-	if !strings.Contains(f[0].Message, "$USER_INPUT") || strings.Contains(f[0].Message, "CLAUDE_PLUGIN_ROOT") {
-		t.Errorf("expected only $USER_INPUT flagged, got: %s", f[0].Message)
 	}
 }
 
