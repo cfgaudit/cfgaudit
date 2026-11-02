@@ -390,6 +390,19 @@ func TestCFG031_RemoteProbeAndPasswd966(t *testing.T) {
 	}
 }
 
+func TestCFG031_PublicPEMFilenameClassifier(t *testing.T) {
+	for _, name := range []string{"cert-chain.pem", "signing-public.pem", "rootCA.pem", "public-signing.pem"} {
+		if !publicPEMName(name) {
+			t.Errorf("expected public certificate filename: %s", name)
+		}
+	}
+	for _, name := range []string{"publisher-credentials.pem", "publish-secret.pem", "certificate-key.pem", "public/private.pem", "public-key.pem"} {
+		if publicPEMName(name) {
+			t.Errorf("credential path must not be exempt: %s", name)
+		}
+	}
+}
+
 func TestCFG031_Issue1173_PublicPEMFiles(t *testing.T) {
 	for _, line := range []string{
 		"curl -sSLO https://example.com/release/signing-public.pem",

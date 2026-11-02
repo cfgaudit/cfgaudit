@@ -185,8 +185,13 @@ func publicPEMName(full string) bool {
 	if strings.Contains(stem, "key") || strings.Contains(stem, "priv") {
 		return false
 	}
-	for _, marker := range []string{"public", "pub", "cert", "chain", "rootca"} {
-		if strings.Contains(stem, marker) {
+	// Match filename components, not fragments: publisher-token.pem and
+	// certificate-key.pem must never receive a public-certificate exemption.
+	for _, component := range strings.FieldsFunc(stem, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	}) {
+		switch component {
+		case "public", "pub", "cert", "certificate", "chain", "rootca", "cacert":
 			return true
 		}
 	}
