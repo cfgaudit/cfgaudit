@@ -159,6 +159,13 @@ func (x *extractor) zip(p string) error {
 	}
 	defer func() { _ = zr.Close() }()
 	for _, f := range zr.File {
+		// A ".." anywhere in the name is skipped before the entry is
+		// handled, the guard code scanning recognizes (#1333); safeEntryName
+		// and entry check the cleaned name again.
+		if strings.Contains(f.Name, "..") {
+			x.res.Skipped = append(x.res.Skipped, f.Name)
+			continue
+		}
 		mode := f.Mode()
 		// Devices, named pipes and other irregular entries are skipped, as the
 		// tar reader skips them (#1331): only files, directories and links
@@ -215,6 +222,10 @@ func (x *extractor) tar(p string, gz bool) error {
 		case tar.TypeReg, tar.TypeDir, tar.TypeSymlink, tar.TypeLink:
 		default:
 			continue // devices, fifos, pax and GNU metadata
+		}
+		if strings.Contains(h.Name, "..") {
+			x.res.Skipped = append(x.res.Skipped, h.Name) // see zip (#1333)
+			continue
 		}
 		link := h.Typeflag == tar.TypeSymlink || h.Typeflag == tar.TypeLink
 		if err := x.entry(h.Name, h.Typeflag == tar.TypeDir, link, h.Size, tr); err != nil {
