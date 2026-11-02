@@ -25,6 +25,10 @@ func (r *cfg122) ID() string { return "CFG122" }
 // archive runs instead of the installed one.
 var toolBinaryRe = regexp.MustCompile(`(?i)^(?:git|node|npm|npx|python3?|pip|uv|uvx|code|claude|gh|curl|bash|sh|pwsh|powershell|cmd|where)\.(?:exe|bat|cmd|com|ps1)$`)
 
+// ToolBinaryName reports whether a file name is a Windows program named like
+// a tool an agent or editor starts by name (CFG122, CFG123).
+func ToolBinaryName(name string) bool { return toolBinaryRe.MatchString(name) }
+
 // Check reports what an archive carries that a clone of the same repository
 // cannot (#1002): a .git entry, which git never puts in a checkout and which
 // makes git treat the unpacked folder as a repository with the archive's own
