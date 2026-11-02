@@ -1690,6 +1690,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range kimiSkillFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
+	for _, m := range rooInstructionFiles(dir) {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
 	for _, m := range devinAgentDirFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
@@ -3109,6 +3112,7 @@ var (
 		filepath.Join(".vscode", "mcp.json"),    // VS Code / Copilot
 		filepath.Join(".github", "mcp.json"),    // Copilot CLI workspace MCP, auto-loaded since 1.0.61 (#747)
 		"cline_mcp_settings.json",               // Cline
+		filepath.Join(".roo", "mcp.json"),       // Roo Code project MCP, loaded automatically and taking precedence over the global file (#989)
 		filepath.Join(".kimi-code", "mcp.json"), // Kimi Code project MCP — same {mcpServers} shape as .mcp.json; it OVERRIDES the repo-root .mcp.json (Kimi spreads it last) and its stdio entries execute at session start, so it is scanned as its own attributed target rather than merged (which would hide the override)
 	}
 	userAgentMCPFiles = []string{
