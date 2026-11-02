@@ -57,8 +57,8 @@ func pipesProgramToStdin(command string) bool {
 
 // interpreterTakesProgram reports whether the arguments after interp give it
 // its program: an inline-code flag or a script file. Redirections are not
-// operands, and the arguments end at a closing parenthesis, backtick or
-// comment, as in `$(curl … | python3)`.
+// operands, and the arguments end at a closing parenthesis, backtick, comment
+// or quote, as in `$(curl … | python3)` and `bash -c "curl … | bash"`.
 func interpreterTakesProgram(interp, rest string) bool {
 	if i := strings.IndexAny(rest, ")`#"); i >= 0 {
 		rest = rest[:i]
@@ -66,6 +66,8 @@ func interpreterTakesProgram(interp, rest string) bool {
 	shell := interp == "bash" || interp == "sh" || interp == "zsh"
 	for _, arg := range strings.Fields(rest) {
 		switch {
+		case strings.Trim(arg, `"'`) == "":
+			return false
 		case arg == "-" || arg == "--":
 			return false
 		case strings.ContainsAny(arg[:1], "<>0123456789") && strings.ContainsAny(arg, "<>"):
