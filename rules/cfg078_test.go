@@ -67,3 +67,25 @@ func TestCFG078_NoSettings_NoFinding(t *testing.T) {
 		t.Errorf("expected no finding without settings, got %+v", f)
 	}
 }
+
+// Without -w or -g, find-*-password prints only attributes: an existence
+// check (#1366).
+func TestCFG078_ExistenceCheck_NoFinding(t *testing.T) {
+	for _, cmd := range []string{
+		`if security find-generic-password -a "$USER" -s "${PREFIX}${key}" >/dev/null 2>&1; then echo ok; fi`,
+		`security find-internet-password -s github.com -G web >/dev/null`,
+	} {
+		if f := CFG078.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%q: expected no finding, got %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		"security find-generic-password -s svc -w",
+		"security find-internet-password -gs example.com",
+		"security find-generic-password -wa me",
+	} {
+		if f := CFG078.Check(hookTarget(t, cmd)); len(f) != 1 {
+			t.Errorf("%q: expected 1 finding, got %d", cmd, len(f))
+		}
+	}
+}
