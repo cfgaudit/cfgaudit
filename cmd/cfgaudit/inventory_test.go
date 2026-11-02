@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cfgaudit/cfgaudit/internal/parser"
+	"github.com/cfgaudit/cfgaudit/rules"
 )
 
 func inventoryRun(t *testing.T, args ...string) (int, string, string) {
@@ -96,5 +99,31 @@ func TestInventory1000_Edges(t *testing.T) {
 		if got := agentOfPath(rel); got != want {
 			t.Errorf("%s: %s, want %s", rel, got, want)
 		}
+	}
+}
+
+// Branches of buildInventory: a content-paths target is not listed, entries
+// and MCP servers in a file that does not exist are dropped, and a path that
+// exists but cannot be read is listed as not read (#1323).
+func TestInventoryBranches1323(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing.json")
+	targets := []*rules.Target{
+		{ContentPath: true, InstructionFile: filepath.Join(dir, "README.md")},
+		{SettingsFile: missing, Settings: &parser.Settings{Permissions: &parser.Permissions{Allow: []string{"Bash(ls)"}}}},
+		{ProjectMCPFile: missing, ProjectMCP: map[string]parser.MCPServer{"x": {Command: "npx", Args: []string{"y"}}}},
+	}
+	if inv := buildInventory(dir, targets, nil); len(inv.Agents) != 0 {
+		t.Errorf("got %+v", inv.Agents)
+	}
+
+	root := runFixture(t, map[string]string{
+		".claude/settings.json":     errorSettings,
+		".claude/skills/x/SKILL.md": "---\nname: x\ndescription: y\n---\nhi\n",
+	})
+	lockPath(t, filepath.Join(root, ".claude", "skills"))
+	_, out, _ := inventoryRun(t, root)
+	if !strings.Contains(out, "Not read\n  .claude/skills: exists but could not be read") {
+		t.Errorf("unreadable path missing:\n%s", out)
 	}
 }
