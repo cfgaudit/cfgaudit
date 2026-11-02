@@ -406,3 +406,28 @@ func TestInstructionSources_CopilotOverrideDecoderPanic(t *testing.T) {
 	tg := vscodeSettingsTarget(t, `{"github.copilot.chat.debug.promptOverrideString": "? -\n? <<\n"}`)
 	_ = Run(tg, nil, nil)
 }
+
+// roo-cline.allowedCommands with "*" or a bare interpreter (#989).
+func TestCFG048_RooAllowedCommands989(t *testing.T) {
+	for raw, want := range map[string]bool{
+		`{"roo-cline.allowedCommands":["*"]}`:                         true,
+		`{"roo-cline.allowedCommands":["git status","python3"]}`:      true,
+		`{"roo-cline.allowedCommands":["git status","npm run test"]}`: false,
+		`{"roo-cline.allowedCommands":"*"}`:                           false,
+		`{"editor.tabSize":2}`:                                        false,
+	} {
+		v, err := parser.ParseVSCodeSettingsBytes([]byte(raw), "settings.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got bool
+		for _, f := range CFG048.Check(&Target{VSCodeSettings: v, VSCodeSettingsFile: ".vscode/settings.json"}) {
+			if f.Key == rooAllowedCommandsKey && f.Severity == finding.Warn {
+				got = true
+			}
+		}
+		if got != want {
+			t.Errorf("%s: got %v, want %v", raw, got, want)
+		}
+	}
+}

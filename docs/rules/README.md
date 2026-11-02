@@ -418,6 +418,19 @@ Two further surfaces were scoped and, after source verification, deliberately **
 
 **Verified negatives** (checked against source, deliberately no rule): Kimi's `config.toml` is user-scope only, so its `[[hooks]]`/`[[permission.rules]]` (incl. `SessionStart`) **cannot** be planted by a repo; kimi-code has no sandbox concept; there is no `KIMI.md`; plugins support SHA pinning and third-party install defaults to cancel.
 
+### Roo Code — `.roo/`, `.roorules` & `.roomodes`
+
+Roo Code (#989) is covered by the existing rules on the files it loads:
+
+| File | Rules |
+|---|---|
+| `.roo/mcp.json` | the MCP rules (CFG010–CFG021 and the others on `mcpServers`), including CFG011 for a wildcard `alwaysAllow`. Roo Code loads the project file automatically and it takes precedence over the global one |
+| every file under `.roo/rules/` and `.roo/rules-<mode>/`, recursively and of any extension; `.roorules` and `.roorules-<mode>` | the instruction-content rules, as for `CLAUDE.md`. Roo Code leaves out only cache and temp files (`.bak`, `.cache`, `.log`, `.tmp`, `.DS_Store`, `Thumbs.db`), and so does cfgaudit |
+| `.roomodes` | the instruction-content rules over the whole file, which holds each custom mode's `roleDefinition`, `whenToUse` and `customInstructions` |
+| `roo-cline.allowedCommands` in `.vscode/settings.json` | CFG048 at `warn` for `*` or a bare shell or language interpreter: Roo Code matches the list by prefix, so either runs any command once the user's auto-approval of allowed commands is on |
+
+`.clinerules`, Roo Code's legacy fallback, and `AGENTS.md`, which it also loads, are read already.
+
 ## OWASP mapping
 
 cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code first-class, with portable rules extended to other agents). It maps each finding to an [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) risk — but by design it only sees what is *declared in config*, not model behaviour, runtime traffic, or training data. That scope determines which risks it can and cannot address.
