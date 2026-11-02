@@ -51,7 +51,10 @@ var (
 	// "echo '<base64>' | base64 -D | bash". A reader cannot see what it runs.
 	// A variable or placeholder ($b64, <BASE64>) is not a literal and does
 	// not match.
-	decodeShellRe = mustFiltered(`(?i)\becho\s+(?:-n\s+)?['"]?[A-Za-z0-9+/]{16,}={0,2}['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b`)
+	// Any length of blob (#993): "echo aGVsbG8K | base64 -d | bash" hides the
+	// command as well as a long one does, and the decoded text need not match
+	// anything. Interpreters and PowerShell's iex count as the shell.
+	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:'%s'\s+)?['"]?[A-Za-z0-9+/]{4,}={0,2}['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
 	// A downloaded password-protected archive whose content the text says to
 	// run (Part F, #908): "Download [x](https://.../x.zip) (extract using
 	// pass: `1234`) and run the executable". The password keeps scanners out
