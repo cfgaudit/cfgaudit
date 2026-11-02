@@ -26,9 +26,13 @@ func (r *cfg056) ID() string { return "CFG056" }
 // beyond its stated purpose. Patterns are anchored on an explicit universal
 // quantifier + an interaction noun so scoped descriptions ("deploy the app",
 // "review code for security issues") don't match.
+var scopedTriggerTailRe = regexp.MustCompile(`(?i)^\s+(?:when|while|if|for (?:commits?|code|files?|deployments?|builds?|migrations?|security|tests?))\b`)
+var narrowedTriggerTailRe = regexp.MustCompile(`(?i)^\s+(?:to|that|which|whose|involving|about|against|mentioning|related(?:\s+to)?|or question involving)\b`)
+
 var greedyTriggerRes = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\buse (?:this|it)\b[^.]{0,40}\bfor (?:everything|anything|all tasks|every task|any task|all requests|every request|any request)\b`),
 	regexp.MustCompile(`(?i)\balways (?:use|invoke|run|apply|trigger|call|prefer)\b[^.]{0,70}\b(?:for (?:every|any|all) (?:request|task|message|query)|regardless of (?:the request|the task|what the user asks))\b`),
+	regexp.MustCompile(`(?i)\balways (?:use|invoke|run|apply|trigger|call|prefer) (?:this|it)(?: (?:skill|agent|command|tool|rule))?\b`),
 	regexp.MustCompile(`(?i)\b(?:for|on|before|after) (?:every|each|any|all) (?:request|task|prompt|message|response|user message|interaction|session|query)s?\b`),
 	regexp.MustCompile(`(?i)\bregardless of (?:the (?:task|request)|what the user asks)\b`),
 	regexp.MustCompile(`(?i)\bno matter (?:what|the)\b`),
@@ -86,7 +90,9 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 			if loc := re.FindString(tf.text); loc != "" {
 				// A relative clause after the interaction noun scopes the trigger.
 				rest := tf.text[strings.Index(strings.ToLower(tf.text), strings.ToLower(loc))+len(loc):]
-				narrowed := regexp.MustCompile(`(?i)^\s+(?:to|that|which|whose|involving|about|against|mentioning|related(?:\s+to)?|or question involving)\b`).MatchString(rest)
+				isAlways := strings.HasPrefix(strings.ToLower(loc), "always ")
+				narrowed := (isAlways && scopedTriggerTailRe.MatchString(rest)) ||
+					(!isAlways && narrowedTriggerTailRe.MatchString(rest))
 				if narrowed {
 					continue
 				}
