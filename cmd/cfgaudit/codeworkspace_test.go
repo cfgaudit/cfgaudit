@@ -5,6 +5,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +68,28 @@ func TestCodeWorkspace988_Malformed(t *testing.T) {
 	}
 	if len(unreadable) != 1 || filepath.Base(unreadable[0].path) != "broken.code-workspace" {
 		t.Errorf("expected the workspace file on the unreadable list, got %+v", unreadable)
+	}
+}
+
+// extensions.json and a workspace file's extensions block are read (#995).
+func TestExtensionsDiscovery995(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".vscode", "extensions.json"), `{"recommendations": ["ms-pyhton.python"]}`)
+	mustWrite(t, filepath.Join(dir, "x.code-workspace"), `{"extensions": {"recommendations": ["esbenq.prettier-vscode"]}}`)
+	n := 0
+	for _, f := range scanFindings(t, "--only", "CFG048", dir) {
+		if strings.Contains(f.Message, "near miss") {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("got %d lookalike findings", n)
+	}
+	bad := t.TempDir()
+	mustWrite(t, filepath.Join(bad, ".vscode", "extensions.json"), `{`)
+	unreadable = nil
+	t.Cleanup(func() { unreadable = nil })
+	if _, err := buildTargets(bad, false); err != nil || len(unreadable) != 1 {
+		t.Errorf("malformed extensions.json: %v %+v", err, unreadable)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -47,6 +48,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// ID) aren't mistaken for the scan directory.
 	if len(args) >= 2 {
 		switch args[1] {
+		case "baseline":
+			return run(baselineArgs(args), stdin, stdout, stderr)
+		case "lock":
+			return lockOutput(args[2:], stdout, stderr)
+		case "inventory":
+			return inventoryOutput(args[2:], stdout, stderr)
 		case "explain":
 			out, code := explainOutput(args[2:])
 			_, _ = fmt.Fprint(stdout, out)
@@ -77,6 +84,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	strict := fset.Bool("strict", false, "treat warn findings as errors for the exit code (also: strict: true in .cfgaudit.yml)")
 	shellcheck := fset.Bool("shellcheck", false, "run shellcheck on hook/helper commands (requires the shellcheck binary; also: shellcheck: true in .cfgaudit.yml)")
 	showVersion := fset.Bool("version", false, "print cfgaudit version and exit")
+	baselinePath := fset.String("baseline", "", "report only findings that are not in this baseline file (written by `cfgaudit baseline`); secret findings are always reported")
+	writeBaselinePath := fset.String("write-baseline", "", "write the current findings to this baseline file instead of reporting them (what `cfgaudit baseline -o <file>` runs)")
 	noColor := fset.Bool("no-color", false, "no colour in the text and table output (also: NO_COLOR; FORCE_COLOR turns it on without a terminal)")
 
 	var only, skip ruleSet
@@ -125,6 +134,24 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	dir := "."
 	if len(positional) > 0 {
 		dir = positional[0]
+	}
+	// An archive is unpacked into a private directory and scanned there
+	// (#1002); findings name paths inside the archive.
+	archive, archiveRoot := "", ""
+	var archived archiveResult
+	if kind, _ := archiveKind(dir); kind != "" {
+		if fi, err := os.Stat(dir); err == nil && fi.Mode().IsRegular() {
+			root, res, err := extractArchive(dir)
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr, "cfgaudit: unpack %v\n", err)
+				return 2
+			}
+			defer func() { _ = os.RemoveAll(root) }()
+			if len(res.Skipped) > 0 {
+				_, _ = fmt.Fprintf(stderr, "cfgaudit: %d archive entries not extracted (outside the archive root, over %d MiB, or a duplicate): %s\n", len(res.Skipped), maxArchiveFile>>20, strings.Join(res.Skipped[:min(len(res.Skipped), 5)], ", "))
+			}
+			archive, archiveRoot, archived, dir = dir, root, res, root
+		}
 	}
 	// A path that is not a directory would otherwise scan nothing and exit 0,
 	// so a mistyped path in CI passes without auditing anything (#710).
@@ -178,15 +205,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	targets = attachPolicy(dir, targets, cfg)
+	if archive != "" {
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, ArchiveName: archive, ArchiveEntries: archived.Entries, ArchiveLinks: archived.Links})
+	}
 
-	pluginTargets, err := buildPluginTargets(dir, *plugins, *user)
+	targets, err = withPackageTargets(dir, *plugins, *user, targets)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
 		return 2
 	}
-	pluginTargets = append(pluginTargets, rootSkillTargets(dir, pluginTargets)...)
-	attachSkillShellToPluginSkills(pluginTargets, dir)
-	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
 	docTargets, err := contentPathTargets(dir, append(append([]string(nil), cfg.ContentPathGlobs()...), contentPaths...), targets)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
@@ -210,12 +237,63 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	locateKeyLines(all)
+	applyCaseAliases(dir, all)
+	if archive != "" {
+		for i := range all {
+			all[i].File = archivePath(archive, archiveRoot, all[i].File)
+			all[i].Message = strings.ReplaceAll(all[i].Message, archiveRoot, archive)
+		}
+	}
 	// A message never repeats a credential written in a URL (#1045). After
 	// locateKeyLines, which finds the line by the value the message quotes.
 	for i := range all {
 		all[i].Message = rules.RedactURLs(all[i].Message)
 	}
 	all = cfg.PostProcess(all, dir)
+
+	if *writeBaselinePath != "" {
+		if len(scanroot.ReadErrors()) > 0 {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: could not read every path, so no baseline was written: %s\n", strings.Join(scanroot.ReadErrors(), ", "))
+			return 2
+		}
+		n, secrets, err := writeBaseline(*writeBaselinePath, dir, all)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: write baseline: %v\n", err)
+			return 2
+		}
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: wrote %d %s to %s\n", n, pluralize("finding", n), *writeBaselinePath)
+		if secrets > 0 {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: %d secret %s left out: a committed secret is leaked either way, so it stays reported until it is removed and rotated\n", secrets, pluralize("finding", secrets))
+		}
+		return 0
+	}
+	if *baselinePath != "" {
+		b, err := loadBaseline(*baselinePath)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: baseline: %v\n", err)
+			return 2
+		}
+		var suppressed int
+		var stale []baselineEntry
+		all, suppressed, stale = applyBaseline(b, dir, all)
+		if suppressed > 0 {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: %d %s in the baseline %s not reported\n", suppressed, pluralize("finding", suppressed), *baselinePath)
+		}
+		if len(stale) > 0 {
+			what := "entry matches"
+			if len(stale) > 1 {
+				what = "entries match"
+			}
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: %d baseline %s no finding; run `cfgaudit baseline -o %s` to drop them:\n", len(stale), what, *baselinePath)
+			for i, e := range stale {
+				if i == 10 {
+					_, _ = fmt.Fprintf(stderr, "  ... and %d more\n", len(stale)-10)
+					break
+				}
+				_, _ = fmt.Fprintf(stderr, "  %s %s\n", e.Rule, e.File)
+			}
+		}
+	}
 
 	stdoutFile, _ := stdout.(*os.File)
 	resolved := resolveFormat(*format, stdoutFile != nil && isTTY(stdoutFile))
@@ -272,6 +350,64 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return cfg.ExitCode(all)
+}
+
+// applyCaseAliases reports a finding in a file the repository commits under
+// another spelling than the one cfgaudit looked for (#990) at that spelling,
+// and says why it matters: only a case-insensitive filesystem maps the two,
+// and that is where the agent reads the file.
+func applyCaseAliases(dir string, all []finding.Finding) {
+	aliases := scanroot.Aliases()
+	if len(aliases) == 0 {
+		return
+	}
+	for i := range all {
+		f := &all[i]
+		if f.File == "" {
+			continue
+		}
+		abs := absPath(f.File)
+		actual := ""
+		for want, got := range aliases {
+			// A file reached through an aliased directory carries the
+			// committed spelling already; a file alias counts only for the
+			// path that was looked for, since the committed name can be one
+			// the scan also reads in its own right (agents.md).
+			switch {
+			case strings.HasPrefix(abs, got+string(filepath.Separator)):
+				actual = abs
+			case abs == want || strings.HasPrefix(abs, want+string(filepath.Separator)):
+				actual = got + abs[len(want):]
+			default:
+				continue
+			}
+			f.Message += "; the repository commits this file as " + relSlash(absPath(dir), actual) + ", a spelling a case-insensitive filesystem (macOS, Windows) opens as " + relSlash(absPath(dir), want+actual[len(got):]) + " and a case-sensitive one does not: an agent on macOS or Windows reads it, and the spelling has no other reason to exist"
+			break
+		}
+		if actual != "" {
+			f.File = actual
+			if !filepath.IsAbs(dir) {
+				if rel, err := filepath.Rel(absPath(dir), actual); err == nil {
+					f.File = filepath.Join(dir, rel)
+				}
+			}
+		}
+	}
+}
+
+// withPackageTargets adds to targets the plugin and skill packages of the
+// scan (--plugins, bundled and root skills) and the files skills ship beside
+// SKILL.md (#987). The scan and `cfgaudit lock` share it, so both see the
+// same files.
+func withPackageTargets(dir, plugins string, user bool, targets []*rules.Target) ([]*rules.Target, error) {
+	pluginTargets, err := buildPluginTargets(dir, plugins, user)
+	if err != nil {
+		return nil, err
+	}
+	pluginTargets = append(pluginTargets, rootSkillTargets(dir, pluginTargets)...)
+	attachSkillShellToPluginSkills(pluginTargets, dir)
+	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
+	return append(targets, skillHelperTargets(dir, targets)...), nil
 }
 
 // applyClaudeHooksDisabled gives every target the effective disableAllHooks of
@@ -868,6 +1004,22 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
+	// The project's .gitignore for CFG013, read here so a symlink out of the
+	// tree is recorded before CFG115 collects the escapes (#1023).
+	for _, t := range targets {
+		if t.ProjectDir != "" && t.Scope == finding.ScopeProject {
+			if data, err := scanroot.ReadFile(filepath.Join(t.ProjectDir, ".gitignore")); err == nil {
+				t.Gitignore, t.HasGitignore = data, true
+			}
+		}
+	}
+
+	// .gitmodules and committed bare repositories (#994).
+	targets = append(targets, gitTargets(dir)...)
+
+	// Files that stand in for a tool: root binaries, venvs, yarnPath (#997).
+	targets = append(targets, standinTargets(dir)...)
+
 	// The scripts the auto-run commands of every target start (#1217), once
 	// all targets exist.
 	attachLaunchedScripts(dir, targets)
@@ -1259,6 +1411,12 @@ func vscodeTargets(dir string) ([]*rules.Target, error) {
 			VSCodeSettingsFile: settingsFile,
 		})
 	}
+	extPath := filepath.Join(dir, ".vscode", "extensions.json")
+	if exts, err := parser.ParseVSCodeExtensions(extPath); err == nil && len(exts) > 0 {
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, VSCodeExtensions: exts, VSCodeExtensionsFile: extPath})
+	} else if err != nil && !scanroot.IsAbsent(err) {
+		skipUnreadable(extPath, err)
+	}
 	return append(targets, codeWorkspaceTargets(dir)...), nil
 }
 
@@ -1289,6 +1447,9 @@ func codeWorkspaceTargets(dir string) []*rules.Target {
 		}
 		if len(w.MCPServers) > 0 {
 			targets = append(targets, &rules.Target{Scope: finding.ScopeProject, ProjectMCP: w.MCPServers, ProjectMCPFile: path})
+		}
+		if len(w.Extensions) > 0 {
+			targets = append(targets, &rules.Target{Scope: finding.ScopeProject, VSCodeExtensions: w.Extensions, VSCodeExtensionsFile: path})
 		}
 	}
 	return targets
@@ -1392,16 +1553,13 @@ var (
 		// in agentInstructionGlobs below. Devin CLI imports both (#474).
 		filepath.Join(".windsurf", "global_rules.md"),
 	}
-	// Matching is case-sensitive (exact filename). Some agents also load
-	// mixed-case spellings such as `Agents.md` / `Claude.md`; those are
-	// deliberately out of scope here. Case-insensitive filename discovery is a
-	// cross-cutting change — it would alter discovery for every agent and needs a
-	// custom walk (Go's filepath.Glob is case-sensitive) — so it is left to a
-	// separate decision rather than folded into this list. This is the same
-	// case-sensitivity surface CFG028 already reasons about for trust files.
-	// The root AGENTS pair is listed as fixed paths in agentInstructionFiles
-	// above, and instructionTargets drops the second of the pair when
-	// os.SameFile says both paths are the same file (#1011).
+	// The names are the canonical spellings. A path absent under one is read
+	// under another spelling of it, as macOS and Windows open it by default
+	// (#990, scanroot.caseResolve), and findings name the committed spelling.
+	// "Agents.md" is therefore read for "AGENTS.md" too, as Kimi Code reads it
+	// on such a filesystem. The root AGENTS pair is listed as fixed paths in
+	// agentInstructionFiles above, and instructionTargets keeps one name when
+	// os.SameFile says both are the same file (#1011).
 	agentInstructionGlobs = []string{
 		// .cursor/rules/*.mdc is walked recursively (see filteredInstructionDirs).
 		// A plain .md there is ignored by Cursor's rules system ("Project rules
@@ -1535,16 +1693,22 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		scope finding.Scope
 	}
 	var paths []scopedPath
+	// The root AGENTS pair (#1011): when "AGENTS.md" and "agents.md" are the
+	// same file (a case-insensitive filesystem, a symlinked alias, or since
+	// #990 a lookup under another spelling), keep only the name the
+	// directory lists, so the file is read once and reported as committed.
+	dropAgents := ""
+	upper, upperErr := scanroot.Stat(filepath.Join(dir, "AGENTS.md"))
+	lower, lowerErr := scanroot.Stat(filepath.Join(dir, "agents.md"))
+	if upperErr == nil && lowerErr == nil && os.SameFile(upper, lower) {
+		dropAgents = "agents.md"
+		if entries, err := scanroot.ReadDir(dir); err == nil && !slices.ContainsFunc(entries, func(e fs.DirEntry) bool { return e.Name() == "AGENTS.md" }) {
+			dropAgents = "AGENTS.md"
+		}
+	}
 	for _, rel := range agentInstructionFiles {
-		// The root AGENTS pair (#1011): drop "agents.md" when it resolves
-		// to the same file as "AGENTS.md" (a case-insensitive filesystem,
-		// or a symlinked alias), so the file is never read twice.
-		if rel == "agents.md" {
-			upper, upperErr := scanroot.Stat(filepath.Join(dir, "AGENTS.md"))
-			lower, lowerErr := scanroot.Stat(filepath.Join(dir, "agents.md"))
-			if upperErr == nil && lowerErr == nil && os.SameFile(upper, lower) {
-				continue
-			}
+		if rel == dropAgents {
+			continue
 		}
 		paths = append(paths, scopedPath{filepath.Join(dir, rel), finding.ScopeProject})
 	}
@@ -1578,6 +1742,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	for _, m := range kimiSkillFiles(dir) {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	for _, m := range rooInstructionFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	for _, m := range devinAgentDirFiles(dir) {
@@ -2999,6 +3166,7 @@ var (
 		filepath.Join(".vscode", "mcp.json"),    // VS Code / Copilot
 		filepath.Join(".github", "mcp.json"),    // Copilot CLI workspace MCP, auto-loaded since 1.0.61 (#747)
 		"cline_mcp_settings.json",               // Cline
+		filepath.Join(".roo", "mcp.json"),       // Roo Code project MCP, loaded automatically and taking precedence over the global file (#989)
 		filepath.Join(".kimi-code", "mcp.json"), // Kimi Code project MCP — same {mcpServers} shape as .mcp.json; it OVERRIDES the repo-root .mcp.json (Kimi spreads it last) and its stdio entries execute at session start, so it is scanned as its own attributed target rather than merged (which would hide the override)
 	}
 	userAgentMCPFiles = []string{
