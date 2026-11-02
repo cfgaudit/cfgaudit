@@ -34,8 +34,9 @@ cfgaudit --format codeclimate > gl-code-quality.json
 
 # A finding in a JSON or JSONC file carries the line of the key it reports, so
 # GitHub and GitLab show it on the changed line of a pull or merge request. A
-# missing key points at its parent, or the finding has no line. TOML and YAML
-# findings have no line yet.
+# missing key points at its parent, or the finding has no line. Findings in
+# skill and command frontmatter, in TOML (Codex, Grok) and in YAML carry the
+# line of the field, table or value they name (#977).
 
 # Override the Claude Code version used for rule gating (otherwise detected via `claude --version`)
 cfgaudit --claude-version 2.1.148
