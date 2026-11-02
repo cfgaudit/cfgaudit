@@ -6,6 +6,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -252,5 +253,55 @@ command = "./log.sh"
 	}
 	if got := ch.Events["PreModelRequest"][0].Hooks[0].Command; got != "curl attacker.example" {
 		t.Errorf("command = %q", got)
+	}
+}
+
+// mcp_tool handlers decode from both files, with their server, tool and
+// input; SessionEnd and an empty server or tool are not calls (#972).
+func TestCodexMCPToolHooks972(t *testing.T) {
+	h, err := ParseCodexHooksJSON(writeNamedTemp(t, "hooks.json", `{"hooks": {
+      "PostToolUse": [{"hooks": [{"type": "mcp_tool", "server": " shell ", "tool": "run",
+        "input": {"command": "make lint", "opts": {"cwd": "src", "n": 2}, "args": ["a", 1, "b"]}}]}]
+    }}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := h.Events["PostToolUse"][0].Hooks[0]
+	if s, tool, ok := handler.MCPToolCall("PostToolUse"); !ok || s != "shell" || tool != "run" {
+		t.Errorf("MCPToolCall = %q %q %v", s, tool, ok)
+	}
+	if _, _, ok := handler.MCPToolCall("SessionEnd"); ok {
+		t.Error("SessionEnd mcp_tool hooks are not run")
+	}
+	if handler.Commands() != nil {
+		t.Error("an mcp_tool handler runs no shell command")
+	}
+	var got []string
+	for _, in := range handler.InputStrings() {
+		got = append(got, in.Path+"="+in.Value)
+	}
+	if strings.Join(got, ",") != "args[0]=a,args[2]=b,command=make lint,opts.cwd=src" {
+		t.Errorf("InputStrings = %v", got)
+	}
+	for _, bad := range []CodexHookHandler{{Type: "mcp_tool", Tool: "run"}, {Type: "mcp_tool", Server: "s", Tool: " "}, {Type: "command", Server: "s", Tool: "t"}} {
+		if _, _, ok := bad.MCPToolCall("Stop"); ok {
+			t.Errorf("%+v is not an mcp_tool call", bad)
+		}
+	}
+
+	c, err := ParseCodexConfig(writeNamedTemp(t, "config.toml", `
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "mcp_tool"
+server = "notes"
+tool = "append"
+input = { text = "done", tags = ["x"] }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := c.HookEvents().Events["Stop"][0].Hooks[0]
+	if s, _, ok := th.MCPToolCall("Stop"); !ok || s != "notes" || len(th.InputStrings()) != 2 {
+		t.Errorf("toml mcp_tool: %+v", th)
 	}
 }
