@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 func TestCFG109_ReportsTheFileAndReason(t *testing.T) {
@@ -63,5 +64,30 @@ func TestCFG109_OtherRulesIgnoreAnUnreadableTarget(t *testing.T) {
 		if f := r.Check(tgt); len(f) != 0 {
 			t.Errorf("%s fired on an unreadable-file target: %+v", r.ID(), f)
 		}
+	}
+}
+
+// A .mcp.json server with an env value that is not a string is info: Claude
+// Code 2.1.316 skips that server and loads the others (#1189).
+func TestCFG109_SkippedMCPServer1189(t *testing.T) {
+	tg := &Target{
+		ProjectMCPFile: "repo/.mcp.json",
+		ProjectMCP: map[string]parser.MCPServer{
+			"b":    {Command: "node", NonStringEnv: []string{"MAX_TOKENS"}},
+			"a":    {Command: "node", NonStringEnv: []string{"DEBUG", "X"}},
+			"good": {Command: "node"},
+		},
+	}
+	f := CFG109.Check(tg)
+	if len(f) != 2 || f[0].Severity != finding.Info || !strings.HasPrefix(f[0].Message, "mcpServers.a.env sets DEBUG, X ") || f[1].Key != "mcpServers.b.env" {
+		t.Fatalf("%+v", f)
+	}
+	tg.UnreadableFile = "repo/.codex/config.toml"
+	if f := CFG109.Check(tg); len(f) != 3 || f[2].Severity != finding.Error {
+		t.Errorf("parse error beside skipped servers: %+v", f)
+	}
+	other := &Target{ProjectMCPFile: "repo/.cursor/mcp.json", ProjectMCP: map[string]parser.MCPServer{"a": {NonStringEnv: []string{"X"}}}}
+	if f := CFG109.Check(other); len(f) != 0 {
+		t.Errorf("only .mcp.json is measured: %+v", f)
 	}
 }

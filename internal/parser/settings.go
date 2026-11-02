@@ -392,6 +392,36 @@ type MCPServer struct {
 	// is a shell command, so a repo-controlled value is an RCE surface scanned by
 	// the command-content rules (CFG008/009/014/015/027/028/037/038/039/045).
 	HeadersHelper string `json:"headersHelper,omitempty"`
+
+	// NonStringEnv lists, sorted, the env keys whose value in the file is a
+	// number, a bool or null rather than a string. Env still holds them as
+	// their JSON text so the server is checked, but Claude Code 2.1.316 skips
+	// such a server: "Skipped — invalid MCP server config for \"x\":
+	// env.MAX_TOKENS: expected string, received number" (#1189).
+	NonStringEnv []string `json:"-"`
+}
+
+// UnmarshalJSON decodes a server and records which env values were not
+// strings (NonStringEnv).
+func (s *MCPServer) UnmarshalJSON(data []byte) error {
+	type plain MCPServer
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	*s = MCPServer(p)
+	var raw struct {
+		Env map[string]json.RawMessage `json:"env"`
+	}
+	if json.Unmarshal(data, &raw) == nil {
+		for k, v := range raw.Env {
+			if t := bytes.TrimSpace(v); len(t) > 0 && t[0] != '"' {
+				s.NonStringEnv = append(s.NonStringEnv, k)
+			}
+		}
+		sort.Strings(s.NonStringEnv)
+	}
+	return nil
 }
 
 // MCPConfig is a bare MCP config object whose mcpServers map carries the same

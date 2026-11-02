@@ -3,7 +3,13 @@
 
 package rules
 
-import "github.com/cfgaudit/cfgaudit/internal/finding"
+import (
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/cfgaudit/cfgaudit/internal/finding"
+)
 
 type cfg109 struct{}
 
@@ -35,8 +41,12 @@ func (r *cfg109) ID() string { return "CFG109" }
 // the scan of that surface is incomplete and the repository's stated
 // configuration is not the one anyone gets.
 func (r *cfg109) Check(t *Target) []finding.Finding {
-	if t == nil || t.UnreadableFile == "" {
+	if t == nil {
 		return nil
+	}
+	findings := skippedMCPServers(t)
+	if t.UnreadableFile == "" {
+		return findings
 	}
 	msg := "cfgaudit could not parse this committed config file, so no rule for its surface ran and the settings it declares are not in force for the agent either" +
 		" — agents skip a config layer they cannot read (Codex logs \"Invalid configuration; using defaults\" and runs; Claude Code starts the session without the file)." +
@@ -44,11 +54,45 @@ func (r *cfg109) Check(t *Target) []finding.Finding {
 	if t.UnreadableReason != "" {
 		msg += ". The parser reported: " + t.UnreadableReason
 	}
-	return []finding.Finding{{
+	return append(findings, finding.Finding{
 		RuleID:   "CFG109",
 		Severity: finding.Error,
 		Scope:    t.Scope,
 		File:     t.UnreadableFile,
 		Message:  msg,
-	}}
+	})
+}
+
+// skippedMCPServers reports each server of a .mcp.json that Claude Code
+// skips because an env value is not a string (#1189). Measured on Claude Code
+// 2.1.316: `claude mcp list` warns "Skipped — invalid MCP server config for
+// \"x\": env.MAX_TOKENS: expected string, received number" (also for a bool
+// and null), and the other servers in the file load. cfgaudit still reads the
+// server, so the other rules check it; this says it is not in force for
+// Claude Code. Info: one server of a readable file, not a file that is lost.
+func skippedMCPServers(t *Target) []finding.Finding {
+	if filepath.Base(t.ProjectMCPFile) != ".mcp.json" {
+		return nil
+	}
+	names := make([]string, 0, len(t.ProjectMCP))
+	for name, s := range t.ProjectMCP {
+		if len(s.NonStringEnv) > 0 {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	var out []finding.Finding
+	for _, name := range names {
+		keys := t.ProjectMCP[name].NonStringEnv
+		out = append(out, finding.Finding{
+			RuleID:   "CFG109",
+			Severity: finding.Info,
+			Scope:    t.Scope,
+			File:     t.ProjectMCPFile,
+			Key:      "mcpServers." + name + ".env",
+			Message: "mcpServers." + name + ".env sets " + strings.Join(keys, ", ") + " to a value that is not a string, so Claude Code skips this server (\"invalid MCP server config ... expected string\") and loads the others." +
+				" Quote the value (\"64000\") so the server starts; cfgaudit still checks it",
+		})
+	}
+	return out
 }

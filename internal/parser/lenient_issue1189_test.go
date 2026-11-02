@@ -5,6 +5,7 @@ package parser
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -39,6 +40,13 @@ func TestLenientDecoding1189(t *testing.T) {
 	}
 	if s.Env["A"] != "64000" || s.Env["B"] != "true" || s.Env["C"] != "" || s.Env["D"] != "x" {
 		t.Errorf("Env = %v", s.Env)
+	}
+	if got := strings.Join(s.NonStringEnv, ","); got != "A,B,C" {
+		t.Errorf("NonStringEnv = %q, want A,B,C", got)
+	}
+	var plain MCPServer
+	if err := json.Unmarshal([]byte(`{"command":"x","env":{"D":"x"}}`), &plain); err != nil || plain.NonStringEnv != nil || plain.Command != "x" {
+		t.Errorf("string env: %v, %+v", err, plain)
 	}
 	if err := json.Unmarshal([]byte(`{"env":null}`), &s); err != nil || s.Env != nil {
 		t.Errorf("null env: %v, %v", err, s.Env)
