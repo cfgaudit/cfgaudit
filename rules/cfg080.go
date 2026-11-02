@@ -138,14 +138,15 @@ var commentDirectiveRe = regexp.MustCompile(`(?is)(` +
 
 // Benign descriptions and quoted diagnostics can contain directive words
 // without instructing the agent to act (#1185).
-var commentInstructionsDescriptionRe = regexp.MustCompile("(?i)^(?:see\\s+\\S+\\s+for\\s+|this\\s+file\\s+contains\\s+|a\\s+guide\\s+to\\s+)\\S*.*\\binstructions?\\s+for\\s+(?:ai|claude|agents?)\\b")
-var commentLicenseRe = regexp.MustCompile("(?i)^you should have received a copy of the (?:gnu\\s+)?(?:affero\\s+)?(?:lesser\\s+)?general public license\\b")
-var commentQuotedDiagnosticRe = regexp.MustCompile("(?i)^[a-z][\\w.-]*:\\s*[^|\\n]+\\|\\s+")
+var commentInstructionsDescriptionRe = regexp.MustCompile(`(?i)^(?:see\s+\S+\s+for\s+|this\s+file\s+contains\s+|a\s+guide\s+to\s+)\S*.*\binstructions?\s+for\s+(?:ai|claude|agents?)\b`)
+var commentLicenseRe = regexp.MustCompile(`(?i)^you should have received a copy of the (?:gnu\s+)?(?:affero\s+)?(?:lesser\s+)?general public license\b`)
+var commentQuotedDiagnosticRe = regexp.MustCompile(`(?i)^[a-z][\w.-]*:\s*[^|\n]+\|\s+`)
+
 // A diagnostic saying "you must define a field" is not an instruction to the
-// agent. `he exception must not hide a second instruction inside that diagnostic.
+// agent. The exception must not hide a second instruction inside that diagnostic.
 var commentCovertActionRe = regexp.MustCompile(`(?i)\b(?:ignore|disregard|override|bypass|exfiltrate|upload|send|execute|run|delete|call)\b`)
 
-var commentImperativeRe = regexp.MustCompile("(?i)\\b(?:you\\s+(?:must|should)|always\\b|never\\b|run\\b|execute\\b|delete\\b|add\\b|send\\b|ignore\\b|override\\b|must\\b)")
+var commentImperativeRe = regexp.MustCompile(`(?i)\b(?:you\s+(?:must|should)|always\b|never\b|run\b|execute\b|delete\b|add\b|send\b|ignore\b|override\b|must\b)`)
 
 func benignCommentProse(body string) bool {
 	trimmed := strings.TrimSpace(body)
