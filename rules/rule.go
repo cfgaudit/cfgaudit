@@ -81,6 +81,13 @@ type Target struct {
 	// read them.
 	ExternalImports []string
 
+	// GitModules is the scanned directory's .gitmodules, as text (#994);
+	// GitModulesFile is its path. NestedRepos are the committed directories
+	// that look like a bare git repository.
+	GitModules     string
+	GitModulesFile string
+	NestedRepos    []NestedRepo
+
 	// ContentPath marks a target for a file that content-paths lists (#795): a
 	// README or doc page, not an instruction file. Run applies only
 	// ContentPathRules to it and reports at most warn.
