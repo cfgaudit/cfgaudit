@@ -135,6 +135,19 @@ func TestCFG101_LongListCapped(t *testing.T) {
 	}
 }
 
+func TestCFG101_Issue1212_UncoveredSuggestion(t *testing.T) {
+	for _, tc := range []struct { json, absent, present string }{
+		{`{"permissions":{"deny":["Bash(rm -rf *)","Bash(rm -fr *)"]}}`, `"-fr"`, "target -rf"},
+		{`{"permissions":{"deny":["Bash(rm -rf *)","Bash(rm -fr *)","Bash(rm -r -f *)"]}}`, `"-fr"`, "target -rf"},
+		{`{"permissions":{"deny":["Bash(rm -rf *)"]}}`, "target -rf", `"-fr"`},
+	} {
+		got := onlyFinding(t, CFG101.Check(settingsTarget(t, tc.json)), finding.Warn)
+		if strings.Contains(got.Message, tc.absent) || !strings.Contains(got.Message, tc.present) {
+			t.Errorf("suggestion must be uncovered for %s: %s", tc.json, got.Message)
+		}
+	}
+}
+
 func TestCFG101_NoPermissions(t *testing.T) {
 	if f := CFG101.Check(settingsTarget(t, `{}`)); len(f) != 0 {
 		t.Errorf("expected no findings, got %+v", f)
