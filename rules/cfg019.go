@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -86,6 +87,14 @@ func (r *cfg019) Check(t *Target) []finding.Finding {
 //     "node ./dist/index.js", which CFG070 leaves alone on purpose.
 //   - PowerShell with -File and none of -Command, -c, -EncodedCommand, -enc,
 //     -ec, -e.
+//
+// cmdLaunchers are the programs besides the package runners that a cmd /c
+// may start for an MCP server (#997).
+var cmdLaunchers = map[string]bool{
+	"node": true, "npm": true, "python": true, "python3": true, "py": true, "deno": true, "bun": true,
+	"uv": true, "docker": true, "podman": true, "java": true, "dotnet": true,
+}
+
 func shellLaunchesProgram(shell string, args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -105,6 +114,19 @@ func shellLaunchesProgram(shell string, args []string) bool {
 			if strings.ContainsAny(a, "&|<>^") {
 				return false
 			}
+		}
+		// Only a package runner or a language runtime after /c (#997):
+		// "cmd /c npx -y pkg" is how Windows starts an npx server, while
+		// "cmd.exe /c <any binary>" let a committed .cursor/mcp.json run
+		// anything (CVE-2025-54136).
+		f := strings.Fields(rest[0])
+		if len(f) == 0 {
+			return false
+		}
+		prog := strings.TrimSuffix(strings.ToLower(filepath.Base(strings.ReplaceAll(f[0], `\`, "/"))), ".exe")
+		prog = strings.TrimSuffix(strings.TrimSuffix(prog, ".cmd"), ".bat")
+		if !npmPackageRunners[prog] && !pyPackageRunners[prog] && !cmdLaunchers[prog] {
+			return false
 		}
 		return true
 	case "powershell", "pwsh":

@@ -186,3 +186,20 @@ func TestCFG019_Issue1183(t *testing.T) {
 		})
 	}
 }
+
+// cmd /c is exempt only for a package runner or a runtime (#997).
+func TestCFG019_CmdLaunchers997(t *testing.T) {
+	for args, want := range map[string]bool{
+		"/c npx -y pkg@1": false, "/c calc.exe": true, "/c C:\\tools\\node.exe server.js": false,
+		"/c uvx srv": false, "/c run.bat": true, "/c node.cmd s.js": false,
+	} {
+		srv := parser.MCPServer{Command: "cmd.exe", Args: strings.Fields(args)}
+		f := CFG019.Check(&Target{ProjectMCPFile: ".mcp.json", ProjectMCP: map[string]parser.MCPServer{"s": srv}})
+		if (len(f) == 1) != want {
+			t.Errorf("cmd %s: %+v", args, f)
+		}
+	}
+	if shellLaunchesProgram("cmd", []string{"/c", " "}) {
+		t.Error("blank command after /c")
+	}
+}

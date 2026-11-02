@@ -81,6 +81,15 @@ type Target struct {
 	// read them.
 	ExternalImports []string
 
+	// RootFiles are the names of the files at the root of the scanned
+	// directory, Venvs the committed Python virtual environments (a
+	// directory with a pyvenv.cfg), and YarnPath the yarnPath of the
+	// .yarnrc.yml in YarnrcFile (#997). Set on one target per scan.
+	RootFiles  []string
+	Venvs      []string
+	YarnPath   string
+	YarnrcFile string
+
 	// Gitignore is the project's .gitignore, read during discovery so a
 	// symlink that leaves the tree is reported by CFG115 like any other
 	// (#1023); HasGitignore is whether it could be read. Set on the project
