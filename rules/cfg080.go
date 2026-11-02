@@ -141,15 +141,22 @@ var commentDirectiveRe = regexp.MustCompile(`(?is)(` +
 var commentInstructionsDescriptionRe = regexp.MustCompile("(?i)^(?:see\\s+\\S+\\s+for\\s+|this\\s+file\\s+contains\\s+|a\\s+guide\\s+to\\s+)\\S*.*\\binstructions?\\s+for\\s+(?:ai|claude|agents?)\\b")
 var commentLicenseRe = regexp.MustCompile("(?i)^you should have received a copy of the (?:gnu\\s+)?(?:affero\\s+)?(?:lesser\\s+)?general public license\\b")
 var commentQuotedDiagnosticRe = regexp.MustCompile("(?i)^[a-z][\\w.-]*:\\s*[^|\\n]+\\|\\s+")
+// A diagnostic saying "you must define a field" is not an instruction to the
+// agent. `he exception must not hide a second instruction inside that diagnostic.
+var commentCovertActionRe = regexp.MustCompile(`(?i)\b(?:ignore|disregard|override|bypass|exfiltrate|upload|send|execute|run|delete|call)\b`)
+
 var commentImperativeRe = regexp.MustCompile("(?i)\\b(?:you\\s+(?:must|should)|always\\b|never\\b|run\\b|execute\\b|delete\\b|add\\b|send\\b|ignore\\b|override\\b|must\\b)")
 
 func benignCommentProse(body string) bool {
 	trimmed := strings.TrimSpace(body)
-	if commentLicenseRe.MatchString(trimmed) {
-		return true
+	if m := commentLicenseRe.FindStringIndex(trimmed); m != nil {
+		// Exclude the standard "You should have received..." opening, but
+		// inspect anything appended after the licence name for instructions.
+		return !commentDirectiveRe.MatchString(trimmed[m[1]:])
 	}
 	if commentQuotedDiagnosticRe.MatchString(trimmed) {
-		return true
+		_, afterDiagnostic, _ := strings.Cut(trimmed, "|")
+		return !commentCovertActionRe.MatchString(afterDiagnostic)
 	}
 	if !strings.ContainsAny(trimmed, ":;") && !commentImperativeRe.MatchString(trimmed) &&
 		commentInstructionsDescriptionRe.MatchString(trimmed) {
