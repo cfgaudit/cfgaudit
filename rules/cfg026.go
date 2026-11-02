@@ -179,7 +179,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 var deviceDeveloperModeRe = regexp.MustCompile(`(?i)\b(?:device|phone|tablet|channel|android|ios|browser)\b[^.;:]{0,60}\bwith\s+$`)
 
 func deviceDeveloperMode(line string, loc []int) bool {
-	match := strings.`oLower(line[loc[0]:loc[1]])
+	match := strings.ToLower(line[loc[0]:loc[1]])
 	if !strings.HasPrefix(match, "developer mode ") {
 		return false
 	}
