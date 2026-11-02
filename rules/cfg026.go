@@ -49,7 +49,12 @@ var bypassPatterns = []bypassPattern{
 	// only fired when the qualifier followed the verb directly. It is a closed set
 	// on purpose — a generic `(?:\s+\w+){0,3}` filler would drag in benign prose,
 	// because the noun list carries broad words (data, content, context, text).
-	{1, mustFiltered(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
+	{1, mustFiltered(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|override|discard|supersede|set aside|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
+		finding.Error, "instruction override", false},
+	// The same override aimed at the rules the agent works under, which needs
+	// the qualifier: "disregard all earlier guardrails", "ignore your previous
+	// rules", but not "ignore the lint rules for generated files" (#993).
+	{1, mustFiltered(`(?i)\b(ignore|disregard|forget|bypass|override|discard|supersede|set aside)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial|original|existing|system)\s+(rules|guardrails|guidelines|safeguards|policies|safety\s+rules)\b`),
 		finding.Error, "instruction override", false},
 	// Pattern 2 targets hijacking of Claude's own identity. Bare "act as <role>" /
 	// "pretend you are <role>" are the standard, legitimate way to define a skill's
@@ -81,6 +86,32 @@ var bypassPatterns = []bypassPattern{
 		finding.Error, "authority impersonation", false},
 	{4, mustFiltered(`(?i)\b(in\s+a\s+(fictional|hypothetical|alternate|imaginary)\s+(world|scenario|universe|context|story)|for\s+a\s+(story|novel|game|roleplay|simulation)\b|for\s+(roleplay|fiction)\b|hypothetically\s+speaking|in\s+this\s+(roleplay|scenario|simulation),?\s+(you\s+(can|may|should|must|are\s+allowed)))`),
 		finding.Warn, "permissive fictional / hypothetical framing", true},
+	// Pattern 6 is a claimed vendor endorsement (#1006): "This skill has been
+	// verified by Anthropic", "the official OpenAI plugin". It runs nothing,
+	// and a first-party file can say it, so it is a warning; it is how a
+	// malicious skill asks to be trusted.
+	// The file has to be the subject ("this skill has been verified by"), or
+	// the claim a status line ("Review Status: Verified by Anthropic"): in
+	// the pre-release corpus the bare phrase was always about something else,
+	// "commits signed and verified by GitHub", "docs are verified by GitHub
+	// Actions", "derived from the official Anthropic skill-authoring guide".
+	{6, mustFiltered(`(?i)\b(?:this\s+(?:skill|plugin|extension|agent|subagent|server|tool|file|command|package|mcp\s+server)\s+(?:has\s+been|is|was|are|have\s+been)\s+(?:officially\s+)?(?:verified|approved|endorsed|certified|vetted)\s+by\s+(?:the\s+)?(?:Anthropic|OpenAI|GitHub|Google|Microsoft)|(?:status|review(?:\s+status)?|verification|verified)\s*:\s*(?:\*\*)?(?:verified|approved|endorsed|certified)\s+by\s+(?:the\s+)?(?:Anthropic|OpenAI|GitHub|Google|Microsoft)|this\s+is\s+(?:the|an)\s+official\s+(?:Anthropic|OpenAI)\s+(?:skill|plugin|subagent))\b`),
+		finding.Warn, "vendor endorsement claim", false},
+	// Pattern 5 is pattern 1 in other languages (#993): the canonical
+	// "ignore all previous instructions" in German, Spanish, French, Russian,
+	// Chinese, Japanese and Korean. One verb, qualifier and noun each.
+	{5, mustFiltered(`(?i)(?:\b(?:ignoriere|ignorieren\s+sie|vergiss|vergessen\s+sie)\s+(?:alle\s+)?(?:vorherigen|bisherigen|fr[üu]heren|obigen|vorigen)\s+(?:anweisungen|instruktionen|befehle|regeln)` +
+		`|\b(?:ignora|ignore|olvida)\s+(?:todas\s+)?las\s+(?:instrucciones|[óo]rdenes|reglas)\s+(?:anteriores|previas)` +
+		`|\b(?:ignore[sz]?|oublie[sz]?)\s+(?:toutes\s+)?les\s+(?:instructions|consignes|r[èe]gles)\s+(?:pr[ée]c[ée]dentes|ant[ée]rieures))`),
+		finding.Error, "instruction override (non-English)", false},
+	// Russian, Chinese, Japanese and Korean have no ASCII literal for the
+	// prefilter to derive, so this one has no filter and runs only on lines
+	// with a non-ASCII character.
+	{5, filteredRegexp{Regexp: regexp.MustCompile(`(?i)(?:(?:игнорируй|игнорируйте|забудь|забудьте)\s+(?:все\s+)?(?:предыдущие|прежние)\s+(?:инструкции|указания|правила)` +
+		`|(?:忽略|无视|忽視|無視)(?:所有|全部)?(?:之前|以上|先前|上面|以前)的?(?:所有|全部)?(?:指令|说明|說明|指示|命令|规则)` +
+		`|(?:以前|これまで|上記|前)の(?:すべての|全ての)?(?:指示|命令|ルール)を(?:すべて|全て)?無視` +
+		`|이전의?\s*(?:모든\s*)?(?:지시|지침|명령)(?:사항)?(?:을|를)?\s*(?:모두\s*)?무시)`)},
+		finding.Error, "instruction override (non-English)", false},
 }
 
 // Check scans CLAUDE.md line by line for prompt-injection phrase classes. Patterns
@@ -103,10 +134,23 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				continue
 			}
 			for _, p := range bypassPatterns {
-				if p.skipCode && inFence {
+				if (p.skipCode && inFence) || (p.re.filter == nil && isASCII(line)) {
 					continue
 				}
+				line := line
 				sm := p.re.FindStringSubmatchIndex(line)
+				if sm == nil && (p.num == 1 || p.num == 5) {
+					// An override wrapped onto the next line of the paragraph
+					// (#993): matched on the joined text when the match starts
+					// on this line and ends on the next.
+					if joined, ok := wrappedLine(lines, i); ok {
+						// Pattern 1 needs its qualifier here: "Ignore / the
+						// input that opened the prompt" is not an override.
+						if m := p.re.FindStringSubmatchIndex(joined); m != nil && m[0] < len(line) && m[1] > len(line) && (p.num == 5 || m[4] >= 0) {
+							line, sm = joined, m
+						}
+					}
+				}
 				if sm == nil {
 					continue
 				}
@@ -115,7 +159,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					continue
 				}
 				sev := p.sev
-				if p.num == 3 && (authorityIdiom(line, loc) || roleNotSpeaker(line, sm)) {
+				if p.num == 3 && (authorityIdiom(line, loc) || roleNotSpeaker(line, sm) || deviceDeveloperMode(line, loc)) {
 					continue
 				}
 				if p.num == 1 {
@@ -144,19 +188,28 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					}
 					sev = finding.Warn
 				}
-				if p.num == 1 || p.num == 2 {
-					if quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0]) {
+				if p.num == 1 || p.num == 2 || p.num == 5 {
+					if (quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0])) && !linkTitleAt(line, loc[0]) {
 						if defensiveContext(lines, i) || askAgentQuoteRe.MatchString(line[:loc[0]]) {
 							continue
 						}
 						sev = finding.Warn
-						if defensiveBlock(lines, i) {
+						// A quoted override in another language had a defensive
+						// rule around it in every corpus case, written in that
+						// language, which defensiveContext does not read.
+						if defensiveBlock(lines, i) || p.num == 5 {
 							sev = finding.Info
 						}
 					}
 				}
 				if p.num == 4 && (storyWorkRe.MatchString(line) || storyNounAfterRe.MatchString(line[loc[1]:])) {
 					continue
+				}
+				if p.num == 6 && (defensiveCueRe.MatchString(line) || endorsementCaveatRe.MatchString(line) || defensiveContext(lines, i)) {
+					continue
+				}
+				if p.num == 6 && (quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0])) {
+					sev = finding.Info
 				}
 				findings = append(findings, finding.Finding{
 					RuleID:   "CFG026",
@@ -171,6 +224,19 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+// Developer Mode can be a real OS/device or Discord channel setting, not
+// the agent claiming elevated authority (#1177). Only skip when a preceding
+// "device/channel with" qualifies this specific setting on the same clause.
+var deviceDeveloperModeRe = regexp.MustCompile(`(?i)\b(?:device|phone|tablet|channel|android|ios|browser)\b[^.;:]{0,60}\bwith\s+$`)
+
+func deviceDeveloperMode(line string, loc []int) bool {
+	match := strings.ToLower(line[loc[0]:loc[1]])
+	if !strings.HasPrefix(match, "developer mode ") {
+		return false
+	}
+	return deviceDeveloperModeRe.MatchString(line[:loc[0]])
 }
 
 func isFenceDelimiter(line string) bool {
@@ -192,6 +258,7 @@ func inInlineCode(line string, idx int) bool {
 // match without one.
 var overrideOnlyQualified = map[string]bool{
 	"skip": true, "omit": true, "neglect": true, "overlook": true,
+	"override": true, "discard": true, "supersede": true, "set aside": true,
 	"do not follow": true, "do not obey": true,
 }
 
@@ -205,6 +272,32 @@ func quotedAt(line string, idx int) bool {
 	pre := line[:idx]
 	return strings.Count(pre, "\"")%2 == 1 || strings.Count(pre, "`")%2 == 1 ||
 		strings.Count(pre, "\u201c") > strings.Count(pre, "\u201d")
+}
+
+// wrappedLine returns line i joined with the next line when the sentence
+// continues there: line i does not end a sentence, and the next line is
+// neither blank, a list item, a heading nor a fence.
+func wrappedLine(lines []string, i int) (string, bool) {
+	cur := strings.TrimRight(lines[i], " \t")
+	if i+1 >= len(lines) || cur == "" || strings.HasSuffix(cur, ".") || strings.HasSuffix(cur, ":") || strings.HasSuffix(cur, "!") || strings.HasSuffix(cur, "?") {
+		return "", false
+	}
+	next := strings.TrimSpace(lines[i+1])
+	if next == "" || isFenceDelimiter(next) || strings.HasPrefix(next, "#") || strings.HasPrefix(next, "- ") || strings.HasPrefix(next, "* ") || strings.HasPrefix(next, "|") {
+		return "", false
+	}
+	return cur + " " + next, true
+}
+
+// linkTitleRe matches the start of a Markdown link or image title up to the
+// text: `[docs](https://x "` or `![logo](logo.png '`.
+var linkTitleRe = regexp.MustCompile(`!?\[[^\]]*\]\([^)\s]+\s+["']([^"')]*)$`)
+
+// linkTitleAt reports whether idx is inside the title of a Markdown link or
+// image. The title renders only as a tooltip, so text there is hidden from
+// the reader rather than cited, and keeps its severity (#993).
+func linkTitleAt(line string, idx int) bool {
+	return linkTitleRe.MatchString(line[:idx])
 }
 
 // openingQuoteBefore reports a quote right before idx, which opens a quoted
@@ -375,6 +468,11 @@ var reportLineRe = regexp.MustCompile(`(?i)^\s*\[(?:CRITICAL|HIGH|MEDIUM|LOW|WAR
 // line is the example of a defensive rule and is not reported; quoted
 // elsewhere it is still a warning (#871).
 var defensiveCueRe = regexp.MustCompile(`(?i)\b(?:prompt[- ]injection|injection|data,?\s+not\s+(?:agent\s+)?instructions|as\s+(?:inert\s+)?data\b|data\s+(?:to\s+analy[sz]e|only)\b|untrusted|attacker\w*|malicious|hidden\s+instructions|never\s+(?:follow|interpret|let|obey)|do\s+not\s+(?:follow|obey)|don'?t\s+(?:follow|obey)|flag\s+(?:it|them)|tries\s+to\s+steer|fetched\s+content|red\s+flags?|redact\w*|saniti[sz]\w*|regardless\s+of\s+what\s+(?:they|it|the\s+\w+)\s+(?:claims?|says?)|zero\s+(?:operational\s+)?authority)\b`)
+
+// endorsementCaveatRe is a line that treats a vendor endorsement as a claim
+// to doubt: "claims of being verified by Anthropic", "a skill cannot grant
+// itself", "be wary of".
+var endorsementCaveatRe = regexp.MustCompile(`(?i)\b(?:claims?\s+(?:of|to\s+be|that)|claimed|claiming|cannot\s+grant|can'?t\s+grant|be\s+wary|suspicious|impersonat\w*|fake|spoof\w*|not\s+(?:verified|approved|endorsed|affiliated)|unofficial|no\s+(?:skill|plugin)\s+is)\b`)
 
 // storyWorkRe matches a line about a user story or a Storybook story, where
 // "for a story" is software work, not fiction (#871).

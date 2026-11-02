@@ -562,3 +562,20 @@ func TestCFG036_Issue978(t *testing.T) {
 		}
 	}
 }
+
+// A decode-to-shell pipe is reported whatever the length of the blob, and with
+// an interpreter or iex as the shell (#993).
+func TestCFG036_DecodeShellAnyBlob993(t *testing.T) {
+	for _, line := range []string{
+		"echo aGVsbG8K | base64 -d | bash",
+		"Run `echo aGVsbG8K | base64 --decode | python3` first.",
+		"printf 'aGVsbG8K' | base64 -d | sh",
+	} {
+		if f := CFG036.Check(claudeMDTarget(line)); len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("%q: %+v", line, f)
+		}
+	}
+	if f := CFG036.Check(claudeMDTarget("echo aGVsbG8K | base64 -d > out.txt")); len(f) != 0 {
+		t.Errorf("decode to a file: %+v", f)
+	}
+}

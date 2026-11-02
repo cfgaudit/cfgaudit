@@ -158,6 +158,11 @@ func commandSecrets(cmd string) []string {
 	}
 	inHeader := map[string]bool{}
 	for _, m := range commandAuthHeaderRe.FindAllStringSubmatch(cmd, -1) {
+		// The shell expands a $ in the value, and printf fills a %s: neither
+		// is a credential written into the command (#987).
+		if strings.Contains(m[3], "$") || strings.Contains(m[3], "%s") {
+			continue
+		}
 		if what, ok := headerCredential(m[1], m[2]+m[3]); ok {
 			add(what + " in the " + m[1] + " header")
 			inHeader[m[3]] = true
