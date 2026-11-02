@@ -72,7 +72,35 @@ func (r *cfg019) Check(t *Target) []finding.Finding {
 			})
 		}
 	}
-	return findings
+	return append(findings, zedLSPInlineScripts(t)...)
+}
+
+// zedLSPInlineScripts applies the same two checks to the language servers a
+// committed .zed/settings.json starts (#996, CVE-2025-68432): lsp.<name>.binary
+// with a shell running an inline script, or an interpreter with an
+// inline-code flag. Zed starts them on worktree trust.
+func zedLSPInlineScripts(t *Target) []finding.Finding {
+	if t.ZedSettings == nil {
+		return nil
+	}
+	var out []finding.Finding
+	for _, name := range sortedKeys2(t.ZedSettings.LSP) {
+		b := t.ZedSettings.LSP[name].Binary
+		if b == nil || strings.TrimSpace(b.Path) == "" {
+			continue
+		}
+		label := "lsp." + name + ".binary"
+		if shell := shellInterpreterName(b.Path); shell != "" && !shellLaunchesProgram(shell, b.Arguments) {
+			out = append(out, finding.Finding{RuleID: "CFG019", Severity: finding.Error, File: t.ZedSettingsFile, Key: label,
+				Message: label + " runs the shell interpreter \"" + shell + "\" — the language server is an inline script in arguments, not a real server binary; Zed starts it once the worktree is trusted. Point path at the server executable instead"})
+			continue
+		}
+		if lang := interpreterBasename(b.Path, languageInterpreters); lang != "" && hasInlineEvalFlag(b.Arguments) {
+			out = append(out, finding.Finding{RuleID: "CFG019", Severity: finding.Error, File: t.ZedSettingsFile, Key: label,
+				Message: label + " runs \"" + lang + "\" with an inline-code flag (e.g. -e/-c) — the language server is inline code in arguments; Zed starts it once the worktree is trusted. Point path at the server executable instead"})
+		}
+	}
+	return out
 }
 
 // shellLaunchesProgram reports whether a shell in an MCP server's command only

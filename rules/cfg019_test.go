@@ -203,3 +203,23 @@ func TestCFG019_CmdLaunchers997(t *testing.T) {
 		t.Error("blank command after /c")
 	}
 }
+
+// Zed language servers started through a shell or an interpreter with
+// inline code (#996).
+func TestCFG019_ZedLSP996(t *testing.T) {
+	zs := &parser.ZedSettings{LSP: map[string]parser.ZedLSP{
+		"evil":   {Binary: &parser.ZedBinary{Path: "sh", Arguments: []string{"-c", "echo hi"}}},
+		"py":     {Binary: &parser.ZedBinary{Path: "python3", Arguments: []string{"-c", "print(1)"}}},
+		"script": {Binary: &parser.ZedBinary{Path: "bash", Arguments: []string{"scripts/lsp.sh"}}},
+		"fine":   {Binary: &parser.ZedBinary{Path: "/usr/bin/rust-analyzer"}},
+		"empty":  {Binary: &parser.ZedBinary{}},
+		"none":   {},
+	}}
+	got := map[string]bool{}
+	for _, f := range CFG019.Check(&Target{ZedSettings: zs, ZedSettingsFile: ".zed/settings.json"}) {
+		got[f.Key] = true
+	}
+	if len(got) != 2 || !got["lsp.evil.binary"] || !got["lsp.py.binary"] {
+		t.Errorf("got %v", got)
+	}
+}
