@@ -752,6 +752,7 @@ func unreadableTargets(dir string) []*rules.Target {
 // most one per available CPU (#1017); each result goes into its own slot, which
 // keeps the output identical to a sequential run.
 func runRules(targets []*rules.Target, detected *version.Version, accept func(rules.Rule) bool) []finding.Finding {
+	decodeTargetTexts(targets)
 	per := make([][]finding.Finding, len(targets))
 	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
 	var wg sync.WaitGroup
@@ -1960,6 +1961,7 @@ func attachSkillHooks(t *rules.Target) {
 }
 
 func attachFrontmatterHooks(t *rules.Target, kind string) {
+	t.InstructionContent = decodeInstructionText(t.InstructionContent)
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
 	if !ok {
 		return
@@ -2570,7 +2572,7 @@ func loadClaudeMD(path string) (string, error) {
 		}
 		return "", err
 	}
-	return string(data), nil
+	return decodeInstructionText(string(data)), nil
 }
 
 // parseSettingsOptional parses a settings.json, returning (nil, nil) when the
