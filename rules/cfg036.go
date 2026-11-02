@@ -152,7 +152,7 @@ func passwordArchiveRun(lines []string, i int) bool {
 // literal, not a shell expansion, whose variable names cannot hold a dot:
 // `Bearer ${Deno.env.get("OPENAI_API_KEY")}` (#885), `Bearer
 // ${c.env.AI_GATEWAY_TOKEN}` in a Cloudflare Worker (#955).
-var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?|schema)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b`)
+var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?|schema)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b|\S*\.ssh/[\w.\-]+\.pub\b`)
 
 // inlineCodeSpanRe matches a Markdown inline-code span: a pair of backticks
 // around text with no backtick in it.
@@ -217,11 +217,34 @@ func splitCommands(s string) []string {
 	return append(out, s[start:])
 }
 
+// loopbackHostRe finds the host of each http(s) URL on a line.
+var loopbackHostRe = regexp.MustCompile(`(?i)\bhttps?://(\[[^\]]*\]|[^/:\s"'\x60)]+)`)
+
+// loopbackOnly reports whether every URL on line points at this machine:
+// a health check against `curl http://localhost:3000/api/ping` sends
+// nothing anywhere (#1175).
+func loopbackOnly(line string) bool {
+	hosts := loopbackHostRe.FindAllStringSubmatch(line, -1)
+	if len(hosts) == 0 {
+		return false
+	}
+	for _, h := range hosts {
+		host := strings.ToLower(h[1])
+		if host != "localhost" && host != "0.0.0.0" && host != "[::1]" && !strings.HasPrefix(host, "127.") {
+			return false
+		}
+	}
+	return true
+}
+
 // envKeyLookupRe is a substitution that looks up one named key in an env file
 // or lists env files: $(grep '^ADMIN_API_KEY=' .env | cut -d= -f2-),
 // $(grep -E '^STATE_DIR=' docker/.env 2>/dev/null | cut -d= -f2- | tr -d '"'),
 // $(ls apps/web/.env.local apps/web/.env 2>/dev/null | head -1).
-var envKeyLookupRe = regexp.MustCompile(`^\$\(\s*(?:grep\s+(?:-\w+\s+)*["']?(?:\^[A-Za-z_<][\w<>]*|[A-Z_<][A-Z0-9_<>]*)=?["']?\s+[\w./\-]*\.env[\w.\-]*|ls\s+[^|)]*)\s*(?:2>\s*/dev/null\s*)?(?:\|\s*(?:cut|tr|sed|head|tail|xargs|awk)\b[^|)]*)*\)$`)
+// The env file may sit under a variable directory ($BACKEND_DIR/.env,
+// "${DIR}"/.env), the key may hold non-ASCII letters, and sed -n
+// 's/^KEY=//p' is a lookup as well (#1175).
+var envKeyLookupRe = regexp.MustCompile(`^\$\(\s*(?:(?:grep\s+(?:-\w+\s+)*["']?(?:\^[\p{L}_<][\p{L}\d_<>]*|[\p{Lu}_<][\p{Lu}\d_<>]*)=?["']?|sed\s+-n\s+["']s/\^[\p{L}_][\p{L}\d_]*=//p["'])\s+(?:"?\$\{?\w+\}?"?/)?[\w./\-]*\.env[\w.\-]*|ls\s+[^|)]*)\s*(?:2>\s*/dev/null\s*)?(?:\|\s*(?:cut|tr|sed|head|tail|xargs|awk)\b[^|)]*)*\)$`)
 
 // substAssignedRe is a shell variable assignment right before a substitution:
 // NAME=$( or NAME="$(.
@@ -524,7 +547,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 				}
 			}
 			pipeShell[i] = pipeShellRe.MatchString(line)
-			network[i] = netExfilRe.MatchString(line) || pipeShell[i]
+			network[i] = (netExfilRe.MatchString(line) && !loopbackOnly(line)) || pipeShell[i]
 			if loc, sev := sensitiveSubstitution(line, fenced[i+1], jsFenced[i+1]); loc != nil {
 				// A read the text refuses is downgraded, not dropped, as
 				// CFG031 does (#869): a refusing heading must not hide a
