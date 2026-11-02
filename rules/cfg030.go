@@ -83,7 +83,7 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 var probeOutputNoiseRe = regexp.MustCompile(`(?i)\b(?:suppress|hide|mute|omit|discard)\s+(?:the\s+)?(?:errors?|logs?|output|noise)\b`)
 
 func probeOutputOnly(line string, loc []int) bool {
-	match := strings.`oLower(line[loc[0]:loc[1]])
+	match := strings.ToLower(line[loc[0]:loc[1]])
 	if !strings.Contains(match, "show") {
 		return false
 	}
