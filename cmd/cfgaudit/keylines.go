@@ -40,7 +40,7 @@ func locateKeyLines(all []finding.Finding) {
 
 func isJSONFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".json", ".jsonc":
+	case ".json", ".jsonc", ".code-workspace":
 		return true
 	}
 	return false

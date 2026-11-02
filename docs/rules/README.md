@@ -177,6 +177,8 @@ The [vercel-labs/skills](https://github.com/vercel-labs/skills) CLI (skills.sh) 
 
 `.vscode/` files are committed into repositories and read by VS Code **and its forks (Cursor, Windsurf)**, so a committed workspace config is a repo-controlled auto-run / supply-chain surface. cfgaudit scans these automatically when present and attributes findings to the source file.
 
+A `*.code-workspace` file at the repository root carries the same blocks, and VS Code offers to open it: its `settings` are checked like `.vscode/settings.json`, its `tasks` like `.vscode/tasks.json`, and the servers under `settings.mcp.servers` like `.vscode/mcp.json` (#988). VS Code reads MCP servers there and not from a top-level `mcp` key.
+
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG047](CFG047.md) | error/warn | a committed task file auto-runs a command — `.vscode/tasks.json` `runOptions.runOn: "folderOpen"` is zero-click code execution when the repo is opened (→ error), and a Zed `.zed/tasks.json` task carrying the `create_worktree` hook is spawned without a prompt for the command when a git worktree is created (→ warn; unlike `.zed/settings.json`, that file is not worktree-trust gated). A silent `reveal`/`presentation` is called out in both | LLM03 |

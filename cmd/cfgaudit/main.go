@@ -1260,7 +1260,39 @@ func vscodeTargets(dir string) ([]*rules.Target, error) {
 			VSCodeSettingsFile: settingsFile,
 		})
 	}
-	return targets, nil
+	return append(targets, codeWorkspaceTargets(dir)...), nil
+}
+
+// codeWorkspaceTargets reads the *.code-workspace files at the root of dir
+// (#988). VS Code offers to open such a file when it sits at the repository
+// root, and then applies its settings, runs its folderOpen tasks through the
+// same automatic-task prompt as .vscode/tasks.json, and starts the servers
+// under settings.mcp. Each block becomes the target the .vscode/ equivalent
+// would, attributed to the workspace file.
+func codeWorkspaceTargets(dir string) []*rules.Target {
+	// Glob fails only on a malformed pattern, which here means metacharacters
+	// in dir; the other globs of the scan report that.
+	matches, _ := scanroot.Glob(filepath.Join(dir, "*.code-workspace"))
+	var targets []*rules.Target
+	for _, path := range matches {
+		w, err := parser.ParseCodeWorkspace(path)
+		if err != nil {
+			if !scanroot.IsAbsent(err) {
+				skipUnreadable(path, err)
+			}
+			continue
+		}
+		if w.Tasks != nil {
+			targets = append(targets, &rules.Target{Scope: finding.ScopeProject, VSCodeTasks: w.Tasks, VSCodeTasksFile: path})
+		}
+		if w.Settings != nil {
+			targets = append(targets, &rules.Target{Scope: finding.ScopeProject, VSCodeSettings: w.Settings, VSCodeSettingsFile: path})
+		}
+		if len(w.MCPServers) > 0 {
+			targets = append(targets, &rules.Target{Scope: finding.ScopeProject, ProjectMCP: w.MCPServers, ProjectMCPFile: path})
+		}
+	}
+	return targets
 }
 
 // loadVSCodeSettings parses dir/.vscode/settings.json. A missing or empty file
