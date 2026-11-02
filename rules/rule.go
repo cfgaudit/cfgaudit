@@ -112,6 +112,12 @@ type Target struct {
 	VSCodeSettings     *parser.VSCodeSettings
 	VSCodeSettingsFile string
 
+	// VSCodeExtensions are the recommended extension IDs of a
+	// .vscode/extensions.json or a workspace file's "extensions" block (#995);
+	// VSCodeExtensionsFile is the file.
+	VSCodeExtensions     []string
+	VSCodeExtensionsFile string
+
 	// Gemini holds a parsed Gemini CLI settings.json (.gemini/settings.json or
 	// ~/.gemini/settings.json). Its security surface mirrors Claude Code's
 	// settings.json — approval mode, sandbox, extension trust (CFG060–CFG062) —

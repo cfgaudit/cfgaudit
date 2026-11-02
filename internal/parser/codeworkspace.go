@@ -25,6 +25,9 @@ type CodeWorkspace struct {
 	Tasks *VSCodeTasks
 	// MCPServers is nil when settings.mcp names no server.
 	MCPServers map[string]MCPServer
+	// Extensions are the recommended extension IDs of its "extensions"
+	// block (#995).
+	Extensions []string
 }
 
 // ParseCodeWorkspace reads a *.code-workspace file. Like the .vscode/ files it
@@ -39,8 +42,9 @@ func ParseCodeWorkspace(path string) (*CodeWorkspace, error) {
 		return &CodeWorkspace{}, nil
 	}
 	var top struct {
-		Settings json.RawMessage `json:"settings"`
-		Tasks    json.RawMessage `json:"tasks"`
+		Settings   json.RawMessage `json:"settings"`
+		Tasks      json.RawMessage `json:"tasks"`
+		Extensions json.RawMessage `json:"extensions"`
 	}
 	if err := json.Unmarshal(clean, &top); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
@@ -62,6 +66,7 @@ func ParseCodeWorkspace(path string) (*CodeWorkspace, error) {
 			}
 		}
 	}
+	w.Extensions = extensionRecommendations(top.Extensions)
 	if isJSONObject(top.Tasks) {
 		var t VSCodeTasks
 		if err := json.Unmarshal(top.Tasks, &t); err != nil {
@@ -78,4 +83,40 @@ func ParseCodeWorkspace(path string) (*CodeWorkspace, error) {
 func isJSONObject(raw json.RawMessage) bool {
 	b := bytes.TrimSpace(raw)
 	return len(b) > 0 && b[0] == '{'
+}
+
+// ParseVSCodeExtensions reads the recommendations of a .vscode/extensions.json
+// (#995), which is JSON with comments.
+func ParseVSCodeExtensions(path string) ([]string, error) {
+	data, err := scanroot.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	clean := stripJSONC(data)
+	if len(bytes.TrimSpace(clean)) == 0 {
+		return nil, nil
+	}
+	if !json.Valid(clean) {
+		return nil, fmt.Errorf("parse %s: invalid JSON", path)
+	}
+	return extensionRecommendations(clean), nil
+}
+
+// extensionRecommendations returns the string entries of the
+// "recommendations" list of an extensions object.
+func extensionRecommendations(raw json.RawMessage) []string {
+	var e struct {
+		Recommendations []json.RawMessage `json:"recommendations"`
+	}
+	if !isJSONObject(raw) || json.Unmarshal(raw, &e) != nil {
+		return nil
+	}
+	var out []string
+	for _, r := range e.Recommendations {
+		var id string
+		if json.Unmarshal(r, &id) == nil && id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
