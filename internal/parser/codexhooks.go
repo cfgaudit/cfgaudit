@@ -85,8 +85,11 @@ func (h *CodexHooks) Empty() bool {
 }
 
 // CodexHookEventsToml mirrors Codex's HookEventsToml
-// (codex-rs/config/src/hook_config.rs): one named field per declared lifecycle
-// event, in both the JSON and TOML spellings.
+// (codex-rs/config/src/hook_config.rs; codex-rs/protocol/src/hooks.rs since
+// rust-v0.166.0): one named field per declared lifecycle event, in both the
+// JSON and TOML spellings. PreModelRequest and PostModelRequest came in
+// rust-v0.164.0 (openai/codex#55144, "observation-only model request lifecycle
+// hooks"); their command handlers run like any other (#753).
 //
 // Named fields rather than a map, for two reasons. Codex's own discovery warns
 // and ignores an event name it does not declare, so a map would let a typo be
@@ -99,6 +102,8 @@ func (h *CodexHooks) Empty() bool {
 // may write hook state (codex-rs/hooks/src/config_rules.rs), so a trusted_hash
 // committed to a project file is inert and reporting it would be a false finding.
 type CodexHookEventsToml struct {
+	PreModelRequest  []CodexMatcherGroup `json:"PreModelRequest,omitempty" toml:"PreModelRequest"`
+	PostModelRequest []CodexMatcherGroup `json:"PostModelRequest,omitempty" toml:"PostModelRequest"`
 	PreToolUse       []CodexMatcherGroup `json:"PreToolUse,omitempty" toml:"PreToolUse"`
 	PermissionReq    []CodexMatcherGroup `json:"PermissionRequest,omitempty" toml:"PermissionRequest"`
 	PostToolUse      []CodexMatcherGroup `json:"PostToolUse,omitempty" toml:"PostToolUse"`
@@ -120,6 +125,8 @@ func (e *CodexHookEventsToml) Hooks() *CodexHooks {
 		return nil
 	}
 	byName := map[string][]CodexMatcherGroup{
+		"PreModelRequest":   e.PreModelRequest,
+		"PostModelRequest":  e.PostModelRequest,
 		"PreToolUse":        e.PreToolUse,
 		"PermissionRequest": e.PermissionReq,
 		"PostToolUse":       e.PostToolUse,
