@@ -58,6 +58,10 @@ cfgaudit --skip CFG006,CFG009
 # Use an explicit config file (otherwise .cfgaudit.yml is auto-discovered)
 cfgaudit --config path/to/.cfgaudit.yml
 
+# Also scan the user-scope config of each agent (~/.claude/, ~/.codex/config.toml,
+# ~/.cursor/mcp.json, ~/.gemini/settings.json, ...)
+cfgaudit --user
+
 # Also scan a Claude Code plugin/skill package
 cfgaudit --plugins ./my-plugin
 
@@ -85,7 +89,10 @@ cfgaudit lock --check
 cfgaudit inventory
 cfgaudit inventory --format cyclonedx > agent-bom.json
 
-# Scan a skill, plugin or release archive without unpacking it yourself
+# Scan a skill, plugin or release archive without unpacking it yourself.
+# .zip, .tar and .tar.gz/.tgz are unpacked into a private temporary directory,
+# up to 50,000 entries and 512 MiB; a larger entry than 32 MiB is listed, not
+# unpacked. Findings name the paths inside the archive
 cfgaudit skill.zip
 cfgaudit release.tar.gz
 
@@ -188,7 +195,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 |------|---------|
 | `0` | No findings, or only `warn`/`info` (without `--strict`) |
 | `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
-| `2` | Usage or tool error: `--format` names an unknown format, the scan path or the `--plugins` path is not a directory, more than one scan path is given, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, `--shellcheck` analysis fails, or a path in the scan exists but cannot be read (the scan still runs and lists every such path on stderr). A symbolic link whose target does not exist is read as absent, as the agents read it: it is named on stderr and does not change the exit code (#1363) |
+| `2` | Usage or tool error: `--format` names an unknown format, the scan path or the `--plugins` path is not a directory, more than one scan path is given, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, `--shellcheck` analysis fails, an archive scan target cannot be unpacked, a `--baseline` file cannot be read or a baseline cannot be written, or a path in the scan exists but cannot be read (the scan still runs and lists every such path on stderr; `--write-baseline` and `cfgaudit baseline` then write nothing). A symbolic link whose target does not exist is read as absent, as the agents read it: it is named on stderr and does not change the exit code (#1363) |
 
 A directory without any agent configuration exits 0, because that is a valid state, but the text and table formats add `cfgaudit: no agent configuration found in <dir>; nothing was audited` on stderr. A scan in the wrong directory, or after a checkout step that failed, then does not read like a clean repository. JSON, SARIF and Code Climate output are unchanged.
 

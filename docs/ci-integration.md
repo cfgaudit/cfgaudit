@@ -39,7 +39,7 @@ For pull requests, take the config from the base branch so the change cannot rew
     config: ${{ runner.temp }}/cfgaudit.yml
 ```
 
-**Inputs:** `path` (default `.`), `format` (`text`/`json`/`sarif`), `strict`, `user`, `config` (replaces the scanned directory's `.cfgaudit.yml`; relative to the workspace, or an absolute path outside it), `plugins`, `output`, `fail-on` (`error`/`never`), `image`.
+**Inputs:** `path` (default `.`), `format` (`text`/`json`/`sarif`), `strict`, `user`, `config` (replaces the scanned directory's `.cfgaudit.yml`; relative to the workspace, or an absolute path outside it), `plugins`, `output`, `fail-on` (`error`/`never`), `baseline` (a file written by `cfgaudit baseline`; only findings not in it fail the step, #998), `image`.
 **Outputs:** `exit-code`, `output-file`. By default the step fails on findings at or above the configured threshold; set `fail-on: never` for advisory mode. A tool error (exit code 2: a missing path or config, a file that does not parse) fails the step in both modes, because the report is then incomplete.
 
 ## GitLab CI/CD component
@@ -54,7 +54,7 @@ include:
       format: text
 ```
 
-Inputs: `stage`, `path`, `format`, `config`, `version` (pinned ghcr.io image tag, optionally with `@sha256:<digest>`), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`. `path` and `config` take path characters and `$VAR` / `${VAR}` references only; quotes, backticks and `$( )` are rejected when the pipeline is created. The output artifact expires after 30 days.
+Inputs: `stage`, `path`, `format`, `config`, `baseline` (a file written by `cfgaudit baseline`, #998), `version` (pinned ghcr.io image tag, optionally with `@sha256:<digest>`), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`. `path` and `config` take path characters and `$VAR` / `${VAR}` references only; quotes, backticks and `$( )` are rejected when the pipeline is created. The output artifact expires after 30 days.
 
 `config` replaces the scanned directory's `.cfgaudit.yml`. For merge requests, keep the config out of the repository, for example in a File-type CI/CD variable, so the merge request cannot change it ([why](usage.md#untrusted-repositories)):
 
