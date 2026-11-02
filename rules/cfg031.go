@@ -323,8 +323,50 @@ func notARead(lines []string, i int, loc []int, full string) bool {
 	if strings.HasPrefix(strings.ToLower(line[loc[0]:loc[1]]), ":_authtoken") && npmrcWriteRe.MatchString(line[loc[1]:]) {
 		return true
 	}
+	// The path written into .gitignore names a file to keep out of the
+	// repository (#1173): echo "/deploy.key" >> .gitignore.
+	if gitignoreAppendRe.MatchString(line[loc[1]:]) && (strings.Contains(line[:start], "echo") || strings.Contains(line[:start], "printf")) {
+		return true
+	}
+	// The same sentence refuses the read after the path ("check whether
+	// ~/.netrc has an entry, but never read or print its value"), or a guard
+	// in it refuses the command that names the path ("the guard refuses
+	// command arguments that name them"), as CFG036 reads the same line
+	// (#885, #1173).
+	sentence := line[sentenceStart(line, start):start]
+	if refusedAfterRe.MatchString(sentenceRest(line[loc[1]:])) || guardRefusesRe.MatchString(sentence) {
+		return true
+	}
 	g := governingLine(lines, i)
 	return introducesList(g) && (prohibitionRe.MatchString(g) || blockListHeadRe.MatchString(g))
+}
+
+// guardRefusesRe is a guard, hook, policy or filter that refuses or blocks
+// what the sentence goes on to name. The guard must be the subject: a
+// troubleshooting heading such as "**Permission denied**:" refuses nothing.
+var guardRefusesRe = regexp.MustCompile(`(?i)\b(?:guard|hook|policy|filter|deny[\s-]?list|block[\s-]?list)s?\b[^.]{0,60}?\b(?:refus\w*|block\w*|den(?:y|ies)|reject\w*)\b`)
+
+// gitignoreAppendRe is a redirection that appends to .gitignore.
+var gitignoreAppendRe = regexp.MustCompile(`>>\s*['"]?\.gitignore\b`)
+
+// refusedAfterRe is a refusal of the read that follows the path.
+var refusedAfterRe = regexp.MustCompile(`(?i)\b(?:never|do\s+not|don'?t|must\s+not|without)\s+(?:read(?:ing)?|print(?:ing)?|cat|open(?:ing)?|show(?:ing)?|output(?:ting)?|log(?:ging)?|display(?:ing)?|reveal(?:ing)?|copy(?:ing)?|upload(?:ing)?|send(?:ing)?)\b`)
+
+// sentenceStart returns where the sentence holding offset starts: after the
+// last stop followed by a space before it.
+func sentenceStart(line string, offset int) int {
+	if b := clauseEndRe.FindAllStringIndex(line[:offset], -1); len(b) > 0 {
+		return b[len(b)-1][1]
+	}
+	return 0
+}
+
+// sentenceRest returns s up to the end of its sentence.
+func sentenceRest(s string) string {
+	if b := clauseEndRe.FindStringIndex(s); b != nil {
+		return s[:b[0]+1]
+	}
+	return s
 }
 
 func (r *cfg031) Check(t *Target) []finding.Finding {
