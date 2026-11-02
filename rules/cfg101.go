@@ -232,8 +232,21 @@ func permutationHint(flags, entries, commands []string) string {
 		covered := false
 		for _, entry := range entries {
 			_, pattern, ok := bashRulePattern(entry)
-			if ok && strings.Contains(pattern, candidate) {
-				covered = true
+			if !ok || len(commands) == 0 {
+				continue
+			}
+			tokens := strings.Fields(pattern)
+			// A different command or a longer flag token does not cover this spelling.
+			if len(tokens) < 2 || tokens[0] != commands[0] {
+				continue
+			}
+			for _, token := range tokens[1:] {
+				if token == candidate || token == candidate+"*" {
+					covered = true
+					break
+				}
+			}
+			if covered {
 				break
 			}
 		}

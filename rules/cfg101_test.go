@@ -142,6 +142,8 @@ func TestCFG101_Issue1212_UncoveredSuggestion(t *testing.T) {
 	}{
 		{[]string{"Bash(rm -rf *)", "Bash(rm -fr *)"}, `"-fr"`, "target -rf"},
 		{[]string{"Bash(rm -rf *)", "Bash(rm -fr *)", "Bash(rm -r -f *)"}, `"-fr"`, "target -rf"},
+		{[]string{"Bash(rm -rf *)", "Bash(cat -fr *)"}, "target -rf", `"-fr"`},
+		{[]string{"Bash(rm -rf *)", "Bash(rm -frz *)"}, "target -rf", `"-fr"`},
 		{[]string{"Bash(rm -rf *)"}, "target -rf", `"-fr"`},
 	} {
 		hint := permutationHint([]string{"-rf"}, tc.entries, []string{"rm"})
