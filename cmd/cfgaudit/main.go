@@ -47,6 +47,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// ID) aren't mistaken for the scan directory.
 	if len(args) >= 2 {
 		switch args[1] {
+		case "baseline":
+			return run(baselineArgs(args), stdin, stdout, stderr)
 		case "explain":
 			out, code := explainOutput(args[2:])
 			_, _ = fmt.Fprint(stdout, out)
@@ -77,6 +79,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	strict := fset.Bool("strict", false, "treat warn findings as errors for the exit code (also: strict: true in .cfgaudit.yml)")
 	shellcheck := fset.Bool("shellcheck", false, "run shellcheck on hook/helper commands (requires the shellcheck binary; also: shellcheck: true in .cfgaudit.yml)")
 	showVersion := fset.Bool("version", false, "print cfgaudit version and exit")
+	baselinePath := fset.String("baseline", "", "report only findings that are not in this baseline file (written by `cfgaudit baseline`); secret findings are always reported")
+	writeBaselinePath := fset.String("write-baseline", "", "write the current findings to this baseline file instead of reporting them (what `cfgaudit baseline -o <file>` runs)")
 	noColor := fset.Bool("no-color", false, "no colour in the text and table output (also: NO_COLOR; FORCE_COLOR turns it on without a terminal)")
 
 	var only, skip ruleSet
@@ -217,6 +221,50 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		all[i].Message = rules.RedactURLs(all[i].Message)
 	}
 	all = cfg.PostProcess(all, dir)
+
+	if *writeBaselinePath != "" {
+		if len(scanroot.ReadErrors()) > 0 {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: could not read every path, so no baseline was written: %s\n", strings.Join(scanroot.ReadErrors(), ", "))
+			return 2
+		}
+		n, secrets, err := writeBaseline(*writeBaselinePath, dir, all)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: write baseline: %v\n", err)
+			return 2
+		}
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: wrote %d %s to %s\n", n, pluralize("finding", n), *writeBaselinePath)
+		if secrets > 0 {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: %d secret %s left out: a committed secret is leaked either way, so it stays reported until it is removed and rotated\n", secrets, pluralize("finding", secrets))
+		}
+		return 0
+	}
+	if *baselinePath != "" {
+		b, err := loadBaseline(*baselinePath)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: baseline: %v\n", err)
+			return 2
+		}
+		var suppressed int
+		var stale []baselineEntry
+		all, suppressed, stale = applyBaseline(b, dir, all)
+		if suppressed > 0 {
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: %d %s in the baseline %s not reported\n", suppressed, pluralize("finding", suppressed), *baselinePath)
+		}
+		if len(stale) > 0 {
+			what := "entry matches"
+			if len(stale) > 1 {
+				what = "entries match"
+			}
+			_, _ = fmt.Fprintf(stderr, "cfgaudit: %d baseline %s no finding; run `cfgaudit baseline -o %s` to drop them:\n", len(stale), what, *baselinePath)
+			for i, e := range stale {
+				if i == 10 {
+					_, _ = fmt.Fprintf(stderr, "  ... and %d more\n", len(stale)-10)
+					break
+				}
+				_, _ = fmt.Fprintf(stderr, "  %s %s\n", e.Rule, e.File)
+			}
+		}
+	}
 
 	stdoutFile, _ := stdout.(*os.File)
 	resolved := resolveFormat(*format, stdoutFile != nil && isTTY(stdoutFile))
