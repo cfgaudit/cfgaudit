@@ -50,6 +50,33 @@ func TestCFG055_MarketplaceOnly_Warn(t *testing.T) {
 	}
 }
 
+func TestCFG055_Issue1209_InRepoMarketplaceRegistration(t *testing.T) {
+	for _, source := range []string{
+		`{"source":"directory","path":"./plugins"}`,
+		`{"source":"file","path":"plugins/marketplace.json"}`,
+	} {
+		raw := `{"extraKnownMarketplaces":{"local":{"source":` + source + `}}}`
+		if f := CFG055.Check(settingsTarget(t, raw)); len(f) != 0 {
+			t.Errorf("in-repo marketplace registration must be exempt: %+v", f)
+		}
+		raw = `{"extraKnownMarketplaces":{"local":{"source":` + source + `}},"enabledPlugins":{"x@local":true}}`
+		f := CFG055.Check(settingsTarget(t, raw))
+		if len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, "enabledPlugins") {
+			t.Errorf("enabling in-repo plugin must still warn: %+v", f)
+		}
+	}
+	for _, source := range []string{
+		`{"source":"directory","path":"../outside"}`,
+		`{"source":"directory","path":"/opt/plugins"}`,
+		`{"source":"github","repo":"another-org/plugins"}`,
+	} {
+		raw := `{"extraKnownMarketplaces":{"external":{"source":` + source + `}}}`
+		if f := CFG055.Check(settingsTarget(t, raw)); len(f) != 1 {
+			t.Errorf("unsafe marketplace registration must still warn: %+v", f)
+		}
+	}
+}
+
 func TestCFG055_UserScopeExempt(t *testing.T) {
 	tg := settingsTarget(t, `{"enabledPlugins":{"x@y":true},"extraKnownMarketplaces":{"y":{"source":{"source":"url","url":"https://x"}}}}`)
 	tg.Scope = finding.ScopeUser
