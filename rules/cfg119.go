@@ -261,6 +261,9 @@ func (r *cfg119) Check(t *Target) []finding.Finding {
 	}
 	findings := disguisedRuns(t)
 	for _, s := range t.LaunchedScripts {
+		if s.Skill != "" {
+			continue // its markers are about a script that runs on its own
+		}
 		m := scanPayload(s.Content)
 		other := m.fetchRun || m.credentials || m.envDump
 		var sev finding.Severity
