@@ -64,6 +64,11 @@ cfgaudit --shellcheck
 # Also scan docs that agents read while they work, with the high-precision content rules
 cfgaudit --content-paths 'README.md,CONTRIBUTING.md,docs/**/*.md'
 
+# Adopt cfgaudit in an existing repository: accept today's findings, then fail
+# CI only on new ones. Secret findings are never baselined.
+cfgaudit baseline -o .cfgaudit-baseline.json
+cfgaudit --baseline .cfgaudit-baseline.json
+
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 
@@ -86,6 +91,12 @@ cfgaudit policy generate            # settings.json permissions.deny -> .cfgaudi
 cfgaudit policy apply --dry-run     # preview: .cfgaudit.yml require-deny -> settings.json permissions.deny
 cfgaudit policy apply               # write the missing deny entries
 ```
+
+**`baseline` subcommand** — writes one entry per current finding to `.cfgaudit-baseline.json` (or the file `-o` names), so a repository can adopt cfgaudit without fixing everything first (#998). It takes the scan's flags and directory. `--baseline <file>` then leaves out the findings the file lists, as many times as it lists each, and reports the rest; the exit code counts only those. Two lines on stderr say how many findings the baseline covered and which entries no longer match anything, so the file can be rewritten when findings are fixed.
+
+The entry is a fingerprint of the rule, the file relative to the scanned directory, the reported key and the message with its line numbers taken out, so adding a line above a finding does not make it new; changing what the finding says does. Findings of a secret written into a file (CFG007, CFG050, CFG054, CFG065, CFG073) are left out of the baseline and always reported: the secret is leaked whether or not CI fails, and is only gone once it is removed and rotated.
+
+Keep the file in the repository and update it in reviewed commits. In CI for pull requests from people you do not fully trust, read the base branch's copy, as for `--config`: a pull request could otherwise add its own findings to the baseline.
 
 **`init` subcommand** — scaffolds `.claude/settings.json` with a hardened `permissions.deny` so a fresh project starts safe-by-default and passes the policy rules (CFG006/CFG041–CFG044) immediately. Aborts if the file exists (use `--force`, or `cfgaudit policy apply` to merge); `--dry-run` prints the JSON; `--interactive` adds project-specific entries.
 
