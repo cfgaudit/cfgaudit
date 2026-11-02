@@ -66,23 +66,17 @@ var networkReconRe = mustFiltered(`(?i)(?:` +
 	`\b(?:port[- ]?scan(?:ning|s)?|host\s+discovery|network\s+scan(?:ning|s)?|network\s+reconnaissance|service\s+enumeration|ping\s+sweep|nmap|masscan|zmap)\b\s+(?:\w+\s+){0,4}?` + internalNetworkTarget +
 	`)`)
 
-// A descriptive mention is not a directive. A clause that asks the agent to
-// use a tool and then "scan" is still imperative (issue #1213).
-var reconDirectiveLeadRe = regexp.MustCompile("(?i)^(?:please\\s+|now\\s+|[-*+]\\s+)?(?:use|run|try|execute|have|ask|tell|instruct|you\\s+(?:must|should|can|need\\s+to))\\b")
-var reconDirectModalRe = regexp.MustCompile(`(?i)^(?:please|now|always|you\s+(?:must|should|can|need\s+to)|the\s+agent\s+(?:must|should)|(?:we\s+)?(?:must|should))$`)
-var reconNarrationLeadRe = regexp.MustCompile("(?i)^(?:the\\s+)?(?:attacker|server|application|client|program|script|it)\\b")
+// A descriptive mention is not a directive. Keep the existing imperative
+// forms, including "perform", "run", and commands that invoke a tool.
+var reconNarrationLeadRe = regexp.MustCompile(`(?i)^(?:the\s+)?(?:attacker|server|application|client|program|script|it)\b`)
+var reconNounListRe = regexp.MustCompile(`(?i)^(?:pass|provide|specify|supply|show)\b[^.;:]*\b(?:empty|explicit|parameter|option|value|argument)\b`)
 
 func imperativeReconAt(line string, offset int) bool {
 	prefix := strings.TrimSpace(line[:offset])
-	if prefix == "" || prefix == "-" || prefix == "*" || prefix == "+" ||
-		strings.EqualFold(prefix, "please") || strings.EqualFold(prefix, "now") {
-		return true
-	}
 	if strings.HasPrefix(prefix, "|") || strings.Contains(prefix, "|") ||
 		strings.Count(line[:offset], "\"")%2 != 0 {
 		return false
 	}
-	// Examine the last clause, not unrelated sentences before the command.
 	for _, boundary := range []string{";", ".", "!", "?"} {
 		if i := strings.LastIndex(prefix, boundary); i >= 0 {
 			prefix = strings.TrimSpace(prefix[i+1:])
@@ -91,12 +85,10 @@ func imperativeReconAt(line string, offset int) bool {
 	if reconNarrationLeadRe.MatchString(prefix) {
 		return false
 	}
-	if reconDirectModalRe.MatchString(prefix) {
-		return true
+	if strings.HasPrefix(strings.ToLower(line[offset:]), "list ") && reconNounListRe.MatchString(prefix) {
+		return false
 	}
-	return (strings.HasSuffix(strings.ToLower(prefix), " to") ||
-		strings.HasSuffix(strings.ToLower(prefix), " and")) &&
-		reconDirectiveLeadRe.MatchString(prefix)
+	return true
 }
 
 // Check scans each instruction source for a network-reconnaissance directive.
