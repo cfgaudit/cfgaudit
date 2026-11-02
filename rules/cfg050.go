@@ -65,8 +65,8 @@ var placeholderRe = regexp.MustCompile(`(?i)^(<.*>|x{3,}|changeme|your[-_ ].*|to
 var azureCredentialClass = regexp.MustCompile(`^[A-Za-z]+Credential$`)
 
 func azureCredentialSelector(key, value string) bool {
-    return strings.EqualFold(key, "AZURE_TOKEN_CREDENTIALS") &&
-        (value == "dev" || value == "prod" || azureCredentialClass.MatchString(value))
+	return strings.EqualFold(key, "AZURE_TOKEN_CREDENTIALS") &&
+		(value == "dev" || value == "prod" || azureCredentialClass.MatchString(value))
 }
 
 // Check flags hardcoded secrets in an MCP server's env or headers block — the

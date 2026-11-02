@@ -24,7 +24,7 @@ func TestCFG050_AzureCredentialSelector1191(t *testing.T) {
 	}
 	for _, item := range []struct{ key, value string }{
 		{"AZURE_TOKEN_CREDENTIALS", "eyJ0eXAiOiJKV1Qi.abcd1234.longsecret01234567890"},
-		{"AZURE_CLIENT_SECRET", "a40charactersecretthatisnotaplaceholder12345"},
+		{"AZURE_CLIENT_SECRET", "ghp_abcdefghij0123456789ABCDEF"},
 	} {
 		f := CFG050.Check(settingsTarget(t, `{"mcpServers":{"azure":{"command":"npx","env":{"`+item.key+`":"`+item.value+`"}}}}`))
 		if len(f) == 0 {
