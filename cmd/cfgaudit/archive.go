@@ -82,12 +82,14 @@ func (x *extractor) entry(name string, isDir, isLink bool, size int64, r io.Read
 		return fmt.Errorf("more than %d entries", maxArchiveEntries)
 	}
 	n := safeEntryName(name)
-	if n == "" {
+	dst := filepath.Join(x.root, filepath.FromSlash(n))
+	// dst must stay under the root; the check sits next to the file system
+	// calls as a second guard to safeEntryName (#1333).
+	if rel, err := filepath.Rel(x.root, dst); n == "" || err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		x.res.Skipped = append(x.res.Skipped, name)
 		return nil
 	}
 	x.res.Entries = append(x.res.Entries, n)
-	dst := filepath.Join(x.root, filepath.FromSlash(n))
 	switch {
 	case isLink:
 		x.res.Links = append(x.res.Links, n)
