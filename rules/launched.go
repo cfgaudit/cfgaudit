@@ -202,12 +202,12 @@ func maskMessageQuotes(cmd string) string {
 	b := []byte(cmd)
 	segStart := 0
 	for i := 0; i < len(b); i++ {
-		switch c := b[i]; {
-		case c == '|' || c == ';' || c == '&':
+		switch c := b[i]; c {
+		case '|', ';', '&':
 			segStart = i + 1
-		case c == '\\':
+		case '\\':
 			i++
-		case c == '\'' || c == '"':
+		case '\'', '"':
 			end := closingQuote(cmd, i)
 			if end < 0 {
 				return string(b)
