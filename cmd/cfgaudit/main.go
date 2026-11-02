@@ -975,6 +975,9 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
+	// .gitmodules and committed bare repositories (#994).
+	targets = append(targets, gitTargets(dir)...)
+
 	// The scripts the auto-run commands of every target start (#1217), once
 	// all targets exist.
 	attachLaunchedScripts(dir, targets)
