@@ -81,6 +81,13 @@ type Target struct {
 	// read them.
 	ExternalImports []string
 
+	// Gitignore is the project's .gitignore, read during discovery so a
+	// symlink that leaves the tree is reported by CFG115 like any other
+	// (#1023); HasGitignore is whether it could be read. Set on the project
+	// targets only.
+	Gitignore    []byte
+	HasGitignore bool
+
 	// ArchiveName is the archive a scan target was unpacked from (#1002);
 	// ArchiveEntries are its entry names and ArchiveLinks the link entries
 	// that were not extracted.
