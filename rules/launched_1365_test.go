@@ -65,6 +65,10 @@ func TestMaskMessageQuotes1365(t *testing.T) {
 		`if echo "it's \"quoted\"" ; then :; fi`:           `if echo "               " ; then :; fi`,
 		`echo "unterminated`:                               `echo "unterminated`,
 		"echo \"`id`\"":                                    "echo \"`id`\"",
+		`PROTECTED=( ".env" "id_rsa" )`:                    `PROTECTED=( "    " "      " )`,
+		`cmd=(cat ~/.ssh/id_rsa)`:                          `cmd=(cat ~/.ssh/id_rsa)`,
+		`echo \"a\" 'b'`:                                   `echo \"a\" ' '`,
+		`if "$run" 'x'; then :; fi`:                        `if "$run" 'x'; then :; fi`,
 	} {
 		if got := maskMessageQuotes(in); got != want {
 			t.Errorf("maskMessageQuotes(%q)\n got %q\nwant %q", in, got, want)
