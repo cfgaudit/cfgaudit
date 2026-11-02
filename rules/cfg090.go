@@ -69,6 +69,7 @@ var networkReconRe = mustFiltered(`(?i)(?:` +
 // A descriptive mention is not a directive. A clause that asks the agent to
 // use a tool and then "scan" is still imperative (issue #1213).
 var reconDirectiveLeadRe = regexp.MustCompile("(?i)^(?:please\\s+|now\\s+|[-*+]\\s+)?(?:use|run|try|execute|have|ask|tell|instruct|you\\s+(?:must|should|can|need\\s+to))\\b")
+var reconDirectModalRe = regexp.MustCompile(`(?i)^(?:please|now|always|you\s+(?:must|should|can|need\s+to)|the\s+agent\s+(?:must|should)|(?:we\s+)?(?:must|should))$`)
 var reconNarrationLeadRe = regexp.MustCompile("(?i)^(?:the\\s+)?(?:attacker|server|application|client|program|script|it)\\b")
 
 func imperativeReconAt(line string, offset int) bool {
@@ -89,6 +90,9 @@ func imperativeReconAt(line string, offset int) bool {
 	}
 	if reconNarrationLeadRe.MatchString(prefix) {
 		return false
+	}
+	if reconDirectModalRe.MatchString(prefix) {
+		return true
 	}
 	return (strings.HasSuffix(strings.ToLower(prefix), " to") ||
 		strings.HasSuffix(strings.ToLower(prefix), " and")) &&
