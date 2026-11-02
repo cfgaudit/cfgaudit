@@ -74,6 +74,10 @@ cfgaudit --baseline .cfgaudit-baseline.json
 cfgaudit lock
 cfgaudit lock --check
 
+# Scan a skill, plugin or release archive without unpacking it yourself
+cfgaudit skill.zip
+cfgaudit release.tar.gz
+
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 

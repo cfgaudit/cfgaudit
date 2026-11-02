@@ -81,6 +81,13 @@ type Target struct {
 	// read them.
 	ExternalImports []string
 
+	// ArchiveName is the archive a scan target was unpacked from (#1002);
+	// ArchiveEntries are its entry names and ArchiveLinks the link entries
+	// that were not extracted.
+	ArchiveName    string
+	ArchiveEntries []string
+	ArchiveLinks   []string
+
 	// GitModules is the scanned directory's .gitmodules, as text (#994);
 	// GitModulesFile is its path. NestedRepos are the committed directories
 	// that look like a bare git repository.
