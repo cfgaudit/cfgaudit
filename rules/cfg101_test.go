@@ -137,7 +137,7 @@ func TestCFG101_LongListCapped(t *testing.T) {
 
 func TestCFG101_Issue1212_UncoveredSuggestion(t *testing.T) {
 	for _, tc := range []struct {
-		entries []string
+		entries         []string
 		absent, present string
 	}{
 		{[]string{"Bash(rm -rf *)", "Bash(rm -fr *)"}, `"-fr"`, "target -rf"},
