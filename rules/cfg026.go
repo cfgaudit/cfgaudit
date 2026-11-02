@@ -115,7 +115,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					continue
 				}
 				sev := p.sev
-				if p.num == 3 && (authorityIdiom(line, loc) || roleNotSpeaker(line, sm)) {
+				if p.num == 3 && (authorityIdiom(line, loc) || roleNotSpeaker(line, sm) || deviceDeveloperMode(line, loc)) {
 					continue
 				}
 				if p.num == 1 {
@@ -171,6 +171,19 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+// Developer Mode can be a real OS/device or Discord channel setting, not
+// the agent claiming elevated authority (#1177). Only skip when a preceding
+// "device/channel with" qualifies this specific setting on the same clause.
+var deviceDeveloperModeRe = regexp.MustCompile(`(?i)\b(?:device|phone|tablet|channel|android|ios|browser)\b[^.;:]{0,60}\bwith\s+$`)
+
+func deviceDeveloperMode(line string, loc []int) bool {
+	match := strings.ToLower(line[loc[0]:loc[1]])
+	if !strings.HasPrefix(match, "developer mode ") {
+		return false
+	}
+	return deviceDeveloperModeRe.MatchString(line[:loc[0]])
 }
 
 func isFenceDelimiter(line string) bool {

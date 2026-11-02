@@ -173,6 +173,31 @@ const pathChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345678
 // "~/.portless/ca.pem", "cyrus-egress-ca.pem", "cacert.pem" (#869).
 var publicCertRe = regexp.MustCompile(`(?i)(?:^|[/_.\-])(?:ca|cacert|ca-cert\w*|ca-bundle|ca-certificates?)\.(?:pem|crt)$`)
 
+// Public signing certificates and CA chains are not credential files (#1173).
+// Inspect the final filename so an unrelated directory called "public" cannot
+// exempt a private key underneath it.
+func publicPEMName(full string) bool {
+	name := strings.ToLower(full[strings.LastIndexByte(full, '/')+1:])
+	if !strings.HasSuffix(name, ".pem") {
+		return false
+	}
+	stem := strings.TrimSuffix(name, ".pem")
+	if strings.Contains(stem, "key") || strings.Contains(stem, "priv") {
+		return false
+	}
+	// Match filename components, not fragments: publisher-token.pem and
+	// certificate-key.pem must never receive a public-certificate exemption.
+	for _, component := range strings.FieldsFunc(stem, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	}) {
+		switch component {
+		case "public", "pub", "cert", "certificate", "chain", "rootca", "cacert":
+			return true
+		}
+	}
+	return false
+}
+
 // placeholderPathRe matches a placeholder for a path the reader fills in:
 // "/path/to/cert.pem", "path-to-cert.pem" (#869).
 var placeholderPathRe = regexp.MustCompile(`(?i)(?:^|/)path[/\-]to[/\-]|^<[^>]*>$|^your[\-_]`)
@@ -189,7 +214,7 @@ func notASecretFile(line string, loc []int, full string) bool {
 	if strings.Contains(full, "../") && baseURLPathRe.MatchString(full) {
 		return true
 	}
-	return publicCertRe.MatchString(full) || placeholderPathRe.MatchString(full)
+	return publicCertRe.MatchString(full) || publicPEMName(full) || placeholderPathRe.MatchString(full)
 }
 
 // baseURLPathRe matches a path that starts with a base URL placeholder:
