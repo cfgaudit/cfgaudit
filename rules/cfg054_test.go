@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -102,6 +103,27 @@ func TestCFG054_NotFlagged(t *testing.T) {
 	for _, c := range cases {
 		if f := CFG054.Check(settingsTarget(t, c)); len(f) != 0 {
 			t.Errorf("expected no finding for %s, got %+v", c, f)
+		}
+	}
+}
+
+func TestCFG054_ShellDefaults1214(t *testing.T) {
+	for _, value := range []string{
+		"${DB_HOST:-127.0.0.1}", "${DB_USER:-root}",
+		"${REQUEST_TIMEOUT:-30}", "${API_KEY}", "${DB_HOST-127.0.0.1}",
+	} {
+		input := fmt.Sprintf("{\"env\":{\"CONFIG\":%q}}", value)
+		if f := CFG054.Check(settingsTarget(t, input)); len(f) != 0 {
+			t.Errorf("harmless shell reference %s reported: %+v", value, f)
+		}
+	}
+	for _, value := range []string{
+		"${API_KEY:-a8Fk2pQz9LmX4vR7tY1wB6nC3sD5eG0h}",
+		"a8Fk2pQz9LmX4vR7tY1wB6nC3sD5eG0h",
+	} {
+		input := fmt.Sprintf("{\"env\":{\"CONFIG\":%q}}", value)
+		if f := CFG054.Check(settingsTarget(t, input)); len(f) != 1 {
+			t.Errorf("high-entropy literal default %s must be reported: %+v", value, f)
 		}
 	}
 }

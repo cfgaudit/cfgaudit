@@ -37,6 +37,8 @@ jobs:
           - { pkg: ./internal/parser, target: FuzzMarkdownInstructions }
           - { pkg: ./internal/parser, target: FuzzTerminalBase }
           - { pkg: ./cmd/cfgaudit, target: FuzzScan }
+          - { pkg: ./cmd/cfgaudit, target: FuzzExtractZip }
+          - { pkg: ./cmd/cfgaudit, target: FuzzExtractTar }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

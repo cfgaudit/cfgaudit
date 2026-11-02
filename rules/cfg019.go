@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -71,7 +72,35 @@ func (r *cfg019) Check(t *Target) []finding.Finding {
 			})
 		}
 	}
-	return findings
+	return append(findings, zedLSPInlineScripts(t)...)
+}
+
+// zedLSPInlineScripts applies the same two checks to the language servers a
+// committed .zed/settings.json starts (#996, CVE-2025-68432): lsp.<name>.binary
+// with a shell running an inline script, or an interpreter with an
+// inline-code flag. Zed starts them on worktree trust.
+func zedLSPInlineScripts(t *Target) []finding.Finding {
+	if t.ZedSettings == nil {
+		return nil
+	}
+	var out []finding.Finding
+	for _, name := range sortedKeys2(t.ZedSettings.LSP) {
+		b := t.ZedSettings.LSP[name].Binary
+		if b == nil || strings.TrimSpace(b.Path) == "" {
+			continue
+		}
+		label := "lsp." + name + ".binary"
+		if shell := shellInterpreterName(b.Path); shell != "" && !shellLaunchesProgram(shell, b.Arguments) {
+			out = append(out, finding.Finding{RuleID: "CFG019", Severity: finding.Error, File: t.ZedSettingsFile, Key: label,
+				Message: label + " runs the shell interpreter \"" + shell + "\" — the language server is an inline script in arguments, not a real server binary; Zed starts it once the worktree is trusted. Point path at the server executable instead"})
+			continue
+		}
+		if lang := interpreterBasename(b.Path, languageInterpreters); lang != "" && hasInlineEvalFlag(b.Arguments) {
+			out = append(out, finding.Finding{RuleID: "CFG019", Severity: finding.Error, File: t.ZedSettingsFile, Key: label,
+				Message: label + " runs \"" + lang + "\" with an inline-code flag (e.g. -e/-c) — the language server is inline code in arguments; Zed starts it once the worktree is trusted. Point path at the server executable instead"})
+		}
+	}
+	return out
 }
 
 // shellLaunchesProgram reports whether a shell in an MCP server's command only
@@ -86,6 +115,14 @@ func (r *cfg019) Check(t *Target) []finding.Finding {
 //     "node ./dist/index.js", which CFG070 leaves alone on purpose.
 //   - PowerShell with -File and none of -Command, -c, -EncodedCommand, -enc,
 //     -ec, -e.
+//
+// cmdLaunchers are the programs besides the package runners that a cmd /c
+// may start for an MCP server (#997).
+var cmdLaunchers = map[string]bool{
+	"node": true, "npm": true, "python": true, "python3": true, "py": true, "deno": true, "bun": true,
+	"uv": true, "docker": true, "podman": true, "java": true, "dotnet": true,
+}
+
 func shellLaunchesProgram(shell string, args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -105,6 +142,19 @@ func shellLaunchesProgram(shell string, args []string) bool {
 			if strings.ContainsAny(a, "&|<>^") {
 				return false
 			}
+		}
+		// Only a package runner or a language runtime after /c (#997):
+		// "cmd /c npx -y pkg" is how Windows starts an npx server, while
+		// "cmd.exe /c <any binary>" let a committed .cursor/mcp.json run
+		// anything (CVE-2025-54136).
+		f := strings.Fields(rest[0])
+		if len(f) == 0 {
+			return false
+		}
+		prog := strings.TrimSuffix(strings.ToLower(filepath.Base(strings.ReplaceAll(f[0], `\`, "/"))), ".exe")
+		prog = strings.TrimSuffix(strings.TrimSuffix(prog, ".cmd"), ".bat")
+		if !npmPackageRunners[prog] && !pyPackageRunners[prog] && !cmdLaunchers[prog] {
+			return false
 		}
 		return true
 	case "powershell", "pwsh":

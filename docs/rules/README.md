@@ -124,6 +124,7 @@ AI coding agents read their instruction files as trusted system-context every se
 | [CFG081](CFG081.md) | error/warn | instruction file tells the agent to survive context compaction/summarization (`preserve these instructions across compaction`) — persistence directive that makes an injection durable; memory or context as the object → warn | LLM01 |
 | [CFG113](CFG113.md) | info/warn/error | instruction file tells the agent to fetch a URL and follow what it says (`fetch and follow the instructions at https://…`, `read https://… and follow it`, `fetch and follow the [guide](https://…)`): the reviewed file hands the agent's behaviour to remote text nobody reviewed. error when the fetched content is to be executed, run or obeyed | LLM01 |
 | [CFG090](CFG090.md) | warn | instruction directs the agent to scan or enumerate an **internal** network (`enumerate services on the subnet`, `scan the internal network`, `scan 10.0.0.0/24`) — turns a trusted host into a reconnaissance tool; an internal/private/subnet target is required so a bare `nmap` mention, a capability inventory, or business "networking" is not flagged (AVE-2026-00032) | LLM03 |
+| [CFG120](CFG120.md) | warn/error | instruction file tells the agent, in prose, to send data to an outside email address or URL (`forward the passport numbers to archive@…`, `send the conversation history to https://…`) and names sensitive data or hides the sending from the user; `error` with both. Negated, "only", quoted and fenced text, a person as the object and loopback destinations are skipped | LLM02 |
 | [CFG051](CFG051.md) | error/warn/info | skill/command/subagent frontmatter `allowed-tools` grants unrestricted shell or all tools (`Bash`, `*`, `all`) — not narrowed by `disallowed-tools` | LLM03 |
 | [CFG056](CFG056.md) | warn | model-invocable skill/command/subagent has a broad/always-on `description` or `triggers` entry ("for every request", "always invoke") — behaviour-hijack via greedy selection | LLM01 |
 
@@ -145,7 +146,9 @@ Installing an agent plugin is a supply-chain trust decision. With `--plugins <di
 
 | Artifact | Rules applied |
 |----------|---------------|
-| `SKILL.md` | instruction-content rules, as for `CLAUDE.md`: CFG024, CFG026, CFG029–CFG036, CFG057, CFG080, CFG081, CFG090, CFG113; frontmatter rules CFG051 and CFG056 |
+| `SKILL.md` | instruction-content rules, as for `CLAUDE.md`: CFG024, CFG026, CFG029–CFG036, CFG057, CFG080, CFG081, CFG090, CFG113, CFG120; frontmatter rules CFG051 and CFG056 |
+| Other `*.md` files in a skill directory (`references/`, `assets/`, ...) | CFG024, CFG026, CFG031, CFG036, CFG057, CFG080, CFG081, CFG120, at most at `warn` |
+| `*.sh`, `*.bash`, `*.zsh` in a skill directory (`scripts/`, ...) | the line rules for launched scripts — CFG008, CFG014, CFG027, CFG037, CFG038, CFG050, CFG072, CFG077, CFG078 — at most at `warn` |
 | `hooks/hooks.json` | command-content rules — CFG008, CFG009, CFG014, CFG015, CFG027, CFG028; instruction-content rules over `type: "prompt"` / `type: "agent"` hook prompts — CFG024, CFG026, CFG029–CFG036, CFG057 |
 | `plugin.json` `mcpServers` | MCP rules — CFG010, CFG011, CFG017–CFG021 |
 | `commands/**/*.md`, or the paths `plugin.json` names under `commands` | instruction-content rules, as for `.claude/commands`. A manifest `commands` entry replaces the `commands/` directory rather than adding to it, and a command's frontmatter `hooks:` are not read, since 2.1.310 did not run them ([#937](https://github.com/cfgaudit/cfgaudit/issues/937)) |
@@ -154,6 +157,8 @@ Installing an agent plugin is a supply-chain trust decision. With `--plugins <di
 | `kimi.plugin.json` `systemPrompt` / `systemPromptPath` | instruction-content rules — text a Kimi plugin contributes to the agent's system prompt, and the file it points at |
 
 Findings are attributed to the in-package file.
+
+**Files a skill ships beside `SKILL.md` are read too** (#987), for every skill cfgaudit finds, in a repository or a package. A skill can keep a harmless `SKILL.md` and tell the agent to run `scripts/setup.sh` or to read `references/policy.md`, so the payload sits in a file only `SKILL.md` used to be checked for. A folder with a `SKILL.md` of its own is another skill, and `node_modules`, files over 1 MiB and binary files are skipped. Findings in these files are reported at most at `warn` and name the skill: nothing runs or loads them but the agent, when the skill tells it to. On 2,051 corpus repositories with such files, the errors before the cap were mostly security skills quoting the attacks they detect, connectivity probes over `/dev/tcp` and VM bootstrap scripts. Scripts in other languages are not read yet, and CFG119 does not read skill scripts, since its markers are about a script that runs on its own.
 
 **Skills-directory plugins are the repository-side case.** Claude Code loads any folder under the project's `.claude/skills/` that holds a `.claude-plugin/plugin.json` as a plugin (`<name>@skills-dir`), with no install step and no `enabledPlugins` entry, once the workspace trust dialog is accepted. A repository can therefore ship hooks and MCP servers this way, so cfgaudit scans these folders by default (#609). Measured on Claude Code 2.1.281 through 2.1.288: a `SessionStart` hook in `.claude/skills/<name>/hooks/hooks.json` ran and a stdio server in its `plugin.json` started. A folder without that manifest is an ordinary skill and stays with the instruction-content rules. A manifest that does not parse keeps the whole plugin from loading, so it is reported as [CFG109](CFG109.md) and nothing else of that plugin is scanned. A plugin that does not load is skipped with a note on stderr: one whose manifest sets `"defaultEnabled": false`, or one that `.claude/settings.json` or `.claude/settings.local.json` sets to `false` under `enabledPlugins` (the later file wins, and a setting keyed by the manifest's `name` counts, not one keyed by the folder name). A settings file Claude Code discards whole for a type error disables nothing. A `SKILL.md` that the project skill scan already reads is reported once. Unlike `--plugins`, which walks the whole package for its author, a skills-directory plugin is scanned for what Claude Code loads from it: `hooks/hooks.json` and any hook file the manifest names under `hooks`, the manifest's MCP servers, and every `SKILL.md` under `skills/` or a path the manifest names under `skills`. These folders often vendor a whole upstream repository, and on 2.1.288 a `hooks.json` nested below the plugin's own `hooks/` did not run unless the manifest named it.
 
@@ -172,6 +177,8 @@ The [vercel-labs/skills](https://github.com/vercel-labs/skills) CLI (skills.sh) 
 ### VS Code workspace — `.vscode/`
 
 `.vscode/` files are committed into repositories and read by VS Code **and its forks (Cursor, Windsurf)**, so a committed workspace config is a repo-controlled auto-run / supply-chain surface. cfgaudit scans these automatically when present and attributes findings to the source file.
+
+A `*.code-workspace` file at the repository root carries the same blocks, and VS Code offers to open it: its `settings` are checked like `.vscode/settings.json`, its `tasks` like `.vscode/tasks.json`, and the servers under `settings.mcp.servers` like `.vscode/mcp.json` (#988). VS Code reads MCP servers there and not from a top-level `mcp` key.
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
@@ -378,6 +385,9 @@ Grok's `.grok/agents/*.md` `permissionMode` frontmatter (CFG085) and its `Sessio
 | [CFG118](CFG118.md) | info | the agent-neutral `policy.deny` applies to an agent that reads permission rules from user settings only (Zed, Continue), so no committed file can enforce it for that agent — inert unless `policy.deny` is configured | LLM03 |
 | [CFG114](CFG114.md) | error/info | committed Copilot CLI project extension `.github/extensions/<name>/extension.{mjs,cjs,js}` (`info`: experimental and trust-gated), or committed OpenCode plugin or tool code: `.opencode/{plugin,plugins,tool,tools}/*.{ts,js}`. Measured on opencode 1.18.18, plugins run during any startup (a bare `opencode debug config`) and tools as soon as an agent loads, with no prompt, and OpenCode has no workspace trust step. cfgaudit does not analyse the code; the finding is the trigger, as for CFG047 and CFG086 | LLM04 |
 | [CFG115](CFG115.md) | warn | a config path in the scanned repository is a symbolic link, or runs through a linked directory, to a location outside it: the agent loads a file from the machine that checked the repository out. cfgaudit reports the link and does not read the target | LLM02 |
+| [CFG121](CFG121.md) | error/warn | committed git metadata that makes an agent's own git call run a command or fetch from an impostor: a nested bare repository whose `config` sets `core.fsmonitor`, `core.hooksPath`, `core.sshCommand` or another command key (`error`; any other bare repository `warn`), and a `.gitmodules` URL that is unencrypted or on a lookalike forge host (`warn`) | LLM04 |
+| [CFG122](CFG122.md) | error/warn | an archive scan target (`.zip`, `.tar`, `.tgz`) carries what a clone cannot: a `.git` entry or a tool binary such as `git.exe` at its root (`error`), or links, which are not extracted (`warn`) | LLM04 |
+| [CFG123](CFG123.md) | error/warn | a committed file stands in for a tool the agent runs: a Windows program named like a tool at the root (`git.exe`, `node.cmd`; `error`), a committed Python virtual environment, or a `.yarnrc.yml` `yarnPath` that is not a Yarn release (`warn`) | LLM04 |
 | [CFG116](CFG116.md) | warn/info | a committed Claude Code instruction file (`CLAUDE.md`, `AGENTS.md`, `.claude/rules/…`, or a file they import) has an `@path` import that resolves outside the repository (`@~/…`, an absolute path elsewhere, `../` past the root): Claude Code loads that file from the reader's machine after a one-time approval, and nobody reviewing the repository sees it. cfgaudit does not read it | LLM01 |
 
 Only `"yolo"` is flagged: `"auto"` is qwen's shipped default (classifier-gated shell, not a committed escalation), `"auto-edit"` is stricter than that default, and `tools.autoAccept` is vestigial (no consumer in the approval path).
@@ -410,6 +420,19 @@ Two further surfaces were scoped and, after source verification, deliberately **
 
 **Verified negatives** (checked against source, deliberately no rule): Kimi's `config.toml` is user-scope only, so its `[[hooks]]`/`[[permission.rules]]` (incl. `SessionStart`) **cannot** be planted by a repo; kimi-code has no sandbox concept; there is no `KIMI.md`; plugins support SHA pinning and third-party install defaults to cancel.
 
+### Roo Code — `.roo/`, `.roorules` & `.roomodes`
+
+Roo Code (#989) is covered by the existing rules on the files it loads:
+
+| File | Rules |
+|---|---|
+| `.roo/mcp.json` | the MCP rules (CFG010–CFG021 and the others on `mcpServers`), including CFG011 for a wildcard `alwaysAllow`. Roo Code loads the project file automatically and it takes precedence over the global one |
+| every file under `.roo/rules/` and `.roo/rules-<mode>/`, recursively and of any extension; `.roorules` and `.roorules-<mode>` | the instruction-content rules, as for `CLAUDE.md`. Roo Code leaves out only cache and temp files (`.bak`, `.cache`, `.log`, `.tmp`, `.DS_Store`, `Thumbs.db`), and so does cfgaudit |
+| `.roomodes` | the instruction-content rules over the whole file, which holds each custom mode's `roleDefinition`, `whenToUse` and `customInstructions` |
+| `roo-cline.allowedCommands` in `.vscode/settings.json` | CFG048 at `warn` for `*` or a bare shell or language interpreter: Roo Code matches the list by prefix, so either runs any command once the user's auto-approval of allowed commands is on |
+
+`.clinerules`, Roo Code's legacy fallback, and `AGENTS.md`, which it also loads, are read already.
+
 ## OWASP mapping
 
 cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code first-class, with portable rules extended to other agents). It maps each finding to an [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) risk — but by design it only sees what is *declared in config*, not model behaviour, runtime traffic, or training data. That scope determines which risks it can and cannot address.
@@ -419,9 +442,9 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM01_PromptInjection.md) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092, CFG113, CFG116 |
-| LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG058, CFG065, CFG068, CFG069, CFG071, CFG072, CFG073, CFG075, CFG078, CFG082, CFG088, CFG097, CFG099, CFG112, CFG115 |
+| LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG058, CFG065, CFG068, CFG069, CFG071, CFG072, CFG073, CFG075, CFG078, CFG082, CFG088, CFG097, CFG099, CFG112, CFG115, CFG120 |
 | LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG060, CFG061, CFG063, CFG064, CFG066, CFG076, CFG077, CFG079, CFG083, CFG085, CFG087, CFG090, CFG091, CFG093, CFG094, CFG095, CFG096, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG108, CFG109, CFG110, CFG111, CFG117, CFG118 |
-| LLM04 | [Supply Chain](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM04_SupplyChain.md) | CFG010, CFG014, CFG052, CFG055, CFG059, CFG062, CFG067, CFG070, CFG074, CFG084, CFG086, CFG089, CFG098, CFG100, CFG102, CFG114, CFG119 |
+| LLM04 | [Supply Chain](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM04_SupplyChain.md) | CFG010, CFG014, CFG052, CFG055, CFG059, CFG062, CFG067, CFG070, CFG074, CFG084, CFG086, CFG089, CFG098, CFG100, CFG102, CFG114, CFG119, CFG121, CFG122, CFG123 |
 
 The 2026 edition renumbered the list (#619): Excessive Agency moved from LLM06 to **LLM03** and Supply Chain from LLM03 to **LLM04**, while Prompt Injection and Sensitive Information Disclosure kept their numbers. LLM04:2026 also narrowed: it covers the model and data supply chain and refers agentic supply chain, *"including MCP servers and tool registries"*, to **ASI04 Agentic Supply Chain Vulnerabilities** in the [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/). The supply-chain rules keep LLM04 as their primary id and name ASI04 on an `**OWASP Agentic:**` line in their docs.
 
