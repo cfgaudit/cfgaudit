@@ -28,7 +28,7 @@ var persistencePatterns = []struct {
 	label string
 	write bool
 }{
-	{regexp.MustCompile(`\bcrontab\b`), "crontab (cron job)", false},
+	{crontabRe, "crontab (cron job)", false},
 	{regexp.MustCompile(`/etc/cron`), "system cron directory", true},
 	{regexp.MustCompile(`(?:^|[\s/~"'$}])\.(?:bashrc|zshrc|bash_profile|zprofile|bash_login|zshenv|profile)\b`), "shell startup file", true},
 	{regexp.MustCompile(`/etc/profile`), "shell startup file", true},
@@ -36,6 +36,45 @@ var persistencePatterns = []struct {
 	{regexp.MustCompile(`/(?:etc|\.config)/systemd/`), "systemd unit directory", true},
 	{regexp.MustCompile(`\blaunchctl\s+(?:load|bootstrap|enable)\b`), "launchd agent", false},
 	{regexp.MustCompile(`\b(?:LaunchAgents|LaunchDaemons)\b`), "launchd plist directory", true},
+}
+
+// crontabRe finds crontab in command position. crontabInstalls decides
+// whether that run installs a job.
+var crontabRe = regexp.MustCompile(`(?:^|[\s;&|(` + "`" + `])crontab\b`)
+
+// crontabArgsRe captures the arguments of each crontab run, up to the end of
+// the command.
+var crontabArgsRe = regexp.MustCompile(`\bcrontab\b([^;&|)\n` + "`" + `]*)`)
+
+// crontabLookupRe is a lookup of the program before it: "command -v crontab".
+var crontabLookupRe = regexp.MustCompile(`\b(?:command\s+-[vV]|which|type|hash)\s+$`)
+
+// crontabInstalls reports whether cmd runs crontab so that it installs a job:
+// with a file operand, "-" or "-e", or with no argument at the end of a pipe.
+// `crontab -l` lists, `crontab -r` removes, and `command -v crontab` only
+// looks the program up (#1367).
+func crontabInstalls(cmd string) bool {
+	for _, m := range crontabArgsRe.FindAllStringSubmatchIndex(cmd, -1) {
+		before := cmd[:m[0]]
+		if before != "" && !strings.ContainsAny(before[len(before)-1:], " \t;&|(`") || crontabLookupRe.MatchString(before) {
+			continue
+		}
+		args := strings.Fields(cmd[m[2]:m[3]])
+		for len(args) >= 2 && args[0] == "-u" {
+			args = args[2:]
+		}
+		switch {
+		case len(args) == 0:
+			if strings.HasSuffix(strings.TrimRight(before, " \t"), "|") {
+				return true
+			}
+		case args[0] == "-" || args[0] == "-e":
+			return true
+		case !strings.HasPrefix(args[0], "-") && !strings.ContainsAny(args[0][:1], "<>0123456789"):
+			return true
+		}
+	}
+	return false
 }
 
 // redirectTargetRe is a > or >> redirect and the word it writes to.
@@ -130,7 +169,7 @@ func (r *cfg027) Check(t *Target) []finding.Finding {
 	for _, site := range commandSitesWithScripts(t) {
 		seen := map[string]bool{}
 		for _, p := range persistencePatterns {
-			if seen[p.label] || !p.re.MatchString(site.Command) || (p.write && !writesTo(site.Command, p.re)) {
+			if seen[p.label] || !p.re.MatchString(site.Command) || (p.write && !writesTo(site.Command, p.re)) || (p.re == crontabRe && !crontabInstalls(site.Command)) {
 				continue
 			}
 			seen[p.label] = true
