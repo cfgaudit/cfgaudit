@@ -1369,6 +1369,12 @@ func vscodeTargets(dir string) ([]*rules.Target, error) {
 			VSCodeSettingsFile: settingsFile,
 		})
 	}
+	extPath := filepath.Join(dir, ".vscode", "extensions.json")
+	if exts, err := parser.ParseVSCodeExtensions(extPath); err == nil && len(exts) > 0 {
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, VSCodeExtensions: exts, VSCodeExtensionsFile: extPath})
+	} else if err != nil && !scanroot.IsAbsent(err) {
+		skipUnreadable(extPath, err)
+	}
 	return append(targets, codeWorkspaceTargets(dir)...), nil
 }
 
@@ -1399,6 +1405,9 @@ func codeWorkspaceTargets(dir string) []*rules.Target {
 		}
 		if len(w.MCPServers) > 0 {
 			targets = append(targets, &rules.Target{Scope: finding.ScopeProject, ProjectMCP: w.MCPServers, ProjectMCPFile: path})
+		}
+		if len(w.Extensions) > 0 {
+			targets = append(targets, &rules.Target{Scope: finding.ScopeProject, VSCodeExtensions: w.Extensions, VSCodeExtensionsFile: path})
 		}
 	}
 	return targets

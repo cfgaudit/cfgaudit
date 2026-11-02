@@ -215,8 +215,11 @@ var broadURLRe = regexp.MustCompile(`^(?:\*{1,2}|(?:https?|\*)://\*{1,2}(?:/.*)?
 // loop for anyone who opens it in agent mode — the cross-agent analogue of
 // CFG001 (defaultMode: bypassPermissions).
 func (r *cfg048) Check(t *Target) []finding.Finding {
-	if t == nil || t.VSCodeSettings == nil {
+	if t == nil {
 		return nil
+	}
+	if t.VSCodeSettings == nil {
+		return checkExtensionRecommendations(t)
 	}
 	var findings []finding.Finding
 	for _, key := range blanketAutoApproveKeys {
@@ -243,6 +246,8 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkPromptOverride(t)...)
 	findings = append(findings, r.checkFixedKeys(t)...)
 	findings = append(findings, r.checkRooAllowedCommands(t)...)
+	findings = append(findings, r.checkEditorSurfaces(t)...)
+	findings = append(findings, checkExtensionRecommendations(t)...)
 	return findings
 }
 

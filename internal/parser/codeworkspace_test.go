@@ -61,3 +61,29 @@ func TestParseCodeWorkspace988_Errors(t *testing.T) {
 		}
 	}
 }
+
+func TestParseVSCodeExtensions995(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "extensions.json")
+	for content, want := range map[string]int{"// c\n{\"recommendations\": [\"a.b\", 1, \"\"]}": 1, "  ": 0, "[]": 0} {
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := ParseVSCodeExtensions(p)
+		if err != nil || len(got) != want {
+			t.Errorf("%q: %v %v", content, got, err)
+		}
+	}
+	if err := os.WriteFile(p, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseVSCodeExtensions(p); err == nil {
+		t.Error("expected a parse error")
+	}
+	if _, err := ParseVSCodeExtensions(filepath.Join(t.TempDir(), "x")); err == nil {
+		t.Error("expected a read error")
+	}
+	w, err := ParseCodeWorkspace(writeWorkspace(t, `{"extensions": {"recommendations": ["c.d"]}}`))
+	if err != nil || len(w.Extensions) != 1 {
+		t.Errorf("workspace extensions: %+v %v", w, err)
+	}
+}
