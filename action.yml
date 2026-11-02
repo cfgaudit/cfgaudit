@@ -22,7 +22,7 @@ inputs:
     required: false
     default: "false"
   user:
-    description: Also scan user-global config under ~/.claude ("true" to enable).
+    description: Also scan the user-scope config of each agent (~/.claude/, ~/.codex/, ~/.cursor/, ~/.gemini/, ...) ("true" to enable).
     required: false
     default: "false"
   config:
