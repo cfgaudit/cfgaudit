@@ -67,7 +67,7 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 	}
 
 	for _, m := range markets {
-		if officialMarketplace(marketsRaw, m) {
+		if officialMarketplace(marketsRaw, m) || inRepo[m] {
 			continue
 		}
 		add(finding.Warn, marketsKey+" registers the plugin marketplace \""+m+"\" — a committed file points users at a marketplace source they did not choose; review it and pin the source to a fixed ref")
