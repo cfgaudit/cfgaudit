@@ -177,6 +177,7 @@ func (r *cfg027) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG027",
 				Severity: finding.Error,
 				File:     site.File,
+				Line:     site.Line,
 				Message: site.Label + " installs a persistence mechanism (" + p.label +
 					") — it survives reboots and new sessions and runs outside Claude Code; a hook should never modify cron, shell startup files, or system services" + userScopeNote(t),
 			})

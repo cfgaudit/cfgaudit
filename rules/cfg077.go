@@ -59,6 +59,7 @@ func (r *cfg077) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG077",
 				Severity: finding.Error,
 				File:     site.File,
+				Line:     site.Line,
 				Message: site.Label + " destroys an audit trail — it " + p.label +
 					". A hook has no legitimate reason to wipe history or logs; this is anti-forensics that hides another malicious action. Remove it" + userScopeNote(t),
 			})

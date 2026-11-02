@@ -112,6 +112,7 @@ func (r *cfg014) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG014",
 				Severity: finding.Error,
 				File:     site.File,
+				Line:     site.Line,
 				Message:  site.Label + " downloads and executes remote code (" + p.label + ") — this runs unverified remote code every time it runs; download to a file first and verify a checksum before running" + userScopeNote(t),
 			})
 			break

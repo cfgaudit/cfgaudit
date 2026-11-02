@@ -56,6 +56,7 @@ func (r *cfg078) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG078",
 			Severity: finding.Error,
 			File:     site.File,
+			Line:     site.Line,
 			Message: site.Label + " reads an OS credential store (macOS Keychain, Linux keyring, /etc/shadow, or a browser saved-password DB) — this exfiltrates stored passwords and tokens. A hook must not read credential stores" +
 				userScopeNote(t),
 		})

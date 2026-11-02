@@ -48,6 +48,7 @@ func (r *cfg008) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG008",
 				Severity: finding.Error,
 				File:     site.File,
+				Line:     site.Line,
 				Message:  site.Label + " matches reverse-shell pattern (" + label + ") — grants remote interactive access when it runs" + userScopeNote(t),
 			})
 		}
