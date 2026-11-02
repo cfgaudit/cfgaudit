@@ -302,3 +302,32 @@ func TestArchiveErrorPaths1327(t *testing.T) {
 		t.Error("no temp dir: expected an error")
 	}
 }
+
+// A zip entry that is a named pipe or a device is skipped, not extracted as a
+// file without data (#1331).
+func TestArchiveIrregularZipEntry1331(t *testing.T) {
+	var b bytes.Buffer
+	zw := zip.NewWriter(&b)
+	for _, m := range []os.FileMode{os.ModeNamedPipe | 0o644, os.ModeDevice | 0o644, os.ModeSocket | 0o644} {
+		h := &zip.FileHeader{Name: "x" + m.String()}
+		h.SetMode(m)
+		if _, err := zw.CreateHeader(h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w, _ := zw.Create("AGENTS.md")
+	_, _ = w.Write([]byte("# p\n"))
+	_ = zw.Close()
+	p := filepath.Join(t.TempDir(), "odd.zip")
+	if err := os.WriteFile(p, b.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root, res, err := extractArchive(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+	if len(res.Entries) != 1 || res.Entries[0] != "AGENTS.md" {
+		t.Errorf("entries %v", res.Entries)
+	}
+}

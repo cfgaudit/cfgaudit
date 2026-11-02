@@ -158,6 +158,12 @@ func (x *extractor) zip(p string) error {
 	defer func() { _ = zr.Close() }()
 	for _, f := range zr.File {
 		mode := f.Mode()
+		// Devices, named pipes and other irregular entries are skipped, as the
+		// tar reader skips them (#1331): only files, directories and links
+		// are entries.
+		if !mode.IsRegular() && !mode.IsDir() && mode&os.ModeSymlink == 0 {
+			continue
+		}
 		var rc io.ReadCloser
 		if mode.IsRegular() {
 			if rc, err = f.Open(); err != nil {
