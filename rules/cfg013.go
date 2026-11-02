@@ -4,9 +4,6 @@
 package rules
 
 import (
-	"errors"
-	"github.com/cfgaudit/cfgaudit/internal/scanroot"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +37,7 @@ func (r *cfg013) Check(t *Target) []finding.Finding {
 		return nil
 	}
 
-	rules, gitignoreExists := loadGitignoreRules(filepath.Join(t.ProjectDir, ".gitignore"))
+	rules, gitignoreExists := parseGitignoreRules(t.Gitignore), t.HasGitignore
 	// With a .git, the index says whether the file is committed. .gitignore
 	// does not untrack a committed file, so that case is reported whether or
 	// not .gitignore covers it. Without one (an archive, a checkout without
@@ -94,17 +91,6 @@ func committedLocalFile(t *Target, rel string, covered bool) finding.Finding {
 type gitignoreRule struct {
 	pattern string
 	negate  bool
-}
-
-func loadGitignoreRules(path string) ([]gitignoreRule, bool) {
-	data, err := scanroot.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, false
-		}
-		return nil, false
-	}
-	return parseGitignoreRules(data), true
 }
 
 func parseGitignoreRules(data []byte) []gitignoreRule {

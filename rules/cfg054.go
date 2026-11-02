@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -146,10 +147,27 @@ func jsonStringLeaves(value string) ([]jsonLeaf, bool) {
 	return leaves, true
 }
 
+// Score only literal defaults inside shell parameter expansions. The
+// variable reference syntax itself is not secret material (#1214).
+var shellDefaultRef = regexp.MustCompile("[$][{][A-Za-z_][A-Za-z0-9_]*(:?-[^}]*)?[}]")
+
+func stripShellParameterReferences(value string) string {
+	return shellDefaultRef.ReplaceAllStringFunc(value, func(ref string) string {
+		name := strings.TrimSuffix(strings.TrimPrefix(ref, "${"), "}")
+		if i := strings.Index(name, ":-"); i >= 0 {
+			return name[i+2:]
+		}
+		if i := strings.IndexByte(name, '-'); i >= 0 {
+			return name[i+1:]
+		}
+		return ""
+	})
+}
+
 // leafLooksLikeSecret applies the conservative gates described on Check to a
 // single value.
 func leafLooksLikeSecret(key, value string) bool {
-	v := strings.TrimSpace(value)
+	v := strings.TrimSpace(stripShellParameterReferences(value))
 	if len(v) < entropyMinLen {
 		return false
 	}

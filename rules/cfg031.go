@@ -173,6 +173,31 @@ const pathChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345678
 // "~/.portless/ca.pem", "cyrus-egress-ca.pem", "cacert.pem" (#869).
 var publicCertRe = regexp.MustCompile(`(?i)(?:^|[/_.\-])(?:ca|cacert|ca-cert\w*|ca-bundle|ca-certificates?)\.(?:pem|crt)$`)
 
+// Public signing certificates and CA chains are not credential files (#1173).
+// Inspect the final filename so an unrelated directory called "public" cannot
+// exempt a private key underneath it.
+func publicPEMName(full string) bool {
+	name := strings.ToLower(full[strings.LastIndexByte(full, '/')+1:])
+	if !strings.HasSuffix(name, ".pem") {
+		return false
+	}
+	stem := strings.TrimSuffix(name, ".pem")
+	if strings.Contains(stem, "key") || strings.Contains(stem, "priv") {
+		return false
+	}
+	// Match filename components, not fragments: publisher-token.pem and
+	// certificate-key.pem must never receive a public-certificate exemption.
+	for _, component := range strings.FieldsFunc(stem, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	}) {
+		switch component {
+		case "public", "pub", "cert", "certificate", "chain", "rootca", "cacert":
+			return true
+		}
+	}
+	return false
+}
+
 // placeholderPathRe matches a placeholder for a path the reader fills in:
 // "/path/to/cert.pem", "path-to-cert.pem" (#869).
 var placeholderPathRe = regexp.MustCompile(`(?i)(?:^|/)path[/\-]to[/\-]|^<[^>]*>$|^your[\-_]`)
@@ -189,7 +214,7 @@ func notASecretFile(line string, loc []int, full string) bool {
 	if strings.Contains(full, "../") && baseURLPathRe.MatchString(full) {
 		return true
 	}
-	return publicCertRe.MatchString(full) || placeholderPathRe.MatchString(full)
+	return publicCertRe.MatchString(full) || publicPEMName(full) || placeholderPathRe.MatchString(full)
 }
 
 // baseURLPathRe matches a path that starts with a base URL placeholder:
@@ -205,9 +230,10 @@ var blockedAfterRe = regexp.MustCompile(`(?i)\b(?:is|are|will\s+be|get|gets|be)\
 // existence test rather than a read: "> key.pem", "test -f x.pem", "[ -f x ]".
 var writeOrTestBeforeRe = regexp.MustCompile(`(?:>>?\s*['"]?|\b(?:test|\[)\s+-[efsrdL]\s+['"]?)$`)
 
-// copyCommandRe matches a cp, mv, install or ln command up to the path, with
+// copyCommandRe matches copy/move commands including docker/kubectl copy and
+// scp up to the path, with
 // at least one argument before it: "sudo cp -i /etc/kubernetes/admin.conf ".
-var copyCommandRe = regexp.MustCompile(`(?:^|[;&|(` + "`" + `]\s*|^\s*(?:[-*+]|\d+\.)\s+)(?:sudo\s+(?:-\S+\s+)*)?(?:cp|mv|install|ln)\s+(?:\S+\s+)+['"]?$`)
+var copyCommandRe = regexp.MustCompile(`(?:^|[;&|(` + "`" + `]\s*|^\s*(?:[-*+]|\d+\.)\s+)(?:sudo\s+(?:-\S+\s+)*)?(?:cp|mv|install|ln|docker\s+cp|kubectl\s+cp|scp)\s+(?:\S+\s+)+['"]?$`)
 
 // copyToRe matches prose that names the path as where a file goes: "Copy the
 // user's PEM to `instance/secrets/app.pem`".

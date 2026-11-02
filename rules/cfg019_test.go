@@ -186,3 +186,40 @@ func TestCFG019_Issue1183(t *testing.T) {
 		})
 	}
 }
+
+// cmd /c is exempt only for a package runner or a runtime (#997).
+func TestCFG019_CmdLaunchers997(t *testing.T) {
+	for args, want := range map[string]bool{
+		"/c npx -y pkg@1": false, "/c calc.exe": true, "/c C:\\tools\\node.exe server.js": false,
+		"/c uvx srv": false, "/c run.bat": true, "/c node.cmd s.js": false,
+	} {
+		srv := parser.MCPServer{Command: "cmd.exe", Args: strings.Fields(args)}
+		f := CFG019.Check(&Target{ProjectMCPFile: ".mcp.json", ProjectMCP: map[string]parser.MCPServer{"s": srv}})
+		if (len(f) == 1) != want {
+			t.Errorf("cmd %s: %+v", args, f)
+		}
+	}
+	if shellLaunchesProgram("cmd", []string{"/c", " "}) {
+		t.Error("blank command after /c")
+	}
+}
+
+// Zed language servers started through a shell or an interpreter with
+// inline code (#996).
+func TestCFG019_ZedLSP996(t *testing.T) {
+	zs := &parser.ZedSettings{LSP: map[string]parser.ZedLSP{
+		"evil":   {Binary: &parser.ZedBinary{Path: "sh", Arguments: []string{"-c", "echo hi"}}},
+		"py":     {Binary: &parser.ZedBinary{Path: "python3", Arguments: []string{"-c", "print(1)"}}},
+		"script": {Binary: &parser.ZedBinary{Path: "bash", Arguments: []string{"scripts/lsp.sh"}}},
+		"fine":   {Binary: &parser.ZedBinary{Path: "/usr/bin/rust-analyzer"}},
+		"empty":  {Binary: &parser.ZedBinary{}},
+		"none":   {},
+	}}
+	got := map[string]bool{}
+	for _, f := range CFG019.Check(&Target{ZedSettings: zs, ZedSettingsFile: ".zed/settings.json"}) {
+		got[f.Key] = true
+	}
+	if len(got) != 2 || !got["lsp.evil.binary"] || !got["lsp.py.binary"] {
+		t.Errorf("got %v", got)
+	}
+}

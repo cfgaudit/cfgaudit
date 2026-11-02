@@ -33,6 +33,16 @@ inputs:
       change it. Optional.
     required: false
     default: ""
+  baseline:
+    description: >-
+      Baseline file written by `cfgaudit baseline` (#998): the findings it lists
+      are not reported and do not fail the step; secret findings always are.
+      Like config, an absolute path outside the workspace (e.g. the base
+      branch's copy under $RUNNER_TEMP) is mounted read-only, so a pull request
+      cannot add its own findings to it. Needs cfgaudit 1.20.0 or later.
+      Optional.
+    required: false
+    default: ""
   plugins:
     description: Path to a Claude Code plugin directory to also scan. Optional.
     required: false
@@ -75,6 +85,7 @@ runs:
         IN_USER: ${{ inputs.user }}
         IN_CONFIG: ${{ inputs.config }}
         IN_PLUGINS: ${{ inputs.plugins }}
+        IN_BASELINE: ${{ inputs.baseline }}
         IN_OUTPUT: ${{ inputs.output }}
         IN_FAIL_ON: ${{ inputs.fail-on }}
         IN_IMAGE: ${{ inputs.image }}
@@ -103,6 +114,20 @@ runs:
               args+=( --config /cfgaudit-config.yml )
               ;;
             *) args+=( --config "$IN_CONFIG" ) ;;
+          esac
+        fi
+        if [ -n "$IN_BASELINE" ]; then
+          case "$IN_BASELINE" in
+            "$GITHUB_WORKSPACE"/*) args+=( --baseline "/github/workspace/${IN_BASELINE#"$GITHUB_WORKSPACE"/}" ) ;;
+            /*)
+              if [ ! -f "$IN_BASELINE" ]; then
+                echo "::error::baseline file $IN_BASELINE does not exist"
+                exit 2
+              fi
+              mounts+=( -v "$IN_BASELINE:/cfgaudit-baseline.json:ro" )
+              args+=( --baseline /cfgaudit-baseline.json )
+              ;;
+            *) args+=( --baseline "$IN_BASELINE" ) ;;
           esac
         fi
         if [ -n "$IN_PLUGINS" ]; then args+=( --plugins "$IN_PLUGINS" ); fi
