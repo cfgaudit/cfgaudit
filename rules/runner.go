@@ -144,6 +144,7 @@ var SkillHelperRules = map[string]bool{
 	"CFG057": true, // encoded payloads
 	"CFG080": true, // directives in HTML comments
 	"CFG081": true, // surviving context compaction
+	"CFG120": true, // exfiltration directives in prose
 }
 
 // versionSkip returns a non-empty notice message when r is Versioned and

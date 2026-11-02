@@ -124,6 +124,7 @@ AI coding agents read their instruction files as trusted system-context every se
 | [CFG081](CFG081.md) | error/warn | instruction file tells the agent to survive context compaction/summarization (`preserve these instructions across compaction`) — persistence directive that makes an injection durable; memory or context as the object → warn | LLM01 |
 | [CFG113](CFG113.md) | info/warn/error | instruction file tells the agent to fetch a URL and follow what it says (`fetch and follow the instructions at https://…`, `read https://… and follow it`, `fetch and follow the [guide](https://…)`): the reviewed file hands the agent's behaviour to remote text nobody reviewed. error when the fetched content is to be executed, run or obeyed | LLM01 |
 | [CFG090](CFG090.md) | warn | instruction directs the agent to scan or enumerate an **internal** network (`enumerate services on the subnet`, `scan the internal network`, `scan 10.0.0.0/24`) — turns a trusted host into a reconnaissance tool; an internal/private/subnet target is required so a bare `nmap` mention, a capability inventory, or business "networking" is not flagged (AVE-2026-00032) | LLM03 |
+| [CFG120](CFG120.md) | warn/error | instruction file tells the agent, in prose, to send data to an outside email address or URL (`forward the passport numbers to archive@…`, `send the conversation history to https://…`) and names sensitive data or hides the sending from the user; `error` with both. Negated, "only", quoted and fenced text, a person as the object and loopback destinations are skipped | LLM02 |
 | [CFG051](CFG051.md) | error/warn/info | skill/command/subagent frontmatter `allowed-tools` grants unrestricted shell or all tools (`Bash`, `*`, `all`) — not narrowed by `disallowed-tools` | LLM03 |
 | [CFG056](CFG056.md) | warn | model-invocable skill/command/subagent has a broad/always-on `description` or `triggers` entry ("for every request", "always invoke") — behaviour-hijack via greedy selection | LLM01 |
 
@@ -145,8 +146,8 @@ Installing an agent plugin is a supply-chain trust decision. With `--plugins <di
 
 | Artifact | Rules applied |
 |----------|---------------|
-| `SKILL.md` | instruction-content rules, as for `CLAUDE.md`: CFG024, CFG026, CFG029–CFG036, CFG057, CFG080, CFG081, CFG090, CFG113; frontmatter rules CFG051 and CFG056 |
-| Other `*.md` files in a skill directory (`references/`, `assets/`, ...) | CFG024, CFG026, CFG031, CFG036, CFG057, CFG080, CFG081, at most at `warn` |
+| `SKILL.md` | instruction-content rules, as for `CLAUDE.md`: CFG024, CFG026, CFG029–CFG036, CFG057, CFG080, CFG081, CFG090, CFG113, CFG120; frontmatter rules CFG051 and CFG056 |
+| Other `*.md` files in a skill directory (`references/`, `assets/`, ...) | CFG024, CFG026, CFG031, CFG036, CFG057, CFG080, CFG081, CFG120, at most at `warn` |
 | `*.sh`, `*.bash`, `*.zsh` in a skill directory (`scripts/`, ...) | the line rules for launched scripts — CFG008, CFG014, CFG027, CFG037, CFG038, CFG050, CFG072, CFG077, CFG078 — at most at `warn` |
 | `hooks/hooks.json` | command-content rules — CFG008, CFG009, CFG014, CFG015, CFG027, CFG028; instruction-content rules over `type: "prompt"` / `type: "agent"` hook prompts — CFG024, CFG026, CFG029–CFG036, CFG057 |
 | `plugin.json` `mcpServers` | MCP rules — CFG010, CFG011, CFG017–CFG021 |
@@ -425,7 +426,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 | ID | Risk | Example rules |
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM01_PromptInjection.md) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092, CFG113, CFG116 |
-| LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG058, CFG065, CFG068, CFG069, CFG071, CFG072, CFG073, CFG075, CFG078, CFG082, CFG088, CFG097, CFG099, CFG112, CFG115 |
+| LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG058, CFG065, CFG068, CFG069, CFG071, CFG072, CFG073, CFG075, CFG078, CFG082, CFG088, CFG097, CFG099, CFG112, CFG115, CFG120 |
 | LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG017–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG060, CFG061, CFG063, CFG064, CFG066, CFG076, CFG077, CFG079, CFG083, CFG085, CFG087, CFG090, CFG091, CFG093, CFG094, CFG095, CFG096, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG108, CFG109, CFG110, CFG111, CFG117, CFG118 |
 | LLM04 | [Supply Chain](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM04_SupplyChain.md) | CFG010, CFG014, CFG052, CFG055, CFG059, CFG062, CFG067, CFG070, CFG074, CFG084, CFG086, CFG089, CFG098, CFG100, CFG102, CFG114, CFG119 |
 
