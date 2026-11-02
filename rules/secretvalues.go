@@ -74,11 +74,20 @@ var upperPlaceholderRe = regexp.MustCompile(`^[A-Z][A-Z_\-]{3,}$`)
 // rather than a credential: "<your-token>", "changeme", "xxxx-yyyy",
 // "REDACTED", "TU_API_KEY_AQUI".
 func literalPlaceholder(v string) bool {
+	if p := tokenPrefixRe.FindString(v); p != "" && len(v) > len(p) && literalPlaceholder(v[len(p):]) {
+		return true
+	}
 	return placeholderRe.MatchString(v) || screamingPlaceholderRe.MatchString(v) ||
 		upperPlaceholderRe.MatchString(v) || envNamePlaceholderRe.MatchString(v) ||
 		markedPlaceholderRe.MatchString(v) || weakWordRe.MatchString(v) || fakeMarkerRe.MatchString(v) ||
 		strings.Contains(strings.ToLower(v), "xxx") || !isASCII(v) // a value in another script is a note to the reader
 }
+
+// tokenPrefixRe matches the fixed prefix of a vendor token. What follows it
+// is checked as a placeholder on its own, so "ghp_SECRETTOKEN" reads as the
+// placeholder it is (#1368); a real token's random part has digits or lower
+// case and is still reported.
+var tokenPrefixRe = regexp.MustCompile(`^(?:gh[pousr]_|github_pat_|sk-(?:ant-|proj-)?|xox[abpr]-|glpat-|npm_)`)
 
 // fakeMarkerRe matches a value that says it is not real: "FAKE_SHOP_TOKEN",
 // "dummy-key". Narrower than fakeWordRe, which also accepts joke passwords
