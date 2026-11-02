@@ -32,6 +32,15 @@ type commandSite struct {
 	// attributed correctly (settings.json vs an MCP config such as .mcp.json).
 	File    string
 	Command string
+	// PowerShell is set when the command runs in PowerShell: a Claude Code
+	// hook with "shell": "powershell", or the powershell command of a Copilot
+	// or Devin hook. $LASTEXITCODE is an automatic variable there (#1198).
+	PowerShell bool
+}
+
+// agentHookSite builds the site of one of an agent hook's commands.
+func agentHookSite(label, file string, h parser.AgentHook, cmd string) commandSite {
+	return commandSite{Label: label, File: file, Command: cmd, PowerShell: cmd == h.Shell && cmd != h.Bash && cmd != h.Command}
 }
 
 // claudeHookCommand is a Claude Code command hook's text as one line: the
@@ -61,7 +70,7 @@ func commandSites(t *Target) []commandSite {
 			for _, group := range s.Hooks[event] {
 				for _, h := range group.Hooks {
 					if h.Command != "" {
-						sites = append(sites, commandSite{Label: "hooks." + event + " command", File: t.SettingsFile, Command: claudeHookCommand(h)})
+						sites = append(sites, commandSite{Label: "hooks." + event + " command", File: t.SettingsFile, Command: claudeHookCommand(h), PowerShell: strings.EqualFold(h.Shell, "powershell")})
 					}
 				}
 			}
@@ -328,7 +337,7 @@ func commandSites(t *Target) []commandSite {
 			for _, group := range t.SubagentHooks[event] {
 				for _, h := range group.Hooks {
 					if h.Command != "" {
-						sites = append(sites, commandSite{Label: t.frontmatterHooksKind() + " frontmatter hooks." + event + " command", File: t.SubagentHooksFile, Command: claudeHookCommand(h)})
+						sites = append(sites, commandSite{Label: t.frontmatterHooksKind() + " frontmatter hooks." + event + " command", File: t.SubagentHooksFile, Command: claudeHookCommand(h), PowerShell: strings.EqualFold(h.Shell, "powershell")})
 					}
 				}
 			}
@@ -444,7 +453,7 @@ func commandSites(t *Target) []commandSite {
 		for _, event := range events {
 			for _, h := range ah.Hooks[event] {
 				for _, cmd := range h.ShellCommands() {
-					sites = append(sites, commandSite{Label: t.AgentHooksKind + " hooks." + event + " command", File: t.AgentHooksFile, Command: cmd})
+					sites = append(sites, agentHookSite(t.AgentHooksKind+" hooks."+event+" command", t.AgentHooksFile, h, cmd))
 				}
 			}
 		}
@@ -456,7 +465,7 @@ func commandSites(t *Target) []commandSite {
 		for _, event := range sortedKeys2(ah.Hooks) {
 			for _, h := range ah.Hooks[event] {
 				for _, cmd := range h.ShellCommands() {
-					sites = append(sites, commandSite{Label: "Copilot agent hooks." + event + " command", File: t.CopilotAgentHooksFile, Command: cmd})
+					sites = append(sites, agentHookSite("Copilot agent hooks."+event+" command", t.CopilotAgentHooksFile, h, cmd))
 				}
 			}
 		}

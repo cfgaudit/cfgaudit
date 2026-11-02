@@ -58,7 +58,7 @@ func LaunchCommands(t *Target) []LaunchCommand {
 	}
 	var out []LaunchCommand
 	for _, s := range commandSites(t) {
-		out = append(out, LaunchCommand(s))
+		out = append(out, LaunchCommand{Label: s.Label, File: s.File, Command: s.Command})
 	}
 	if vt := t.VSCodeTasks; vt != nil {
 		for _, task := range vt.Tasks {

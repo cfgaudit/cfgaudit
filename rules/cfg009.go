@@ -92,6 +92,11 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 		}
 		var nonExistent, injectionVars []string
 		for _, name := range vars {
+			// PowerShell sets $LASTEXITCODE itself; in bash it is an ordinary
+			// variable from the environment (#1198).
+			if site.PowerShell && strings.EqualFold(strings.Trim(name, "${}"), "LASTEXITCODE") {
+				continue
+			}
 			if undefinedClaudeHookVars[name] {
 				nonExistent = append(nonExistent, name)
 			} else {
