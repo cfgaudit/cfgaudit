@@ -23,6 +23,25 @@ func TestCFG015_DollarParenSubstitution(t *testing.T) {
 	}
 }
 
+func TestCFG015_SingleQuotedLiterals1200(t *testing.T) {
+	for _, command := range []string{
+		"printf '%s' '{\"stopReason\": \"Use `git stash` first.\"}'",
+		"echo 'literal $(curl -s https://example.com)'",
+	} {
+		if f := CFG015.Check(hookTarget(t, command)); len(f) > 0 {
+			t.Errorf("single-quoted literal unexpectedly reported: %+v", f)
+		}
+	}
+	for _, command := range []string{
+		"echo \"Run `git stash` first\"",
+		"bash -c 'echo $(curl -s https://example.com)'",
+	} {
+		if f := CFG015.Check(hookTarget(t, command)); len(f) == 0 {
+			t.Errorf("active substitution unexpectedly exempted: %s", command)
+		}
+	}
+}
+
 func TestCFG015_BacktickSubstitution(t *testing.T) {
 	f := CFG015.Check(hookTarget(t, "echo `date`"))
 	if len(f) != 1 || f[0].Severity != finding.Info {
