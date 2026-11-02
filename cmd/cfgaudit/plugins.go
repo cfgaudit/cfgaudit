@@ -53,7 +53,7 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 			// the scan, as for every other committed config (#606).
 			ts = skillsDirPluginTargets(root, manifest, m, func(path string, err error) {
 				if scanroot.IsDanglingLink(path) {
-					return // a dangling link is on the could-not-read list (#1189)
+					return // a dangling link reads as absent (#1363)
 				}
 				all = append(all, unreadablePluginTarget(dir, path, err))
 			})
@@ -66,7 +66,7 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 			var fatal error
 			unreadable := func(path string, err error) {
 				if scanroot.IsDanglingLink(path) {
-					return // a dangling link is on the could-not-read list (#1189)
+					return // a dangling link reads as absent (#1363)
 				}
 				if root == explicit && fatal == nil && ownPluginFile(root, path) {
 					fatal = err
