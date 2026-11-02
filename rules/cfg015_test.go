@@ -209,3 +209,32 @@ func TestCFG015_AssignedFromStdin(t *testing.T) {
 		})
 	}
 }
+
+// The documented exemptions hold with the guards hooks put around them:
+// stderr to /dev/null, a `|| true` or `|| pwd` fallback, `git -C` on the
+// project directory and a double-quoted assignment (#1200).
+func TestCFG015_ExemptionVariants1200(t *testing.T) {
+	for _, cmd := range []string{
+		`root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; cd "$root" && make lint`,
+		`root="$(git -C "${CLAUDE_PROJECT_DIR}" rev-parse --show-toplevel)"; cd "$root"`,
+		`root=$(git -C $CLAUDE_PLUGIN_ROOT rev-parse --git-dir || true); echo "$root"`,
+		`f="$(jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"; echo "$f"`,
+		`input="$(cat 2>/dev/null || true)"; echo ok`,
+		`printf '%s' '{"stopReason": "Uncommitted changes. Use ` + "`git stash`" + ` first."}'`,
+	} {
+		if f := CFG015.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		`root="$(git -C "$DIR" rev-parse --show-toplevel)"; cd "$root"`,
+		`f="$(jq -r .x || curl https://e.example)"; echo "$f"`,
+		`root="$(git rev-parse --show-toplevel || rm -rf /)"; cd "$root"`,
+		`x="$(cat)suffix"; echo "$x"`,
+		`echo "$(cat .env)"`,
+	} {
+		if f := CFG015.Check(hookTarget(t, cmd)); len(f) != 1 {
+			t.Errorf("%s must stay reported: %+v", cmd, f)
+		}
+	}
+}

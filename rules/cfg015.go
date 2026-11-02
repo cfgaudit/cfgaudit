@@ -45,8 +45,14 @@ var hookNetworkCmdRe = regexp.MustCompile(`\b(?:curl|wget|nc|ncat|ssh|scp|rsync|
 // Deliberately narrow. Only `git rev-parse` with the flags that print a path,
 // and only when nothing else rides along in the same substitution: any pipe,
 // redirect, semicolon or command separator makes it a compound expression again
-// and it is flagged as before.
-var benignSubstRe = regexp.MustCompile(`^\s*git\s+rev-parse\s+--(?:show-toplevel|git-dir|git-common-dir|absolute-git-dir)\s*$`)
+// and it is flagged as before. The exceptions are the guards hooks write
+// around it (#1200): `git -C` on the project or plugin directory Claude Code
+// sets, stderr sent to /dev/null, and a `|| true` or `|| pwd` fallback.
+var benignSubstRe = regexp.MustCompile(`^\s*git\s+(?:-C\s+(?:"\$\{?CLAUDE_(?:PROJECT_DIR|PLUGIN_ROOT)\}?"|\$\{?CLAUDE_(?:PROJECT_DIR|PLUGIN_ROOT)\}?)\s+)?rev-parse\s+--(?:show-toplevel|git-dir|git-common-dir|absolute-git-dir)` + substFallback + `$`)
+
+// substFallback is the guard a hook adds so a failing query does not abort
+// it: stderr to /dev/null, then `|| true` or `|| pwd` (#1200).
+const substFallback = `(?:\s+2>\s*/dev/null)?(?:\s*\|\|\s*(?:true|pwd))?\s*`
 
 // isBenignSubstitution reports whether a substituted command is one of the fixed
 // path queries above. The input carries its delimiters, as extractHookSubstitutions
@@ -67,9 +73,9 @@ func isBenignSubstitution(s string) bool {
 // stdinReaderRe matches a substituted command that only reads the hook's own
 // stdin, the event JSON Claude Code pipes in: jq with options and one filter
 // and no file argument, or a bare cat, optionally with stderr sent to
-// /dev/null. That is how the docs of this rule tell
-// a hook to get its input (#792).
-var stdinReaderRe = regexp.MustCompile(`^\s*(?:jq(?:\s+-[A-Za-z-]+)*\s+(?:'[^']*'|"[^"]*"|\.[A-Za-z0-9_.\[\]]*)|cat)(?:\s+2>\s*/dev/null)?\s*$`)
+// /dev/null and a `|| true` fallback (#1200). That is how the docs of this
+// rule tell a hook to get its input (#792).
+var stdinReaderRe = regexp.MustCompile(`^\s*(?:jq(?:\s+-[A-Za-z-]+)*\s+(?:'[^']*'|"[^"]*"|\.[A-Za-z0-9_.\[\]]*)|cat)` + substFallback + `$`)
 
 // assignedFromStdin reports whether the substitution s appears in cmd only as
 // the whole value of a variable assignment (NAME=$(...), local NAME=$(...))
@@ -90,6 +96,12 @@ func assignedFromStdin(cmd, s string) bool {
 			return false
 		}
 		end := j + len(s)
+		if strings.HasSuffix(cmd[:j], `"`) {
+			if end >= len(cmd) || cmd[end] != '"' {
+				return false // the quoted value goes on
+			}
+			end++
+		}
 		if end < len(cmd) && !strings.ContainsRune(" \t;&|)\n", rune(cmd[end])) {
 			return false // more text glued to the value
 		}
@@ -98,7 +110,8 @@ func assignedFromStdin(cmd, s string) bool {
 	}
 }
 
-var assignedBeforeRe = regexp.MustCompile(`(?:^|[\s;&|(])[A-Za-z_][A-Za-z0-9_]*=$`)
+// The value may be double-quoted: input="$(cat)" (#1200).
+var assignedBeforeRe = regexp.MustCompile(`(?:^|[\s;&|(])[A-Za-z_][A-Za-z0-9_]*="?$`)
 
 func (r *cfg015) Check(t *Target) []finding.Finding {
 	if t == nil {
