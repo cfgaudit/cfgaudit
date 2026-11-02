@@ -79,7 +79,7 @@ func TestTextLinesEdges977(t *testing.T) {
 	}
 	toml := strings.Split("[mcp_servers.a]\ncommand = \"npx\"\nargs = [\"x\"]\n\n[other]\nk = 1\nlate = 2", "\n")
 	for msg, want := range map[string]int{
-		"mcpServers.a.args contains x":          3, // a one-segment key in the table
+		"mcpServers.a.args contains x":           3, // a one-segment key in the table
 		"mcpServers.a connects to \"elsewhere\"": 1, // the quoted value is not in the table
 		"Codex late is \"x\"":                    0, // a top-level key after the first table is not top level
 		"Codex [mcp_servers.a] sets missing = 1": 1, // the key is not in the table: its header
