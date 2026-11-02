@@ -1004,6 +1004,16 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		})
 	}
 
+	// The project's .gitignore for CFG013, read here so a symlink out of the
+	// tree is recorded before CFG115 collects the escapes (#1023).
+	for _, t := range targets {
+		if t.ProjectDir != "" && t.Scope == finding.ScopeProject {
+			if data, err := scanroot.ReadFile(filepath.Join(t.ProjectDir, ".gitignore")); err == nil {
+				t.Gitignore, t.HasGitignore = data, true
+			}
+		}
+	}
+
 	// .gitmodules and committed bare repositories (#994).
 	targets = append(targets, gitTargets(dir)...)
 
