@@ -69,6 +69,16 @@ var safeShellVars = map[string]bool{
 // read as cmd.exe variables: +%Y-%m-%dT%H:%M:%SZ holds "%dT%" (#935).
 var dateFormatRe = regexp.MustCompile(`(?:^|\s)['"]?\+%\S*`)
 
+// These names are commonly guessed by hook authors, but Claude Code
+// exposes hook input on stdin rather than setting these variables (#1198).
+var undefinedClaudeHookVars = map[string]bool{
+	"$CLAUDE_TOOL_INPUT":         true,
+	"$CLAUDE_FILE_PATH":          true,
+	"$CLAUDE_FILE_PATHS":         true,
+	"$TOOL_INPUT_FILE_PATH":      true,
+	"$CLAUDE_TOOL_ARG_file_path": true,
+}
+
 func (r *cfg009) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -80,6 +90,26 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 		if len(vars) == 0 {
 			continue
 		}
+		var nonExistent, injectionVars []string
+		for _, name := range vars {
+			if undefinedClaudeHookVars[name] {
+				nonExistent = append(nonExistent, name)
+			} else {
+				injectionVars = append(injectionVars, name)
+			}
+		}
+		if len(nonExistent) > 0 {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG009",
+				Severity: finding.Info,
+				File:     site.File,
+				Message: site.Label + " references " + strings.Join(nonExistent, ", ") +
+					" — Claude Code does not provide these hook variables; read the hook JSON from stdin instead" + userScopeNote(t),
+			})
+		}
+		if len(injectionVars) == 0 {
+			continue
+		}
 		sev := finding.Warn
 		if t.Scope == finding.ScopeUser {
 			sev = finding.Error
@@ -88,7 +118,7 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG009",
 			Severity: sev,
 			File:     site.File,
-			Message:  site.Label + " interpolates " + strings.Join(vars, ", ") + " — agent-controlled or external data inside a command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
+			Message:  site.Label + " interpolates " + strings.Join(injectionVars, ", ") + " — agent-controlled or external data inside a command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
 		})
 	}
 	return findings
