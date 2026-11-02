@@ -8,6 +8,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -235,4 +236,69 @@ func FuzzExtractTar(f *testing.F) {
 			}
 		}
 	})
+}
+
+type failReader struct{}
+
+func (failReader) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+
+// The error paths of the extraction (#1327).
+func TestArchiveErrorPaths1327(t *testing.T) {
+	x := &extractor{root: t.TempDir()}
+	if err := x.entry("f", false, false, 1, failReader{}); err == nil {
+		t.Error("read error: expected an error")
+	}
+
+	dir := t.TempDir()
+	// A zip entry with a compression method Go does not know cannot be opened.
+	var b bytes.Buffer
+	zw := zip.NewWriter(&b)
+	if _, err := zw.CreateRaw(&zip.FileHeader{Name: "a.txt", Method: 99, CompressedSize64: 1, UncompressedSize64: 1}); err != nil {
+		t.Fatal(err)
+	}
+	_ = zw.Close()
+	odd := filepath.Join(dir, "odd.zip")
+	if err := os.WriteFile(odd, b.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := extractArchive(odd); err == nil {
+		t.Error("unknown method: expected an error")
+	}
+
+	// A deflated entry whose data is corrupt fails while it is copied.
+	b.Reset()
+	zw = zip.NewWriter(&b)
+	w, _ := zw.CreateRaw(&zip.FileHeader{Name: "b.txt", Method: zip.Deflate, CompressedSize64: 4, UncompressedSize64: 100, CRC32: 1})
+	_, _ = w.Write([]byte{0xff, 0xff, 0xff, 0xff})
+	_ = zw.Close()
+	corrupt := filepath.Join(dir, "corrupt.zip")
+	if err := os.WriteFile(corrupt, b.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := extractArchive(corrupt); err == nil {
+		t.Error("corrupt zip data: expected an error")
+	}
+
+	// A tar whose entry is shorter than its header says.
+	b.Reset()
+	tw := tar.NewWriter(&b)
+	_ = tw.WriteHeader(&tar.Header{Name: "c.txt", Mode: 0o644, Size: 1000, Typeflag: tar.TypeReg})
+	_, _ = tw.Write([]byte("short"))
+	short := filepath.Join(dir, "short.tar")
+	if err := os.WriteFile(short, b.Bytes()[:512+5], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := extractArchive(short); err == nil {
+		t.Error("truncated tar: expected an error")
+	}
+
+	// No temporary directory.
+	ok := filepath.Join(dir, "ok.zip")
+	writeZip(t, ok, []archEntry{{name: "AGENTS.md", body: "# p\n"}})
+	t.Setenv("TMPDIR", filepath.Join(dir, "no-such-dir"))
+	t.Setenv("TMP", filepath.Join(dir, "no-such-dir"))
+	t.Setenv("TEMP", filepath.Join(dir, "no-such-dir"))
+	if _, _, err := extractArchive(ok); err == nil {
+		t.Error("no temp dir: expected an error")
+	}
 }
