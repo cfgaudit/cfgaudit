@@ -28,9 +28,9 @@ func (r *cfg056) ID() string { return "CFG056" }
 // "review code for security issues") don't match.
 var greedyTriggerRes = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\buse (?:this|it)\b[^.]{0,40}\bfor (?:everything|anything|all tasks|every task|any task|all requests|every request|any request)\b`),
-	regexp.MustCompile(`(?i)\balways (?:use|invoke|run|apply|trigger|call|prefer)\b`),
+	regexp.MustCompile(`(?i)\balways (?:use|invoke|run|apply|trigger|call|prefer)\b[^.]{0,70}\b(?:for (?:every|any|all) (?:request|task|message|query)|regardless of (?:the request|the task|what the user asks))\b`),
 	regexp.MustCompile(`(?i)\b(?:for|on|before|after) (?:every|each|any|all) (?:request|task|prompt|message|response|user message|interaction|session|query)s?\b`),
-	regexp.MustCompile(`(?i)\bregardless of\b`),
+	regexp.MustCompile(`(?i)\bregardless of (?:the (?:task|request)|what the user asks)\b`),
 	regexp.MustCompile(`(?i)\bno matter (?:what|the)\b`),
 	regexp.MustCompile(`(?i)\bin all (?:cases|situations|contexts|scenarios)\b`),
 	regexp.MustCompile(`(?i)\b(?:applies|apply) to (?:all|every|any) (?:requests|tasks|prompts|messages|inputs|interactions)\b`),
@@ -52,6 +52,14 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 	if fm.Bool("disable-model-invocation") {
 		return nil
 	}
+	// AGENTS and Copilot instruction documents are always loaded rather
+	// than model-selected by their description.
+	name := strings.ToLower(filepath.ToSlash(t.InstructionFile))
+	if strings.EqualFold(filepath.Base(t.InstructionFile), "AGENTS.md") ||
+		strings.HasSuffix(name, "/copilot-instructions.md") {
+		return nil
+	}
+
 	// A Cursor .mdc rule is selected by its description only as an "agent
 	// requested" rule: alwaysApply false and no globs (#1195). An always-on
 	// rule is loaded anyway, and a glob rule by the files it names, so a
@@ -75,6 +83,12 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 	for _, tf := range fields {
 		for _, re := range greedyTriggerRes {
 			if loc := re.FindString(tf.text); loc != "" {
+				// A relative clause after the interaction noun scopes the trigger.
+				rest := tf.text[strings.Index(strings.`oLower(tf.text), strings.`oLower(loc))+len(loc):]
+				narrowed := regexp.MustCompile(`(?i)^\s+(?:to|that|which|whose|involving|about|against|mentioning|related(?:\s+to)?|or question involving)\b`).MatchString(rest)
+				if narrowed {
+					continue
+				}
 				msg := t.instructionName() + " frontmatter " + tf.field + " is a broad/always-on invocation trigger (\"" + loc +
 					"\") — Claude auto-selects skills/commands by their description and triggers, so a universal trigger lets this run far beyond its stated purpose; scope it to the specific task it handles"
 				if mdc {
