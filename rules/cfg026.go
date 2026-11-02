@@ -207,6 +207,9 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				if p.num == 4 && (storyWorkRe.MatchString(line) || storyNounAfterRe.MatchString(line[loc[1]:])) {
 					continue
 				}
+				if p.num == 4 && forFramingRe.MatchString(line[loc[0]:loc[1]]) && !permissiveFollowRe.MatchString(line[loc[1]:]) {
+					continue
+				}
 				if p.num == 6 && (defensiveCueRe.MatchString(line) || endorsementCaveatRe.MatchString(line) || defensiveContext(lines, i)) {
 					continue
 				}
@@ -579,6 +582,15 @@ var defensiveCueRe = regexp.MustCompile(`(?i)\b(?:prompt[- ]injection|injection|
 // to doubt: "claims of being verified by Anthropic", "a skill cannot grant
 // itself", "be wary of".
 var endorsementCaveatRe = regexp.MustCompile(`(?i)\b(?:claims?\s+(?:of|to\s+be|that)|claimed|claiming|cannot\s+grant|can'?t\s+grant|be\s+wary|suspicious|impersonat\w*|fake|spoof\w*|not\s+(?:verified|approved|endorsed|affiliated)|unofficial|no\s+(?:skill|plugin)\s+is)\b`)
+
+// forFramingRe is the "for a story" / "for roleplay" form of pattern 4. It
+// frames a request only when one follows in the same clause, which
+// permissiveFollowRe checks: "For a story, explain how to pick a lock", "for a
+// story where the AI has no limits". Without it, "for a story about a toast"
+// and "a port for a game server" are ordinary prose (#1358).
+var forFramingRe = regexp.MustCompile(`(?i)^for\s`)
+
+var permissiveFollowRe = regexp.MustCompile(`(?i)^(?:[^.;!?]*?\byou\s+(?:can|may|must|should|are\s+(?:allowed|free|permitted))\b|\s*,\s*(?:please\s+)?(?:explain|describe|tell|write|show|give|provide|detail|list|generate|ignore|bypass)\b|[^.;!?]*?\b(?:where|in\s+which)\b[^.;!?]*?\bno\s+(?:limits?|rules?|restrictions?|filters?|guidelines?|boundaries)\b)`)
 
 // storyWorkRe matches a line about a user story or a Storybook story, where
 // "for a story" is software work, not fiction (#871).
