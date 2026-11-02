@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 func TestCFG009_DollarVar(t *testing.T) {
@@ -268,5 +269,33 @@ func TestCFG009_SkillDirHomeAndDateFormat(t *testing.T) {
 		case tc.want != "" && (len(f) != 1 || !strings.Contains(f[0].Message, tc.want) || strings.Contains(f[0].Message, "CLAUDE_SKILL_DIR")):
 			t.Errorf("%s: want one finding naming only %s, got %+v", tc.cmd, tc.want, f)
 		}
+	}
+}
+
+// $LASTEXITCODE is PowerShell's own automatic variable, so it is exempt in a
+// PowerShell hook and nowhere else (#1198).
+func TestCFG009_LastExitCodePowerShell1198(t *testing.T) {
+	const cmd = `if ($LASTEXITCODE -ne 0) { exit 1 }`
+	ps := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","shell":"powershell","command":` + jsonQuote(cmd) + `}]}]}}`
+	if f := CFG009.Check(settingsTarget(t, ps)); len(f) != 0 {
+		t.Errorf("PowerShell hook: %+v", f)
+	}
+	copilot := agentHooksTarget("Copilot", map[string][]parser.AgentHook{
+		"preToolUse": {{Bash: "./check.sh", Shell: cmd}},
+	}, false)
+	if f := CFG009.Check(copilot); len(f) != 0 {
+		t.Errorf("Copilot powershell command: %+v", f)
+	}
+	agent := &Target{Scope: finding.ScopeProject, CopilotAgentHooksFile: ".github/agents/a.agent.md",
+		CopilotAgentHooks: &parser.AgentHooks{Hooks: map[string][]parser.AgentHook{"preToolUse": {{Shell: cmd}}}}}
+	if f := CFG009.Check(agent); len(f) != 0 {
+		t.Errorf("Copilot agent powershell command: %+v", f)
+	}
+	if f := CFG009.Check(hookTarget(t, `exit $LASTEXITCODE`)); len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Errorf("bash hook must stay warn: %+v", f)
+	}
+	f := CFG009.Check(settingsTarget(t, `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","shell":"powershell","command":"Write-Output $LASTEXITCODE $USER_INPUT"}]}]}}`))
+	if len(f) != 1 || strings.Contains(f[0].Message, "LASTEXITCODE") {
+		t.Errorf("other variables in a PowerShell hook stay reported: %+v", f)
 	}
 }

@@ -270,6 +270,10 @@ type HookCommand struct {
 	// names the executable and args is its argument vector, spawned without a
 	// shell. The command rules read the two joined (#773).
 	Args []string `json:"args,omitempty"`
+	// Shell is the shell a command hook runs in, "bash" (the default) or
+	// "powershell". CFG009 reads it for PowerShell's automatic variables
+	// (#1198).
+	Shell string `json:"shell,omitempty"`
 	// Prompt is the injected context for a type:"prompt" hook — text Claude Code
 	// feeds into its own context when the hook event fires. Like an instruction
 	// file, it is read as trusted guidance, so it is a prompt-injection surface
