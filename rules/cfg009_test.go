@@ -86,6 +86,25 @@ func TestCFG009_SafeVarMixedWithUnsafe_FlagsUnsafe(t *testing.T) {
 	}
 }
 
+func TestCFG009_Issue1198_MissingClaudeVars(t *testing.T) {
+	for _, name := range []string{
+		"CLAUDE_TOOL_INPUT", "CLAUDE_FILE_PATH", "CLAUDE_FILE_PATHS",
+		"TOOL_INPUT_FILE_PATH", "CLAUDE_TOOL_ARG_file_path",
+	} {
+		f := CFG009.Check(hookTarget(t, "echo $"+name))
+		if len(f) != 1 || f[0].Severity != finding.Info ||
+			!strings.Contains(f[0].Message, "stdin") {
+			t.Errorf("undefined Claude variable %s must be Info with stdin guidance: %+v", name, f)
+		}
+	}
+	f := CFG009.Check(hookTarget(t, "printf %s $CLAUDE_FILE_PATHS $USER_INPUT"))
+	if len(f) != 2 || f[0].Severity != finding.Info ||
+		f[1].Severity != finding.Warn || !strings.Contains(f[1].Message, "$USER_INPUT") ||
+		strings.Contains(f[1].Message, "$CLAUDE_FILE_PATHS") {
+		t.Errorf("mixed missing/unsafe variables require separate findings: %+v", f)
+	}
+}
+
 func TestCFG009_Issue1198_FrameworkPaths(t *testing.T) {
 	for _, variable := range []string{
 		"CLAUDE_CODE_REMOTE", "CLAUDE_ENV_FILE", "CLAUDE_PLUGIN_DATA",
