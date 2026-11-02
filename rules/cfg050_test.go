@@ -16,6 +16,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestCFG050_AzureCredentialSelector1191(t *testing.T) {
+	for _, value := range []string{"dev", "prod", "AzureCliCredential", "ManagedIdentityCredential"} {
+		if f := CFG050.Check(settingsTarget(t, `{"mcpServers":{"azure":{"command":"npx","env":{"AZURE_TOKEN_CREDENTIALS":"`+value+`"}}}}`)); len(f) != 0 {
+			t.Errorf("selector %s should not be a hardcoded secret: %+v", value, f)
+		}
+	}
+	for _, item := range []struct{ key, value string }{
+		{"AZURE_TOKEN_CREDENTIALS", "eyJ0eXAiOiJKV1Qi.abcd1234.longsecret01234567890"},
+		{"AZURE_CLIENT_SECRET", "a40charactersecretthatisnotaplaceholder12345"},
+	} {
+		f := CFG050.Check(settingsTarget(t, `{"mcpServers":{"azure":{"command":"npx","env":{"`+item.key+`":"`+item.value+`"}}}}`))
+		if len(f) == 0 {
+			t.Errorf("actual secret for %s must be reported", item.key)
+		}
+	}
+}
+
 func TestCFG050_EnvSecret(t *testing.T) {
 	f := CFG050.Check(settingsTarget(t, `{"mcpServers":{"m":{"command":"s","env":{"GITHUB_TOKEN":"ghp_abcdefghij0123456789ABCDEF"}}}}`))
 	if len(f) != 1 || f[0].Severity != finding.Error {
