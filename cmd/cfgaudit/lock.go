@@ -207,6 +207,7 @@ func lockKey(e lockEntry) string {
 var lockKindNames = map[string]string{
 	"command":      "command",
 	"mcp":          "MCP server",
+	"mcp_tool":     "MCP tool hook",
 	"script":       "launched script",
 	"instructions": "instruction file",
 	"setting":      "setting",

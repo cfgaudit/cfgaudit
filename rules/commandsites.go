@@ -32,6 +32,10 @@ type commandSite struct {
 	// attributed correctly (settings.json vs an MCP config such as .mcp.json).
 	File    string
 	Command string
+	// HookInput marks a string from a Codex mcp_tool hook's input (#972): it
+	// is checked like a command, but it is what the hook passes to a tool,
+	// not what it runs, so LaunchCommands leaves it out.
+	HookInput bool
 	// PowerShell is set when the command runs in PowerShell: a Claude Code
 	// hook with "shell": "powershell", or the powershell command of a Copilot
 	// or Devin hook. $LASTEXITCODE is an automatic variable there (#1198).
@@ -308,6 +312,15 @@ func commandSites(t *Target) []commandSite {
 				for _, h := range group.Hooks {
 					for _, cmd := range h.Commands() {
 						sites = append(sites, commandSite{Label: "Codex hooks." + event + " command", File: t.CodexHooksFile, Command: cmd})
+					}
+					// An mcp_tool hook passes its input to a tool on every
+					// matching event, so each string in it gets the
+					// command-content rules: a shell tool takes a command
+					// there (#972).
+					if server, tool, ok := h.MCPToolCall(event); ok {
+						for _, in := range h.InputStrings() {
+							sites = append(sites, commandSite{Label: "Codex hooks." + event + " mcp_tool " + server + "/" + tool + " input." + in.Path, File: t.CodexHooksFile, Command: in.Value, HookInput: true})
+						}
 					}
 				}
 			}

@@ -6,13 +6,17 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 // CodexHookHandler is one entry in a matcher group's `hooks` array.
 //
-// Codex tags the variant with `type`. Only "command" carries a shell string:
+// Codex tags the variant with `type`. Only "command" carries a shell string;
+// "mcp_tool" calls a tool on an MCP server with a committed input (#972);
 // discovery skips "prompt" and "agent" with the warning that they "are not
 // supported yet", so neither is a command site.
 //
@@ -27,11 +31,66 @@ type CodexHookHandler struct {
 	CommandWindowsSnake string `json:"command_windows,omitempty" toml:"command_windows"`
 	Timeout             int    `json:"timeout,omitempty" toml:"timeout"`
 	StatusMessage       string `json:"statusMessage,omitempty" toml:"statusMessage"`
+
+	// Server, Tool and Input belong to a type "mcp_tool" handler: when the hook
+	// fires, Codex calls Tool on the MCP server Server with the committed Input
+	// (HookHandlerConfig::McpTool in codex-rs/protocol/src/hooks.rs at
+	// rust-v0.166.0, #972).
+	Server string         `json:"server,omitempty" toml:"server"`
+	Tool   string         `json:"tool,omitempty" toml:"tool"`
+	Input  map[string]any `json:"input,omitempty" toml:"input"`
+}
+
+// MCPToolCall reports the server and tool of an mcp_tool handler that Codex
+// runs under event. Like Codex's discovery (codex-rs/hooks/src/engine/
+// discovery.rs), it skips one under SessionEnd ("SessionEnd MCP hooks are not
+// supported") and one whose server or tool is empty.
+func (h CodexHookHandler) MCPToolCall(event string) (server, tool string, ok bool) {
+	if h.Type != "mcp_tool" || event == "SessionEnd" {
+		return "", "", false
+	}
+	server, tool = strings.TrimSpace(h.Server), strings.TrimSpace(h.Tool)
+	return server, tool, server != "" && tool != ""
+}
+
+// InputString is one string value in an mcp_tool handler's input, with its
+// key path ("command", "args[1]", "options.path").
+type InputString struct {
+	Path, Value string
+}
+
+// InputStrings returns every string value in the handler's input, nested ones
+// included, sorted by key path.
+func (h CodexHookHandler) InputStrings() []InputString {
+	var out []InputString
+	var walk func(path string, v any)
+	walk = func(path string, v any) {
+		switch x := v.(type) {
+		case string:
+			out = append(out, InputString{Path: path, Value: x})
+		case map[string]any:
+			for k, e := range x {
+				p := k
+				if path != "" {
+					p = path + "." + k
+				}
+				walk(p, e)
+			}
+		case []any:
+			for i, e := range x {
+				walk(path+"["+strconv.Itoa(i)+"]", e)
+			}
+		}
+	}
+	walk("", map[string]any(h.Input))
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 // Commands returns every shell string this handler declares, in a stable order:
 // the cross-platform command first, then the Windows spellings. Empty for a
-// prompt or agent handler, which Codex does not execute.
+// prompt or agent handler, which Codex does not execute, and for an mcp_tool
+// handler, which runs no shell (see MCPToolCall).
 func (h CodexHookHandler) Commands() []string {
 	if h.Type != "" && h.Type != "command" {
 		return nil
