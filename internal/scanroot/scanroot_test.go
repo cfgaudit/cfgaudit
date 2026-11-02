@@ -307,3 +307,49 @@ func TestGlob(t *testing.T) {
 		t.Error("Glob with a bad pattern: want an error")
 	}
 }
+
+// A symlink whose target does not exist reads as absent and is listed by
+// DanglingLinks, not by ReadErrors (#1363).
+func TestDanglingLinks(t *testing.T) {
+	repo := t.TempDir()
+	symlink(t, "AGENTS.md", filepath.Join(repo, "CLAUDE.md"))
+	write(t, filepath.Join(repo, "GEMINI.md"), "real")
+	if err := Set(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+	for _, name := range []string{"CLAUDE.md", "GEMINI.md", "QWEN.md"} {
+		_, _ = ReadFile(filepath.Join(repo, name))
+	}
+	if _, err := ReadFile(filepath.Join(repo, "CLAUDE.md")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a dangling link must read as absent, got %v", err)
+	}
+	if got := DanglingLinks(); len(got) != 1 || got[0] != filepath.Join(repo, "CLAUDE.md") {
+		t.Errorf("DanglingLinks = %v, want the CLAUDE.md link", got)
+	}
+	if got := ReadErrors(); len(got) != 0 {
+		t.Errorf("ReadErrors = %v, want none", got)
+	}
+	if err := Set(repo); err != nil {
+		t.Fatal(err)
+	}
+	if got := DanglingLinks(); len(got) != 0 {
+		t.Errorf("Set must reset DanglingLinks, got %v", got)
+	}
+}
+
+// A dangling link read before any Set is still recorded.
+func TestDanglingLinksBeforeSet(t *testing.T) {
+	repo := t.TempDir()
+	symlink(t, "missing.md", filepath.Join(repo, "CLAUDE.md"))
+	mu.Lock()
+	dangling = nil
+	mu.Unlock()
+	recordDanglingLink(filepath.Join(repo, "CLAUDE.md"))
+	if got := DanglingLinks(); len(got) != 1 {
+		t.Errorf("DanglingLinks = %v, want the link", got)
+	}
+	if err := Set(""); err != nil {
+		t.Fatal(err)
+	}
+}

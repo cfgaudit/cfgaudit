@@ -51,6 +51,7 @@ var (
 	escapes  []Escape
 	seen     map[string]bool
 	failed   map[string]bool // paths that exist but could not be read
+	dangling map[string]bool // symlinks whose target does not exist
 	// aliases maps a path cfgaudit looked for to the path committed under
 	// another spelling of it (#990); listings caches directory names for
 	// that lookup.
@@ -63,7 +64,7 @@ var (
 func Set(dir string) error {
 	mu.Lock()
 	defer mu.Unlock()
-	root, resolved, escapes, seen, failed = "", "", nil, nil, map[string]bool{}
+	root, resolved, escapes, seen, failed, dangling = "", "", nil, nil, map[string]bool{}, map[string]bool{}
 	aliases, listings = map[string]string{}, map[string][]string{}
 	if dir == "" {
 		return nil
@@ -253,21 +254,33 @@ func IsDanglingLink(path string) bool {
 	return errors.Is(err, fs.ErrNotExist)
 }
 
-// recordDanglingLink records path as unreadable when it is a symlink whose
-// target does not exist (#1189). The file is in the repository, so the scan
-// is incomplete, not the file absent; it goes on the "could not read" list,
-// like any other file that exists and cannot be read, instead of becoming a
-// parse error.
+// recordDanglingLink records path when it is a symlink whose target does not
+// exist. Every agent reads such a file as absent, so the scan does too: it is
+// not a parse error (#1189) and not an incomplete scan, which would fail CI
+// over a property of the repository (#1363). DanglingLinks names it.
 func recordDanglingLink(path string) {
 	if !IsDanglingLink(path) {
 		return
 	}
 	mu.Lock()
-	if failed == nil {
-		failed = map[string]bool{}
+	if dangling == nil {
+		dangling = map[string]bool{}
 	}
-	failed[path] = true
+	dangling[path] = true
 	mu.Unlock()
+}
+
+// DanglingLinks returns the symlinks read since the last Set whose target
+// does not exist, sorted.
+func DanglingLinks() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	out := make([]string, 0, len(dangling))
+	for p := range dangling {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ReadOwnFile is ReadFile for cfgaudit's own inputs, such as a discovered
