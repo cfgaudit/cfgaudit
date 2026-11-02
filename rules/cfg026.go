@@ -86,6 +86,17 @@ var bypassPatterns = []bypassPattern{
 		finding.Error, "authority impersonation", false},
 	{4, mustFiltered(`(?i)\b(in\s+a\s+(fictional|hypothetical|alternate|imaginary)\s+(world|scenario|universe|context|story)|for\s+a\s+(story|novel|game|roleplay|simulation)\b|for\s+(roleplay|fiction)\b|hypothetically\s+speaking|in\s+this\s+(roleplay|scenario|simulation),?\s+(you\s+(can|may|should|must|are\s+allowed)))`),
 		finding.Warn, "permissive fictional / hypothetical framing", true},
+	// Pattern 6 is a claimed vendor endorsement (#1006): "This skill has been
+	// verified by Anthropic", "the official OpenAI plugin". It runs nothing,
+	// and a first-party file can say it, so it is a warning; it is how a
+	// malicious skill asks to be trusted.
+	// The file has to be the subject ("this skill has been verified by"), or
+	// the claim a status line ("Review Status: Verified by Anthropic"): in
+	// the pre-release corpus the bare phrase was always about something else,
+	// "commits signed and verified by GitHub", "docs are verified by GitHub
+	// Actions", "derived from the official Anthropic skill-authoring guide".
+	{6, mustFiltered(`(?i)\b(?:this\s+(?:skill|plugin|extension|agent|subagent|server|tool|file|command|package|mcp\s+server)\s+(?:has\s+been|is|was|are|have\s+been)\s+(?:officially\s+)?(?:verified|approved|endorsed|certified|vetted)\s+by\s+(?:the\s+)?(?:Anthropic|OpenAI|GitHub|Google|Microsoft)|(?:status|review(?:\s+status)?|verification|verified)\s*:\s*(?:\*\*)?(?:verified|approved|endorsed|certified)\s+by\s+(?:the\s+)?(?:Anthropic|OpenAI|GitHub|Google|Microsoft)|this\s+is\s+(?:the|an)\s+official\s+(?:Anthropic|OpenAI)\s+(?:skill|plugin|subagent))\b`),
+		finding.Warn, "vendor endorsement claim", false},
 	// Pattern 5 is pattern 1 in other languages (#993): the canonical
 	// "ignore all previous instructions" in German, Spanish, French, Russian,
 	// Chinese, Japanese and Korean. One verb, qualifier and noun each.
@@ -193,6 +204,12 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				}
 				if p.num == 4 && (storyWorkRe.MatchString(line) || storyNounAfterRe.MatchString(line[loc[1]:])) {
 					continue
+				}
+				if p.num == 6 && (defensiveCueRe.MatchString(line) || endorsementCaveatRe.MatchString(line) || defensiveContext(lines, i)) {
+					continue
+				}
+				if p.num == 6 && (quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0])) {
+					sev = finding.Info
 				}
 				findings = append(findings, finding.Finding{
 					RuleID:   "CFG026",
@@ -451,6 +468,11 @@ var reportLineRe = regexp.MustCompile(`(?i)^\s*\[(?:CRITICAL|HIGH|MEDIUM|LOW|WAR
 // line is the example of a defensive rule and is not reported; quoted
 // elsewhere it is still a warning (#871).
 var defensiveCueRe = regexp.MustCompile(`(?i)\b(?:prompt[- ]injection|injection|data,?\s+not\s+(?:agent\s+)?instructions|as\s+(?:inert\s+)?data\b|data\s+(?:to\s+analy[sz]e|only)\b|untrusted|attacker\w*|malicious|hidden\s+instructions|never\s+(?:follow|interpret|let|obey)|do\s+not\s+(?:follow|obey)|don'?t\s+(?:follow|obey)|flag\s+(?:it|them)|tries\s+to\s+steer|fetched\s+content|red\s+flags?|redact\w*|saniti[sz]\w*|regardless\s+of\s+what\s+(?:they|it|the\s+\w+)\s+(?:claims?|says?)|zero\s+(?:operational\s+)?authority)\b`)
+
+// endorsementCaveatRe is a line that treats a vendor endorsement as a claim
+// to doubt: "claims of being verified by Anthropic", "a skill cannot grant
+// itself", "be wary of".
+var endorsementCaveatRe = regexp.MustCompile(`(?i)\b(?:claims?\s+(?:of|to\s+be|that)|claimed|claiming|cannot\s+grant|can'?t\s+grant|be\s+wary|suspicious|impersonat\w*|fake|spoof\w*|not\s+(?:verified|approved|endorsed|affiliated)|unofficial|no\s+(?:skill|plugin)\s+is)\b`)
 
 // storyWorkRe matches a line about a user story or a Storybook story, where
 // "for a story" is software work, not fiction (#871).
