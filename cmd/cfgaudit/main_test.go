@@ -192,10 +192,10 @@ func TestBuildTargets_NoMCPJSON_NoProjectTargetWithoutSettings(t *testing.T) {
 
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { // #nosec G703 -- tests write into their own t.TempDir() paths
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil { // #nosec G703 -- tests write into their own t.TempDir() paths
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
