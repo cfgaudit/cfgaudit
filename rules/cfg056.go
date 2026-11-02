@@ -34,6 +34,7 @@ var greedyTriggerRes = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bno matter (?:what|the)\b`),
 	regexp.MustCompile(`(?i)\bin all (?:cases|situations|contexts|scenarios)\b`),
 	regexp.MustCompile(`(?i)\b(?:applies|apply) to (?:all|every|any) (?:requests|tasks|prompts|messages|inputs|interactions)\b`),
+	regexp.MustCompile(`(?i)\bhandles? (?:all|every|any) tasks?\b`),
 }
 
 // Check flags a model-invocable instruction file whose frontmatter declares a
