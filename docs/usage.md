@@ -16,6 +16,11 @@ cfgaudit /path/to/project --format sarif
 # text when piped or redirected. Force either with --format table / --format text.
 # The table shows a location once for consecutive findings at it, such as
 # CFG041 to CFG044 on one deny list; text keeps one full line per finding.
+# Text and table print a finding once for byte-identical files that get the
+# same one, such as a skill kept at .claude/skills/x and .agents/skills/x, and
+# name the copies below it ("also in 1 identical copy: ..."); the summary
+# counts every finding. JSON, SARIF, Code Climate and baselines keep one per
+# file (#1346).
 cfgaudit --format table
 
 # Text and table output colour the severity and rule ID on a terminal. Turn it

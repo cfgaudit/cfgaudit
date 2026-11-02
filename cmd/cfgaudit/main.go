@@ -322,21 +322,25 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "table":
 		if color.Enabled(*noColor, stdout) {
 			var b strings.Builder
-			renderTable(&b, all, cfgauditVersion)
+			renderTableEntries(&b, groupIdenticalCopies(dir, all), cfgauditVersion)
 			_, _ = io.WriteString(stdout, color.Table(b.String()))
 		} else {
-			renderTable(stdout, all, cfgauditVersion)
+			renderTableEntries(stdout, groupIdenticalCopies(dir, all), cfgauditVersion)
 		}
 	default:
 		colored := color.Enabled(*noColor, stdout)
-		for _, f := range all {
-			line := f.String()
+		entries := groupIdenticalCopies(dir, all)
+		for _, e := range entries {
+			line := e.String()
 			if colored {
 				line = color.TextLine(line)
 			}
 			_, _ = fmt.Fprintln(stdout, line)
+			if len(e.copies) > 0 {
+				_, _ = fmt.Fprintln(stdout, copiesLine(e.copies))
+			}
 		}
-		_, _ = fmt.Fprintf(stdout, "\ncfgaudit %s — %d %s\n", cfgauditVersion, len(all), pluralize("finding", len(all)))
+		_, _ = fmt.Fprintf(stdout, "\ncfgaudit %s — %s\n", cfgauditVersion, findingsSummary(entries))
 	}
 
 	// A path that exists but cannot be read, usually for lack of permission on
