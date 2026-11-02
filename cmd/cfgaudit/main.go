@@ -49,6 +49,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		switch args[1] {
 		case "baseline":
 			return run(baselineArgs(args), stdin, stdout, stderr)
+		case "lock":
+			return lockOutput(args[2:], stdout, stderr)
 		case "explain":
 			out, code := explainOutput(args[2:])
 			_, _ = fmt.Fprint(stdout, out)
@@ -183,15 +185,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	targets = attachPolicy(dir, targets, cfg)
 
-	pluginTargets, err := buildPluginTargets(dir, *plugins, *user)
+	targets, err = withPackageTargets(dir, *plugins, *user, targets)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
 		return 2
 	}
-	pluginTargets = append(pluginTargets, rootSkillTargets(dir, pluginTargets)...)
-	attachSkillShellToPluginSkills(pluginTargets, dir)
-	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
-	targets = append(targets, skillHelperTargets(dir, targets)...)
 	docTargets, err := contentPathTargets(dir, append(append([]string(nil), cfg.ContentPathGlobs()...), contentPaths...), targets)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
@@ -321,6 +319,21 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return cfg.ExitCode(all)
+}
+
+// withPackageTargets adds to targets the plugin and skill packages of the
+// scan (--plugins, bundled and root skills) and the files skills ship beside
+// SKILL.md (#987). The scan and `cfgaudit lock` share it, so both see the
+// same files.
+func withPackageTargets(dir, plugins string, user bool, targets []*rules.Target) ([]*rules.Target, error) {
+	pluginTargets, err := buildPluginTargets(dir, plugins, user)
+	if err != nil {
+		return nil, err
+	}
+	pluginTargets = append(pluginTargets, rootSkillTargets(dir, pluginTargets)...)
+	attachSkillShellToPluginSkills(pluginTargets, dir)
+	targets = append(targets, dropDuplicateInstructions(targets, pluginTargets)...)
+	return append(targets, skillHelperTargets(dir, targets)...), nil
 }
 
 // applyClaudeHooksDisabled gives every target the effective disableAllHooks of

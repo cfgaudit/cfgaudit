@@ -69,6 +69,11 @@ cfgaudit --content-paths 'README.md,CONTRIBUTING.md,docs/**/*.md'
 cfgaudit baseline -o .cfgaudit-baseline.json
 cfgaudit --baseline .cfgaudit-baseline.json
 
+# Record what the agent configuration runs and approves, then fail CI on any
+# change to it, whether or not a rule matches
+cfgaudit lock
+cfgaudit lock --check
+
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 
@@ -97,6 +102,10 @@ cfgaudit policy apply               # write the missing deny entries
 The entry is a fingerprint of the rule, the file relative to the scanned directory, the reported key and the message with its line numbers taken out, so adding a line above a finding does not make it new; changing what the finding says does. Findings of a secret written into a file (CFG007, CFG050, CFG054, CFG065, CFG073) are left out of the baseline and always reported: the secret is leaked whether or not CI fails, and is only gone once it is removed and rotated.
 
 Keep the file in the repository and update it in reviewed commits. In CI for pull requests from people you do not fully trust, read the base branch's copy, as for `--config`: a pull request could otherwise add its own findings to the baseline.
+
+**`lock` subcommand** — writes `.cfgaudit.lock` in the scanned directory (or the file `-o` names): the trust-relevant agent configuration, as entries, plus the SHA-256 of every agent file it read (#999). The entries are every command that runs without the user asking (hooks, status lines, credential helpers, folder-open tasks, MCP server launches), every MCP server, the content hash of every repository script such a command starts, every instruction file by its path, and the approval settings: `permissions.allow`, `defaultMode`, `additionalDirectories`, the MCP and plugin enablement keys and helper commands of Claude Code, and the auto-approve settings of VS Code. It uses the scan's discovery and takes `--plugins` and `--user`.
+
+`cfgaudit lock --check` compares the current state with the lock and exits 1 when they differ, listing each change by entry: `new MCP server helper in .mcp.json`, `changed command hooks.SessionStart command in .claude/settings.json: ... -> ...`, `changed launched script scripts/fmt.sh (...)`. Prose and formatting do not change an entry, so editing a `CLAUDE.md` does not touch the lock; `--strict-hash` compares the whole files as well. A rule reports only what it knows, and about half of the repository-borne agent advisories cfgaudit was measured against matched no rule, so the lock makes such a change visible in review: whoever adds a hook or a server has to update the lock in the same pull request. It pairs with a CODEOWNERS entry for `.cfgaudit.lock`.
 
 **`init` subcommand** — scaffolds `.claude/settings.json` with a hardened `permissions.deny` so a fresh project starts safe-by-default and passes the policy rules (CFG006/CFG041–CFG044) immediately. Aborts if the file exists (use `--force`, or `cfgaudit policy apply` to merge); `--dry-run` prints the JSON; `--interactive` adds project-specific entries.
 
