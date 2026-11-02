@@ -43,6 +43,7 @@ func (r *cfg038) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG038",
 			Severity: finding.Error,
 			File:     site.File,
+			Line:     site.Line,
 			Message:  site.Label + " dumps environment variables to the network (env/printenv piped to a network tool) — this exfiltrates every secret in the shell, including ANTHROPIC_API_KEY and cloud credentials. Remove it" + userScopeNote(t),
 		})
 	}

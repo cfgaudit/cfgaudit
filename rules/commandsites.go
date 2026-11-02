@@ -40,6 +40,20 @@ type commandSite struct {
 	// hook with "shell": "powershell", or the powershell command of a Copilot
 	// or Devin hook. $LASTEXITCODE is an automatic variable there (#1198).
 	PowerShell bool
+	// Line is the line of a script site in its script, 0 for every other
+	// site, whose line keyline finds from the message (#1365).
+	Line int
+	// Raw is a script site's text before maskMessageQuotes, for the rules
+	// that read string contents: a secret in an echo is still committed.
+	Raw string
+}
+
+// raw is the site's text with its quoted messages and patterns intact.
+func (s commandSite) raw() string {
+	if s.Raw != "" {
+		return s.Raw
+	}
+	return s.Command
 }
 
 // agentHookSite builds the site of one of an agent hook's commands.
