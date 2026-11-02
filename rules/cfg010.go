@@ -4,11 +4,14 @@
 package rules
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 type cfg010 struct{}
@@ -26,6 +29,66 @@ var npmPackageRunners = map[string]bool{
 	"pnpm": true,
 	"yarn": true,
 	"bunx": true,
+	"pnpx": true,
+}
+
+// workspaceValueFlags are pnpm and yarn options that take a value, which is
+// a directory or a workspace filter rather than a command (#1203).
+var workspaceValueFlags = map[string]bool{
+	"-C": true, "--dir": true, "--filter": true, "-F": true, "--cwd": true,
+}
+
+// uvValueFlags are uv options whose value is not the package to run: a
+// Python version, an index, a constraints file, a directory (#1203).
+var uvValueFlags = map[string]bool{
+	"--python": true, "-p": true, "--python-preference": true, "--refresh-package": true,
+	"--index": true, "--index-url": true, "--extra-index-url": true, "--constraint": true,
+	"--overrides": true, "--directory": true, "--project": true,
+}
+
+// dlxArgs returns the arguments after `dlx` when a pnpm or yarn invocation
+// downloads a package, and false for anything else: `pnpm dev mcp` runs a
+// package.json script and `pnpm exec node dist/mcp.js` a local binary, which
+// the lockfile pins (#1203).
+func dlxArgs(args []string) ([]string, bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if workspaceValueFlags[a] {
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "dlx" {
+			return args[i+1:], true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// isLocalSource reports whether a uvx --from value names local code: a path
+// or a variable such as ${CLAUDE_PLUGIN_ROOT}.
+func isLocalSource(s string) bool {
+	return strings.HasPrefix(s, "$") || isPathLikeArg(s)
+}
+
+// gitSourcePinned reports whether a git+ source names a revision: an `@` in
+// the last path segment, so git+ssh://git@host/... does not count as pinned
+// by its user name. A `#subdirectory=` fragment is not part of the path.
+func gitSourcePinned(s string) bool {
+	s, _, _ = strings.Cut(s, "#")
+	return strings.Contains(s[strings.LastIndexByte(s, '/')+1:], "@")
+}
+
+// gitPinSuggestion puts the revision before a `#` fragment:
+// git+https://host/repo.git@<commit-sha>#subdirectory=tools/mcp.
+func gitPinSuggestion(s string) string {
+	if base, frag, ok := strings.Cut(s, "#"); ok {
+		return base + "@<commit-sha>#" + frag
+	}
+	return s + "@<commit-sha>"
 }
 
 // pyPackageRunners are Python package runners whose first positional arg is a
@@ -44,50 +107,228 @@ var pep508PinRe = regexp.MustCompile(`(===|==|~=|!=|>=|<=|>|<)\s*\d`)
 func (r *cfg010) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
-		if msg := analyzeMCPVersionPin(ref.Server.Command, ref.Server.Args); msg != "" {
+		msgs := analyzeMCPVersionPins(ref.Server.Command, ref.Server.Args)
+		local := len(msgs) == 1 && localDevDependency(t, ref.Server.Command, ref.Server.Args)
+		for _, msg := range msgs {
+			sev := finding.Warn
+			if local {
+				sev = finding.Info
+				msg += " (the package is a dependency in package.json and the call has no -y, so npx runs the installed copy, which the lockfile pins)"
+			}
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG010",
-				Severity: finding.Warn,
+				Severity: sev,
 				File:     ref.File,
-				Message:  "mcpServers." + ref.Name + ": " + msg,
+				// The key points the line lookup at args, so a server named
+				// like its package is not located at its own key (#1203).
+				Key:     "mcpServers." + ref.Name + ".args",
+				Message: "mcpServers." + ref.Name + ": " + msg,
 			})
 		}
 	}
 	return findings
 }
 
-func analyzeMCPVersionPin(command string, args []string) string {
+// analyzeMCPVersionPins reports every unpinned package named by a runner
+// invocation: the run package itself plus any extra package installed through
+// a repeated package flag (`npx --package/-p`, `uvx --with`).
+func analyzeMCPVersionPins(command string, args []string) []string {
 	for _, a := range args {
 		if strings.HasSuffix(a, "@latest") || strings.HasSuffix(a, ":latest") {
-			return "argument \"" + a + "\" uses unpinned :latest/@latest tag — pin to an exact version to prevent silent supply-chain compromise"
+			return []string{"argument \"" + a + "\" uses unpinned :latest/@latest tag — pin to an exact version to prevent silent supply-chain compromise"}
 		}
 	}
 
 	runner := filepath.Base(command)
 	npm, py := npmPackageRunners[runner], pyPackageRunners[runner]
 	if !npm && !py {
-		return ""
+		return nil
 	}
-	pkg := mcpPackageArg(runner, args)
-	if pkg == "" || isPathLikeArg(pkg) {
-		return ""
-	}
-	if py {
-		// uvx also accepts the npm-style `pkg@version`, so check both grammars.
-		if pep508PinRe.MatchString(pkg) || hasNpmVersionPin(pkg) {
-			return ""
+	specRunner := runner
+	if runner == "pnpm" || runner == "yarn" {
+		rest, ok := dlxArgs(args)
+		if !ok {
+			return nil
 		}
-		return "package \"" + pkg + "\" passed to " + runner + " has no version pin (e.g. \"" + pkg + "==1.2.3\") — supply-chain compromise propagates silently to every agent that loads this server"
+		specRunner, args = "pnpx", rest
 	}
-	if hasNpmVersionPin(pkg) {
-		return ""
+	var msgs []string
+	for _, pkg := range collectPackageSpecs(specRunner, args) {
+		if isPathLikeArg(pkg) {
+			continue
+		}
+		if py && strings.HasPrefix(pkg, "git+") {
+			if gitSourcePinned(pkg) {
+				continue
+			}
+			msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" names no revision (e.g. \""+gitPinSuggestion(pkg)+"\") — supply-chain compromise propagates silently to every agent that loads this server")
+			continue
+		}
+		if py {
+			// uvx also accepts the npm-style `pkg@version`, so check both grammars.
+			if pep508PinRe.MatchString(pkg) || hasNpmVersionPin(pkg) {
+				continue
+			}
+			msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" has no version pin (e.g. \""+pkg+"==1.2.3\") — supply-chain compromise propagates silently to every agent that loads this server")
+			continue
+		}
+		if hasNpmVersionPin(pkg) {
+			continue
+		}
+		msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" has no @version pin — supply-chain compromise propagates silently to every agent that loads this server")
 	}
-	return "package \"" + pkg + "\" passed to " + runner + " has no @version pin — supply-chain compromise propagates silently to every agent that loads this server"
+	return msgs
+}
+
+// packageFlagValue returns the package spec carried by an inline package flag
+// for the runner: `--package=<spec>` / `-p=<spec>` for npm runners and
+// `--with=<spec>` for uvx, or "" if a is not a package flag for that runner.
+// The prefixes are runner-specific: `-p` is `--python` for uvx, so `uvx
+// -p=3.12` must not be read as a package spec.
+func packageFlagValue(runner, a string) string {
+	var prefixes []string
+	if npmPackageRunners[runner] {
+		prefixes = append(prefixes, "--package=", "-p=")
+	}
+	if runner == "uvx" {
+		prefixes = append(prefixes, "--with=")
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(a, prefix) {
+			return strings.TrimPrefix(a, prefix)
+		}
+	}
+	return ""
+}
+
+// collectPackageSpecs returns the run package (first positional, after any
+// runner subcommand) plus every extra package named by a repeated package
+// flag: `--package <spec>` / `-p <spec>` for npm runners and `--with <spec>`
+// for uvx. Duplicates are dropped so a spec named twice is reported once.
+//
+// For npm runners the first positional is only a package when no package flag
+// is present (`npx cowsay hi`). Once any `--package` / `-p` appears, the
+// positional names the bin to execute from those packages (`npx -y -p
+// @scope/pkg@1.2.3 pkg-bin`), so it is not a package and is skipped.
+func collectPackageSpecs(runner string, args []string) []string {
+	var specs []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if s == "" || seen[s] {
+			return
+		}
+		seen[s] = true
+		specs = append(specs, s)
+	}
+
+	// Flags whose next argument is a package spec rather than a plain flag.
+	valueNext := map[string]bool{}
+	if npmPackageRunners[runner] {
+		valueNext["--package"] = true
+		valueNext["-p"] = true
+	}
+	if runner == "uvx" {
+		valueNext["--with"] = true
+	}
+
+	// A package flag seen before the first positional marks the npm positional
+	// as a bin command rather than a package. Only flags before the positional
+	// count: an argument like `npx -y @acme/mcp-server -p 3000` passes `-p
+	// 3000` to the server itself, so the run package must still be checked.
+	npmRunAsCommand := false
+	if npmPackageRunners[runner] {
+		for i := 0; i < len(args); i++ {
+			a := args[i]
+			if a == "--package" || a == "-p" || strings.HasPrefix(a, "--package=") || strings.HasPrefix(a, "-p=") {
+				npmRunAsCommand = true
+				break
+			}
+			if valueNext[a] {
+				i++ // skip the flag's value so it is not mistaken for a positional
+				continue
+			}
+			if strings.HasPrefix(a, "-") {
+				continue
+			}
+			// Runner subcommand: the run package comes one position later.
+			if (runner == "pnpm" || runner == "yarn") && (a == "dlx" || a == "exec") {
+				continue
+			}
+			if runner == "pipx" && a == "run" {
+				continue
+			}
+			// First positional reached; later flags belong to the executed server.
+			break
+		}
+	}
+
+	// uvx --from names the package; the positional is then the command it
+	// provides. A local source (a path or a variable) installs nothing from
+	// the index.
+	fromSet := false
+	if runner == "uvx" {
+		for i := 0; i < len(args); i++ {
+			from, ok := "", false
+			switch a := args[i]; {
+			case a == "--from" && i+1 < len(args):
+				from, ok = args[i+1], true
+				i++
+			case strings.HasPrefix(a, "--from="):
+				from, ok = strings.TrimPrefix(a, "--from="), true
+			case uvValueFlags[a]:
+				i++
+			}
+			if ok {
+				fromSet = true
+				if !isLocalSource(from) {
+					add(from)
+				}
+			}
+		}
+	}
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if spec := packageFlagValue(runner, a); spec != "" {
+			add(spec)
+			continue
+		}
+		if runner == "uvx" && (uvValueFlags[a] || a == "--from") {
+			i++ // the value is a version, an index, a path or the --from source
+			continue
+		}
+		if valueNext[a] {
+			if i+1 < len(args) {
+				add(args[i+1])
+			}
+			i++ // consumed the flag value so it is not mistaken for the run package
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		// Runner subcommand: the run package comes one position later —
+		// `dlx`/`exec` for pnpm/yarn, `run` for pipx (`pipx run <pkg>`).
+		if (runner == "pnpm" || runner == "yarn") && (a == "dlx" || a == "exec") {
+			continue
+		}
+		if runner == "pipx" && a == "run" {
+			continue
+		}
+		if npmRunAsCommand || fromSet {
+			// positional is the bin to execute, not a package — stop here
+			break
+		}
+		add(a) // first positional is the run package; later positionals are server args
+		break
+	}
+	return specs
 }
 
 // mcpPackageArg returns the first positional argument that names a package. A
 // runner subcommand is skipped so the package arg is found one position later:
-// `dlx`/`exec` for pnpm/yarn, `run` for pipx (`pipx run <pkg>`).
+// `dlx`/`exec` for pnpm/yarn, `run` for pipx (`pipx run <pkg>`). Shared with
+// CFG059's typosquat check.
 func mcpPackageArg(runner string, args []string) string {
 	for i, a := range args {
 		if strings.HasPrefix(a, "-") {
@@ -126,4 +367,59 @@ func hasNpmVersionPin(pkg string) bool {
 
 func isPathLikeArg(s string) bool {
 	return strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") || strings.HasPrefix(s, "/")
+}
+
+// localDevDependency reports whether an npx or bunx call without -y names a
+// package that the project's package.json lists as a dependency (#1203). Then
+// npx runs the installed copy, which the lockfile pins, and reaches the
+// registry only when the package is not installed. Measured with npm 11.12 and
+// Node 24: without a TTY, which is how an MCP client starts a server, npx
+// installs a missing package from the registry and runs it without asking.
+// So the finding drops to info only when package.json shows the dependency.
+func localDevDependency(t *Target, command string, args []string) bool {
+	runner := filepath.Base(strings.TrimSpace(command))
+	if runner != "npx" && runner != "bunx" {
+		return false
+	}
+	for _, a := range args {
+		if a == "-y" || a == "--yes" {
+			return false
+		}
+	}
+	pkg := mcpPackageArg(runner, args)
+	if pkg == "" || hasNpmVersionPin(pkg) {
+		return false
+	}
+	return projectDependencies(t.ProjectDir)[pkg]
+}
+
+var projectDepsCache sync.Map // dir -> map[string]bool
+
+// projectDependencies returns the package names in the dependencies,
+// devDependencies, optionalDependencies and peerDependencies of
+// <dir>/package.json, or nil when there is none.
+func projectDependencies(dir string) map[string]bool {
+	if dir == "" {
+		return nil
+	}
+	if v, ok := projectDepsCache.Load(dir); ok {
+		return v.(map[string]bool)
+	}
+	var deps map[string]bool
+	if data, err := scanroot.ReadFile(filepath.Join(dir, "package.json")); err == nil {
+		var pj map[string]json.RawMessage
+		if json.Unmarshal(data, &pj) == nil {
+			deps = map[string]bool{}
+			for _, k := range []string{"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"} {
+				var m map[string]any
+				if json.Unmarshal(pj[k], &m) == nil {
+					for name := range m {
+						deps[name] = true
+					}
+				}
+			}
+		}
+	}
+	projectDepsCache.Store(dir, deps)
+	return deps
 }

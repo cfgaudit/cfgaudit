@@ -50,7 +50,7 @@ func (r *cfg077) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, site := range commandSites(t) {
+	for _, site := range commandSitesWithScripts(t) {
 		for _, p := range antiForensicsPatterns {
 			if !p.re.MatchString(site.Command) {
 				continue

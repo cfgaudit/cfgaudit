@@ -248,6 +248,9 @@ type Permissions struct {
 	// DefaultMode is the permission mode, nested under permissions in the schema
 	// (permissions.defaultMode) — NOT a top-level settings key. Read by CFG004.
 	DefaultMode string `json:"defaultMode,omitempty"`
+	// AdditionalDirectories are directories outside the project that the
+	// tools may use without asking. Read by CFG043 and CFG044 (#1172).
+	AdditionalDirectories []string `json:"additionalDirectories,omitempty"`
 }
 
 // HookGroup is the per-event hook entry: a matcher plus the commands it triggers.
@@ -267,6 +270,10 @@ type HookCommand struct {
 	// names the executable and args is its argument vector, spawned without a
 	// shell. The command rules read the two joined (#773).
 	Args []string `json:"args,omitempty"`
+	// Shell is the shell a command hook runs in, "bash" (the default) or
+	// "powershell". CFG009 reads it for PowerShell's automatic variables
+	// (#1198).
+	Shell string `json:"shell,omitempty"`
 	// Prompt is the injected context for a type:"prompt" hook — text Claude Code
 	// feeds into its own context when the hook event fires. Like an instruction
 	// file, it is read as trusted guidance, so it is a prompt-injection surface
@@ -288,6 +295,42 @@ type HookCommand struct {
 	AllowedEnvVars []string          `json:"allowedEnvVars,omitempty"`
 }
 
+// EnvMap is an MCP server's env block. A number, a bool or null as a value is
+// read as its JSON text instead of failing the whole file (#1189): a server
+// with "MAX_TOKENS": 64000 would otherwise take every other server in the file
+// out of the scan. How the agents load such a value is not measured yet.
+type EnvMap map[string]string
+
+// UnmarshalJSON decodes the env object leniently.
+func (e *EnvMap) UnmarshalJSON(data []byte) error {
+	if string(bytes.TrimSpace(data)) == "null" {
+		*e = nil
+		return nil
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	out := make(EnvMap, len(raw))
+	for k, v := range raw {
+		var s string
+		if json.Unmarshal(v, &s) == nil {
+			out[k] = s
+			continue
+		}
+		t := strings.TrimSpace(string(v))
+		if strings.HasPrefix(t, "{") || strings.HasPrefix(t, "[") {
+			return fmt.Errorf("env %q: an object or array is not an environment value", k)
+		}
+		if t == "null" {
+			t = ""
+		}
+		out[k] = t
+	}
+	*e = out
+	return nil
+}
+
 type MCPServer struct {
 	// OAuthClientSecret is a literal OAuth client secret the server declaration
 	// carries. Filled by the Codex mapping from [mcp_servers.<name>.oauth]
@@ -305,11 +348,11 @@ type MCPServer struct {
 	// written as ${env:...}.
 	Auth *MCPStaticOAuth `json:"auth,omitempty"`
 
-	Command                 string            `json:"command,omitempty"`
-	Args                    []string          `json:"args,omitempty"`
-	AlwaysAllow             []string          `json:"alwaysAllow,omitempty"`
-	Env                     map[string]string `json:"env,omitempty"`
-	DangerouslyAllowBrowser bool              `json:"dangerouslyAllowBrowser,omitempty"`
+	Command                 string   `json:"command,omitempty"`
+	Args                    []string `json:"args,omitempty"`
+	AlwaysAllow             []string `json:"alwaysAllow,omitempty"`
+	Env                     EnvMap   `json:"env,omitempty"`
+	DangerouslyAllowBrowser bool     `json:"dangerouslyAllowBrowser,omitempty"`
 
 	// Remote-transport fields (HTTP/SSE/WebSocket MCP servers). URL is the
 	// endpoint the agent connects to; Type is the transport ("http"/"sse"/…);

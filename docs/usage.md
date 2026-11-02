@@ -14,6 +14,8 @@ cfgaudit /path/to/project --format sarif
 
 # Output format defaults to "auto": a table on an interactive terminal, plain
 # text when piped or redirected. Force either with --format table / --format text.
+# The table shows a location once for consecutive findings at it, such as
+# CFG041 to CFG044 on one deny list; text keeps one full line per finding.
 cfgaudit --format table
 
 # Text and table output colour the severity and rule ID on a terminal. Turn it
@@ -32,8 +34,9 @@ cfgaudit --format codeclimate > gl-code-quality.json
 
 # A finding in a JSON or JSONC file carries the line of the key it reports, so
 # GitHub and GitLab show it on the changed line of a pull or merge request. A
-# missing key points at its parent, or the finding has no line. TOML and YAML
-# findings have no line yet.
+# missing key points at its parent, or the finding has no line. Findings in
+# skill and command frontmatter, in TOML (Codex, Grok) and in YAML carry the
+# line of the field, table or value they name (#977).
 
 # Override the Claude Code version used for rule gating (otherwise detected via `claude --version`)
 cfgaudit --claude-version 2.1.148
@@ -62,6 +65,25 @@ cfgaudit --shellcheck
 # Also scan docs that agents read while they work, with the high-precision content rules
 cfgaudit --content-paths 'README.md,CONTRIBUTING.md,docs/**/*.md'
 
+# Adopt cfgaudit in an existing repository: accept today's findings, then fail
+# CI only on new ones. Secret findings are never baselined.
+cfgaudit baseline -o .cfgaudit-baseline.json
+cfgaudit --baseline .cfgaudit-baseline.json
+
+# Record what the agent configuration runs and approves, then fail CI on any
+# change to it, whether or not a rule matches
+cfgaudit lock
+cfgaudit lock --check
+
+# List the agent files cfgaudit found and what they run, per agent; also as
+# JSON or a CycloneDX 1.6 BOM for SBOM tooling
+cfgaudit inventory
+cfgaudit inventory --format cyclonedx > agent-bom.json
+
+# Scan a skill, plugin or release archive without unpacking it yourself
+cfgaudit skill.zip
+cfgaudit release.tar.gz
+
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 
@@ -84,6 +106,18 @@ cfgaudit policy generate            # settings.json permissions.deny -> .cfgaudi
 cfgaudit policy apply --dry-run     # preview: .cfgaudit.yml require-deny -> settings.json permissions.deny
 cfgaudit policy apply               # write the missing deny entries
 ```
+
+**`baseline` subcommand** — writes one entry per current finding to `.cfgaudit-baseline.json` (or the file `-o` names), so a repository can adopt cfgaudit without fixing everything first (#998). It takes the scan's flags and directory. `--baseline <file>` then leaves out the findings the file lists, as many times as it lists each, and reports the rest; the exit code counts only those. Two lines on stderr say how many findings the baseline covered and which entries no longer match anything, so the file can be rewritten when findings are fixed.
+
+The entry is a fingerprint of the rule, the file relative to the scanned directory, the reported key and the message with its line numbers taken out, so adding a line above a finding does not make it new; changing what the finding says does. Findings of a secret written into a file (CFG007, CFG050, CFG054, CFG065, CFG073) are left out of the baseline and always reported: the secret is leaked whether or not CI fails, and is only gone once it is removed and rotated.
+
+Keep the file in the repository and update it in reviewed commits. In CI for pull requests from people you do not fully trust, read the base branch's copy, as for `--config`: a pull request could otherwise add its own findings to the baseline.
+
+**`lock` subcommand** — writes `.cfgaudit.lock` in the scanned directory (or the file `-o` names): the trust-relevant agent configuration, as entries, plus the SHA-256 of every agent file it read (#999). The entries are every command that runs without the user asking (hooks, status lines, credential helpers, folder-open tasks, MCP server launches), every MCP server, the content hash of every repository script such a command starts, every instruction file by its path, and the approval settings: `permissions.allow`, `defaultMode`, `additionalDirectories`, the MCP and plugin enablement keys and helper commands of Claude Code, and the auto-approve settings of VS Code. It uses the scan's discovery and takes `--plugins` and `--user`.
+
+`cfgaudit lock --check` compares the current state with the lock and exits 1 when they differ, listing each change by entry: `new MCP server helper in .mcp.json`, `changed command hooks.SessionStart command in .claude/settings.json: ... -> ...`, `changed launched script scripts/fmt.sh (...)`. Prose and formatting do not change an entry, so editing a `CLAUDE.md` does not touch the lock; `--strict-hash` compares the whole files as well. A rule reports only what it knows, and about half of the repository-borne agent advisories cfgaudit was measured against matched no rule, so the lock makes such a change visible in review: whoever adds a hook or a server has to update the lock in the same pull request. It pairs with a CODEOWNERS entry for `.cfgaudit.lock`.
+
+**`inventory` subcommand** — lists, per agent, the files the scan discovered and read, and what each one runs, loads or approves: MCP servers (transport, command or URL, and for a package runner whether the package is pinned, as CFG010 judges it), commands that run on their own (hooks, status lines, helpers, folder-open tasks), the scripts those start (by SHA-256), instruction files and skills, and approval settings; then the files that exist but could not be read or parsed (#1000). It uses the scan's discovery, takes `--plugins` and `--user`, and reports no findings, so it answers whether a clean scan means "nothing there" or "nothing wrong". `--format json` gives the same as JSON. `--format cyclonedx` gives a CycloneDX 1.6 BOM: each agent file is a `file` component with its SHA-256 and the agent as a property, each MCP server a nested `application` component, and the other entries properties. The serial number is derived from the content, so the same tree gives the same BOM. Files no agent claims alone (`AGENTS.md`, shared skills roots) are listed under "shared".
 
 **`init` subcommand** — scaffolds `.claude/settings.json` with a hardened `permissions.deny` so a fresh project starts safe-by-default and passes the policy rules (CFG006/CFG041–CFG044) immediately. Aborts if the file exists (use `--force`, or `cfgaudit policy apply` to merge); `--dry-run` prints the JSON; `--interactive` adds project-specific entries.
 
@@ -117,6 +151,23 @@ Two distinctions keep this honest:
 - **Only a shell's arguments are shell text.** `lsp.binary.arguments` and `dap.args` go to `execve`, so a `$VAR` or `$(…)` there is literal bytes. cfgaudit passes the full line to the content rules only when the program is an interpreter (`sh`, `bash`, `pwsh`, …), and the program alone otherwise. Without that split, a real config passing `${projectRoot}#python-lsp` to `nix run` reported an interpolation that cannot happen.
 
 **`.zed/debug.json`** is the third committed project file next to `settings.json` and `tasks.json`, and cfgaudit reads one field of it. Upstream: *"Zed will use the `build` field to run any necessary setup steps before the debugger starts"*, and *"Zed allows embedding a Zed task in the `build` field that is run before the debugger starts"*. So pressing Debug on a scenario labelled "Debug server" runs whatever that field names, under a label that describes the session rather than the command. `program`, `args` and `env` are **not** read: they name the binary the user asked to debug, which is the thing they picked, the same line `.zed/tasks.json` draws between a `create_worktree` hook task and one invoked from the task list. A `build` that names an existing task by label is resolved against `.zed/tasks.json` and the finding is attributed to that file, since that is where the command lives. Unlike `settings.json`, `debug.json` is applied **without** a worktree trust check: `update_settings` in `crates/project/src/project_settings.rs` routes only `LocalSettingsKind::Settings` through `can_trust`, while `Tasks` and `Debug` go straight to the task store (#650).
+
+<a id="json-output"></a>**JSON output**
+
+`--format json` prints an array of findings. [`schema/findings.schema.json`](../schema/findings.schema.json) describes it, and CI validates a golden report against it on every change (#1078). From v1.20.0 on the shape is stable: a field may be added in a minor release, and a rename or removal happens only in a major release, announced in the release notes.
+
+| Field | Meaning |
+| --- | --- |
+| `RuleID` | the rule, `CFG` plus three digits |
+| `Severity` | `error`, `warn` or `info`, after `.cfgaudit.yml` overrides |
+| `Scope` | `project`, `project-local` or `user` for a finding about a settings scope; omitted otherwise |
+| `File` | the file as cfgaudit reached it: the scanned directory as given on the command line joined with the path inside it, or the path of a `--user`, `--config` or `--plugins` input. It is not made relative to the scanned directory (Code Climate output is) |
+| `Line`, `Col` | 1-based position, or `0` when the finding is about the whole file or the position is not known |
+| `Message` | what was found and how to fix it, with secrets redacted. The wording can change; match on `RuleID` |
+| `OWASP` | the rule's OWASP Top 10 for LLM Applications id (`LLM01` to `LLM10`) |
+| `AVEID` | the rule's Agentic Vulnerability Enumeration id; omitted for rules without one |
+
+`cfgaudit list --format json` is meant for people and scripts that browse the rule catalogue. Its shape is not covered by the schema and may change.
 
 **Scope-aware findings**
 

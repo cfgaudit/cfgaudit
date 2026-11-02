@@ -23,7 +23,17 @@ func (r *cfg057) ID() string { return "CFG057" }
 var (
 	// dataURIRe matches a real data: URI (mediatype + payload), which has no place
 	// in a trusted instruction file and can smuggle a hidden/encoded payload.
-	dataURIRe = mustFiltered(`(?i)\bdata:[a-z]+/[a-z0-9.+-]+[a-z0-9;=-]*,[^\s"')]{16,}`)
+	dataURIRe = mustFiltered(`(?i)\bdata:([a-z]+/[a-z0-9.+-]+)[a-z0-9;=-]*,([^\s"')]{16,})`)
+	// inertImageTypes are raster image types: their payload is pixels, which
+	// the model does not read as an instruction. SVG stays reported, since it
+	// can carry script and text (#1216).
+	inertImageTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/jpg": true, "image/gif": true, "image/webp": true}
+	// dataPlaceholderRe matches a payload that is a template slot or a
+	// truncated example rather than data: "<base64-encoded-svg>",
+	// "PHN2Zy...(full string)" (#1216). The note may use fullwidth
+	// parentheses, and the payload match stops at ")" or a space, so the note
+	// is often cut short.
+	dataPlaceholderRe = regexp.MustCompile(`^<[^<>]*>$|(?:\.{3}|\x{2026})(?:[(\x{FF08}][^)\x{FF09}]*[)\x{FF09}]?)?$`)
 	// base64RunRe matches a base64 run that could carry an encoded payload. The
 	// length floor only bounds decode attempts; the malicious-content gate (not
 	// length) is what keeps false positives low, so a modest floor is fine.
@@ -53,7 +63,7 @@ func (r *cfg057) Check(t *Target) []finding.Finding {
 
 		for i, line := range strings.Split(src.Content, "\n") {
 			lineNo := i + 1
-			if dataURIRe.MatchString(line) {
+			if reportableDataURI(line) {
 				add(lineNo, "contains a data: URI — a trusted instruction file should not embed an inline data payload; it can smuggle hidden/encoded content. Remove it")
 				continue
 			}
@@ -66,6 +76,22 @@ func (r *cfg057) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+// reportableDataURI reports whether line holds a data: URI that can carry
+// content the model reads: not a raster image, and not a placeholder or a
+// truncated example (#1216).
+func reportableDataURI(line string) bool {
+	if !dataURIRe.MatchString(line) {
+		return false
+	}
+	for _, m := range dataURIRe.FindAllStringSubmatch(line, -1) {
+		if inertImageTypes[strings.ToLower(m[1])] || dataPlaceholderRe.MatchString(m[2]) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // decodeBase64 tries to decode a base64 run (with or without padding) and returns

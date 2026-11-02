@@ -175,6 +175,8 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 		runes := []rune(src.Content)
 		line, col := 1, 0
 		riRun, riLine, riCol := 0, 0, 0
+		var first *finding.Finding
+		zeroWidth, strong := 0, false
 		for i, ch := range runes {
 			if ch == '\n' {
 				line++
@@ -187,7 +189,7 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 			// Regional indicators are *visible*, so they never reach
 			// suspiciousUnicode — but a run of them spells ASCII in flag emoji.
 			// Tracked as a run, because one or two are an ordinary country flag.
-			if isRegionalIndicator(ch) {
+			if isRegionalIndicator(ch) && first == nil {
 				if riRun == 0 {
 					riLine, riCol = line, col
 				}
@@ -211,6 +213,13 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 			if ch == bomRune && i == 0 {
 				continue // a single leading BOM is a benign encoding marker
 			}
+			// U+200B or U+2060 at the start of a line, right before a fence
+			// marker, shows a literal fence inside a fence (#1182). It is not
+			// reported, but it counts towards the file's total.
+			if (ch == 0x200B || ch == 0x2060) && (i == 0 || runes[i-1] == '\n' || i == 1 && runes[0] == bomRune) && fenceAt(runes, i+1) {
+				zeroWidth++
+				continue
+			}
 			// A zero-width joiner between two emoji is what builds 👨‍💻 and 👩‍👧‍👦;
 			// that is rendering, not smuggling. Only ZWJ outside an emoji
 			// sequence is a hiding vector.
@@ -228,20 +237,54 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 			if (ch == lrmRune || ch == rlmRune) && lineHasRTL(runes, i) {
 				continue
 			}
-			if name, ok := suspiciousUnicode(ch); ok {
-				findings = append(findings, finding.Finding{
-					RuleID:   "CFG024",
-					Severity: finding.Error,
-					File:     src.File,
-					Line:     line,
-					Col:      col,
-					Message:  fmt.Sprintf("%s contains a hidden Unicode control character U+%04X (%s) — invisible in editors and review but read by the agent as instructions; a prompt-injection / ASCII-smuggling vector. Remove all non-printable characters", src.Name, ch, name),
-				})
-				break
+			if isZeroWidth(ch) {
+				zeroWidth++
 			}
+			if name, ok := suspiciousUnicode(ch); ok {
+				if !isZeroWidth(ch) {
+					strong = true
+				}
+				if first == nil {
+					first = &finding.Finding{
+						RuleID:   "CFG024",
+						Severity: finding.Error,
+						File:     src.File,
+						Line:     line,
+						Col:      col,
+						Message:  fmt.Sprintf("%s contains a hidden Unicode control character U+%04X (%s) — invisible in editors and review but read by the agent as instructions; a prompt-injection / ASCII-smuggling vector. Remove all non-printable characters", src.Name, ch, name),
+					}
+				}
+			}
+		}
+		if first != nil {
+			// One or two zero-width characters in a whole file cannot carry a
+			// payload; they are left behind by copy-paste. In the pre-release
+			// corpus run for v1.20.0, 23 of 35 findings were files like that,
+			// and the one real payload was a run of 34 (#1182). The Tags block,
+			// the bidi controls and the annotation characters stay errors.
+			if !strong && zeroWidth <= 2 {
+				first.Severity = finding.Warn
+			}
+			findings = append(findings, *first)
 		}
 	}
 	return findings
+}
+
+// isZeroWidth reports the zero-width spaces, joiners, directional marks, word
+// joiner, invisible operators and a non-leading BOM: the characters counted
+// for the file-level grade (#1182).
+func isZeroWidth(r rune) bool {
+	return r >= 0x200B && r <= 0x200F || r >= 0x2060 && r <= 0x2064 || r == bomRune
+}
+
+// fenceAt reports whether a code-fence marker starts at runes[i].
+func fenceAt(runes []rune, i int) bool {
+	if i+3 > len(runes) {
+		return false
+	}
+	s := string(runes[i : i+3])
+	return s == "```" || s == "~~~"
 }
 
 // suspiciousUnicode reports whether r is an invisible/control codepoint used to

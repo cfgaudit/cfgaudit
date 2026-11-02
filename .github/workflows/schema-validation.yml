@@ -129,6 +129,11 @@ jobs:
       - name: GitLab Code Quality
         run: node .github/tools/ajv/validate.js testdata/schemas/gitlab-code-quality.json cmd/cfgaudit/testdata/reports/codeclimate.golden.json
 
+      # schema/findings.schema.json is the published shape of --format json
+      # (#1078); the golden is rendered by TestReportGoldens.
+      - name: JSON findings
+        run: node .github/tools/ajv/validate.js schema/findings.schema.json cmd/cfgaudit/testdata/reports/json.golden.json
+
   # schema/cfgaudit.schema.json is the published schema for .cfgaudit.yml
   # (#1106). testdata/config/json holds the JSON form of every example the
   # parser accepts (the annotated examples in the docs and

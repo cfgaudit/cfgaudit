@@ -22,7 +22,11 @@ func (r *cfg085) ID() string { return "CFG085" }
 // permissionModeWeakening maps a subagent frontmatter permissionMode to how it
 // weakens the permission system. The documented values are default, acceptEdits,
 // auto, dontAsk, bypassPermissions, plan and manual (an alias for default);
-// default, plan and manual are absent here because they prompt normally.
+// default, plan and manual are absent here because they prompt normally, and
+// dontAsk because it is stricter than default: it denies every tool call that
+// is not pre-approved instead of asking. Measured on Claude Code 2.1.316
+// (#1188): a dontAsk subagent's Bash call was denied "because Claude Code is
+// running in don't ask mode", and the same command ran once allowed.
 //
 // Severities mirror CFG004, which reads the same modes from settings.json:
 // bypassPermissions is an error, the softer modes are warnings.
@@ -31,7 +35,6 @@ var permissionModeWeakening = map[string]struct {
 	what string
 }{
 	"bypassPermissions": {finding.Error, "disables all permission checks — the subagent runs with full autonomy and no confirmation prompts"},
-	"dontAsk":           {finding.Error, "suppresses permission prompts — the subagent proceeds without asking"},
 	"auto":              {finding.Warn, "hands permission decisions to the auto-mode classifier instead of prompting (see CFG079 for how its allow/deny lists can be weakened)"},
 	"acceptEdits":       {finding.Warn, "auto-accepts file edits, so the subagent writes to the working tree without confirmation"},
 }
@@ -77,17 +80,60 @@ func (r *cfg085) Check(t *Target) []finding.Finding {
 		return nil // Grok wires only bypassPermissions at spawn; the rest are inert
 	}
 
+	sev := spec.sev
+	readOnly := ""
+	if kind == "Claude" {
+		if tools := fm.StringList("tools"); readOnlyTools(tools) {
+			sev = lowerSeverity(sev)
+			readOnly = "; its tools list (" + strings.Join(tools, ", ") + ") has no tool that writes files, runs commands or reaches the network, which limits what the mode unlocks"
+		}
+	}
 	tail := " so this is the settings.json permission mode (CFG004) reached through a different file. Remove it and let the session's mode govern"
 	if kind == "Grok" {
 		tail = " and Grok wires this mode at spawn, so a cloned repo runs the subagent with it. Remove it and let the session's mode govern"
 	}
 	return []finding.Finding{{
 		RuleID:   "CFG085",
-		Severity: spec.sev,
+		Severity: sev,
 		File:     t.InstructionFile,
 		Message: t.instructionName() + " frontmatter sets permissionMode: \"" + mode + "\" — " + spec.what +
-			". A committed subagent definition applies to everyone who runs it," + tail + userScopeNote(t),
+			". A committed subagent definition applies to everyone who runs it," + tail + readOnly + userScopeNote(t),
 	}}
+}
+
+// unlockingTools are the tools a weakening permission mode matters for: they
+// write files, run commands or reach the network (#1188). An MCP tool
+// (mcp__...) counts too, since its server can do any of these.
+var unlockingTools = map[string]bool{
+	"Bash": true, "PowerShell": true, "Write": true, "Edit": true, "MultiEdit": true,
+	"NotebookEdit": true, "WebFetch": true,
+}
+
+// readOnlyTools reports an explicit tools list with none of unlockingTools. A
+// missing or empty list, or "*", means every tool and is not read-only.
+func readOnlyTools(tools []string) bool {
+	if len(tools) == 0 {
+		return false
+	}
+	for _, tool := range tools {
+		name, _, _ := strings.Cut(tool, "(")
+		name = strings.TrimSpace(name)
+		if name == "*" || unlockingTools[name] || strings.HasPrefix(name, "mcp__") {
+			return false
+		}
+	}
+	return true
+}
+
+// lowerSeverity is one step down: error to warn, warn to info.
+func lowerSeverity(s finding.Severity) finding.Severity {
+	switch s {
+	case finding.Error:
+		return finding.Warn
+	case finding.Warn:
+		return finding.Info
+	}
+	return s
 }
 
 // qwenApprovalTiers maps a qwen effective approvalMode to how it weakens
@@ -115,8 +161,8 @@ var qwenNativeApprovalModes = map[string]bool{
 // (agent-frontmatter-schema.ts): a Claude permissionMode is honoured on a
 // .qwen/agents file only through this bridge, and only when approvalMode is
 // unset. dontAsk maps to default because qwen preserves its restrictive intent,
-// so it is NOT a weakening value here even though CFG085 treats dontAsk as one
-// for a Claude file. A permissionMode outside these six keys (for example the
+// so it is not a weakening value here either, as on a Claude file (#1188). A
+// permissionMode outside these six keys (for example the
 // common but invalid "yolo") is dropped and honours nothing.
 var qwenPermissionBridge = map[string]string{
 	"default":           "default",

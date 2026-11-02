@@ -22,7 +22,7 @@ func tasksTarget(tasks ...parser.VSCodeTask) *Target {
 func TestCFG047_FolderOpen(t *testing.T) {
 	f := CFG047.Check(tasksTarget(parser.VSCodeTask{
 		Label:      "bootstrap",
-		Command:    "make",
+		Command:    "./scripts/bootstrap.sh",
 		RunOptions: &parser.VSCodeRunOptions{RunOn: "folderOpen"},
 	}))
 	if len(f) != 1 || f[0].Severity != finding.Error {

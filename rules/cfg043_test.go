@@ -11,7 +11,8 @@ import (
 )
 
 func TestCFG043_NoCloudCoverage(t *testing.T) {
-	f := CFG043.Check(settingsTarget(t, `{"permissions":{"deny":["Read(.env)"]}}`))
+	// A bare Read allow is a silent route to the home directory (#1172).
+	f := CFG043.Check(settingsTarget(t, `{"permissions":{"allow":["Read"],"deny":["Read(.env)"]}}`))
 	if len(f) != 1 || f[0].Severity != finding.Error {
 		t.Fatalf("expected 1 Error, got %+v", f)
 	}

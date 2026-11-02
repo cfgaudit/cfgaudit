@@ -5,6 +5,7 @@ package parser
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -69,5 +70,17 @@ func TestInstructionImports(t *testing.T) {
 				t.Errorf("InstructionImports(%q) = %q, want %q", tt.content, got, tt.want)
 			}
 		})
+	}
+}
+
+// A backtick that is never closed shifts the code span pairing, so an @ in a
+// later span can be read as an import; the path must stop at the masked text
+// after it instead of carrying NUL bytes into the file name (#1166).
+func TestInstructionImports_StopsAtMaskedText(t *testing.T) {
+	content := "- Unit tests filtering to file: `npm run test-unit -- **/fileName.ts\n\nIt is installed via the `@typescript/native-preview` package, see `docs`.\n"
+	for _, p := range InstructionImports(content) {
+		if strings.ContainsRune(p, 0) {
+			t.Errorf("import path %q contains a NUL", p)
+		}
 	}
 }

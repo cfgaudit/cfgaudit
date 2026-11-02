@@ -11,7 +11,8 @@ import (
 )
 
 func TestCFG044_DenyMissingSSH(t *testing.T) {
-	f := CFG044.Check(settingsTarget(t, `{"permissions":{"deny":["Read(.env)","Read(**/*.pem)"]}}`))
+	// An allowed interpreter is a silent route to the home directory (#1172).
+	f := CFG044.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(python3:*)"],"deny":["Read(.env)","Read(**/*.pem)"]}}`))
 	if len(f) != 1 || f[0].Severity != finding.Error {
 		t.Fatalf("expected 1 Error, got %+v", f)
 	}

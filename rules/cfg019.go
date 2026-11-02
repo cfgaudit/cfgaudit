@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -71,7 +72,35 @@ func (r *cfg019) Check(t *Target) []finding.Finding {
 			})
 		}
 	}
-	return findings
+	return append(findings, zedLSPInlineScripts(t)...)
+}
+
+// zedLSPInlineScripts applies the same two checks to the language servers a
+// committed .zed/settings.json starts (#996, CVE-2025-68432): lsp.<name>.binary
+// with a shell running an inline script, or an interpreter with an
+// inline-code flag. Zed starts them on worktree trust.
+func zedLSPInlineScripts(t *Target) []finding.Finding {
+	if t.ZedSettings == nil {
+		return nil
+	}
+	var out []finding.Finding
+	for _, name := range sortedKeys2(t.ZedSettings.LSP) {
+		b := t.ZedSettings.LSP[name].Binary
+		if b == nil || strings.TrimSpace(b.Path) == "" {
+			continue
+		}
+		label := "lsp." + name + ".binary"
+		if shell := shellInterpreterName(b.Path); shell != "" && !shellLaunchesProgram(shell, b.Arguments) {
+			out = append(out, finding.Finding{RuleID: "CFG019", Severity: finding.Error, File: t.ZedSettingsFile, Key: label,
+				Message: label + " runs the shell interpreter \"" + shell + "\" — the language server is an inline script in arguments, not a real server binary; Zed starts it once the worktree is trusted. Point path at the server executable instead"})
+			continue
+		}
+		if lang := interpreterBasename(b.Path, languageInterpreters); lang != "" && hasInlineEvalFlag(b.Arguments) {
+			out = append(out, finding.Finding{RuleID: "CFG019", Severity: finding.Error, File: t.ZedSettingsFile, Key: label,
+				Message: label + " runs \"" + lang + "\" with an inline-code flag (e.g. -e/-c) — the language server is inline code in arguments; Zed starts it once the worktree is trusted. Point path at the server executable instead"})
+		}
+	}
+	return out
 }
 
 // shellLaunchesProgram reports whether a shell in an MCP server's command only
@@ -86,6 +115,14 @@ func (r *cfg019) Check(t *Target) []finding.Finding {
 //     "node ./dist/index.js", which CFG070 leaves alone on purpose.
 //   - PowerShell with -File and none of -Command, -c, -EncodedCommand, -enc,
 //     -ec, -e.
+//
+// cmdLaunchers are the programs besides the package runners that a cmd /c
+// may start for an MCP server (#997).
+var cmdLaunchers = map[string]bool{
+	"node": true, "npm": true, "python": true, "python3": true, "py": true, "deno": true, "bun": true,
+	"uv": true, "docker": true, "podman": true, "java": true, "dotnet": true,
+}
+
 func shellLaunchesProgram(shell string, args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -106,6 +143,19 @@ func shellLaunchesProgram(shell string, args []string) bool {
 				return false
 			}
 		}
+		// Only a package runner or a language runtime after /c (#997):
+		// "cmd /c npx -y pkg" is how Windows starts an npx server, while
+		// "cmd.exe /c <any binary>" let a committed .cursor/mcp.json run
+		// anything (CVE-2025-54136).
+		f := strings.Fields(rest[0])
+		if len(f) == 0 {
+			return false
+		}
+		prog := strings.TrimSuffix(strings.ToLower(filepath.Base(strings.ReplaceAll(f[0], `\`, "/"))), ".exe")
+		prog = strings.TrimSuffix(strings.TrimSuffix(prog, ".cmd"), ".bat")
+		if !npmPackageRunners[prog] && !pyPackageRunners[prog] && !cmdLaunchers[prog] {
+			return false
+		}
 		return true
 	case "powershell", "pwsh":
 		file := false
@@ -117,16 +167,30 @@ func shellLaunchesProgram(shell string, args []string) bool {
 				file = true
 			}
 		}
+		// pwsh's default positional parameter is -File, so "pwsh
+		// ./scripts/start.ps1" runs a script file (#1183). Windows PowerShell
+		// 5.1 defaults to -Command and is not changed without a measurement.
+		if !file && strings.TrimSuffix(strings.ToLower(shell), ".exe") == "pwsh" {
+			file = strings.HasSuffix(strings.ToLower(pwshFirstOperand(args)), ".ps1")
+		}
 		return file
 	default:
+		login := false
 		for i, a := range args {
 			a = strings.TrimSpace(a)
+			if a == "--login" {
+				login = true
+				continue
+			}
 			if strings.HasPrefix(a, "--") {
 				continue
 			}
 			if strings.HasPrefix(a, "-") {
+				if strings.Contains(a[1:], "l") {
+					login = true
+				}
 				if strings.Contains(a[1:], "c") {
-					return i+2 == len(args) && guardedExec(args[i+1])
+					return i+2 == len(args) && guardedExec(args[i+1], login)
 				}
 				continue
 			}
@@ -136,6 +200,29 @@ func shellLaunchesProgram(shell string, args []string) bool {
 	}
 }
 
+// pwshValueFlags are the pwsh parameters that take a value, so the word after
+// them is not the script operand.
+var pwshValueFlags = map[string]bool{
+	"-executionpolicy": true, "-ex": true, "-ep": true, "-workingdirectory": true, "-wd": true,
+	"-configurationname": true, "-settingsfile": true, "-outputformat": true, "-of": true,
+	"-inputformat": true, "-if": true, "-windowstyle": true, "-w": true, "-custompipename": true,
+}
+
+// pwshFirstOperand returns pwsh's first positional argument, or "".
+func pwshFirstOperand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		a := strings.ToLower(strings.TrimSpace(args[i]))
+		if strings.HasPrefix(a, "-") {
+			if pwshValueFlags[a] {
+				i++
+			}
+			continue
+		}
+		return strings.TrimSpace(args[i])
+	}
+	return ""
+}
+
 // guardStepRe and execStepRe are the steps of a guarded launch: a test that
 // runs nothing ("[ -f \"$HOME/.sentry/mcp.json\" ]", "command -v x >/dev/null"),
 // "exit N", and exec of one named program with literal arguments.
@@ -143,12 +230,28 @@ var guardStepRe = regexp.MustCompile(`^(?:\[\s[^\]` + "`" + `]*\s\]|test\s[^` + 
 var guardSplitRe = regexp.MustCompile(`&&|\|\||;`)
 var execStepRe = regexp.MustCompile(`^exec\s+[\w./\-]+(?:\s+[\w./=:@,\-"']+)*$`)
 
+// cdStepRe is a change to a literal directory, which runs nothing (#1183).
+var cdStepRe = regexp.MustCompile(`^cd\s+[\w./~\-]+$`)
+
+// repoRootPrefixRe is `$(git rev-parse --show-toplevel)` as the start of the
+// exec target's path, quoted or not (#1183).
+var repoRootPrefixRe = regexp.MustCompile(`"?\$\(git rev-parse --show-toplevel\)/([\w./\-]+)"?`)
+
 // guardedExec reports whether a -c script only checks a condition and then
 // execs one named program: "[ -f \"$HOME/.sentry/mcp.json\" ] && exec
 // sentry-mcp --organization-slug hackerspub || exit 0" starts the server only
 // where it is configured (#874). Anything else in the script, a substitution,
 // a pipe or a redirect, keeps it an inline script.
-func guardedExec(script string) bool {
+//
+// A bare exec also counts when the wrapper only prepares where it runs
+// (#1183): a login shell for PATH ("bash -l -c 'exec npx -y pkg'"), a leading
+// "cd <literal dir> &&", or a target under "$(git rev-parse --show-toplevel)/".
+func guardedExec(script string, login bool) bool {
+	setup := login
+	if repoRootPrefixRe.MatchString(script) {
+		script = repoRootPrefixRe.ReplaceAllString(script, `ROOT/$1`)
+		setup = true
+	}
 	rest := strings.NewReplacer("||", " ", "&&", " ", ">/dev/null", " ", "> /dev/null", " ", "2>&1", " ").Replace(script)
 	if strings.ContainsAny(rest, "|<>`\n") || strings.Contains(script, "$(") {
 		return false
@@ -158,16 +261,24 @@ func guardedExec(script string) bool {
 		step = strings.TrimSpace(step)
 		switch {
 		case execStepRe.MatchString(step):
+			// exec of another shell, or of an interpreter with inline code, is
+			// still an inline script.
+			f := strings.Fields(step)[1:]
+			if shellInterpreterName(f[0]) != "" || (interpreterBasename(f[0], languageInterpreters) != "" && hasInlineEvalFlag(f[1:])) {
+				return false
+			}
 			execs++
 		case guardStepRe.MatchString(step):
 			guards++
+		case cdStepRe.MatchString(step) && execs == 0:
+			setup = true
 		default:
 			return false
 		}
 	}
-	// A bare "exec real-mcp-server" has no condition to check and is still
+	// A bare "exec real-mcp-server" with no condition and no setup is still
 	// the shell-wrapped server the rule reports.
-	return execs == 1 && guards > 0
+	return execs == 1 && (guards > 0 || setup)
 }
 
 // hasInlineEvalFlag reports whether args contain a flag that makes an interpreter

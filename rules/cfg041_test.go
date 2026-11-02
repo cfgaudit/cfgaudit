@@ -11,7 +11,8 @@ import (
 )
 
 func TestCFG041_DenyMissingEnv(t *testing.T) {
-	f := CFG041.Check(settingsTarget(t, `{"permissions":{"deny":["Bash(rm -rf *)"]}}`))
+	// A deny list that guards other secrets and misses .env (#1172).
+	f := CFG041.Check(settingsTarget(t, `{"permissions":{"deny":["Bash(rm -rf *)","Read(**/*.pem)"]}}`))
 	if len(f) != 1 || f[0].Severity != finding.Error {
 		t.Fatalf("expected 1 Error, got %+v", f)
 	}

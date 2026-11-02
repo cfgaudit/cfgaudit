@@ -8,6 +8,32 @@ import (
 	"testing"
 )
 
+func TestSplitToolList(t *testing.T) {
+	cases := []struct {
+		input string
+		want  []string
+	}{
+		{"Read, Bash(git -C * status)", []string{"Read", "Bash(git -C * status)"}},
+		{"Bash(pnpm exec nx:*)", []string{"Bash(pnpm exec nx:*)"}},
+		{"Read, Bash(git log *), Bash(gh pr edit * --add-label *)", []string{"Read", "Bash(git log *)", "Bash(gh pr edit * --add-label *)"}},
+		{"Bash(a, b) Read", []string{"Bash(a, b)", "Read"}},
+		{"Bash(echo $(date)), Read", []string{"Bash(echo $(date))", "Read"}},
+		{"Read Bash", []string{"Read", "Bash"}},
+		{"Read\tBash\nGrep", []string{"Read", "Bash", "Grep"}},
+		{"Bash(*)", []string{"Bash(*)"}},
+		{"Bash(git log, *", []string{"Bash(git", "log", "*"}},
+		{"Read), *", []string{"Read)", "*"}},
+		{"", []string{}},
+	}
+	for _, c := range cases {
+		t.Run(c.input, func(t *testing.T) {
+			if got := splitToolList(c.input); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("splitToolList(%q) = %v, want %v", c.input, got, c.want)
+			}
+		})
+	}
+}
+
 func TestInstructionFrontmatter_ListAndString(t *testing.T) {
 	fm, ok := InstructionFrontmatter("---\ndescription: hi\nallowed-tools: Bash, Read\ndisable-model-invocation: true\n---\nbody\n")
 	if !ok {
@@ -21,6 +47,36 @@ func TestInstructionFrontmatter_ListAndString(t *testing.T) {
 	}
 	if fm.String("description") != "hi" {
 		t.Errorf("description: got %q", fm.String("description"))
+	}
+}
+
+func TestFrontmatterDenyList(t *testing.T) {
+	cases := []struct {
+		value string
+		want  []string
+	}{
+		{"Bash(rm *", []string{"Bash(rm *"}},
+		{"Read, Bash(rm *", []string{"Read", "Bash(rm *"}},
+		{"Read, Bash(rm *)", []string{"Read", "Bash(rm *)"}},
+		{`["Bash(rm *", Read]`, []string{"Bash(rm *", "Read"}},
+	}
+	for _, c := range cases {
+		t.Run(c.value, func(t *testing.T) {
+			fm, ok := InstructionFrontmatter("---\ndisallowed-tools: " + c.value + "\n---\n")
+			if !ok {
+				t.Fatal("expected frontmatter to parse")
+			}
+			if got := fm.DenyList("disallowed-tools"); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("DenyList(disallowed-tools) = %v, want %v", got, c.want)
+			}
+			if got := fm.DenyList("missing"); got != nil {
+				t.Errorf("DenyList(missing) = %v, want nil", got)
+			}
+		})
+	}
+	var fm *Frontmatter
+	if got := fm.DenyList("disallowed-tools"); got != nil {
+		t.Errorf("nil frontmatter DenyList = %v, want nil", got)
 	}
 }
 

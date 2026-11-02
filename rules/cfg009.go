@@ -47,6 +47,15 @@ var safeShellVars = map[string]bool{
 	"CLAUDE_PLUGIN_ROOT": true,
 	"CLAUDE_PROJECT_DIR": true,
 	"CLAUDE_SKILL_DIR":   true,
+	"CLAUDE_CODE_REMOTE": true,
+	"CLAUDE_ENV_FILE":    true,
+	"CLAUDE_PLUGIN_DATA": true,
+	// Other agent-provided install and project paths (#1198).
+	"CURSOR_PROJECT_DIR":  true,
+	"GEMINI_PROJECT_DIR":  true,
+	"DROID_PLUGIN_ROOT":   true,
+	"ZCODE_PLUGIN_ROOT":   true,
+	"GROK_WORKSPACE_ROOT": true,
 	// Zed task variables (crates/task/src/task_template.rs VariableName)
 	"ZED_WORKTREE_ROOT":     true,
 	"ZED_MAIN_GIT_WORKTREE": true,
@@ -60,6 +69,16 @@ var safeShellVars = map[string]bool{
 // read as cmd.exe variables: +%Y-%m-%dT%H:%M:%SZ holds "%dT%" (#935).
 var dateFormatRe = regexp.MustCompile(`(?:^|\s)['"]?\+%\S*`)
 
+// These names are commonly guessed by hook authors, but Claude Code
+// exposes hook input on stdin rather than setting these variables (#1198).
+var undefinedClaudeHookVars = map[string]bool{
+	"$CLAUDE_TOOL_INPUT":         true,
+	"$CLAUDE_FILE_PATH":          true,
+	"$CLAUDE_FILE_PATHS":         true,
+	"$TOOL_INPUT_FILE_PATH":      true,
+	"$CLAUDE_TOOL_ARG_file_path": true,
+}
+
 func (r *cfg009) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -71,6 +90,31 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 		if len(vars) == 0 {
 			continue
 		}
+		var nonExistent, injectionVars []string
+		for _, name := range vars {
+			// PowerShell sets $LASTEXITCODE itself; in bash it is an ordinary
+			// variable from the environment (#1198).
+			if site.PowerShell && strings.EqualFold(strings.Trim(name, "${}"), "LASTEXITCODE") {
+				continue
+			}
+			if undefinedClaudeHookVars[name] {
+				nonExistent = append(nonExistent, name)
+			} else {
+				injectionVars = append(injectionVars, name)
+			}
+		}
+		if len(nonExistent) > 0 {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG009",
+				Severity: finding.Info,
+				File:     site.File,
+				Message: site.Label + " references " + strings.Join(nonExistent, ", ") +
+					" — Claude Code does not provide these hook variables; read the hook JSON from stdin instead" + userScopeNote(t),
+			})
+		}
+		if len(injectionVars) == 0 {
+			continue
+		}
 		sev := finding.Warn
 		if t.Scope == finding.ScopeUser {
 			sev = finding.Error
@@ -79,7 +123,7 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG009",
 			Severity: sev,
 			File:     site.File,
-			Message:  site.Label + " interpolates " + strings.Join(vars, ", ") + " — agent-controlled or external data inside a command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
+			Message:  site.Label + " interpolates " + strings.Join(injectionVars, ", ") + " — agent-controlled or external data inside a command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
 		})
 	}
 	return findings
@@ -97,13 +141,24 @@ func extractShellVars(cmd string) []string {
 	// A reference the shell expands as one argument and never parses again
 	// cannot break out of it: "$f" given to a program, without eval, sh -c or
 	// the like anywhere in the command (#792). Inside single quotes the shell
-	// does not expand it at all, unless the text is parsed again.
-	reparse := shellReparseRe.MatchString(cmd)
-	for _, u := range shellVarUses(cmd) {
-		if safeShellVars[u.name] || (!reparse && (u.safe || u.literal)) {
-			continue
+	// does not expand it at all, unless the text is parsed again. A variable
+	// the command assigns from something other than its input is not reported
+	// at all (#1199), and a single-quoted `sh -c` body is checked as a script
+	// of its own.
+	outerCmd, bodies := splitSingleQuotedSh(cmd)
+	outerTaint := commandTaint(outerCmd, nil)
+	check := func(text string, st, outer shellTaint) {
+		reparse := shellReparseRe.MatchString(text)
+		for _, u := range shellVarUses(text) {
+			if !st.untrusted(u.name, outer) || (!reparse && (u.safe || u.literal)) {
+				continue
+			}
+			addKey("$" + u.name)
 		}
-		addKey("$" + u.name)
+	}
+	check(outerCmd, outerTaint, nil)
+	for _, body := range bodies {
+		check(body, commandTaint(body, outerTaint), outerTaint)
 	}
 	for _, m := range cmdVarRe.FindAllStringSubmatch(dateFormatRe.ReplaceAllString(cmd, " "), -1) {
 		addKey("%" + m[1] + "%")

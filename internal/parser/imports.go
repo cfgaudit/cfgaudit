@@ -17,7 +17,9 @@ import (
 //	/^[#%^&*()]+/
 //	/^[a-zA-Z0-9._-]/
 var (
-	claudeImportRe      = regexp.MustCompile(`(?:^|\s)@((?:[^\s\\]|\\ )+)`)
+	// A NUL is masked text (see maskNonText): it ends a path, so an import
+	// never runs into a masked code span (#1166).
+	claudeImportRe      = regexp.MustCompile(`(?:^|\s)@((?:[^\s\\\x00]|\\ )+)`)
 	claudeImportJunkRe  = regexp.MustCompile(`^[#%^&*()]+`)
 	claudeImportStartRe = regexp.MustCompile(`^[a-zA-Z0-9._-]`)
 
@@ -39,6 +41,10 @@ var (
 // precedes the `@` (`user@host`, `(@x.md)`, `[l](@x.md)`), nor when the path is
 // quoted (`@"x.md"`) or starts with `#`. Trailing punctuation stays part of the
 // path, so `@x.md.` names a file "x.md." that is usually absent.
+//
+// A backtick that is never closed is still paired with the next one, so the
+// spans after it can shift; the @ in "`@scope/pkg` ... `x`" then starts an
+// import of "scope/pkg", which is usually absent (#1166).
 func InstructionImports(content string) []string {
 	text := maskNonText(content)
 	var out []string

@@ -40,6 +40,11 @@ var (
 // <oid-abbreviated>) (#888).
 var identifierPlaceholderRe = regexp.MustCompile(`(?i)^(?:<|\{\{\s*|__)[\w\-\s]*?(?:uuid|guid|id|hash|sha|owner|org|user(?:name)?|repo(?:sitory)?|branch|tag|version|name|file(?:name)?|path|image|asset|number|slug|width|height|size|status|colou?r|label|style|logo|badge|license|licence|pkg|package|module|project|crate|gem|metric|date|yyyy-+mm-+dd)(?:[\-_\s]+(?:url[\-_]?encoded|encoded|escaped|abbreviated|short|full|lower(?:case)?))*(?:\s*>|\s*\}\}|__)$`)
 
+// identifierWordRe matches the short identifier slots of #1190, <you>, <pr>
+// and <host>, as the whole placeholder only: as a suffix in
+// identifierPlaceholderRe, "pr" would also match <expr>.
+var identifierWordRe = regexp.MustCompile(`(?i)^(?:<|\{\{\s*|__)(?:you|pr|host)(?:\s*>|\s*\}\}|__)$`)
+
 // placeholderSink reports whether url has a placeholder the agent could fill
 // with conversation data: any placeholder in the query string, or one in the
 // path that is not an identifier slot.
@@ -51,8 +56,17 @@ func placeholderSink(url string) bool {
 	if urlPlaceholderRe.MatchString(query) {
 		return true
 	}
+	// raw.githubusercontent.com only serves files of a repository, and GitHub
+	// gives a repository owner no log of raw requests: its traffic data covers
+	// views on github.com, clones, referrers and popular content, as counts
+	// (#1190, option C). A value the agent writes into the path never reaches
+	// a server the author reads, so a free-text slot there (<topic>, <file>)
+	// is not a sink. A placeholder in the query string still is.
+	if strings.HasPrefix(strings.ToLower(path), "https://raw.githubusercontent.com/") {
+		return false
+	}
 	for _, p := range urlPlaceholderRe.FindAllString(path, -1) {
-		if !identifierPlaceholderRe.MatchString(p) {
+		if !identifierPlaceholderRe.MatchString(p) && !identifierWordRe.MatchString(p) {
 			return true
 		}
 	}

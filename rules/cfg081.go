@@ -41,6 +41,8 @@ var compactionSurvivalRe = mustFiltered(`(?i)\b` +
 	`(?:across|through|throughout|during|after|beyond|past|surviving|to\s+survive)\s+(?:the\s+|a\s+|any\s+|each\s+|every\s+)?(?:context(?:\s+window)?|compaction|compression|summari[sz]ation|summari[sz]ing|truncation)` +
 	`|(?:across|between|into|beyond|for|in)\s+(?:future\s+|later\s+|new\s+|subsequent\s+|all\s+|other\s+)?sessions?` +
 	`|(?:new|future|later|subsequent)\s+sessions?` +
+	// "keep these rules even after the conversation is summarized" (#993)
+	`|(?:after|when|once|if)\s+(?:the\s+)?(?:conversation|context|chat|history|session|thread)\s+(?:is|gets|has\s+been|was|will\s+be)\s+(?:summari[sz]ed|compacted|compressed|truncated|condensed|cleared|reset)` +
 	`)`)
 
 // storedDataGapRe matches a data noun right after the instruction noun, which

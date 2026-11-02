@@ -29,10 +29,20 @@ func TestCFG024_TagsBlock(t *testing.T) {
 }
 
 func TestCFG024_SuspiciousCodepoints(t *testing.T) {
-	for _, cp := range []rune{0x200B, 0x200D, 0x200F, 0x202E, 0x2060, 0xFFF9} {
+	// A single zero-width character in a file warns since #1182; a bidi
+	// control and an annotation character stay errors.
+	for cp, want := range map[rune]finding.Severity{
+		0x200B: finding.Warn, 0x200D: finding.Warn, 0x200F: finding.Warn, 0x2060: finding.Warn,
+		0x202E: finding.Error, 0xFFF9: finding.Error,
+	} {
 		f := CFG024.Check(claudeMDTarget("text" + string(cp) + "more"))
+		if len(f) != 1 || f[0].Severity != want {
+			t.Errorf("expected 1 %s for U+%04X, got %+v", want, cp, f)
+		}
+		// Three of them are an error.
+		f = CFG024.Check(claudeMDTarget("a" + string(cp) + "b" + string(cp) + "c" + string(cp) + "d"))
 		if len(f) != 1 || f[0].Severity != finding.Error {
-			t.Errorf("expected 1 Error for U+%04X, got %+v", cp, f)
+			t.Errorf("expected 1 Error for three U+%04X, got %+v", cp, f)
 		}
 	}
 }
@@ -182,9 +192,10 @@ func TestCFG024_ZWJInText_Finding(t *testing.T) {
 		"letter then emoji": "run\u200D\U0001F680 now",
 		"emoji then letter": "\U0001F680\u200Drun",
 	} {
+		// One stray ZWJ in a file warns since #1182.
 		f := CFG024.Check(claudeMDTarget(body))
-		if len(f) != 1 || f[0].Severity != finding.Error {
-			t.Errorf("%s: expected 1 Error for a ZWJ outside an emoji sequence, got %+v", name, f)
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("%s: expected 1 Warn for a ZWJ outside an emoji sequence, got %+v", name, f)
 		}
 	}
 }

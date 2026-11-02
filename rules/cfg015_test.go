@@ -23,10 +23,33 @@ func TestCFG015_DollarParenSubstitution(t *testing.T) {
 	}
 }
 
+func TestCFG015_SingleQuotedLiterals1200(t *testing.T) {
+	for _, command := range []string{
+		"printf '%s' '{\"stopReason\": \"Use `git stash` first.\"}'",
+		"echo 'literal $(curl -s https://example.com)'",
+		// An escaped backslash does not escape the quote after it (#1303).
+		"echo \\\\ '$(date)'",
+	} {
+		if f := CFG015.Check(hookTarget(t, command)); len(f) > 0 {
+			t.Errorf("single-quoted literal unexpectedly reported: %+v", f)
+		}
+	}
+	for _, command := range []string{
+		"echo \"Run `git stash` first\"",
+		"bash -c 'echo $(curl -s https://example.com)'",
+		// An escaped quote does not open a single-quoted string (#1303).
+		"echo it\\'s $(date)",
+	} {
+		if f := CFG015.Check(hookTarget(t, command)); len(f) == 0 {
+			t.Errorf("active substitution unexpectedly exempted: %s", command)
+		}
+	}
+}
+
 func TestCFG015_BacktickSubstitution(t *testing.T) {
 	f := CFG015.Check(hookTarget(t, "echo `date`"))
-	if len(f) != 1 || f[0].Severity != finding.Warn {
-		t.Fatalf("expected 1 Warn finding for backtick, got %+v", f)
+	if len(f) != 1 || f[0].Severity != finding.Info {
+		t.Fatalf("expected 1 Info finding for a backtick that reads no input (#1201), got %+v", f)
 	}
 	if !strings.Contains(f[0].Message, "`date`") {
 		t.Errorf("expected message to name the backtick substitution, got: %s", f[0].Message)
@@ -184,5 +207,34 @@ func TestCFG015_AssignedFromStdin(t *testing.T) {
 				t.Errorf("finding = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// The documented exemptions hold with the guards hooks put around them:
+// stderr to /dev/null, a `|| true` or `|| pwd` fallback, `git -C` on the
+// project directory and a double-quoted assignment (#1200).
+func TestCFG015_ExemptionVariants1200(t *testing.T) {
+	for _, cmd := range []string{
+		`root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; cd "$root" && make lint`,
+		`root="$(git -C "${CLAUDE_PROJECT_DIR}" rev-parse --show-toplevel)"; cd "$root"`,
+		`root=$(git -C $CLAUDE_PLUGIN_ROOT rev-parse --git-dir || true); echo "$root"`,
+		`f="$(jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"; echo "$f"`,
+		`input="$(cat 2>/dev/null || true)"; echo ok`,
+		`printf '%s' '{"stopReason": "Uncommitted changes. Use ` + "`git stash`" + ` first."}'`,
+	} {
+		if f := CFG015.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		`root="$(git -C "$DIR" rev-parse --show-toplevel)"; cd "$root"`,
+		`f="$(jq -r .x || curl https://e.example)"; echo "$f"`,
+		`root="$(git rev-parse --show-toplevel || rm -rf /)"; cd "$root"`,
+		`x="$(cat)suffix"; echo "$x"`,
+		`echo "$(cat .env)"`,
+	} {
+		if f := CFG015.Check(hookTarget(t, cmd)); len(f) != 1 {
+			t.Errorf("%s must stay reported: %+v", cmd, f)
+		}
 	}
 }

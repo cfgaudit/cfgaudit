@@ -1,0 +1,45 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Go stable
+
+# Every other job builds with the Go version in go.mod, the older of the two
+# supported Go releases. `go install ...@latest` builds with the user's
+# toolchain, so this job runs the tests with the current stable release too
+# (#1231). The first difference it would have caught: encoding/json in go1.27
+# prints a leading BOM as '﻿' instead of 'ï' (#1229). The weekly run
+# catches a new Go release when no pull request is open.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * 1" # 05:17 UTC every Monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-stable:
+    name: Test (Go stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          check-latest: true
+          cache: true
+      # GOTOOLCHAIN=local keeps the installed stable release; a toolchain line
+      # added to go.mod later would otherwise switch to the version it names.
+      - run: go version
+        env:
+          GOTOOLCHAIN: local
+      - run: go test ./...
+        env:
+          GOTOOLCHAIN: local

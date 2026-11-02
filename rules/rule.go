@@ -81,10 +81,45 @@ type Target struct {
 	// read them.
 	ExternalImports []string
 
+	// RootFiles are the names of the files at the root of the scanned
+	// directory, Venvs the committed Python virtual environments (a
+	// directory with a pyvenv.cfg), and YarnPath the yarnPath of the
+	// .yarnrc.yml in YarnrcFile (#997). Set on one target per scan.
+	RootFiles  []string
+	Venvs      []string
+	YarnPath   string
+	YarnrcFile string
+
+	// Gitignore is the project's .gitignore, read during discovery so a
+	// symlink that leaves the tree is reported by CFG115 like any other
+	// (#1023); HasGitignore is whether it could be read. Set on the project
+	// targets only.
+	Gitignore    []byte
+	HasGitignore bool
+
+	// ArchiveName is the archive a scan target was unpacked from (#1002);
+	// ArchiveEntries are its entry names and ArchiveLinks the link entries
+	// that were not extracted.
+	ArchiveName    string
+	ArchiveEntries []string
+	ArchiveLinks   []string
+
+	// GitModules is the scanned directory's .gitmodules, as text (#994);
+	// GitModulesFile is its path. NestedRepos are the committed directories
+	// that look like a bare git repository.
+	GitModules     string
+	GitModulesFile string
+	NestedRepos    []NestedRepo
+
 	// ContentPath marks a target for a file that content-paths lists (#795): a
 	// README or doc page, not an instruction file. Run applies only
 	// ContentPathRules to it and reports at most warn.
 	ContentPath bool
+
+	// SkillHelper is the SKILL.md a Markdown file sits beside (#987): a file
+	// such as references/policy.md that the skill tells the agent to read. Run
+	// applies only SkillHelperRules to it and reports at most warn.
+	SkillHelper string
 
 	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
 	// workspace tasks). A task set to run on folder-open is a zero-click code
@@ -99,6 +134,12 @@ type Target struct {
 	// VSCodeSettingsFile is its path, used to attribute findings.
 	VSCodeSettings     *parser.VSCodeSettings
 	VSCodeSettingsFile string
+
+	// VSCodeExtensions are the recommended extension IDs of a
+	// .vscode/extensions.json or a workspace file's "extensions" block (#995);
+	// VSCodeExtensionsFile is the file.
+	VSCodeExtensions     []string
+	VSCodeExtensionsFile string
 
 	// Gemini holds a parsed Gemini CLI settings.json (.gemini/settings.json or
 	// ~/.gemini/settings.json). Its security surface mirrors Claude Code's
@@ -349,6 +390,11 @@ type Target struct {
 	// covered by permissions.deny; ForbidAllow lists commands that must not be
 	// grantable by permissions.allow. Attached to the project .claude/settings.json
 	// target only.
+	// LaunchedScripts are the repository scripts this target's auto-run
+	// commands start (#1217), attached by the scan; a script started from
+	// several targets is attached to the first one only.
+	LaunchedScripts []LaunchedScript
+
 	PolicyRequireDeny []string
 	PolicyForbidAllow []string
 

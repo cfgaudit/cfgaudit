@@ -35,12 +35,18 @@ func (r *cfg012) Check(t *Target) []finding.Finding {
 
 	var findings []finding.Finding
 	for _, k := range keys {
-		if k == "$schema" {
+		// $schema, and the "$comment" / "_comment" style annotation keys,
+		// which Claude Code ignores and their authors know it (#1208).
+		if strings.HasPrefix(k, "$") || strings.HasPrefix(k, "_") {
 			continue
 		}
 		ps, known := spec[k]
 		if !known {
 			if schema.KnownButUnschemaed[k] {
+				continue
+			}
+			if f, ok := misplacedKey(t, k); ok {
+				findings = append(findings, f)
 				continue
 			}
 			findings = append(findings, finding.Finding{
@@ -68,6 +74,44 @@ func (r *cfg012) Check(t *Target) []finding.Finding {
 		}
 	}
 	return append(findings, guardHookFindings(t)...)
+}
+
+// misplacedSecurityKeys are hardening keys that only work one level down. At
+// the top level the file looks hardened and is not, so the finding is an
+// error (#1208).
+var misplacedSecurityKeys = map[string]string{
+	"allowUnsandboxedCommands":     "sandbox.allowUnsandboxedCommands",
+	"disableBypassPermissionsMode": "permissions.disableBypassPermissionsMode: \"disable\"",
+}
+
+// misplacedKey reports a top-level key that the schema defines under sandbox
+// or permissions, or the legacy allowedTools, with the place it belongs.
+func misplacedKey(t *Target, k string) (finding.Finding, bool) {
+	where := ""
+	sev := finding.Warn
+	switch {
+	case misplacedSecurityKeys[k] != "":
+		where, sev = misplacedSecurityKeys[k], finding.Error
+	case k == "allowedTools":
+		where = "permissions.allow"
+	case schema.NestedProperties("permissions")[k]:
+		where = "permissions." + k
+	case schema.NestedProperties("sandbox")[k]:
+		where = "sandbox." + k
+	default:
+		return finding.Finding{}, false
+	}
+	msg := "top-level key \"" + k + "\" belongs at " + where + "; Claude Code does not read it here"
+	if sev == finding.Error {
+		msg += ", so the hardening it was meant to add does not apply"
+	}
+	return finding.Finding{
+		RuleID:   "CFG012",
+		Severity: sev,
+		File:     t.SettingsFile,
+		Key:      k,
+		Message:  msg + ". Did you mean " + where + "?",
+	}, true
 }
 
 // guardHookFindings reports the PreToolUse/PermissionRequest entries that make

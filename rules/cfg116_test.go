@@ -31,7 +31,8 @@ func TestCFG116(t *testing.T) {
 				t.Fatalf("want %d findings, got %+v", tt.count, got)
 			}
 			for i, f := range got {
-				if f.Severity != finding.Warn || f.File != tt.t.InstructionFile || !strings.Contains(f.Message, `"@`+tt.t.ExternalImports[i]+`"`) {
+				// The severity by target is TestCFG116_Severity1210's question.
+				if f.File != tt.t.InstructionFile || !strings.Contains(f.Message, `"@`+tt.t.ExternalImports[i]+`"`) {
 					t.Errorf("unexpected finding %+v", f)
 				}
 			}

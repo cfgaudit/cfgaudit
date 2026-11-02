@@ -47,7 +47,7 @@ Overlaps cfgaudit's MCP-server rules; see also the **[OWASP MCP Top 10 mapping](
 | AISVS requirement | cfgaudit (config-layer evidence) |
 |---|---|
 | **10.1.1** MCP components are obtained only from trusted sources and cryptographically verified. | **CFG010** (unpinned package or image version), **CFG059** (typosquatted package or endpoint). |
-| **10.1.2** Only allow-listed MCP servers are permitted. | **CFG003/CFG053** (blanket approval of every repository server), **CFG052** (a server name shadowed across sources). |
+| **10.1.2** Only allow-listed MCP servers are permitted. | **CFG003/CFG053** (blanket approval of every repository server). |
 | **10.3.1** Authenticated, encrypted streamable HTTP is used for remote MCP transport. | **CFG049** (remote or cleartext `http://` / `ws://` URL), **CFG058** (deprecated `type: "sse"`). |
 | **10.3.3** MCP servers validate the Origin and Host headers to prevent DNS rebinding (level 1 since 1.01). | **CFG017** (`dangerouslyAllowBrowser`, the DNS-rebinding path to the server), **CFG018** (server binds to all interfaces). Server-side requirement; these are the committed settings that widen its exposure. |
 | **10.4.7** MCP clients present an explicit consent dialogue upon installation of a local MCP server. | **CFG003/CFG053**: the committed settings that approve every project server and so skip that dialogue. |

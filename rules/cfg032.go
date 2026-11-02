@@ -151,7 +151,31 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 
 		// Part C — foreign-LLM tokenizer control sequences (warn)
 		for _, loc := range foreignToken.FindAllStringIndex(c, -1) {
+			if stringInCodeFence(c, loc[0]) {
+				continue
+			}
 			add(loc[0], finding.Warn, "contains a foreign-LLM control token \""+c[loc[0]:loc[1]]+"\" (Part C) — harmless to the agent's tokenizer, but a strong sign the file was adapted from a multi-model attack payload")
+		}
+
+		// Part D — forged prompt boundaries and bracket role tags that carry
+		// an instruction (#1005)
+		lineStart := 0
+		for _, line := range strings.Split(c, "\n") {
+			if loc := forgedBoundaryRe.FindStringIndex(line); loc != nil {
+				sev := finding.Error
+				if quotedAt(line, loc[0]) {
+					sev = finding.Warn
+				}
+				add(lineStart+loc[0], sev, "contains a forged prompt boundary \""+line[loc[0]:loc[1]]+"\" (Part D) — it tells the model the trusted prompt has ended and a new one begins; remove it")
+			}
+			if m := bracketRoleRe.FindStringSubmatchIndex(line); m != nil && bracketInstruction(line[m[1]:]) {
+				sev := finding.Error
+				if quotedAt(line, m[0]) {
+					sev = finding.Warn
+				}
+				add(lineStart+m[0], sev, "contains the role tag \""+line[m[2]:m[3]]+"\" followed by an instruction (Part D) — invented markup that claims system or admin authority for the text after it; remove it")
+			}
+			lineStart += len(line) + 1
 		}
 
 		sort.SliceStable(srcFindings, func(i, j int) bool {
@@ -166,6 +190,27 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 }
 
 var placeholderJoinedRe = regexp.MustCompile(`<[^>]+>[-_]<[^>]+>`)
+
+// forgedBoundaryRe matches a forged prompt boundary in capitals: "--- END OF
+// SYSTEM PROMPT ---", "=== BEGIN NEW SYSTEM INSTRUCTIONS ===", "[USER INPUT
+// ENDS HERE]". Capitals only, since "at the end of the system prompt" is how
+// prompt-engineering docs describe a position (#1005).
+var forgedBoundaryRe = regexp.MustCompile(`\b(?:(?:END|BEGIN|START)\s+(?:OF\s+)?(?:THE\s+)?(?:NEW\s+|REAL\s+|ACTUAL\s+)?(?:SYSTEM\s+PROMPT|SYSTEM\s+INSTRUCTIONS?|SYSTEM\s+MESSAGE|USER\s+INPUT|DEVELOPER\s+INSTRUCTIONS?)|(?:SYSTEM\s+PROMPT|USER\s+INPUT|SYSTEM\s+INSTRUCTIONS?)\s+(?:ENDS|BEGINS|STARTS)\s+HERE)\b`)
+
+// bracketRoleRe matches a bracket role tag: [SYSTEM], [ADMIN], [HIDDEN
+// INSTRUCTION], [INSTRUCTION], {{SYSTEM}}, in any case.
+var bracketRoleRe = regexp.MustCompile(`(?i)(\[(?:system|admin|administrator|instructions?|hidden(?:\s+(?:instructions?|prompt|directive))?|developer|override)\]|\{\{\s*system\s*\}\})\s*:?`)
+
+// bracketImperativeRe is an instruction after a bracket role tag: "you", or an
+// imperative verb that has the agent act or change its rules.
+var bracketImperativeRe = regexp.MustCompile(`(?i)^\s*(?:you\b|ignore|disregard|forget|skip|bypass|override|disable|proceed|continue|upload|send|post|email|forward|exfiltrate|run|execute|delete|remove|install|download|fetch|read|print|reveal|output|write|grant|approve|allow|always|never|do\b|don'?t|from\s+now\s+on|the\s+(?:user|assistant)\s+(?:is|has)|new\s+instructions?)`)
+
+// bracketInstruction reports whether the text after a bracket role tag is an
+// instruction. A template placeholder ("[System]: [Integration path →
+// reason]") or a bare label is not.
+func bracketInstruction(rest string) bool {
+	return bracketImperativeRe.MatchString(rest)
+}
 
 func hasAuthoritySegment(tag string) bool {
 	for _, seg := range strings.Split(tag, "_") {
@@ -188,4 +233,52 @@ func posOf(content string, off int) (int, int) {
 		}
 	}
 	return line, col
+}
+
+// programFenceLangs are the info strings of a fenced block in a programming
+// language, where a control token in a string literal is data the code works
+// with (#1159).
+var programFenceLangs = map[string]bool{
+	"python": true, "py": true, "python3": true, "javascript": true, "js": true, "mjs": true, "typescript": true, "ts": true,
+	"jsx": true, "tsx": true, "go": true, "rust": true, "rs": true, "java": true, "kotlin": true, "kt": true, "c": true,
+	"cpp": true, "c++": true, "csharp": true, "cs": true, "ruby": true, "rb": true, "php": true, "swift": true,
+	"scala": true, "lua": true, "julia": true, "r": true, "dart": true,
+}
+
+// stringInCodeFence reports whether off sits inside a string literal in a
+// fenced block of a programming language: the token is the subject of the code,
+// as in tokenizer documentation (`Tokenizer(BPE(unk_token="<|endoftext|>"))`),
+// not text the agent is asked to read as a turn marker (#1159). Prose, and a
+// fence without a language or in a shell or markup language, keep reporting.
+func stringInCodeFence(c string, off int) bool {
+	lang, inFence := "", false
+	lineStart := 0
+	for lineStart <= off {
+		end := strings.IndexByte(c[lineStart:], '\n')
+		if end < 0 {
+			end = len(c)
+		} else {
+			end += lineStart
+		}
+		if off < end || end == len(c) {
+			break
+		}
+		if t := strings.TrimSpace(c[lineStart:end]); isFenceDelimiter(t) {
+			if inFence {
+				inFence = false
+			} else {
+				inFence = true
+				lang = strings.ToLower(strings.Trim(strings.Fields(strings.TrimLeft(t, "`~") + " x")[0], "{}."))
+				if strings.Trim(t, "`~ ") == "" {
+					lang = ""
+				}
+			}
+		}
+		lineStart = end + 1
+	}
+	if !inFence || !programFenceLangs[lang] {
+		return false
+	}
+	before := c[lineStart:off]
+	return strings.Count(before, "\"")%2 == 1 || strings.Count(before, "'")%2 == 1
 }
