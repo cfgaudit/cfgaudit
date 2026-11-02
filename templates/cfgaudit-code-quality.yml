@@ -34,6 +34,18 @@ spec:
       # characters and $VAR or ${VAR} references only, no quotes, backticks or
       # $( ).
       regex: '^([A-Za-z0-9 ._/@+-]|\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})*$'
+    baseline:
+      default: ""
+      description: >-
+        Baseline file written by `cfgaudit baseline` (#998): the findings it lists
+        are not reported and do not fail the job; secret findings always are. For
+        merge requests from people you do not fully trust, point it at a file the
+        merge request cannot change, such as a File-type CI/CD variable. Needs
+        cfgaudit 1.20.0 or later.
+      # Interpolated into the script inside double quotes (#798): path
+      # characters and $VAR or ${VAR} references only, no quotes, backticks or
+      # $( ).
+      regex: '^([A-Za-z0-9 ._/@+-]|\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})*$'
     version:
       default: "1.19.0"
       description: >-
@@ -52,6 +64,7 @@ cfgaudit-code-quality:
     entrypoint: [""]
   script:
     - set -- ; if [ -n "$[[ inputs.config ]]" ]; then set -- --config "$[[ inputs.config ]]"; fi
+    - if [ -n "$[[ inputs.baseline ]]" ]; then set -- "$@" --baseline "$[[ inputs.baseline ]]"; fi
     - cfgaudit --format codeclimate "$@" "$[[ inputs.path ]]" > gl-code-quality-report.json; rc=$?; exit $rc
   allow_failure: $[[ inputs.allow_failure ]]
   artifacts:
