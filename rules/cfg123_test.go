@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,7 +17,8 @@ func TestCFG123_Standins997(t *testing.T) {
 	for _, f := range CFG123.Check(tg) {
 		got[f.File] = f.Severity
 	}
-	want := map[string]finding.Severity{"/r/git.exe": finding.Error, "/r/node.cmd": finding.Error, "/r/.venv/pyvenv.cfg": finding.Warn, "/r/.yarnrc.yml": finding.Warn}
+	j := func(p ...string) string { return filepath.Join(append([]string{"/r"}, p...)...) }
+	want := map[string]finding.Severity{j("git.exe"): finding.Error, j("node.cmd"): finding.Error, j(".venv", "pyvenv.cfg"): finding.Warn, "/r/.yarnrc.yml": finding.Warn}
 	if len(got) != len(want) {
 		t.Errorf("got %v", got)
 	}
