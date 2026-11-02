@@ -56,6 +56,15 @@ func placeholderSink(url string) bool {
 	if urlPlaceholderRe.MatchString(query) {
 		return true
 	}
+	// raw.githubusercontent.com only serves files of a repository, and GitHub
+	// gives a repository owner no log of raw requests: its traffic data covers
+	// views on github.com, clones, referrers and popular content, as counts
+	// (#1190, option C). A value the agent writes into the path never reaches
+	// a server the author reads, so a free-text slot there (<topic>, <file>)
+	// is not a sink. A placeholder in the query string still is.
+	if strings.HasPrefix(strings.ToLower(path), "https://raw.githubusercontent.com/") {
+		return false
+	}
 	for _, p := range urlPlaceholderRe.FindAllString(path, -1) {
 		if !identifierPlaceholderRe.MatchString(p) && !identifierWordRe.MatchString(p) {
 			return true
