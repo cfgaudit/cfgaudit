@@ -136,15 +136,25 @@ func TestCFG101_LongListCapped(t *testing.T) {
 }
 
 func TestCFG101_Issue1212_UncoveredSuggestion(t *testing.T) {
-	for _, tc := range []struct { json, absent, present string }{
-		{`{"permissions":{"deny":["Bash(rm -rf *)","Bash(rm -fr *)"]}}`, `"-fr"`, "target -rf"},
-		{`{"permissions":{"deny":["Bash(rm -rf *)","Bash(rm -fr *)","Bash(rm -r -f *)"]}}`, `"-fr"`, "target -rf"},
-		{`{"permissions":{"deny":["Bash(rm -rf *)"]}}`, "target -rf", `"-fr"`},
+	for _, tc := range []struct {
+		entries []string
+		absent, present string
+	}{
+		{[]string{"Bash(rm -rf *)", "Bash(rm -fr *)"}, `"-fr"`, "target -rf"},
+		{[]string{"Bash(rm -rf *)", "Bash(rm -fr *)", "Bash(rm -r -f *)"}, `"-fr"`, "target -rf"},
+		{[]string{"Bash(rm -rf *)"}, "target -rf", `"-fr"`},
 	} {
-		got := onlyFinding(t, CFG101.Check(settingsTarget(t, tc.json)), finding.Warn)
-		if strings.Contains(got.Message, tc.absent) || !strings.Contains(got.Message, tc.present) {
-			t.Errorf("suggestion must be uncovered for %s: %s", tc.json, got.Message)
+		hint := permutationHint([]string{"-rf"}, tc.entries, []string{"rm"})
+		if strings.Contains(hint, tc.absent) || !strings.Contains(hint, tc.present) {
+			t.Errorf("suggestion must be uncovered for %+v: %s", tc.entries, hint)
 		}
+	}
+	for _, input := range []string{
+		`{"permissions":{"deny":["Bash(rm -rf *)","Bash(rm -fr *)"]}}`,
+		`{"permissions":{"deny":["Bash(rm -rf *)","Bash(rm -fr *)","Bash(rm -r -f *)"]}}`,
+		`{"permissions":{"deny":["Bash(rm -rf *)"]}}`,
+	} {
+		onlyFinding(t, CFG101.Check(settingsTarget(t, input)), finding.Warn)
 	}
 }
 
