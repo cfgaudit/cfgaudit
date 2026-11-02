@@ -60,3 +60,25 @@ func TestTrustEntries999(t *testing.T) {
 		t.Error("invalid JSON should come back as written")
 	}
 }
+
+func TestMCPInventory1000(t *testing.T) {
+	tg := &Target{
+		SettingsFile: "b.json", Settings: &parser.Settings{MCPServers: map[string]parser.MCPServer{"z": {URL: "https://x.invalid", Type: "sse"}}},
+		ProjectMCPFile: "a.json", ProjectMCP: map[string]parser.MCPServer{
+			"pinned": {Command: "npx", Args: []string{"-y", "p@1.0.0"}},
+			"loose":  {Command: "/usr/bin/uvx", Args: []string{"srv"}},
+			"node":   {Command: "node", Args: []string{"s.js"}},
+			"http":   {URL: "https://y.invalid"},
+		},
+	}
+	var got []string
+	for _, m := range MCPInventory(tg) {
+		got = append(got, m.File+"|"+m.Name+"|"+m.Transport+"|"+m.Pinned)
+	}
+	if want := "a.json|http|http|,a.json|loose|stdio|no,a.json|node|stdio|,a.json|pinned|stdio|yes,b.json|z|sse|"; strings.Join(got, ",") != want {
+		t.Errorf("got %v", got)
+	}
+	if MCPInventory(nil) != nil {
+		t.Error("nil target")
+	}
+}

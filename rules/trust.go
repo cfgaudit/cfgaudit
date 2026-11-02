@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -113,4 +114,50 @@ func compactJSON(raw json.RawMessage) string {
 		return string(raw)
 	}
 	return b.String()
+}
+
+// MCPItem is one MCP server for `cfgaudit inventory` (#1000).
+type MCPItem struct {
+	Name      string `json:"name"`
+	File      string `json:"file"`
+	Transport string `json:"transport"`
+	Command   string `json:"command,omitempty"`
+	URL       string `json:"url,omitempty"`
+	// Pinned is "yes" or "no" for a server a package runner starts, as CFG010
+	// judges it, and "" for any other server.
+	Pinned string `json:"pinned,omitempty"`
+}
+
+// MCPInventory returns the MCP servers of t, sorted by file and name.
+func MCPInventory(t *Target) []MCPItem {
+	if t == nil {
+		return nil
+	}
+	var out []MCPItem
+	for _, ref := range t.mcpServerRefs() {
+		s := ref.Server
+		it := MCPItem{Name: ref.Name, File: ref.File, URL: s.URL, Transport: s.Type}
+		if s.Command != "" {
+			it.Command = strings.TrimSpace(s.Command + " " + strings.Join(s.Args, " "))
+			if it.Transport == "" {
+				it.Transport = "stdio"
+			}
+			if r := filepath.Base(s.Command); npmPackageRunners[r] || pyPackageRunners[r] {
+				it.Pinned = "yes"
+				if len(analyzeMCPVersionPins(s.Command, s.Args)) > 0 {
+					it.Pinned = "no"
+				}
+			}
+		} else if it.Transport == "" && s.URL != "" {
+			it.Transport = "http"
+		}
+		out = append(out, it)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].File != out[j].File {
+			return out[i].File < out[j].File
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
 }
