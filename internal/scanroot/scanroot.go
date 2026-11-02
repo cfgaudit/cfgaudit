@@ -51,6 +51,11 @@ var (
 	escapes  []Escape
 	seen     map[string]bool
 	failed   map[string]bool // paths that exist but could not be read
+	// aliases maps a path cfgaudit looked for to the path committed under
+	// another spelling of it (#990); listings caches directory names for
+	// that lookup.
+	aliases  map[string]string
+	listings map[string][]string
 )
 
 // Set makes dir the scanned directory and forgets earlier escapes. An empty
@@ -59,6 +64,7 @@ func Set(dir string) error {
 	mu.Lock()
 	defer mu.Unlock()
 	root, resolved, escapes, seen, failed = "", "", nil, nil, map[string]bool{}
+	aliases, listings = map[string]string{}, map[string][]string{}
 	if dir == "" {
 		return nil
 	}
@@ -79,6 +85,95 @@ func Escapes() []Escape {
 	mu.Lock()
 	defer mu.Unlock()
 	return append([]Escape(nil), escapes...)
+}
+
+// Aliases returns, for each path cfgaudit looked for that the repository
+// commits under another spelling, that spelling (#990).
+func Aliases() map[string]string {
+	mu.Lock()
+	defer mu.Unlock()
+	out := make(map[string]string, len(aliases))
+	for k, v := range aliases {
+		out[k] = v
+	}
+	return out
+}
+
+// caseResolve returns path as committed when it is absent under the spelling
+// asked for but present under another spelling of its components, and
+// records the alias (#990). On macOS and Windows the default filesystem
+// ignores case, so an agent opens .Cursor/mcp.json as its .cursor/mcp.json;
+// on a case-sensitive filesystem the scan would not find it. A component with
+// more than one other spelling is left alone. Paths outside the scanned
+// directory are returned as they are.
+func caseResolve(path string) string {
+	if _, err := os.Lstat(path); err == nil || !errors.Is(err, fs.ErrNotExist) {
+		return path
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if root == "" {
+		return path
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil || !within(filepath.Clean(abs), root) || filepath.Clean(abs) == root {
+		return path
+	}
+	cur, ok := aliases[abs]
+	if !ok {
+		if cur = resolveComponents(abs); cur == "" {
+			return path
+		}
+		aliases[abs] = cur
+	}
+	if !filepath.IsAbs(path) {
+		if wd, err := os.Getwd(); err == nil {
+			if r, err := filepath.Rel(wd, cur); err == nil {
+				return r
+			}
+		}
+	}
+	return cur
+}
+
+// resolveComponents returns abs with each component that is absent replaced
+// by its one other spelling in the directory, or "" when there is none, more
+// than one, or no component changed. mu is held.
+func resolveComponents(abs string) string {
+	rel, _ := filepath.Rel(root, filepath.Clean(abs))
+	cur, changed := root, false
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		next := filepath.Join(cur, part)
+		if _, err := os.Lstat(next); err == nil {
+			cur = next
+			continue
+		}
+		names, ok := listings[cur]
+		if !ok {
+			entries, _ := os.ReadDir(cur)
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			listings[cur] = names
+		}
+		match := ""
+		for _, n := range names {
+			if strings.EqualFold(n, part) {
+				if match != "" {
+					return ""
+				}
+				match = n
+			}
+		}
+		if match == "" {
+			return ""
+		}
+		cur, changed = filepath.Join(cur, match), true
+	}
+	if !changed {
+		return ""
+	}
+	return cur
 }
 
 // ReadErrors returns the paths recorded since the last Set that exist but
@@ -134,6 +229,7 @@ func blocker(path string) string {
 // absent (#828): a repository with a .rules folder or an empty .codex file
 // used to stop the whole scan.
 func ReadFile(path string) ([]byte, error) {
+	path = caseResolve(path)
 	if err := check(path); err != nil {
 		return nil, err
 	}
@@ -192,6 +288,7 @@ func ReadOwnFile(path string) ([]byte, error) {
 // Open is os.Open for repository content, with ReadFile's handling of
 // directories.
 func Open(path string) (*os.File, error) {
+	path = caseResolve(path)
 	if err := check(path); err != nil {
 		return nil, err
 	}
@@ -205,6 +302,7 @@ func Open(path string) (*os.File, error) {
 // ReadDir is os.ReadDir with ReadFile's handling of a path that exists but
 // cannot be read.
 func ReadDir(path string) ([]fs.DirEntry, error) {
+	path = caseResolve(path)
 	entries, err := os.ReadDir(path)
 	return entries, absentOrRecorded(absentErr(err, path), path)
 }
@@ -212,6 +310,7 @@ func ReadDir(path string) ([]fs.DirEntry, error) {
 // Stat is os.Stat with ReadFile's handling of a path that exists but cannot be
 // read.
 func Stat(path string) (fs.FileInfo, error) {
+	path = caseResolve(path)
 	info, err := os.Stat(path)
 	return info, absentOrRecorded(absentErr(err, path), path)
 }
@@ -220,6 +319,7 @@ func Stat(path string) (fs.FileInfo, error) {
 // path it cannot stat, and skips it, instead of handing fn the error. Absent
 // paths still reach fn, as before.
 func WalkDir(root string, fn fs.WalkDirFunc) error {
+	root = caseResolve(root)
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil && !IsAbsent(err) {
 			_ = absentOrRecorded(err, path)
@@ -244,6 +344,7 @@ func Glob(pattern string) ([]string, error) {
 
 func glob(pattern string) []string {
 	if !hasMeta(pattern) {
+		pattern = caseResolve(pattern)
 		if _, err := os.Lstat(pattern); absentOrRecorded(err, pattern) != nil {
 			return nil
 		}
@@ -251,7 +352,7 @@ func glob(pattern string) []string {
 	}
 	dir, file := filepath.Split(pattern)
 	dir = filepath.Clean(dir)
-	dirs := []string{dir}
+	dirs := []string{caseResolve(dir)}
 	if hasMeta(dir) {
 		dirs = glob(dir)
 	}
