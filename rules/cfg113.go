@@ -101,6 +101,15 @@ func relayedToUser(line string, pos int) bool {
 	return open >= 0 && relayVerbRe.MatchString(line[:open])
 }
 
+// Running a downloaded installer or release is not the same as obeying
+// instructions fetched from a mutable remote text document (#1155).
+var executableDownloadRe = regexp.MustCompile(`(?i)\bdownload\s+(?:the\s+)?(?:(?:latest|newest)\s+)?(?:installer|release|binary|package|archive)\b`)
+var runDownloadedItRe = regexp.MustCompile(`(?i)\b(?:and\s+)?(?:run|execute)\s+it\b`)
+
+func runsDownloadedProgram(sentence string) bool {
+	return executableDownloadRe.MatchString(sentence) && runDownloadedItRe.MatchString(sentence)
+}
+
 // Check reports a sentence in an instruction file that tells the agent to load
 // text from a URL and follow it (#621).
 //
@@ -156,7 +165,8 @@ func (r *cfg113) Check(t *Target) []finding.Finding {
 					continue
 				}
 				verb := strings.ToLower(strings.Join(strings.Fields(sentence[m[2]:m[3]]), " "))
-				if (verb == "apply" && patchObjectRe.MatchString(sentence)) || userRunsIt(sentence, m[2], line[off:]) {
+				if (verb == "apply" && patchObjectRe.MatchString(sentence)) || userRunsIt(sentence, m[2], line[off:]) ||
+					((verb == "run" || verb == "execute") && runsDownloadedProgram(sentence)) {
 					continue // #1187: a patch to apply, or a command the user runs
 				}
 				sev := finding.Warn

@@ -38,6 +38,10 @@ type LaunchedScript struct {
 	// file's full size.
 	Partial bool
 	Size    int64
+	// Skill is the SKILL.md this script ships with, for a script under a
+	// skill directory that no auto-run command starts (#987): the agent runs
+	// it when the skill tells it to.
+	Skill string
 }
 
 // LaunchCommand is one auto-run command that may start a repository script.
