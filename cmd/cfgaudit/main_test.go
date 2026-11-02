@@ -3591,3 +3591,14 @@ func TestGitignoreEscape1023(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+// A readable .gitignore reaches CFG013 through the target (#1023).
+func TestGitignoreRead1023(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "CLAUDE.local.md"), "# local\n")
+	mustWrite(t, filepath.Join(dir, ".claude", "settings.json"), `{"permissions":{"deny":["Read(./.env)"]}}`)
+	mustWrite(t, filepath.Join(dir, ".gitignore"), "CLAUDE.local.md\n")
+	if fs := scanFindings(t, "--only", "CFG013", dir); len(fs) != 0 {
+		t.Errorf("covered by .gitignore, got %+v", fs)
+	}
+}
