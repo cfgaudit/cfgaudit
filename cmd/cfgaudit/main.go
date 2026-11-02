@@ -52,6 +52,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return run(baselineArgs(args), stdin, stdout, stderr)
 		case "lock":
 			return lockOutput(args[2:], stdout, stderr)
+		case "inventory":
+			return inventoryOutput(args[2:], stdout, stderr)
 		case "explain":
 			out, code := explainOutput(args[2:])
 			_, _ = fmt.Fprint(stdout, out)

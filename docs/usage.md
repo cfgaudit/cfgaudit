@@ -74,6 +74,11 @@ cfgaudit --baseline .cfgaudit-baseline.json
 cfgaudit lock
 cfgaudit lock --check
 
+# List the agent files cfgaudit found and what they run, per agent; also as
+# JSON or a CycloneDX 1.6 BOM for SBOM tooling
+cfgaudit inventory
+cfgaudit inventory --format cyclonedx > agent-bom.json
+
 # Explain a rule in the terminal (renders its docs)
 cfgaudit explain CFG001
 
@@ -106,6 +111,8 @@ Keep the file in the repository and update it in reviewed commits. In CI for pul
 **`lock` subcommand** — writes `.cfgaudit.lock` in the scanned directory (or the file `-o` names): the trust-relevant agent configuration, as entries, plus the SHA-256 of every agent file it read (#999). The entries are every command that runs without the user asking (hooks, status lines, credential helpers, folder-open tasks, MCP server launches), every MCP server, the content hash of every repository script such a command starts, every instruction file by its path, and the approval settings: `permissions.allow`, `defaultMode`, `additionalDirectories`, the MCP and plugin enablement keys and helper commands of Claude Code, and the auto-approve settings of VS Code. It uses the scan's discovery and takes `--plugins` and `--user`.
 
 `cfgaudit lock --check` compares the current state with the lock and exits 1 when they differ, listing each change by entry: `new MCP server helper in .mcp.json`, `changed command hooks.SessionStart command in .claude/settings.json: ... -> ...`, `changed launched script scripts/fmt.sh (...)`. Prose and formatting do not change an entry, so editing a `CLAUDE.md` does not touch the lock; `--strict-hash` compares the whole files as well. A rule reports only what it knows, and about half of the repository-borne agent advisories cfgaudit was measured against matched no rule, so the lock makes such a change visible in review: whoever adds a hook or a server has to update the lock in the same pull request. It pairs with a CODEOWNERS entry for `.cfgaudit.lock`.
+
+**`inventory` subcommand** — lists, per agent, the files the scan discovered and read, and what each one runs, loads or approves: MCP servers (transport, command or URL, and for a package runner whether the package is pinned, as CFG010 judges it), commands that run on their own (hooks, status lines, helpers, folder-open tasks), the scripts those start (by SHA-256), instruction files and skills, and approval settings; then the files that exist but could not be read or parsed (#1000). It uses the scan's discovery, takes `--plugins` and `--user`, and reports no findings, so it answers whether a clean scan means "nothing there" or "nothing wrong". `--format json` gives the same as JSON. `--format cyclonedx` gives a CycloneDX 1.6 BOM: each agent file is a `file` component with its SHA-256 and the agent as a property, each MCP server a nested `application` component, and the other entries properties. The serial number is derived from the content, so the same tree gives the same BOM. Files no agent claims alone (`AGENTS.md`, shared skills roots) are listed under "shared".
 
 **`init` subcommand** — scaffolds `.claude/settings.json` with a hardened `permissions.deny` so a fresh project starts safe-by-default and passes the policy rules (CFG006/CFG041–CFG044) immediately. Aborts if the file exists (use `--force`, or `cfgaudit policy apply` to merge); `--dry-run` prints the JSON; `--interactive` adds project-specific entries.
 
