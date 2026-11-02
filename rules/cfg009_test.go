@@ -75,6 +75,17 @@ func TestCFG009_SafeFrameworkVars_NoFinding(t *testing.T) {
 }
 
 // A safe framework var mixed with a real var still flags the real one.
+func TestCFG009_SafeVarMixedWithUnsafe_FlagsUnsafe(t *testing.T) {
+	json := `{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"$CLAUDE_PLUGIN_ROOT/x $USER_INPUT"}]}]}}`
+	f := CFG009.Check(settingsTarget(t, json))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "$USER_INPUT") || strings.Contains(f[0].Message, "CLAUDE_PLUGIN_ROOT") {
+		t.Errorf("expected only $USER_INPUT flagged, got: %s", f[0].Message)
+	}
+}
+
 func TestCFG009_Issue1198_FrameworkPaths(t *testing.T) {
 	for _, variable := range []string{
 		"CLAUDE_CODE_REMOTE", "CLAUDE_ENV_FILE", "CLAUDE_PLUGIN_DATA",
@@ -90,17 +101,6 @@ func TestCFG009_Issue1198_FrameworkPaths(t *testing.T) {
 	if len(f) != 1 || !strings.Contains(f[0].Message, "$USER_INPUT") ||
 		strings.Contains(f[0].Message, "$CURSOR_PROJECT_DIR") {
 		t.Errorf("actual untrusted value must still be reported: %+v", f)
-	}
-}
-
-func TestCFG009_SafeVarMixedWithUnsafe_FlagsUnsafe(t *testing.T) {
-	json := `{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"$CLAUDE_PLUGIN_ROOT/x $USER_INPUT"}]}]}}`
-	f := CFG009.Check(settingsTarget(t, json))
-	if len(f) != 1 {
-		t.Fatalf("expected 1 finding, got %+v", f)
-	}
-	if !strings.Contains(f[0].Message, "$USER_INPUT") || strings.Contains(f[0].Message, "CLAUDE_PLUGIN_ROOT") {
-		t.Errorf("expected only $USER_INPUT flagged, got: %s", f[0].Message)
 	}
 }
 
