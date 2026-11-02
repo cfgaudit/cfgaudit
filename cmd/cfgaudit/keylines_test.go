@@ -5,11 +5,12 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/cfgaudit/cfgaudit/internal/finding"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
 
 // #927: findings in JSON files carry the line of the key they report, so the

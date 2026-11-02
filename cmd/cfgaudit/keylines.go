@@ -39,7 +39,7 @@ func locateKeyLines(all []finding.Finding) {
 		if assigned[key] == nil {
 			assigned[key] = map[[2]int]bool{}
 		}
-		f.Line, f.Col = d.LocateUnused(msg, assigned[key])
+		f.Line, f.Col = d.Locate(msg, assigned[key])
 		if f.Line > 0 {
 			assigned[key][[2]int{f.Line, f.Col}] = true
 		}

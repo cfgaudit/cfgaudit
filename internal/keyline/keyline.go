@@ -263,13 +263,7 @@ var quotedRe = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
 // (opencode.json "mcp", VS Code "servers") and some put the agent first
 // ("Gemini hooks.SessionStart"), so when msg names no key, Locate tries again
 // without its first path segment and then without its first word.
-func (d *Doc) Locate(msg string) (line, col int) {
-	return d.LocateUnused(msg, nil)
-}
-
-// LocateUnused skips coordinates already assigned to identical findings.
-// A repeated array entry can then point at its own occurrence.
-func (d *Doc) LocateUnused(msg string, used map[[2]int]bool) (line, col int) {
+func (d *Doc) Locate(msg string, used map[[2]int]bool) (line, col int) {
 	if d == nil {
 		return 0, 0
 	}
