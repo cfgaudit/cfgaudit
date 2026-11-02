@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 
@@ -110,4 +111,13 @@ func TestCheckFormat(t *testing.T) {
 			t.Errorf("checkFormat(%q) = nil, want an error", f)
 		}
 	}
+}
+
+// renderTable renders findings without grouping identical copies.
+func renderTable(w io.Writer, findings []finding.Finding, version string) {
+	entries := make([]textEntry, len(findings))
+	for i, f := range findings {
+		entries[i] = textEntry{Finding: f}
+	}
+	renderTableEntries(w, entries, version)
 }

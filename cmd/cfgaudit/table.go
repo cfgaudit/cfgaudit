@@ -10,8 +10,6 @@ import (
 	"slices"
 	"strings"
 	"text/tabwriter"
-
-	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
 
 // scanFormats are the documented --format values; codequality is an alias
@@ -49,22 +47,13 @@ func isTTY(f *os.File) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// renderTable writes findings as an aligned table followed by the summary line.
-// Consecutive findings at the same location are grouped: the location is shown
-// on the first row only, so one gap reported by several rules (CFG041 to
-// CFG044 on one deny list) reads as one block while each rule ID stays on its
-// own row for suppression (#1172).
-func renderTable(w io.Writer, findings []finding.Finding, version string) {
-	entries := make([]textEntry, len(findings))
-	for i, f := range findings {
-		entries[i] = textEntry{Finding: f}
-	}
-	renderTableEntries(w, entries, version)
-}
-
-// renderTableEntries is renderTable over findings already grouped by
-// groupIdenticalCopies: a finding folded from byte-identical files gets a row
-// naming the copies under it (#1346).
+// renderTableEntries writes findings, as groupIdenticalCopies grouped them, as
+// an aligned table followed by the summary line. Consecutive findings at the
+// same location are grouped: the location is shown on the first row only, so
+// one gap reported by several rules (CFG041 to CFG044 on one deny list) reads
+// as one block while each rule ID stays on its own row for suppression
+// (#1172). A finding folded from byte-identical files gets a row naming the
+// copies under it (#1346).
 func renderTableEntries(w io.Writer, entries []textEntry, version string) {
 	if len(entries) == 0 {
 		_, _ = fmt.Fprintf(w, "cfgaudit %s — no findings\n", version)

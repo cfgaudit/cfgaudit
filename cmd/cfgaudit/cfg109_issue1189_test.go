@@ -29,7 +29,7 @@ func TestCFG109_Issue1189(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, ".vscode", "settings.json"), "  \n")
 	mustWrite(t, filepath.Join(dir, ".vscode", "tasks.json"), `{"version":"2.0.0","tasks":[{"label":"make executable","command":["chmod","+x","scripts/run.sh"]}]}`)
 	mustWrite(t, filepath.Join(dir, ".mcp.json"), `{"mcpServers":{"my-server":{"command":"npx","args":["-y","my-server"],"env":{"MAX_TOKENS":64000,"DEBUG":true}}}}`)
-	code, out, errOut := runCLI(t, "--config", "/dev/null", "--claude-version", "2.1.316", "--format", "json", "--plugins", dir, dir)
+	code, out, errOut := runCLI(t, "--config", os.DevNull, "--claude-version", "2.1.316", "--format", "json", "--plugins", dir, dir)
 	// No parse error; the one CFG109 is the info that Claude Code skips the
 	// server with numeric and bool env values.
 	if n := strings.Count(out, `"RuleID": "CFG109"`); n != 1 || strings.Count(out, `"Severity": "error"`) != 0 || !strings.Contains(out, "mcpServers.my-server.env sets DEBUG, MAX_TOKENS") {
@@ -51,7 +51,7 @@ func TestCFG109_Issue1189(t *testing.T) {
 		for p, c := range files {
 			mustWrite(t, filepath.Join(d, p), c)
 		}
-		_, out, _ := runCLI(t, "--config", "/dev/null", "--claude-version", "2.1.316", "--format", "json", "--only", "CFG109", d)
+		_, out, _ := runCLI(t, "--config", os.DevNull, "--claude-version", "2.1.316", "--format", "json", "--only", "CFG109", d)
 		if !strings.Contains(out, `"RuleID": "CFG109"`) {
 			t.Errorf("%s: want CFG109, got %s", name, out)
 		}
