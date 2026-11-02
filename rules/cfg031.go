@@ -205,9 +205,10 @@ var blockedAfterRe = regexp.MustCompile(`(?i)\b(?:is|are|will\s+be|get|gets|be)\
 // existence test rather than a read: "> key.pem", "test -f x.pem", "[ -f x ]".
 var writeOrTestBeforeRe = regexp.MustCompile(`(?:>>?\s*['"]?|\b(?:test|\[)\s+-[efsrdL]\s+['"]?)$`)
 
-// copyCommandRe matches a cp, mv, install or ln command up to the path, with
+// copyCommandRe matches copy/move commands including docker/kubectl copy and
+// scp up to the path, with
 // at least one argument before it: "sudo cp -i /etc/kubernetes/admin.conf ".
-var copyCommandRe = regexp.MustCompile(`(?:^|[;&|(` + "`" + `]\s*|^\s*(?:[-*+]|\d+\.)\s+)(?:sudo\s+(?:-\S+\s+)*)?(?:cp|mv|install|ln)\s+(?:\S+\s+)+['"]?$`)
+var copyCommandRe = regexp.MustCompile(`(?:^|[;&|(` + "`" + `]\s*|^\s*(?:[-*+]|\d+\.)\s+)(?:sudo\s+(?:-\S+\s+)*)?(?:cp|mv|install|ln|docker\s+cp|kubectl\s+cp|scp)\s+(?:\S+\s+)+['"]?$`)
 
 // copyToRe matches prose that names the path as where a file goes: "Copy the
 // user's PEM to `instance/secrets/app.pem`".
