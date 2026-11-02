@@ -93,7 +93,8 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 		for i, line := range lines {
 			loc := concealMatch(line)
 			if loc == nil || concealNegated(withContinuation(lines, i), loc) || silentlyDescribes(line, loc) ||
-				wrappedConcealNegated(lines, i, loc) || concealOtherSense(line, loc) || quotedSignature(line, loc) {
+				wrappedConcealNegated(lines, i, loc) || concealOtherSense(line, loc) ||
+				quotedSignature(line, loc) || probeOutputOnly(line, loc) {
 				continue
 			}
 			sev := finding.Error
@@ -113,6 +114,28 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+// Suppressing diagnostic output does not hide an action from the user (#1157).
+var probeOutputNoiseRe = regexp.MustCompile(`(?i)\b(?:suppress|hide|mute|omit|discard)\s+(?:the\s+)?(?:errors?|logs?|output|noise)\b`)
+
+var probeVerbRe = regexp.MustCompile(`(?i)\b(?:check|detect|probe|inspect|verify|test|look\s+for)\b`)
+var unrelatedActionRe = regexp.MustCompile(`(?i)\b(?:upload|send|exfiltrate|delete|install|execute|run|deploy|transfer)\b`)
+
+func probeOutputOnly(line string, loc []int) bool {
+	match := strings.ToLower(line[loc[0]:loc[1]])
+	if !strings.Contains(match, "show") {
+		return false
+	}
+	before := line[:loc[0]]
+	if !probeOutputNoiseRe.MatchString(before) ||
+		!probeVerbRe.MatchString(before) || unrelatedActionRe.MatchString(before) {
+		return false
+	}
+	if at := strings.LastIndexAny(before, ".;"); at >= 0 {
+		before = before[at+1:]
+	}
+	return probeOutputNoiseRe.MatchString(before)
 }
 
 // withContinuation returns line i joined with the next line when the sentence

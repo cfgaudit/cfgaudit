@@ -170,7 +170,7 @@ func cfg101Message(kind string, entries, flags, commands []string) string {
 		}
 		return "permissions." + kind + " entry \"" + entries[0] + "\" constrains bundled short flags " + quoteList(flags) +
 			", and " + tool + " patterns are matched as a literal prefix. Writing the same flags in another order walks past the rule" +
-			permutationHint(flags) + "." + suggestion + tail + "this one is evaded without any thought at all"
+			permutationHint(flags, entries, commands) + "." + suggestion + tail + "this one is evaded without any thought at all"
 	}
 	suggestion := ""
 	if len(commands) > 0 {
@@ -183,7 +183,7 @@ func cfg101Message(kind string, entries, flags, commands []string) string {
 	return "permissions." + kind + " has " + strconv.Itoa(len(entries)) + " entries that constrain bundled short flags: " +
 		quoteList(capList(entries, 4)) + andMore(len(entries), 4) + ". " + tool +
 		" patterns are matched as a literal prefix, so writing the same flags in another order walks past them" +
-		permutationHint(flags) + "." + suggestion + tail + "these are evaded without any thought at all"
+		permutationHint(flags, entries, commands) + "." + suggestion + tail + "these are evaded without any thought at all"
 }
 
 // capList returns at most n elements, so a file with a long deny list does not
@@ -223,15 +223,45 @@ func appendNew(dst []string, values ...string) []string {
 
 // permutationHint renders a concrete evading spelling for the first reported
 // flag, so the finding shows rather than asserts.
-func permutationHint(flags []string) string {
+func permutationHint(flags, entries, commands []string) string {
 	if len(flags) == 0 {
 		return ""
 	}
-	alt := permutations(flags[0])
-	if len(alt) == 0 {
+	var alt []string
+	for _, candidate := range permutations(flags[0]) {
+		covered := false
+		for _, entry := range entries {
+			_, pattern, ok := bashRulePattern(entry)
+			if !ok || len(commands) == 0 {
+				continue
+			}
+			tokens := strings.Fields(pattern)
+			// A different command or a longer flag token does not cover this spelling.
+			if len(tokens) < 2 || tokens[0] != commands[0] {
+				continue
+			}
+			for _, token := range tokens[1:] {
+				if token == candidate || token == candidate+"*" {
+					covered = true
+					break
+				}
+			}
+			if covered {
+				break
+			}
+		}
+		if !covered {
+			alt = append(alt, candidate)
+		}
+	}
+	if len(alt) > 0 {
+		return " (" + quoteList(alt) + " reaches the same command)"
+	}
+	if len(commands) == 0 {
 		return ""
 	}
-	return " (" + quoteList(alt) + " reaches the same command)"
+	return " (for example, " + strconv.Quote(commands[0]+" target "+flags[0]) +
+		" places the option after the operand, outside the restricted prefix)"
 }
 
 // bashRulePattern splits a Bash(...) or PowerShell(...) rule into its tool name

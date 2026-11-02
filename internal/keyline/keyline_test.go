@@ -86,7 +86,7 @@ func TestLocate(t *testing.T) {
 				}
 				docs[tc.src] = d
 			}
-			line, col := d.Locate(tc.msg)
+			line, col := d.Locate(tc.msg, nil)
 			if line != tc.line || col != tc.col {
 				t.Errorf("Locate(%q) = %d:%d, want %d:%d", tc.msg, line, col, tc.line, tc.col)
 			}
@@ -110,7 +110,7 @@ func TestParseRejects(t *testing.T) {
 		}
 	}
 	var d *Doc
-	if line, col := d.Locate("permissions.allow"); line != 0 || col != 0 {
+	if line, col := d.Locate("permissions.allow", nil); line != 0 || col != 0 {
 		t.Errorf("nil Doc located %d:%d", line, col)
 	}
 }
@@ -132,7 +132,7 @@ func FuzzLocate(f *testing.F) {
 	f.Add([]byte(`{"permissions": {"allow": ["Bash(*)"]}}`), `permissions.allow contains "Bash(*)"`)
 	f.Add([]byte("{/* c */ \"a\": [1,], // x\n}"), "a: x")
 	f.Fuzz(func(t *testing.T, src []byte, msg string) {
-		line, col := Parse(src).Locate(msg)
+		line, col := Parse(src).Locate(msg, nil)
 		if (line == 0) != (col == 0) || line < 0 || col < 0 {
 			t.Fatalf("Locate = %d:%d", line, col)
 		}
@@ -173,13 +173,13 @@ func TestParseEdges(t *testing.T) {
 	if d == nil {
 		t.Fatal("Parse rejected a block comment or a \\/ escape")
 	}
-	if line, col := d.Locate("url"); line != 4 || col != 3 {
+	if line, col := d.Locate("url", nil); line != 4 || col != 3 {
 		t.Errorf("Locate(path only) = %d:%d, want 4:3", line, col)
 	}
-	if line, col := d.Locate(`url connects to "http:\/\/x.example.invalid"`); line != 4 || col != 3 {
+	if line, col := d.Locate(`url connects to "http:\/\/x.example.invalid"`, nil); line != 4 || col != 3 {
 		t.Errorf("Locate(raw escaped value) = %d:%d, want 4:3", line, col)
 	}
-	if line, col := d.Locate("nokey"); line != 0 || col != 0 {
+	if line, col := d.Locate("nokey", nil); line != 0 || col != 0 {
 		t.Errorf("Locate(word) = %d:%d, want 0:0", line, col)
 	}
 }

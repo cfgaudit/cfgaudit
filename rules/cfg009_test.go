@@ -86,6 +86,24 @@ func TestCFG009_SafeVarMixedWithUnsafe_FlagsUnsafe(t *testing.T) {
 	}
 }
 
+func TestCFG009_Issue1198_FrameworkPaths(t *testing.T) {
+	for _, variable := range []string{
+		"CLAUDE_CODE_REMOTE", "CLAUDE_ENV_FILE", "CLAUDE_PLUGIN_DATA",
+		"CURSOR_PROJECT_DIR", "GEMINI_PROJECT_DIR", "DROID_PLUGIN_ROOT",
+		"ZCODE_PLUGIN_ROOT", "GROK_WORKSPACE_ROOT",
+	} {
+		command := "bash $" + variable + "/scripts/check.sh"
+		if f := CFG009.Check(hookTarget(t, command)); len(f) != 0 {
+			t.Errorf("trusted framework variable %s must not be reported: %+v", variable, f)
+		}
+	}
+	f := CFG009.Check(hookTarget(t, "bash $CURSOR_PROJECT_DIR/check.sh $USER_INPUT"))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "$USER_INPUT") ||
+		strings.Contains(f[0].Message, "$CURSOR_PROJECT_DIR") {
+		t.Errorf("actual untrusted value must still be reported: %+v", f)
+	}
+}
+
 func TestCFG009_CommandSubstitution_NoFinding(t *testing.T) {
 	// $(...) is command substitution, a separate concern (issue #38) — not flagged here.
 	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"echo $(date)"}]}]}}`
