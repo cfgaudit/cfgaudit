@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -65,6 +66,31 @@ var networkReconRe = mustFiltered(`(?i)(?:` +
 	`\b(?:port[- ]?scan(?:ning|s)?|host\s+discovery|network\s+scan(?:ning|s)?|network\s+reconnaissance|service\s+enumeration|ping\s+sweep|nmap|masscan|zmap)\b\s+(?:\w+\s+){0,4}?` + internalNetworkTarget +
 	`)`)
 
+// A descriptive mention is not a directive. Keep the existing imperative
+// forms, including "perform", "run", and commands that invoke a tool.
+var reconNarrationLeadRe = regexp.MustCompile(`(?i)^(?:the\s+)?(?:attacker|server|application|client|program|script|it)\b`)
+var reconNounListRe = regexp.MustCompile(`(?i)^(?:pass|provide|specify|supply|show)\b[^.;:]*\b(?:empty|explicit|parameter|option|value|argument)\b`)
+
+func imperativeReconAt(line string, offset int) bool {
+	prefix := strings.TrimSpace(line[:offset])
+	if strings.HasPrefix(prefix, "|") || strings.Contains(prefix, "|") ||
+		strings.Count(line[:offset], "\"")%2 != 0 {
+		return false
+	}
+	for _, boundary := range []string{";", ".", "!", "?"} {
+		if i := strings.LastIndex(prefix, boundary); i >= 0 {
+			prefix = strings.TrimSpace(prefix[i+1:])
+		}
+	}
+	if reconNarrationLeadRe.MatchString(prefix) {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(line[offset:]), "list ") && reconNounListRe.MatchString(prefix) {
+		return false
+	}
+	return true
+}
+
 // Check scans each instruction source for a network-reconnaissance directive.
 // An agent with shell or network access is a reconnaissance tool once a committed
 // instruction tells it to map internal infrastructure — the intelligence-gathering
@@ -87,7 +113,13 @@ func (r *cfg090) Check(t *Target) []finding.Finding {
 			if inFence {
 				continue
 			}
-			loc := networkReconRe.FindStringIndex(line)
+			var loc []int
+			for _, candidate := range networkReconRe.FindAllStringIndex(line, -1) {
+				if imperativeReconAt(line, candidate[0]) {
+					loc = candidate
+					break
+				}
+			}
 			if loc == nil {
 				continue
 			}

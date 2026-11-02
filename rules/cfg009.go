@@ -47,6 +47,15 @@ var safeShellVars = map[string]bool{
 	"CLAUDE_PLUGIN_ROOT": true,
 	"CLAUDE_PROJECT_DIR": true,
 	"CLAUDE_SKILL_DIR":   true,
+	"CLAUDE_CODE_REMOTE": true,
+	"CLAUDE_ENV_FILE":    true,
+	"CLAUDE_PLUGIN_DATA": true,
+	// Other agent-provided install and project paths (#1198).
+	"CURSOR_PROJECT_DIR":  true,
+	"GEMINI_PROJECT_DIR":  true,
+	"DROID_PLUGIN_ROOT":   true,
+	"ZCODE_PLUGIN_ROOT":   true,
+	"GROK_WORKSPACE_ROOT": true,
 	// Zed task variables (crates/task/src/task_template.rs VariableName)
 	"ZED_WORKTREE_ROOT":     true,
 	"ZED_MAIN_GIT_WORKTREE": true,
