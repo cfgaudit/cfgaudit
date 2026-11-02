@@ -453,3 +453,32 @@ func TestCFG031_Issue1173_CopyDestinations(t *testing.T) {
 		}
 	}
 }
+
+// A path written into .gitignore, a read refused later in the sentence, and a
+// guard that refuses the command are mentions, not reads (#1173).
+func TestCFG031_GitignoreAndRefused1173(t *testing.T) {
+	for _, line := range []string{
+		`echo "/deploy.key" >> .gitignore`,
+		`printf '%s\n' server.key >> '.gitignore'`,
+		"Check whether `~/.netrc` has an entry for the host, but never read or print its value.",
+		"The guard refuses command arguments that name them (`echo \"$(cat ~/.ssh/id_rsa)\"`).",
+		"Install the hook first. The hook blocks `cat ~/.ssh/id_rsa` and similar reads.",
+	} {
+		for _, f := range CFG031.Check(claudeMDTarget(line)) {
+			if f.Severity == finding.Error {
+				t.Errorf("%q: %+v", line, f)
+			}
+		}
+	}
+	for _, line := range []string{
+		"cat ~/.ssh/id_rsa",
+		"Read ~/.ssh/id_rsa. Never print it.",
+		"cat ~/.ssh/id_rsa > out.txt && echo out.txt >> .gitignore",
+		"**Permission denied**: load the key with `cat ~/.ssh/id_rsa`.",
+	} {
+		f := CFG031.Check(claudeMDTarget(line))
+		if len(f) == 0 || f[0].Severity != finding.Error {
+			t.Errorf("%q must stay an error: %+v", line, f)
+		}
+	}
+}
