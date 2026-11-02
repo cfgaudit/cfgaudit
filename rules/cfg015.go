@@ -165,6 +165,34 @@ func substReadsInput(s string, taint shellTaint) bool {
 	return false
 }
 
+// Single quotes are literal to the shell, unless the command explicitly
+// passes them to another shell for evaluation (for example sh -c).
+var reparsedShellCommand = regexp.MustCompile("(^|[;&| ]+)(bash|sh|zsh)[ \t]+-c[ \t]+|(^|[;&| ]+)eval[ \t]+")
+
+func shellSingleQuotedAt(cmd string, offset int) bool {
+	if reparsedShellCommand.MatchString(cmd[:offset]) {
+		return false
+	}
+	var single, double, escaped bool
+	for _, char := range cmd[:offset] {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if char == '\\' && !single {
+			escaped = true
+			continue
+		}
+		if char == '\'' && !double {
+			single = !single
+		}
+		if char == '"' && !single {
+			double = !double
+		}
+	}
+	return single
+}
+
 func extractHookSubstitutions(cmd string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -175,11 +203,15 @@ func extractHookSubstitutions(cmd string) []string {
 		seen[s] = true
 		out = append(out, s)
 	}
-	for _, m := range cmdSubstDollarRe.FindAllStringSubmatch(cmd, -1) {
-		add("$(" + m[1] + ")")
+	for _, m := range cmdSubstDollarRe.FindAllStringIndex(cmd, -1) {
+		if !shellSingleQuotedAt(cmd, m[0]) {
+			add(cmd[m[0]:m[1]])
+		}
 	}
-	for _, m := range cmdSubstBacktickRe.FindAllStringSubmatch(cmd, -1) {
-		add("`" + m[1] + "`")
+	for _, m := range cmdSubstBacktickRe.FindAllStringIndex(cmd, -1) {
+		if !shellSingleQuotedAt(cmd, m[0]) {
+			add(cmd[m[0]:m[1]])
+		}
 	}
 	return out
 }
