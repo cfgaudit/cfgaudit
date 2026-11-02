@@ -60,6 +60,15 @@ const minCredentialLen = 8
 // flagged (e.g. "<your-token>", "changeme", "xxxxx", "TODO").
 var placeholderRe = regexp.MustCompile(`(?i)^(<.*>|x{3,}|changeme|your[-_ ].*|todo|placeholder|example|\.\.\.)$`)
 
+// AZURE_TOKEN_CREDENTIALS names an Azure SDK credential chain, not a secret.
+// Exempt only documented selector strings, not arbitrary values (#1191).
+var azureCredentialClass = regexp.MustCompile(`^[A-Za-z]+Credential$`)
+
+func azureCredentialSelector(key, value string) bool {
+    return strings.EqualFold(key, "AZURE_TOKEN_CREDENTIALS") &&
+        (value == "dev" || value == "prod" || azureCredentialClass.MatchString(value))
+}
+
 // Check flags hardcoded secrets in an MCP server's env or headers block — the
 // MCP analogue of CFG007 (which only covers settings.json env). Covers every MCP
 // source in scope, plus the headers of a Copilot `type: "http"` hook, which are
@@ -86,7 +95,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 
 		for _, k := range sortedKeys(ref.Server.Env) {
 			v := strings.TrimSpace(ref.Server.Env[k])
-			if v == "" || isSecretReference(v) {
+			if v == "" || isSecretReference(v) || azureCredentialSelector(k, v) {
 				continue
 			}
 			if label, ok := matchSecretPattern(v); ok {
