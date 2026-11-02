@@ -337,3 +337,19 @@ func TestDanglingLinks(t *testing.T) {
 		t.Errorf("Set must reset DanglingLinks, got %v", got)
 	}
 }
+
+// A dangling link read before any Set is still recorded.
+func TestDanglingLinksBeforeSet(t *testing.T) {
+	repo := t.TempDir()
+	symlink(t, "missing.md", filepath.Join(repo, "CLAUDE.md"))
+	mu.Lock()
+	dangling = nil
+	mu.Unlock()
+	recordDanglingLink(filepath.Join(repo, "CLAUDE.md"))
+	if got := DanglingLinks(); len(got) != 1 {
+		t.Errorf("DanglingLinks = %v, want the link", got)
+	}
+	if err := Set(""); err != nil {
+		t.Fatal(err)
+	}
+}
