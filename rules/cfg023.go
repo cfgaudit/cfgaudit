@@ -239,14 +239,14 @@ var pinnableInterpreters = map[string]bool{
 // Version flags exit before running a script, so a wildcard following one
 // does not grant arbitrary interpreter execution (#1204).
 func interpreterVersionOnly(inner, bin string) bool {
-    fields := strings.Fields(inner)
-    if len(fields) < 2 {
-        return false
-    }
-    flag := strings.TrimSuffix(fields[1], ":*")
-    return flag == "--version" ||
-        (bin == "node" && flag == "-v") ||
-        ((bin == "python" || bin == "python3") && flag == "-V")
+	fields := strings.Fields(inner)
+	if len(fields) < 2 {
+		return false
+	}
+	flag := strings.TrimSuffix(fields[1], ":*")
+	return flag == "--version" ||
+		(bin == "node" && flag == "-v") ||
+		((bin == "python" || bin == "python3") && flag == "-V")
 }
 
 // runnerModules are Python modules that run or install other code, so `-m`
