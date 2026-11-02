@@ -30,8 +30,10 @@ func TestCFG109_Issue1189(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, ".vscode", "tasks.json"), `{"version":"2.0.0","tasks":[{"label":"make executable","command":["chmod","+x","scripts/run.sh"]}]}`)
 	mustWrite(t, filepath.Join(dir, ".mcp.json"), `{"mcpServers":{"my-server":{"command":"npx","args":["-y","my-server"],"env":{"MAX_TOKENS":64000,"DEBUG":true}}}}`)
 	code, out, errOut := runCLI(t, "--config", "/dev/null", "--claude-version", "2.1.316", "--format", "json", "--plugins", dir, dir)
-	if strings.Contains(out, `"RuleID": "CFG109"`) {
-		t.Errorf("want no CFG109, got %s", out)
+	// No parse error; the one CFG109 is the info that Claude Code skips the
+	// server with numeric and bool env values.
+	if n := strings.Count(out, `"RuleID": "CFG109"`); n != 1 || strings.Count(out, `"Severity": "error"`) != 0 || !strings.Contains(out, "mcpServers.my-server.env sets DEBUG, MAX_TOKENS") {
+		t.Errorf("want one CFG109 info for my-server and no error, got %s", out)
 	}
 	if !strings.Contains(out, `"RuleID": "CFG010"`) || !strings.Contains(out, "my-server") {
 		t.Errorf("want CFG010 on the unpinned my-server, got %s", out)
