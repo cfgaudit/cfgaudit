@@ -135,6 +135,24 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(positional) > 0 {
 		dir = positional[0]
 	}
+	// An archive is unpacked into a private directory and scanned there
+	// (#1002); findings name paths inside the archive.
+	archive, archiveRoot := "", ""
+	var archived archiveResult
+	if kind, _ := archiveKind(dir); kind != "" {
+		if fi, err := os.Stat(dir); err == nil && fi.Mode().IsRegular() {
+			root, res, err := extractArchive(dir)
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr, "cfgaudit: unpack %v\n", err)
+				return 2
+			}
+			defer func() { _ = os.RemoveAll(root) }()
+			if len(res.Skipped) > 0 {
+				_, _ = fmt.Fprintf(stderr, "cfgaudit: %d archive entries not extracted (outside the archive root, over %d MiB, or a duplicate): %s\n", len(res.Skipped), maxArchiveFile>>20, strings.Join(res.Skipped[:min(len(res.Skipped), 5)], ", "))
+			}
+			archive, archiveRoot, archived, dir = dir, root, res, root
+		}
+	}
 	// A path that is not a directory would otherwise scan nothing and exit 0,
 	// so a mistyped path in CI passes without auditing anything (#710).
 	for _, p := range []string{dir, *plugins} {
@@ -187,6 +205,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	targets = attachPolicy(dir, targets, cfg)
+	if archive != "" {
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, ArchiveName: archive, ArchiveEntries: archived.Entries, ArchiveLinks: archived.Links})
+	}
 
 	targets, err = withPackageTargets(dir, *plugins, *user, targets)
 	if err != nil {
@@ -217,6 +238,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	locateKeyLines(all)
 	applyCaseAliases(dir, all)
+	if archive != "" {
+		for i := range all {
+			all[i].File = archivePath(archive, archiveRoot, all[i].File)
+			all[i].Message = strings.ReplaceAll(all[i].Message, archiveRoot, archive)
+		}
+	}
 	// A message never repeats a credential written in a URL (#1045). After
 	// locateKeyLines, which finds the line by the value the message quotes.
 	for i := range all {
