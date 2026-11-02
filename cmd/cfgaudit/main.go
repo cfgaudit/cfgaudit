@@ -237,6 +237,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	locateKeyLines(all)
+	locateTextLines(all)
 	applyCaseAliases(dir, all)
 	if archive != "" {
 		for i := range all {
