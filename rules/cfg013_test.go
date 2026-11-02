@@ -13,13 +13,18 @@ import (
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
 
-// projectTarget creates a ScopeProject Target rooted at dir.
+// projectTarget creates a ScopeProject Target rooted at dir, with the
+// .gitignore read the way discovery reads it (#1023).
 func projectTarget(dir string) *Target {
-	return &Target{
+	t := &Target{
 		SettingsFile: filepath.Join(dir, ".claude", "settings.json"),
 		ProjectDir:   dir,
 		Scope:        finding.ScopeProject,
 	}
+	if data, err := os.ReadFile(filepath.Join(dir, ".gitignore")); err == nil { // #nosec G304,G703 -- the test's own temp dir
+		t.Gitignore, t.HasGitignore = data, true
+	}
+	return t
 }
 
 func writeFile(t *testing.T, path, content string) {

@@ -140,6 +140,7 @@ The rules are grouped by the configuration they read. [Rules](docs/rules/README.
 - [xAI Grok CLI — `.grok/`](docs/rules/README.md#xai-grok-cli--grok)
 - [qwen-code — `.qwen/` & `QWEN.md`](docs/rules/README.md#qwen-code--qwen--qwenmd)
 - [Kimi Code — `.kimi-code/` & `.agents/agents/`](docs/rules/README.md#kimi-code--kimi-code--agentsagents)
+- [Roo Code — `.roo/`, `.roorules` & `.roomodes`](docs/rules/README.md#roo-code--roo-roorules--roomodes)
 
 How the rules map to the OWASP risks, and which risks a configuration file cannot show, is in [OWASP mapping](docs/rules/README.md#owasp-mapping).
 

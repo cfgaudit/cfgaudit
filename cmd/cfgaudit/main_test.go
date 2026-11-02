@@ -192,10 +192,10 @@ func TestBuildTargets_NoMCPJSON_NoProjectTargetWithoutSettings(t *testing.T) {
 
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { // #nosec G703 -- tests write into their own t.TempDir() paths
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil { // #nosec G703 -- tests write into their own t.TempDir() paths
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
@@ -3569,5 +3569,36 @@ func TestBuildPluginTargets_ExplicitRootNestedBrokenFile(t *testing.T) {
 		if _, err := buildPluginTargets(r, r, false); err == nil {
 			t.Errorf("a broken %s of the named plugin must stop the scan", own)
 		}
+	}
+}
+
+// A .gitignore that is a symlink out of the tree is reported by CFG115, and
+// CFG013 still warns, since the link is not followed (#1023).
+func TestGitignoreEscape1023(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "repo")
+	mustWrite(t, filepath.Join(base, "outside", "gi"), "CLAUDE.local.md\n")
+	mustWrite(t, filepath.Join(dir, "CLAUDE.local.md"), "# local\n")
+	mustWrite(t, filepath.Join(dir, ".claude", "settings.json"), `{"permissions":{"deny":["Read(./.env)"]}}`)
+	if err := os.Symlink(filepath.Join("..", "outside", "gi"), filepath.Join(dir, ".gitignore")); err != nil {
+		t.Skip("symlinks not available:", err)
+	}
+	got := map[string]int{}
+	for _, f := range scanFindings(t, "--only", "CFG013,CFG115", dir) {
+		got[f.RuleID+" "+filepath.Base(f.File)]++
+	}
+	if got["CFG115 .gitignore"] != 1 || got["CFG013 .gitignore"] != 1 {
+		t.Errorf("got %v", got)
+	}
+}
+
+// A readable .gitignore reaches CFG013 through the target (#1023).
+func TestGitignoreRead1023(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "CLAUDE.local.md"), "# local\n")
+	mustWrite(t, filepath.Join(dir, ".claude", "settings.json"), `{"permissions":{"deny":["Read(./.env)"]}}`)
+	mustWrite(t, filepath.Join(dir, ".gitignore"), "CLAUDE.local.md\n")
+	if fs := scanFindings(t, "--only", "CFG013", dir); len(fs) != 0 {
+		t.Errorf("covered by .gitignore, got %+v", fs)
 	}
 }
