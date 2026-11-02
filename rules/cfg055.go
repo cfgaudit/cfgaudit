@@ -21,11 +21,17 @@ func init() { All = append(All, CFG055) }
 func (r *cfg055) ID() string { return "CFG055" }
 
 // Check flags a committed settings.json that registers a plugin marketplace
-// (extraKnownMarketplaces) or auto-enables a plugin (enabledPlugins). Enabling a
-// plugin loads its hooks, slash commands, and MCP servers on session start, so a
-// repo-committed enable runs third-party code for everyone who opens it — the
-// plugin-system analogue of CFG003. Scoped to project / project-local settings;
-// a user's own ~/.claude/settings.json is their choice and is not flagged.
+// (extraKnownMarketplaces) or enables a plugin (enabledPlugins), the
+// plugin-system analogue of CFG003. Scoped to project / project-local
+// settings; a user's own ~/.claude/settings.json is their choice and is not
+// flagged.
+//
+// Measured on Claude Code 2.1.316 (#1178), after accepting the trust dialog
+// and nothing else: a marketplace the file registers is added and cloned
+// without a prompt. A plugin from a local directory marketplace then loads
+// in place and its SessionStart hook runs in that first session. A plugin
+// from a git source, or from claude-plugins-official, is not installed: the
+// /plugin Errors tab lists it and one Enter installs it.
 func (r *cfg055) Check(t *Target) []finding.Finding {
 	if t == nil || t.Settings == nil || t.Scope == finding.ScopeUser {
 		return nil
@@ -36,11 +42,15 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 	markets := objectKeys(marketsRaw)
 	registered := make(map[string]bool, len(markets))
 	inRepo := make(map[string]bool, len(markets))
+	sameOwner := make(map[string]bool, len(markets))
+	owner := repoGitHubOwner(t.ProjectDir)
 	for _, m := range markets {
 		switch {
 		case officialMarketplace(marketsRaw, m), anthropicMarketplace(marketsRaw, m):
 		case inRepoMarketplace(marketsRaw, m):
 			inRepo[m] = true
+		case owner != "" && marketplaceOwner(marketsRaw, m) == owner:
+			sameOwner[m] = true
 		default:
 			registered[m] = true
 		}
@@ -58,11 +68,15 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 		}
 		switch {
 		case mkt != "" && inRepo[mkt]:
-			add(finding.Warn, "enabledPlugins auto-enables \""+entry+"\" from a marketplace in a directory of this repository ("+marketsKey+"); its hooks/commands/MCP run on session start for anyone who opens the repo. The code is under the same review as this file, but let users opt in")
+			add(finding.Warn, "enabledPlugins enables \""+entry+"\" from a marketplace in a directory of this repository ("+marketsKey+"); Claude Code loads it in place once the folder is trusted, without an install prompt, and its hooks/commands/MCP run for everyone. The code is under the same review as this file, but let users opt in")
+		case mkt != "" && sameOwner[mkt]:
+			add(finding.Warn, "enabledPlugins enables \""+entry+"\" from a marketplace this file registers ("+marketsKey+") on the repository owner's own GitHub account ("+owner+"); Claude Code adds the marketplace without asking once the folder is trusted, and the plugin is one install away in /plugin. The publisher is the one that controls this repository; pin the source to a fixed ref and let users opt in")
 		case mkt != "" && registered[mkt]:
-			add(finding.Error, "enabledPlugins auto-enables \""+entry+"\" from a marketplace this same settings file registers ("+marketsKey+") — a committed file fully controls the supply chain and runs the plugin's hooks/commands/MCP for anyone who opens the repo. Remove it and let users opt in")
+			add(finding.Error, "enabledPlugins enables \""+entry+"\" from a marketplace this same settings file registers ("+marketsKey+") — a committed file controls both the source and the enable. Claude Code adds the marketplace without asking once the folder is trusted; a plugin from a local directory then runs at once, one from a git source is one install away in /plugin. Remove it and let users opt in")
+		case mkt == "claude-plugins-official":
+			add(finding.Info, "enabledPlugins enables \""+entry+"\" from Anthropic's official marketplace; Claude Code does not install it on this alone, each user installs it from /plugin. Partner plugins listed there are third-party code, so check that this one is meant for everyone")
 		default:
-			add(finding.Warn, "enabledPlugins auto-enables the plugin \""+entry+"\" — a committed file loads its hooks/commands/MCP on session start for anyone who opens the repo; let users enable plugins themselves")
+			add(finding.Warn, "enabledPlugins enables the plugin \""+entry+"\" for everyone who trusts the repo; once installed, its hooks/commands/MCP run in every session here. Let users enable plugins themselves")
 		}
 	}
 
@@ -70,7 +84,7 @@ func (r *cfg055) Check(t *Target) []finding.Finding {
 		if officialMarketplace(marketsRaw, m) || inRepo[m] {
 			continue
 		}
-		add(finding.Warn, marketsKey+" registers the plugin marketplace \""+m+"\" — a committed file points users at a marketplace source they did not choose; review it and pin the source to a fixed ref")
+		add(finding.Warn, marketsKey+" registers the plugin marketplace \""+m+"\" — Claude Code adds it without asking once the folder is trusted, a source users did not choose; review it and pin the source to a fixed ref")
 	}
 
 	return findings
@@ -88,6 +102,29 @@ func officialMarketplace(raw json.RawMessage, name string) bool {
 	}
 	src := marketplaceSource(raw, name)
 	return src.Source == "github" && strings.EqualFold(src.Repo, "anthropics/claude-plugins-official")
+}
+
+// marketplaceGitURLOwnerRe takes the owner from a git URL on github.com.
+var marketplaceGitURLOwnerRe = regexp.MustCompile(`(?i)^(?:https://|ssh://git@|git@)github\.com[/:]([A-Za-z0-9][A-Za-z0-9-]*)/`)
+
+// marketplaceOwner returns the lower-cased GitHub owner of the marketplace's
+// source, a github repo or a git URL on github.com, or "". CFG055 compares it
+// with the owner of the scanned repository: an exact match is the publisher
+// that controls this repository (#1178). A fork keeps the upstream owner in
+// the source while its origin names the fork owner, so it does not match.
+func marketplaceOwner(raw json.RawMessage, name string) string {
+	src := marketplaceSource(raw, name)
+	switch src.Source {
+	case "github":
+		if o, _, ok := strings.Cut(src.Repo, "/"); ok {
+			return strings.ToLower(o)
+		}
+	case "git":
+		if m := marketplaceGitURLOwnerRe.FindStringSubmatch(src.URL); m != nil {
+			return strings.ToLower(m[1])
+		}
+	}
+	return ""
 }
 
 // marketplaceSourceSpec is the source object of one extraKnownMarketplaces
