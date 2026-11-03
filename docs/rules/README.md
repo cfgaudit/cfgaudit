@@ -13,7 +13,7 @@ General Claude Code settings: the permission model, environment block, lifecycle
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG001](CFG001.md) | error | `permissions.allow` grants unrestricted shell — `Bash(*)`/`Bash(**)`, bare `Bash`, or `PowerShell`/`PowerShell(*)` | LLM03 |
-| [CFG002](CFG002.md) | warn | `permissions.allow` grants unrestricted file-write, or a concrete/globbed `Edit`/`Write` grant reaches configuration consumed by another agent; Claude Code 2.1.317 `Edit` sensitive-file gates are modelled per measured destination | LLM03 |
+| [CFG002](CFG002.md) | warn | `permissions.allow` grants unrestricted file-write, or a concrete/globbed `Edit` grant reaches configuration consumed by another agent; findings name the path and consuming agent | LLM03 |
 | [CFG040](CFG040.md) | warn | `permissions.allow` contains unrestricted `WebFetch` (bare / `domain:*`) — fetch-any-URL exfiltration channel | LLM03 |
 | [CFG023](CFG023.md) | error/warn | `permissions.allow` grants a dangerous command with wildcard args (`curl`/`sudo`/`npx`/shells → error; `find`/`sed`/`git`/interpreters/`ssh` → warn) | LLM03 |
 | [CFG025](CFG025.md) | error | custom org policy from `.cfgaudit.yml` violated (`require-deny` / `forbid-allow`, or the agent-neutral `deny` checked against Claude Code and Devin CLI) — inert unless a `policy:` is configured | LLM03 |
