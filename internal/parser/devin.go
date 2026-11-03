@@ -6,6 +6,8 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
@@ -52,17 +54,83 @@ func ParseDevinConfig(path string) (*DevinConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	var c DevinConfig
-	if err := json.Unmarshal(data, &c); err != nil {
+	var top struct {
+		MCPServers  map[string]MCPServer       `json:"mcpServers,omitempty"`
+		Hooks       map[string]json.RawMessage `json:"hooks,omitempty"`
+		Permissions *Permissions               `json:"permissions,omitempty"`
+	}
+	if err := json.Unmarshal(data, &top); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	for name, srv := range c.MCPServers {
-		if srv.Type == "" && srv.Transport != "" {
-			srv.Type = srv.Transport
-			c.MCPServers[name] = srv
+	hooks := map[string][]HookGroup{}
+	for event, raw := range top.Hooks {
+		groups, ok := devinHookGroups(raw)
+		if !ok {
+			return nil, fmt.Errorf("parse %s: hooks.%s is not a list of matcher groups", path, event)
+		}
+		if len(groups) > 0 {
+			hooks[event] = groups
 		}
 	}
-	return &c, nil
+	for name, srv := range top.MCPServers {
+		if srv.Type == "" && srv.Transport != "" {
+			srv.Type = srv.Transport
+			top.MCPServers[name] = srv
+		}
+	}
+	return &DevinConfig{MCPServers: top.MCPServers, Hooks: hooks, Permissions: top.Permissions}, nil
+}
+
+// devinMatcher decodes a Devin hook matcher. Devin loads a matcher as a regex
+// string; since the release notes entry "Hook Matchers Written as a List"
+// (2026-10-21) it also loads a list of strings, matching any of them (#1393).
+// A matcher of any other shape decodes as "".
+func devinMatcher(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var list []string
+	if json.Unmarshal(raw, &list) == nil {
+		return strings.Join(list, ", ")
+	}
+	return ""
+}
+
+// devinHookGroups decodes one event's matcher groups the way Devin loads them:
+// a group whose matcher is a list is kept with the list joined, so its hooks
+// are still judged instead of the matcher costing the group a parse error or
+// the event its groups (#1393). ok is false when raw is not a list of matcher
+// groups.
+func devinHookGroups(raw json.RawMessage) (groups []HookGroup, ok bool) {
+	if json.Unmarshal(raw, &groups) == nil {
+		return groups, true
+	}
+	var rawGroups []json.RawMessage
+	if json.Unmarshal(raw, &rawGroups) != nil {
+		return nil, false
+	}
+	// A failed strict decode can leave partial groups behind, so the loose
+	// pass rebuilds the slice from scratch.
+	groups = nil
+	for _, rg := range rawGroups {
+		var loose struct {
+			Matcher json.RawMessage   `json:"matcher"`
+			Hooks   []json.RawMessage `json:"hooks"`
+		}
+		if json.Unmarshal(rg, &loose) != nil {
+			return nil, false
+		}
+		hg := HookGroup{Matcher: devinMatcher(loose.Matcher)}
+		for _, rh := range loose.Hooks {
+			var hc HookCommand
+			if json.Unmarshal(rh, &hc) == nil {
+				hg.Hooks = append(hg.Hooks, hc)
+			}
+		}
+		groups = append(groups, hg)
+	}
+	return groups, true
 }
 
 // ParseDevinHooksV1 reads a Devin CLI .devin/hooks.v1.json (#613). Devin's hooks
@@ -94,8 +162,7 @@ func ParseDevinHooksV1(path string) (*DevinConfig, error) {
 	// matcher groups is left out.
 	hooks := map[string][]HookGroup{}
 	for event, raw := range top {
-		var groups []HookGroup
-		if json.Unmarshal(raw, &groups) == nil && len(groups) > 0 {
+		if groups, ok := devinHookGroups(raw); ok && len(groups) > 0 {
 			hooks[event] = groups
 		}
 	}
