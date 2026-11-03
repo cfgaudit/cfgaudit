@@ -48,6 +48,8 @@ var dangerousAllowGroups = []struct {
 		[]string{"find", "sed", "awk", "gawk", "xargs", "env", "tar", "rg"}},
 	{allowCat{finding.Warn, "a remote-execution and lateral-movement tool"},
 		[]string{"ssh", "scp", "rsync"}},
+	{allowCat{finding.Warn, "a full coding-agent CLI; the child agent is not constrained by the parent agent Edit/Write deny rules"},
+		agentCLINames},
 }
 
 var dangerousAllowLookup = func() map[string]allowCat {
@@ -164,22 +166,27 @@ func runnerPackagePinned(inner string) bool {
 // network access, privilege escalation, or lateral movement. Exactly-pinned
 // commands (no wildcard) are exempt: the user spelled out precisely what may run.
 func (r *cfg023) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil || t.Settings.Permissions == nil {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, entry := range t.Settings.Permissions.Allow {
-		bin, cat, ok := dangerousAllowBinary(entry)
-		if !ok || deniedInSameFile(t, entry) {
-			continue
+	if t.Settings != nil && t.Settings.Permissions != nil {
+		for _, entry := range t.Settings.Permissions.Allow {
+			bin, cat, ok := dangerousAllowBinary(entry)
+			if !ok || deniedInSameFile(t, entry) {
+				continue
+			}
+			if isAgentCLI(bin) && hasAgentConfigDeny(t.Settings.Permissions.Deny) {
+				cat.sev = finding.Error
+			}
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG023",
+				Severity: cat.sev,
+				File:     t.SettingsFile,
+				Message: "permissions.allow grants \"" + entry + "\" — \"" + bin + "\" is " + cat.reason +
+					"; allow only an exact command (no wildcard) instead" + userScopeNote(t),
+			})
 		}
-		findings = append(findings, finding.Finding{
-			RuleID:   "CFG023",
-			Severity: cat.sev,
-			File:     t.SettingsFile,
-			Message: "permissions.allow grants \"" + entry + "\" — \"" + bin + "\" is " + cat.reason +
-				"; allow only an exact command (no wildcard) instead" + userScopeNote(t),
-		})
 	}
 	return findings
 }
@@ -205,6 +212,15 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 		tok = tok[i+1:]
 	}
 	tok = strings.ToLower(strings.TrimSpace(tok))
+	for _, suffix := range []string{".exe", ".cmd", ".bat"} {
+		tok = strings.TrimSuffix(tok, suffix)
+	}
+	if agent, args, agentOK := agentAllowInvocation(inner); agentOK {
+		if agentCLIReadOnly(agent, args) {
+			return "", allowCat{}, false
+		}
+		return agent, dangerousAllowLookup[agent], true
+	}
 	// git is judged per subcommand rather than per binary: the pin decides which
 	// of git's exec vectors the entry can still reach.
 	if tok == "git" {
