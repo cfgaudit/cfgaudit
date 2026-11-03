@@ -48,7 +48,7 @@ For GitLab pipelines, include the component (published to the [CI/CD Catalog](ht
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.19.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.20.0
     inputs:
       path: .
       format: text
@@ -60,7 +60,7 @@ Inputs: `stage`, `path`, `format`, `config`, `baseline` (a file written by `cfga
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.19.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.20.0
     inputs:
       config: $CFGAUDIT_CONFIG     # File-type CI/CD variable holding the .cfgaudit.yml
 ```
@@ -69,7 +69,7 @@ To surface findings **inline in merge requests** via the Code Quality widget, us
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.19.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.20.0
     inputs:
       path: .
 ```
@@ -83,7 +83,7 @@ For projects that use the [pre-commit framework](https://pre-commit.com/), add t
 ```yaml
 repos:
   - repo: https://github.com/cfgaudit/cfgaudit
-    rev: vX.Y.Z  # a release that includes .pre-commit-hooks.yaml (the release after v1.19.0 or later)
+    rev: v1.20.0  # v1.20.0 is the first release with .pre-commit-hooks.yaml
     hooks:
       - id: cfgaudit
 ```
