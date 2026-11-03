@@ -255,13 +255,12 @@ func agentBypass(inv agentInvocation) (string, bool) {
 		}
 		return "", false
 	}
+	// hasPair matches an option and its value, written as two words or as
+	// flag=value.
 	hasPair := func(flag string, values ...string) (string, bool) {
-		for i := 0; i+1 < len(args); i++ {
-			if args[i] != flag {
-				continue
-			}
+		for i, arg := range args {
 			for _, value := range values {
-				if args[i+1] == value {
+				if arg == flag+"="+value || arg == flag && i+1 < len(args) && args[i+1] == value {
 					return flag + " " + value, true
 				}
 			}
@@ -278,7 +277,16 @@ func agentBypass(inv agentInvocation) (string, bool) {
 		if flag, ok := has("--dangerously-bypass-approvals-and-sandbox", "--yolo", "--full-auto"); ok {
 			return flag, true
 		}
-		return hasPair("-s", "danger-full-access")
+		for _, flag := range []string{"-s", "--sandbox"} {
+			if pair, ok := hasPair(flag, "danger-full-access"); ok {
+				return pair, true
+			}
+		}
+		for _, flag := range []string{"-a", "--ask-for-approval"} {
+			if pair, ok := hasPair(flag, "never"); ok {
+				return pair, true
+			}
+		}
 	case "gemini", "qwen":
 		if flag, ok := has("-y", "--yolo"); ok {
 			return flag, true
