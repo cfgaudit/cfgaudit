@@ -57,3 +57,46 @@ func TestDanglingLinkIsAbsent1363(t *testing.T) {
 		t.Errorf("want exit 2 for AGENTS.md and the CLAUDE.md link to it, and the missing link named as skipped, got %d, %s", code, errOut)
 	}
 }
+
+// skipUnreadable leaves a dangling link out of the incomplete-scan list, for a
+// loader that does not check scanroot.IsAbsent first (#1390).
+func TestSkipUnreadableDanglingLink1390(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs symlinks")
+	}
+	link := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.Symlink("missing.json", link); err != nil {
+		t.Fatal(err)
+	}
+	saved := unreadable
+	t.Cleanup(func() { unreadable = saved })
+	unreadable = nil
+	skipUnreadable(link, os.ErrNotExist)
+	if len(unreadable) != 0 {
+		t.Errorf("want no unreadable file, got %+v", unreadable)
+	}
+}
+
+// A SKILL.md in a skills-directory plugin that points to a missing file is
+// absent, not a CFG109 finding (#1390).
+func TestSkillsDirPluginDanglingSkill1390(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs symlinks")
+	}
+	dir := t.TempDir()
+	plugin := filepath.Join(dir, ".claude", "skills", "p")
+	mustWrite(t, filepath.Join(plugin, ".claude-plugin", "plugin.json"), `{"name": "p"}`)
+	if err := os.MkdirAll(filepath.Join(plugin, "skills", "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("missing.md", filepath.Join(plugin, "skills", "x", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runCLI(t, "--config", os.DevNull, "--claude-version", "2.1.316", "--format", "json", dir)
+	if code != 0 || strings.Contains(out, "CFG109") {
+		t.Errorf("want exit 0 and no CFG109, got %d, %s", code, out)
+	}
+	if !strings.Contains(errOut, "1 symbolic link points to a missing file") || !strings.Contains(errOut, filepath.Join("x", "SKILL.md")) {
+		t.Errorf("want the link named as skipped, got %s", errOut)
+	}
+}
