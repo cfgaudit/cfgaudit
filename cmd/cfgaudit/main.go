@@ -76,7 +76,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fset := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fset.SetOutput(stderr)
 	format := fset.String("format", "auto", "output format: auto (table on a TTY, text otherwise), text, table, json, sarif, codeclimate")
-	user := fset.Bool("user", false, "also scan ~/.claude/settings.json")
+	user := fset.Bool("user", false, "also scan the user-scope config of each agent (~/.claude/, ~/.codex/, ~/.cursor/, ~/.gemini/, ...)")
 	claudeVersion := fset.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	var configPaths stringFlagValues
 	fset.Var(&configPaths, "config", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")

@@ -47,7 +47,7 @@ What each test layer protects against, and when it runs, is in [TESTING.md](TEST
 ```sh
 go test ./...                  # unit tests + cross-cutting consistency / fixture tests
 go test -run TestCFG001 ./...  # one rule
-go vet ./...                   # cheap static check, same one CI runs
+go vet ./...                   # cheap static check; CI runs it as golangci-lint's govet
 ```
 
 CI additionally runs:

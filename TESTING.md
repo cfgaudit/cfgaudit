@@ -41,7 +41,7 @@ Whether the output stays readable for the tools that consume it, and existing fi
 
 | Layer | Protects against | Runs |
 |---|---|---|
-| Fuzzing (`fuzz.yml`): whole scan, path parsers, JSONC stripping, Markdown instructions, key location, prefilters | crashes and hangs on broken or hostile input | short runs on pull requests and `main`, 10 minutes per target weekly |
+| Fuzzing (`fuzz.yml`): whole scan, path parsers, JSONC stripping, Markdown instructions, terminal-name parsing, zip and tar extraction, key location, prefilters, the git index reader (#1387) | crashes and hangs on broken or hostile input | short runs on pull requests and `main`, 10 minutes per target weekly |
 | Race detector, Linux, macOS and Windows; the tests also run on Windows on ARM, where Go has no race detector | data races between rules running in parallel, platform-specific path and permission bugs | every pull request |
 | Linear scaling (`rules/scaling_test.go`): every rule on generated inputs of n and 8·n instruction lines, permission entries, MCP servers and hook commands (`internal/benchcorpus`) | a rule whose allocations or run time grow faster than its input, such as a nested loop over the servers of one file, which a fixed-size benchmark corpus does not show | every pull request |
 | Benchmarks (`bench.yml`), pull request against its base | allocation regressions beyond the limit (a gate); time is reported, history is recorded on `main` ([benchmarks page](https://cfgaudit.github.io/benchmarks/)) | pull requests; `main` |
@@ -60,7 +60,7 @@ Whether cfgaudit's own dependencies, workflows and releases can be trusted.
 
 | Layer | Protects against | Runs |
 |---|---|---|
-| Dependency checks: govulncheck, dependency review; Dependabot security alerts | a known vulnerability in a Go module or a CI tool | every pull request and push; alerts when an advisory is published |
+| Dependency checks: govulncheck, dependency review; Dependabot security alerts | a known vulnerability in a Go module or a CI tool | govulncheck on every pull request and push, dependency review on pull requests; alerts when an advisory is published |
 | Workflow security: zizmor, pinact, and the released cfgaudit on the repository's own agent configuration and plugin | injection, excessive permissions and unpinned actions in the workflows; a version comment that does not match its pinned SHA; a weakened rule passing its own check | every pull request |
 | Sensitive paths gate | an unreviewed change to files that reach plugin and Action users, the release build or a maintainer's agent setup; the check fails until a maintainer sets the `sensitive-paths-reviewed` label, and a push that changes the pull request's diff on those paths removes it (`sensitivepaths_test.go` covers the comparison) | every pull request |
 | Version pins (`pins_test.go`): `bin/cfgaudit`, `.claude-plugin/plugin.json`, the image in `action.yml`, both GitLab component templates and the component examples in the README and docs name the same version | a release pull request that misses a pin, so the Action, the plugin or a GitLab component runs an older release than the one tagged | every pull request |
