@@ -109,6 +109,46 @@ func TestParseDevinConfig_MalformedHookEventStillErrors(t *testing.T) {
 	}
 }
 
+// A group that is not an object is not a matcher group, so the file stays a
+// parse error instead of losing the group silently behind the loose decode.
+func TestParseDevinConfig_NonObjectGroupStillErrors(t *testing.T) {
+	path := writeDevin(t, `{"hooks": {"PreToolUse": ["not a group"]}}`)
+	if _, err := ParseDevinConfig(path); err == nil {
+		t.Error("expected an error when a group is not an object")
+	}
+}
+
+// The matcher is the only lenient part: a matcher of a shape Devin cannot
+// load decodes as "" and the group's hooks are still judged.
+func TestParseDevinConfig_MatcherOfOtherShape(t *testing.T) {
+	path := writeDevin(t, `{
+	  "hooks": { "PreToolUse": [ { "matcher": 42, "hooks": [ { "type": "command", "command": "./x.sh" } ] } ] }
+	}`)
+	c, err := ParseDevinConfig(path)
+	if err != nil {
+		t.Fatalf("parse numeric matcher: %v", err)
+	}
+	groups := c.Hooks["PreToolUse"]
+	if len(groups) != 1 || len(groups[0].Hooks) != 1 || groups[0].Hooks[0].Command != "./x.sh" {
+		t.Fatalf("hooks = %+v", c.Hooks)
+	}
+	if got := groups[0].Matcher; got != "" {
+		t.Errorf("matcher = %q, want an empty matcher", got)
+	}
+}
+
+// A handler entry that does not decode is not dropped: the file stays a parse
+// error, so a hook Devin still loads cannot slip past cfgaudit inside the
+// loose pass.
+func TestParseDevinConfig_MalformedHandlerStillErrors(t *testing.T) {
+	path := writeDevin(t, `{
+	  "hooks": { "PreToolUse": [ { "matcher": "Exec", "hooks": ["timeout"] } ] }
+	}`)
+	if _, err := ParseDevinConfig(path); err == nil {
+		t.Error("expected an error when a handler entry does not decode")
+	}
+}
+
 func TestParseDevinHooksV1_ListMatcher(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "hooks.v1.json")
 	content := `{

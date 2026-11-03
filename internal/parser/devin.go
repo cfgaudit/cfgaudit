@@ -40,6 +40,15 @@ type DevinConfig struct {
 	Permissions *Permissions           `json:"permissions,omitempty"`
 }
 
+// devinTop mirrors the keys DevinConfig reads, with hooks kept raw so each
+// event decodes entry by entry in devinHookGroups. Keep its fields in sync
+// with DevinConfig.
+type devinTop struct {
+	MCPServers  map[string]MCPServer       `json:"mcpServers,omitempty"`
+	Hooks       map[string]json.RawMessage `json:"hooks,omitempty"`
+	Permissions *Permissions               `json:"permissions,omitempty"`
+}
+
 // ParseDevinConfig reads a .devin/config.json. A missing key yields a zero value
 // rather than an error; a malformed file is an error, so a config that is
 // silently not being scanned is reported rather than mistaken for an empty one.
@@ -54,11 +63,7 @@ func ParseDevinConfig(path string) (*DevinConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	var top struct {
-		MCPServers  map[string]MCPServer       `json:"mcpServers,omitempty"`
-		Hooks       map[string]json.RawMessage `json:"hooks,omitempty"`
-		Permissions *Permissions               `json:"permissions,omitempty"`
-	}
+	var top devinTop
 	if err := json.Unmarshal(data, &top); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
@@ -100,8 +105,10 @@ func devinMatcher(raw json.RawMessage) string {
 // devinHookGroups decodes one event's matcher groups the way Devin loads them:
 // a group whose matcher is a list is kept with the list joined, so its hooks
 // are still judged instead of the matcher costing the group a parse error or
-// the event its groups (#1393). ok is false when raw is not a list of matcher
-// groups.
+// the event its groups (#1393). The matcher is the only lenient part: ok is
+// false when raw is not a list of matcher groups, when a group is not an
+// object, or when a handler entry does not decode, so a hook Devin still
+// loads cannot pass unnoticed behind the loose pass.
 func devinHookGroups(raw json.RawMessage) (groups []HookGroup, ok bool) {
 	if json.Unmarshal(raw, &groups) == nil {
 		return groups, true
@@ -124,9 +131,10 @@ func devinHookGroups(raw json.RawMessage) (groups []HookGroup, ok bool) {
 		hg := HookGroup{Matcher: devinMatcher(loose.Matcher)}
 		for _, rh := range loose.Hooks {
 			var hc HookCommand
-			if json.Unmarshal(rh, &hc) == nil {
-				hg.Hooks = append(hg.Hooks, hc)
+			if json.Unmarshal(rh, &hc) != nil {
+				return nil, false
 			}
+			hg.Hooks = append(hg.Hooks, hc)
 		}
 		groups = append(groups, hg)
 	}
