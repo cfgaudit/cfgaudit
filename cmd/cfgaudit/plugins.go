@@ -45,6 +45,14 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 			manifest := filepath.Join(root, claudePluginDir, "plugin.json")
 			m, err := parser.ParsePluginManifest(manifest)
 			if err != nil {
+				if scanroot.IsAbsent(err) {
+					// A folder under .claude/skills without a manifest is a
+					// plain skill, not a broken plugin: auto-discovery already
+					// skips manifest-less folders (#1412), so an explicit
+					// --plugins on one is ignored as a plugin package too. A
+					// dangling manifest link reads as absent with it (#1363).
+					continue
+				}
 				all = append(all, unreadablePluginTarget(dir, manifest, err))
 				continue
 			}
