@@ -48,6 +48,27 @@ var dangerousAllowGroups = []struct {
 		[]string{"find", "sed", "awk", "gawk", "xargs", "env", "tar", "rg"}},
 	{allowCat{finding.Warn, "a remote-execution and lateral-movement tool"},
 		[]string{"ssh", "scp", "rsync"}},
+	{allowCat{finding.Warn, "a full coding-agent CLI — the child agent is not constrained by the parent agent Edit/Write deny rules"},
+		[]string{"codex", "claude", "gemini", "cursor-agent", "opencode", "qwen", "copilot", "kimi", "devin", "goose", "junie", "kilo", "amp", "aider"}},
+}
+
+var agentCLIs = map[string]bool{
+	"codex": true, "claude": true, "gemini": true, "cursor-agent": true,
+	"opencode": true, "qwen": true, "copilot": true, "kimi": true,
+	"devin": true, "goose": true, "junie": true, "kilo": true, "amp": true, "aider": true,
+}
+
+func agentCLIReadOnly(inner, bin string) bool {
+	fields := strings.Fields(strings.ReplaceAll(inner, ":*", " *"))
+	if len(fields) < 2 {
+		return false
+	}
+	args := fields[1:]
+	if args[0] == "--version" || args[0] == "-v" {
+		return len(args) == 1 || len(args) == 2 && args[1] == "*"
+	}
+	return bin == "claude" && len(args) >= 2 && args[0] == "mcp" && args[1] == "list" &&
+		(len(args) == 2 || len(args) == 3 && args[2] == "*")
 }
 
 var dangerousAllowLookup = func() map[string]allowCat {
@@ -164,24 +185,64 @@ func runnerPackagePinned(inner string) bool {
 // network access, privilege escalation, or lateral movement. Exactly-pinned
 // commands (no wildcard) are exempt: the user spelled out precisely what may run.
 func (r *cfg023) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil || t.Settings.Permissions == nil {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, entry := range t.Settings.Permissions.Allow {
-		bin, cat, ok := dangerousAllowBinary(entry)
-		if !ok || deniedInSameFile(t, entry) {
-			continue
+	if t.Settings != nil && t.Settings.Permissions != nil {
+		for _, entry := range t.Settings.Permissions.Allow {
+			bin, cat, ok := dangerousAllowBinary(entry)
+			if !ok || deniedInSameFile(t, entry) {
+				continue
+			}
+			if agentCLIs[bin] && hasFileToolDeny(t.Settings.Permissions.Deny) {
+				cat.sev = finding.Error
+			}
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG023",
+				Severity: cat.sev,
+				File:     t.SettingsFile,
+				Message: "permissions.allow grants \"" + entry + "\" — \"" + bin + "\" is " + cat.reason +
+					"; allow only an exact command (no wildcard) instead" + userScopeNote(t),
+			})
 		}
-		findings = append(findings, finding.Finding{
-			RuleID:   "CFG023",
-			Severity: cat.sev,
-			File:     t.SettingsFile,
-			Message: "permissions.allow grants \"" + entry + "\" — \"" + bin + "\" is " + cat.reason +
-				"; allow only an exact command (no wildcard) instead" + userScopeNote(t),
-		})
+	}
+	for _, ref := range t.mcpServerRefs() {
+		if agent, ok := fullAgentMCP(ref.Server.Command, ref.Server.Args); ok {
+			findings = append(findings, finding.Finding{
+				RuleID: "CFG023", Severity: finding.Warn, File: ref.File,
+				Message: "mcpServers." + ref.Name + " launches " + agent + " as a full agent server — MCP clients can delegate to an agent with its own tools and approval model; use a purpose-built MCP server instead",
+			})
+		}
 	}
 	return findings
+}
+
+func hasFileToolDeny(deny []string) bool {
+	for _, entry := range deny {
+		entry = strings.TrimSpace(entry)
+		if entry == "Edit" || entry == "Write" || strings.HasPrefix(entry, "Edit(") || strings.HasPrefix(entry, "Write(") {
+			return true
+		}
+	}
+	return false
+}
+
+func fullAgentMCP(command string, args []string) (string, bool) {
+	bin := strings.ToLower(strings.TrimSpace(command))
+	if i := strings.LastIndexAny(bin, `/\\`); i >= 0 {
+		bin = bin[i+1:]
+	}
+	for _, suffix := range []string{".exe", ".cmd", ".bat"} {
+		bin = strings.TrimSuffix(bin, suffix)
+	}
+	if bin == "codex" && len(args) > 0 && args[0] == "mcp-server" {
+		return "codex mcp-server", true
+	}
+	if bin == "claude" && len(args) > 1 && args[0] == "mcp" && args[1] == "serve" {
+		return "claude mcp serve", true
+	}
+	return "", false
 }
 
 // dangerousAllowBinary returns the dangerous binary and its category for a
@@ -198,13 +259,20 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 		return "", allowCat{}, false
 	}
 	tok := inner
-	if i := strings.IndexAny(tok, " \t:"); i >= 0 {
+	if i := strings.IndexAny(tok, " \t"); i >= 0 {
 		tok = tok[:i]
 	}
+	tok = strings.TrimSuffix(tok, ":*")
 	if i := strings.LastIndexAny(tok, `/\`); i >= 0 {
 		tok = tok[i+1:]
 	}
 	tok = strings.ToLower(strings.TrimSpace(tok))
+	for _, suffix := range []string{".exe", ".cmd", ".bat"} {
+		tok = strings.TrimSuffix(tok, suffix)
+	}
+	if agentCLIs[tok] && agentCLIReadOnly(inner, tok) {
+		return "", allowCat{}, false
+	}
 	// git is judged per subcommand rather than per binary: the pin decides which
 	// of git's exec vectors the entry can still reach.
 	if tok == "git" {

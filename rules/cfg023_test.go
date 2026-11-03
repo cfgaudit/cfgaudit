@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 func TestCFG023_NetworkAndPrivilege_Error(t *testing.T) {
@@ -248,5 +249,57 @@ func TestCFG023_InterpreterVersion1204(t *testing.T) {
 		if _, _, ok := dangerousAllowBinary(entry); !ok {
 			t.Errorf("unsafe invocation exempted: %s", entry)
 		}
+	}
+}
+
+func TestCFG023_AgentCLIAllow(t *testing.T) {
+	for _, entry := range []string{
+		"Bash(codex:*)", "Bash(claude *)", "Bash(/usr/local/bin/gemini:*)",
+		"Bash(C:/tools/cursor-agent.exe:*)", "Bash(opencode.cmd:*)",
+	} {
+		f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["`+entry+`"]}}`))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("%s: expected one Warn, got %+v", entry, f)
+		}
+	}
+}
+
+func TestCFG023_AgentCLIWithFileDenyIsError(t *testing.T) {
+	target := settingsTarget(t, `{"permissions":{"allow":["Bash(codex:*)"],"deny":["Edit(.claude/**)"]}}`)
+	f := CFG023.Check(target)
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected Error when a file deny is relied on, got %+v", f)
+	}
+}
+
+func TestCFG023_AgentCLIReadOnlyForms(t *testing.T) {
+	for _, entry := range []string{
+		"Bash(codex --version:*)",
+		"Bash(claude --version:*)",
+		"Bash(claude mcp list:*)",
+	} {
+		if f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["`+entry+`"]}}`)); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %+v", entry, f)
+		}
+	}
+}
+
+func TestCFG023_FullAgentMCP(t *testing.T) {
+	target := &Target{
+		ProjectMCPFile: ".mcp.json",
+		ProjectMCP: map[string]parser.MCPServer{
+			"codex":  {Command: "/usr/local/bin/codex", Args: []string{"mcp-server"}},
+			"claude": {Command: "claude.exe", Args: []string{"mcp", "serve"}},
+			"list":   {Command: "claude", Args: []string{"mcp", "list"}},
+			"other":  {Command: "node", Args: []string{"server.js", "codex", "mcp-server"}},
+		},
+	}
+	f := CFG023.Check(target)
+	if len(f) != 2 {
+		t.Fatalf("expected the two full-agent servers only, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message+f[1].Message, "codex mcp-server") ||
+		!strings.Contains(f[0].Message+f[1].Message, "claude mcp serve") {
+		t.Errorf("findings do not name both server modes: %+v", f)
 	}
 }

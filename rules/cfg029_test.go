@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 func TestCFG029_BypassPhrases(t *testing.T) {
@@ -514,6 +515,57 @@ func TestCFG029_UnlessAfterKeepsReporting(t *testing.T) {
 	} {
 		if f := CFG029.Check(claudeMDTarget(s)); len(f) != 1 {
 			t.Errorf("expected one finding for %q, got %+v", s, f)
+		}
+	}
+}
+
+func TestCFG029_AgentBypassFlagsInAutoRunCommands(t *testing.T) {
+	for _, command := range []string{
+		"claude --dangerously-skip-permissions -p x",
+		"codex --dangerously-bypass-approvals-and-sandbox exec x",
+		"codex exec --full-auto x",
+		"/usr/local/bin/gemini --yolo",
+		"env X=1 qwen.cmd --yolo",
+		"C:/tools/cursor-agent.exe --force",
+	} {
+		target := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"`+command+`"}]}]}}`)
+		f := CFG029.Check(target)
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("%s: expected one Error, got %+v", command, f)
+		}
+	}
+}
+
+func TestCFG029_AgentBypassFlagInNonLaunchInputIsWarn(t *testing.T) {
+	target := &Target{
+		CodexHooksFile: ".codex/hooks.json",
+		CodexHooks: &parser.CodexHooks{Events: map[string][]parser.CodexMatcherGroup{
+			"PreToolUse": {{
+				Hooks: []parser.CodexHookHandler{{
+					Type: "mcp_tool", Server: "shell", Tool: "run",
+					Input: map[string]any{"command": "codex --full-auto exec x"},
+				}},
+			}},
+		}},
+	}
+	f := CFG029.Check(target)
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected one Warn for non-launch tool input, got %+v", f)
+	}
+}
+
+func TestCFG029_AgentFlagsNeedMatchingCLI(t *testing.T) {
+	for _, command := range []string{
+		"echo --yolo",
+		"node wrapper.js codex mcp-server",
+		"node wrapper.js codex --full-auto",
+		"claude --version",
+		"codex exec x",
+		"other --force",
+	} {
+		target := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"`+command+`"}]}]}}`)
+		if f := CFG029.Check(target); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %+v", command, f)
 		}
 	}
 }
