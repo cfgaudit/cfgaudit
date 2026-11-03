@@ -5,6 +5,7 @@ package rules
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -173,7 +174,7 @@ func isShellAssignment(word string) bool {
 		return false
 	}
 	for i, r := range name {
-		if !(r == '_' || unicode.IsLetter(r) || i > 0 && unicode.IsDigit(r)) {
+		if r != '_' && !unicode.IsLetter(r) && (i == 0 || !unicode.IsDigit(r)) {
 			return false
 		}
 	}
@@ -185,7 +186,7 @@ func isShellAssignment(word string) bool {
 func permissionWords(inner string) []string {
 	var b strings.Builder
 	for i := 0; i < len(inner); i++ {
-		if inner[i] == ':' && !(i == 1 && i+1 < len(inner) && (inner[i+1] == '/' || inner[i+1] == '\\')) {
+		if inner[i] == ':' && (i != 1 || i+1 >= len(inner) || (inner[i+1] != '/' && inner[i+1] != '\\')) {
 			b.WriteByte(' ')
 		} else {
 			b.WriteByte(inner[i])
@@ -236,15 +237,7 @@ func agentCLIReadOnly(agent string, args []string) bool {
 }
 
 func equalWords(got []string, want ...string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
+	return slices.Equal(got, want)
 }
 
 func agentBypass(inv agentInvocation) (string, bool) {
