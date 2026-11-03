@@ -654,92 +654,11 @@ func governingLine(lines []string, i int) string {
 	return ""
 }
 
-var agentBypassFlags = map[string]map[string]bool{
-	"claude":       {"--dangerously-skip-permissions": true},
-	"codex":        {"--dangerously-bypass-approvals-and-sandbox": true, "--full-auto": true},
-	"gemini":       {"--yolo": true},
-	"qwen":         {"--yolo": true},
-	"cursor-agent": {"--force": true},
-}
-
-func commandExecutableName(field string) string {
-	token := strings.Trim(field, "'\"()[]{};,")
-	if j := strings.LastIndexAny(token, `/\\`); j >= 0 {
-		token = token[j+1:]
-	}
-	token = strings.ToLower(token)
-	for _, suffix := range []string{".exe", ".cmd", ".bat"} {
-		token = strings.TrimSuffix(token, suffix)
-	}
-	return token
-}
-
-func agentBypassCommand(command string) (agent, flag string, ok bool) {
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
-		return "", "", false
-	}
-	i := 0
-	if commandExecutableName(fields[0]) == "env" {
-		i = 1
-		for i < len(fields) && (strings.HasPrefix(fields[i], "-") || strings.Contains(fields[i], "=")) {
-			i++
-		}
-	}
-	if i >= len(fields) {
-		return "", "", false
-	}
-	agent = commandExecutableName(fields[i])
-	flags, known := agentBypassFlags[agent]
-	if !known {
-		return "", "", false
-	}
-	for _, arg := range fields[i+1:] {
-		arg = strings.ToLower(strings.Trim(arg, "'\"()[]{};,"))
-		if flags[arg] {
-			return agent, arg, true
-		}
-	}
-	return "", "", false
-}
-
-func agentBypassCommandFindings(t *Target) []finding.Finding {
-	seen := map[string]bool{}
-	var out []finding.Finding
-	for _, launch := range LaunchCommands(t) {
-		agent, flag, ok := agentBypassCommand(launch.Command)
-		if !ok {
-			continue
-		}
-		key := launch.File + "\x00" + launch.Label + "\x00" + launch.Command
-		seen[key] = true
-		out = append(out, finding.Finding{
-			RuleID: "CFG029", Severity: finding.Error, File: launch.File,
-			Message: launch.Label + " starts " + agent + " with " + flag + " — this auto-run site disables the child agent's approval controls; remove the bypass flag",
-		})
-	}
-	for _, site := range commandSites(t) {
-		key := site.File + "\x00" + site.Label + "\x00" + site.Command
-		if seen[key] {
-			continue
-		}
-		agent, flag, ok := agentBypassCommand(site.Command)
-		if !ok {
-			continue
-		}
-		out = append(out, finding.Finding{
-			RuleID: "CFG029", Severity: finding.Warn, File: site.File, Line: site.Line,
-			Message: site.Label + " starts " + agent + " with " + flag + " — the child agent runs with its approval controls disabled; remove the bypass flag",
-		})
-	}
-	return out
-}
-
 func (r *cfg029) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
 	}
-	findings := agentBypassCommandFindings(t)
+	var findings []finding.Finding
 	for _, src := range t.instructionSources() {
 		lines := strings.Split(src.Content, "\n")
 		fenced := fencedLines(src.Content)

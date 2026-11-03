@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
-	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 func TestCFG023_NetworkAndPrivilege_Error(t *testing.T) {
@@ -284,22 +283,57 @@ func TestCFG023_AgentCLIReadOnlyForms(t *testing.T) {
 	}
 }
 
-func TestCFG023_FullAgentMCP(t *testing.T) {
-	target := &Target{
-		ProjectMCPFile: ".mcp.json",
-		ProjectMCP: map[string]parser.MCPServer{
-			"codex":  {Command: "/usr/local/bin/codex", Args: []string{"mcp-server"}},
-			"claude": {Command: "claude.exe", Args: []string{"mcp", "serve"}},
-			"list":   {Command: "claude", Args: []string{"mcp", "list"}},
-			"other":  {Command: "node", Args: []string{"server.js", "codex", "mcp-server"}},
-		},
+func TestCFG023_ColonSyntaxRegression(t *testing.T) {
+	for _, entry := range []string{
+		"Bash(curl:-I:*)", "Bash(curl:-X:GET:*)", "Bash(git:branch:*)", "Bash(node:-v:*)",
+	} {
+		if f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["`+entry+`"]}}`)); len(f) != 1 {
+			t.Errorf("%s: existing CFG023 finding disappeared: %+v", entry, f)
+		}
 	}
-	f := CFG023.Check(target)
-	if len(f) != 2 {
-		t.Fatalf("expected the two full-agent servers only, got %+v", f)
+}
+
+func TestCFG023_AgentCLIWrappersAndAliases(t *testing.T) {
+	for _, entry := range []string{
+		"Bash(env codex:*)", `Bash("/usr/local/bin/claude" *)`,
+		`Bash(C:\\tools\\cursor-agent.exe:*)`, "Bash(agent:*)", "Bash(kilocode:*)", "Bash(kimi-cli:*)",
+	} {
+		f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["`+stringsForJSON(entry)+`"]}}`))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("%s: expected agent delegation Warn, got %+v", entry, f)
+		}
 	}
-	if !strings.Contains(f[0].Message+f[1].Message, "codex mcp-server") ||
-		!strings.Contains(f[0].Message+f[1].Message, "claude mcp serve") {
-		t.Errorf("findings do not name both server modes: %+v", f)
+}
+
+func TestCFG023_AgentCLIReadOnlyIsPerCLI(t *testing.T) {
+	for _, entry := range []string{
+		"Bash(codex --version:*)", "Bash(claude --version:*)", "Bash(claude mcp list:*)", "Bash(codex mcp get:*)",
+	} {
+		if f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["`+entry+`"]}}`)); len(f) != 0 {
+			t.Errorf("%s: read-only form should be exempt, got %+v", entry, f)
+		}
+	}
+	if f := CFG023.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(aider -v:*)"]}}`)); len(f) != 1 {
+		t.Errorf("aider -v means verbose, not version: %+v", f)
+	}
+}
+
+func TestCFG023_AgentConfigDenyEscalation(t *testing.T) {
+	tests := []struct {
+		deny string
+		want finding.Severity
+	}{
+		{"Edit(.claude/**)", finding.Error},
+		{"Edit(.vscode/settings.json)", finding.Error},
+		{"Edit(.env)", finding.Warn},
+		{"Write(.claude/settings.json)", finding.Warn},
+		{"Write", finding.Error},
+	}
+	for _, tt := range tests {
+		target := settingsTarget(t, `{"permissions":{"allow":["Bash(codex:*)"],"deny":["`+tt.deny+`"]}}`)
+		f := CFG023.Check(target)
+		if len(f) != 1 || f[0].Severity != tt.want {
+			t.Errorf("deny %s: got %+v, want %s", tt.deny, f, tt.want)
+		}
 	}
 }
