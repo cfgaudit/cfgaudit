@@ -47,8 +47,10 @@ jobs:
           set -euo pipefail
 
           report="$RUNNER_TEMP/advisories.md"
+          # Not go run: it exits 1 for any failure, and exit 2 means no finding.
+          go build -o "$RUNNER_TEMP/advisorycheck" ./cmd/advisorycheck
           rc=0
-          go run ./cmd/advisorycheck > "$report" || rc=$?
+          "$RUNNER_TEMP/advisorycheck" > "$report" || rc=$?
           cat "$report"
           cat "$report" >> "$GITHUB_STEP_SUMMARY"
 
