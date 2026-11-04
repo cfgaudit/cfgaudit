@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -57,17 +59,41 @@ func TestScSeverity(t *testing.T) {
 	}
 }
 
-func TestCFG045_HappyPath(t *testing.T) {
-	if !ShellcheckAvailable() {
-		t.Skip("shellcheck binary not installed")
+// requireShellcheckEnv names the ShellCheck version a test run must use. When
+// it is set, the tests against the real binary fail where they would otherwise
+// skip, so a missing binary cannot pass as green (#1445).
+const requireShellcheckEnv = "CFGAUDIT_REQUIRE_SHELLCHECK"
+
+// needRealShellcheck skips a test when no shellcheck is installed, unless
+// requireShellcheckEnv is set. Then the test fails unless shellcheck starts and
+// is the named version.
+func needRealShellcheck(t *testing.T) {
+	t.Helper()
+	want := os.Getenv(requireShellcheckEnv)
+	if want == "" {
+		if !ShellcheckAvailable() {
+			t.Skip("shellcheck binary not installed")
+		}
+		return
 	}
+	out, err := exec.Command("shellcheck", "--version").Output()
+	if err != nil {
+		t.Fatalf("%s=%s, but shellcheck did not run: %v", requireShellcheckEnv, want, err)
+	}
+	if !regexp.MustCompile(`(?m)^version: ` + regexp.QuoteMeta(want) + `$`).Match(out) {
+		t.Fatalf("%s=%s, but shellcheck reports:\n%s", requireShellcheckEnv, want, out)
+	}
+}
+
+func TestCFG045_HappyPath(t *testing.T) {
+	needRealShellcheck(t)
 	tg := settingsTarget(t, `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"rm $FILE"}]}]}}`)
 	tg.ShellCheck = true
 	f, err := checkCFG045(t, tg)
 	// This test checks the findings, not the runner's speed: a real shellcheck
 	// that times out on a busy runner is covered by the stub in
 	// TestCFG045_ShellcheckTimeout (#1234).
-	if err != nil && strings.Contains(err.Error(), "did not finish within") {
+	if err != nil && strings.Contains(err.Error(), "did not finish within") && os.Getenv(requireShellcheckEnv) == "" {
 		t.Skipf("shellcheck on this machine: %v", err)
 	}
 	if len(f) == 0 {
@@ -273,9 +299,7 @@ func TestShellcheckArgs(t *testing.T) {
 // An excluded code is not reported, and the remaining ones still are: `rm $FILE`
 // draws SC2086, `cd /tmp` without a fallback draws SC2164.
 func TestCFG045_ExcludedCodeNotReported(t *testing.T) {
-	if !ShellcheckAvailable() {
-		t.Skip("shellcheck binary not installed")
-	}
+	needRealShellcheck(t)
 	tg := settingsTarget(t, `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"cd /tmp; rm $FILE"}]}]}}`)
 	tg.ShellCheck = true
 	codes := func() string {
@@ -287,7 +311,7 @@ func TestCFG045_ExcludedCodeNotReported(t *testing.T) {
 	}
 	before := codes()
 	if !strings.Contains(before, "SC2086") || !strings.Contains(before, "SC2164") {
-		t.Fatalf("fixture no longer draws SC2086 and SC2164:\n%s", before)
+		t.Fatalf("fixture no longer draws SC2086 and SC2164 (shellcheck failure: %v):\n%s", ShellcheckError(), before)
 	}
 	tg.ShellCheckExclude = []string{"SC2086"}
 	after := codes()

@@ -21,6 +21,7 @@ Whether cfgaudit reports the right findings, and only those.
 | Layer | Protects against | Runs |
 |---|---|---|
 | Rule unit tests (`rules/cfgNNN_test.go`) | wrong findings, severities or messages; missed edge cases; findings where the rule must stay silent | every pull request |
+| CFG045 against a real ShellCheck (`rules/cfg045_test.go`): `go test` skips these tests when ShellCheck is missing. To require them, name the version: `CFGAUDIT_REQUIRE_SHELLCHECK=0.11.0 go test -count=1 -v -run '^TestCFG045' ./rules`. The tests then fail if ShellCheck is absent, cannot start, is another version, times out or reports something unexpected. The tests with a fake binary need no ShellCheck | a ShellCheck release that changes the JSON report or the codes CFG045 relies on | on demand |
 | CLI tests through `run()` (`cmd/cfgaudit/run_test.go` and neighbors) | wrong exit codes, flags that are ignored or conflict, discovery and output format mistakes | every pull request |
 | Consistency tests (`rules/consistency_test.go`) | a rule without a docs page, a row in the rule index (`docs/rules/README.md`) or OWASP mapping; severities or OWASP categories that differ between code, docs page and rule index; a rule index section the README overview does not link; mapping tables that name rules that do not exist | every pull request |
 | Doc trigger examples (`cmd/cfgaudit/triggerexamples_test.go`) | a rule change that leaves the example in its docs page behind, so the docs show a case the rule no longer reports | every pull request |
