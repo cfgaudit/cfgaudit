@@ -218,10 +218,10 @@ func TestFetch_CancelledWhileWaiting(t *testing.T) {
 
 func TestGet_Failures(t *testing.T) {
 	c := &checker{client: http.DefaultClient, ghBase: "http://127.0.0.1:1/"}
-	if _, err := c.get(context.Background(), "http://127.0.0.1:1/x", nil); err == nil {
+	if _, err := c.get(context.Background(), "http://127.0.0.1:1/x", nil, true); err == nil {
 		t.Error("no error from a closed port")
 	}
-	if _, err := c.get(context.Background(), "://bad", nil); err == nil {
+	if _, err := c.get(context.Background(), "://bad", nil, true); err == nil {
 		t.Error("no error from a bad URL")
 	}
 }
@@ -244,5 +244,27 @@ func TestGet_TokenOnlyForGitHub(t *testing.T) {
 	c.check(context.Background(), target{id: "GHSA-aaaa-bbbb-cccc"})
 	if got := auth.Load(); got != "Bearer token" {
 		t.Errorf("GitHub got %q", got)
+	}
+}
+
+// A token the organisation refuses must not cost the lookup: the advisory is
+// public. A 403 without the token is a failure like any other.
+func TestFetch_ForbiddenTokenFallsBack(t *testing.T) {
+	refuseAnonymous := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" || refuseAnonymous {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte(`{"state":"published"}`))
+	}))
+	defer srv.Close()
+	c := fastChecker(t, srv)
+	if r := c.check(context.Background(), target{id: "GHSA-aaaa-bbbb-cccc", repo: "owner/name"}); r.state != stateValid {
+		t.Errorf("fallback: %+v", r)
+	}
+	refuseAnonymous = true
+	if r := c.check(context.Background(), target{id: "GHSA-aaaa-bbbb-cccc", repo: "owner/name"}); r.state != stateNotKnown {
+		t.Errorf("refused both ways: %+v", r)
 	}
 }

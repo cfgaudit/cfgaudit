@@ -206,7 +206,12 @@ func (c *checker) fetch(ctx context.Context, id, target string, out any) (result
 			}
 		}
 		var status int
-		status, err = c.get(ctx, target, out)
+		status, err = c.get(ctx, target, out, true)
+		// Some organisations refuse the workflow's token. Their published
+		// advisories are public, so ask again without it.
+		if status == http.StatusForbidden && c.ghToken != "" {
+			status, err = c.get(ctx, target, out, false)
+		}
 		if status == http.StatusNotFound {
 			return result{id: id, state: stateUnknown, detail: "not found"}, true
 		}
@@ -217,14 +222,14 @@ func (c *checker) fetch(ctx context.Context, id, target string, out any) (result
 	return result{id: id, state: stateNotKnown, detail: err.Error()}, true
 }
 
-func (c *checker) get(ctx context.Context, target string, out any) (int, error) {
+func (c *checker) get(ctx context.Context, target string, out any, useToken bool) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("User-Agent", "cfgaudit-advisory-check")
 	req.Header.Set("Accept", "application/json")
-	if c.ghToken != "" && strings.HasPrefix(target, c.ghBase) {
+	if useToken && c.ghToken != "" && strings.HasPrefix(target, c.ghBase) {
 		req.Header.Set("Authorization", "Bearer "+c.ghToken)
 	}
 	resp, err := c.client.Do(req) // #nosec G704 -- base URLs are flags of the workflow
