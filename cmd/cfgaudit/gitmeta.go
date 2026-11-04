@@ -5,10 +5,12 @@ package main
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/gitindex"
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"github.com/cfgaudit/cfgaudit/rules"
 )
@@ -27,7 +29,8 @@ const maxGitWalkDepth = 8
 // directories that look like a bare git repository (#994): HEAD and config
 // files next to objects/ and refs/ directories. An agent that runs git
 // inside such a directory, or lets git discover it, runs what its config
-// names. Nothing is executed here.
+// names. Nothing is executed here. The same walk records symbolic links that
+// leave the repository, for CFG115 (#1417).
 func gitTargets(dir string) []*rules.Target {
 	t := &rules.Target{Scope: finding.ScopeProject}
 	path := filepath.Join(dir, ".gitmodules")
@@ -35,6 +38,7 @@ func gitTargets(dir string) []*rules.Target {
 		t.GitModules, t.GitModulesFile = string(data), path
 	}
 	root := filepath.Clean(dir)
+	tracked, haveIndex := gitindex.Tracked(dir)
 	_ = scanroot.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -44,6 +48,10 @@ func gitTargets(dir string) []*rules.Target {
 			if p != root && (gitWalkSkip[d.Name()] || strings.Count(rel, string(filepath.Separator)) >= maxGitWalkDepth) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			recordLeavingLink(root, p, tracked, haveIndex)
 			return nil
 		}
 		if d.Name() != "HEAD" {
@@ -67,4 +75,21 @@ func gitTargets(dir string) []*rules.Target {
 		return nil
 	}
 	return []*rules.Target{t}
+}
+
+// recordLeavingLink records the symbolic link at p when its text leaves the
+// repository. With a git index only a committed link counts: a local .direnv or
+// build output link is nobody else's problem. Without one, as in an unpacked
+// download, every link does.
+func recordLeavingLink(root, p string, tracked map[string]bool, haveIndex bool) {
+	if haveIndex {
+		rel, err := filepath.Rel(root, p)
+		if err != nil || !tracked[filepath.ToSlash(rel)] {
+			return
+		}
+	}
+	link, err := os.Readlink(p) // the text only; the target is never opened
+	if err == nil && scanroot.LinkLeaves(p, link) {
+		scanroot.RecordLink(p, link)
+	}
 }

@@ -784,12 +784,26 @@ func runRules(targets []*rules.Target, detected *version.Version, accept func(ru
 // escapedLinkTargets turns the symlinks scanroot refused to follow into one
 // target each, so CFG115 reports them and every other rule ignores them.
 func escapedLinkTargets() []*rules.Target {
+	escapes := scanroot.Escapes()
+	covered := map[string]bool{}
+	for _, e := range escapes {
+		// A file read through a linked directory already names the link.
+		if !e.Walked {
+			for d := filepath.Dir(e.Path); d != filepath.Dir(d) && !covered[d]; d = filepath.Dir(d) {
+				covered[d] = true
+			}
+		}
+	}
 	var out []*rules.Target
-	for _, e := range scanroot.Escapes() {
+	for _, e := range escapes {
+		if e.Walked && covered[e.Path] {
+			continue
+		}
 		out = append(out, &rules.Target{
 			Scope:         finding.ScopeProject,
 			EscapedLink:   e.Path,
 			EscapedTarget: e.Link,
+			EscapedWalked: e.Walked,
 		})
 	}
 	return out

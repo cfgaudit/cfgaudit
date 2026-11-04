@@ -353,3 +353,46 @@ func TestDanglingLinksBeforeSet(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLinkLeaves(t *testing.T) {
+	if got := LinkLeaves("/x/y", "../z"); got {
+		t.Error("no root set, no answer")
+	}
+	dir := t.TempDir()
+	if err := Set(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = Set("") }()
+	link := filepath.Join(dir, "sub", "link")
+	for target, want := range map[string]bool{
+		"a":                     false,
+		"../a":                  false,
+		"../../a":               true,
+		"~/.ssh/id":             true,
+		"~":                     true,
+		"/opt/a":                true,
+		`C:\tools\a`:            true,
+		"C:/tools/a":            true,
+		`\\host\share`:          true,
+		filepath.Join(dir, "a"): false,
+	} {
+		if got := LinkLeaves(link, target); got != want {
+			t.Errorf("LinkLeaves(%q) = %v, want %v", target, got, want)
+		}
+	}
+}
+
+func TestRecordLink(t *testing.T) {
+	dir := t.TempDir()
+	if err := Set(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = Set("") }()
+	path := filepath.Join(dir, "link")
+	RecordLink(path, "/opt/a")
+	RecordLink(path, "/opt/a")
+	got := Escapes()
+	if len(got) != 1 || !got[0].Walked || got[0].Link != "/opt/a" {
+		t.Errorf("got %+v", got)
+	}
+}

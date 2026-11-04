@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -337,6 +338,27 @@ func parseTxtar(s string) map[string]string {
 	return files
 }
 
+// writeAdvisoryFile writes one fixture file. A name "path -> target" is a
+// symbolic link, which a txtar file has no form of its own for.
+func writeAdvisoryFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	link, target, isLink := strings.Cut(name, " -> ")
+	if !isLink {
+		mustWrite(t, filepath.Join(dir, filepath.FromSlash(name)), content)
+		return
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("needs symlinks")
+	}
+	path := filepath.Join(dir, filepath.FromSlash(link))
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestParseTxtar(t *testing.T) {
 	got := parseTxtar("comment\n-- a/b.json --\n{}\n-- empty --\n-- c --\n1\n2\n")
 	want := map[string]string{"a/b.json": "{}\n", "empty": "", "c": "1\n2\n"}
@@ -374,7 +396,7 @@ func TestAdvisories_Fixtures(t *testing.T) {
 				t.Fatal("fixture has no files")
 			}
 			for name, content := range files {
-				mustWrite(t, filepath.Join(dir, filepath.FromSlash(name)), content)
+				writeAdvisoryFile(t, dir, name, content)
 			}
 			got := map[advisoryRule]bool{}
 			for _, f := range scanFindings(t, "--claude-version", advisoryClaudeVersion, dir) {
