@@ -60,6 +60,7 @@ jobs:
           pkgs="./rules ./cmd/cfgaudit"
           has_ref=0
           [[ -f ref/cmd/cfgaudit/bench_test.go ]] && has_ref=1
+          # shellcheck disable=SC2086 # $pkgs lists two packages and is split on purpose
           for _ in 1 2 3 4 5; do
             (cd head && go test -run '^$' -bench . -benchmem -benchtime 10x -count 2 $pkgs) >> "$RUNNER_TEMP/head.txt"
             if [[ $has_ref == 1 ]]; then

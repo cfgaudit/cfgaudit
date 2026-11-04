@@ -20,6 +20,7 @@ set -eu
 VERSION="1.20.0"
 REPO="cfgaudit/cfgaudit"
 
+# shellcheck disable=SC1007 # the empty assignment clears CDPATH for this cd
 self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # 1) a real cfgaudit elsewhere on PATH (skip this wrapper's own directory to
@@ -33,6 +34,7 @@ for d in $PATH; do
 done
 unset IFS
 
+# shellcheck disable=SC2018,SC2019 # uname prints ASCII, and [:upper:] follows the locale
 os=$(uname -s | tr 'A-Z' 'a-z')
 arch=$(uname -m)
 case "$arch" in

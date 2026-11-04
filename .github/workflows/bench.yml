@@ -46,6 +46,7 @@ jobs:
           pkgs="./rules ./cmd/cfgaudit"
           has_base=0
           [[ -f base/cmd/cfgaudit/bench_test.go ]] && has_base=1
+          # shellcheck disable=SC2086 # $pkgs lists two packages and is split on purpose
           for _ in 1 2 3 4 5; do
             if [[ $has_base == 1 ]]; then
               (cd base && go test -run '^$' -bench . -benchmem -benchtime 10x -count 2 $pkgs) >> "$RUNNER_TEMP/base.txt"
@@ -65,6 +66,7 @@ jobs:
             echo "## Benchmarks"
             echo
             echo "Runner CPU: ${cpu:-unknown}."
+            # shellcheck disable=SC2016 # the backticks are Markdown
             echo 'Time varies between runners; `allocs/op` and `B/op` barely do. The job fails only on an allocation regression.'
             echo
             echo '```'

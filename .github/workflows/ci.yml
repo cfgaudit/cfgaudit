@@ -222,6 +222,16 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      # Both are installed from their releases and checked against these
+      # digests, as pinact is below. They run in this job because Lint is a
+      # required check. The digests are the release assets' sha256 for
+      # linux_amd64 and linux.x86_64.tar.xz. Bump version and digest together,
+      # after the 7-day cooldown.
+      ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+      SHELLCHECK_VERSION: "0.11.0"
+      SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -233,6 +243,37 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
+      - name: Install actionlint and ShellCheck
+        run: |
+          set -euo pipefail
+          actionlint=actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz
+          shellcheck=shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz
+          curl -sSfLo "$RUNNER_TEMP/$actionlint" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$actionlint"
+          curl -sSfLo "$RUNNER_TEMP/$shellcheck" \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/$shellcheck"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$actionlint" | sha256sum -c -
+          echo "$SHELLCHECK_SHA256  $RUNNER_TEMP/$shellcheck" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/lint-tools"
+          tar -xzf "$RUNNER_TEMP/$actionlint" -C "$RUNNER_TEMP/lint-tools" actionlint
+          tar -xJf "$RUNNER_TEMP/$shellcheck" -C "$RUNNER_TEMP/lint-tools" --strip-components=1 \
+            "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          "$RUNNER_TEMP/lint-tools/actionlint" --version
+          "$RUNNER_TEMP/lint-tools/shellcheck" --version
+      # The runner image ships its own ShellCheck; the prepended directory and
+      # the -shellcheck flag make sure the pinned one runs. actionlint hands it
+      # every bash run block in the workflows, which the script below cannot
+      # reach (#1446).
+      - name: Lint shell scripts
+        run: PATH="$RUNNER_TEMP/lint-tools:$PATH" .github/scripts/lint-shell.sh
+      # -ignore: actionlint 1.7.12 rejects `uses: $/`, the runner's reference to
+      # the commit under test (#693). Drop it once a release accepts that form.
+      # It is here on the command line, so it is reviewed like the workflow.
+      - name: Lint workflows
+        run: |
+          "$RUNNER_TEMP/lint-tools/actionlint" -pyflakes= \
+            -shellcheck="$RUNNER_TEMP/lint-tools/shellcheck" \
+            -ignore '(action|reusable workflow call) "\$/'
 
   deadcode:
     name: Dead code
@@ -373,6 +414,7 @@ jobs:
           set -euo pipefail
           proj=$(mktemp -d)
           mkdir -p "$proj/.claude"
+          # shellcheck disable=SC2016 # $FILE is the unquoted hook input CFG045 must report
           printf '%s\n' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"rm $FILE"}]}]}}' \
             > "$proj/.claude/settings.json"
           chmod -R a+rX "$proj" # the image runs as uid 65532

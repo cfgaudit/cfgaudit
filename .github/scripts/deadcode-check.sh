@@ -22,12 +22,12 @@ stale=$(comm -13 <(printf '%s\n' "$reported" | sed '/^$/d') <(printf '%s\n' "$al
 status=0
 if [ -n "$new" ]; then
   echo "Unreachable from cmd/cfgaudit; remove them, or list them in $allow with a reason:"
-  printf '  %s\n' $new
+  printf '%s\n' "$new" | sed 's/^/  /'
   status=1
 fi
 if [ -n "$stale" ]; then
   echo "Listed in $allow but no longer reported; remove the entries:"
-  printf '  %s\n' $stale
+  printf '%s\n' "$stale" | sed 's/^/  /'
   status=1
 fi
 [ "$status" -eq 0 ] && echo "deadcode: nothing unreachable outside $allow"
