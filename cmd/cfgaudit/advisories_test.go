@@ -36,6 +36,7 @@ type advisoryStep struct {
 type advisory struct {
 	ID       string         `yaml:"id"`
 	Aliases  []string       `yaml:"aliases"`
+	Repo     string         `yaml:"repo"`
 	Kind     string         `yaml:"kind"`
 	Agent    string         `yaml:"agent"`
 	Fixed    string         `yaml:"fixed"`
@@ -51,6 +52,9 @@ type advisory struct {
 
 // advisoryIDRe matches the ids a rule doc can cite.
 var advisoryIDRe = regexp.MustCompile(`CVE-\d{4}-\d{4,}|GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}`)
+
+// advisoryRepoRe is the owner/name form of the repo key.
+var advisoryRepoRe = regexp.MustCompile(`^[\w.-]+/[\w.-]+$`)
 
 const (
 	advisoriesFile = "../../docs/advisories.yml"
@@ -111,6 +115,9 @@ func checkAdvisory(a advisory, known map[string]bool) []string {
 		if advisoryIDRe.FindString(alias) != alias {
 			report("alias " + alias + " is not a CVE or GHSA id")
 		}
+	}
+	if a.Repo != "" && (!advisoryRepoRe.MatchString(a.Repo) || !advisoryHasGHSA(a)) {
+		report("repo must be owner/name, on an entry with a GHSA")
 	}
 	if n := len([]rune(a.Summary)); n > advisorySummax {
 		report("summary is too long for the website")
@@ -191,6 +198,13 @@ func checkAdvisoryReason(reason string, issue int, note string) []string {
 	return nil
 }
 
+// advisoryHasGHSA reports whether the entry has a GHSA, as id or alias.
+func advisoryHasGHSA(a advisory) bool {
+	return slices.ContainsFunc(append([]string{a.ID}, a.Aliases...), func(id string) bool {
+		return strings.HasPrefix(id, "GHSA-")
+	})
+}
+
 // advisoryRuleIDs is the set of rules an entry claims to fire or cite.
 func advisoryRuleIDs(a advisory) map[string]bool {
 	out := map[string]bool{}
@@ -252,6 +266,8 @@ func TestAdvisories_StructureCheck(t *testing.T) {
 		"kind":           func(a *advisory) { a.Kind = "bug" },
 		"bad id":         func(a *advisory) { a.ID = "CVE-1" },
 		"bad alias":      func(a *advisory) { a.Aliases = []string{"nope"} },
+		"repo form":      func(a *advisory) { a.Repo = "nope" },
+		"repo no ghsa":   func(a *advisory) { a.Repo = "owner/name" },
 		"coverage":       func(a *advisory) { a.Coverage = "most" },
 		"full no rules":  func(a *advisory) { a.Rules = nil },
 		"full reason":    func(a *advisory) { a.Reason = "not-static"; a.Note = "n." },

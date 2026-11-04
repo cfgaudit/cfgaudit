@@ -11,6 +11,8 @@
 # Keys:
 #   id        CVE, GHSA or campaign name. Entries are sorted by id, campaigns last.
 #   aliases   other ids of the same advisory
+#   repo      owner/name of the repository that publishes the GHSA, when it is
+#             not in the GitHub Advisory Database
 #   kind      cve (also for a GHSA) or campaign
 #   agent     the affected product
 #   fixed     the first fixed version, when there is one
@@ -53,6 +55,7 @@
 
 - id: "CVE-2025-53098"
   aliases: [GHSA-5x8h-m52g-5v54]
+  repo: RooCodeInc/Roo-Code
   kind: cve
   agent: "Roo Code"
   fixed: "3.20.3"
@@ -65,6 +68,7 @@
 
 - id: "CVE-2025-53536"
   aliases: [GHSA-3765-5vjr-qjgm]
+  repo: RooCodeInc/Roo-Code
   kind: cve
   agent: "Roo Code"
   fixed: "3.22.6"
@@ -85,6 +89,7 @@
 
 - id: "CVE-2025-54130"
   aliases: [GHSA-vqv7-vq92-x87f]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "1.3.9"
@@ -95,6 +100,7 @@
 
 - id: "CVE-2025-54135"
   aliases: [GHSA-4cxx-hrm3-49rm]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "1.3.9"
@@ -108,6 +114,7 @@
 
 - id: "CVE-2025-54136"
   aliases: [GHSA-24mc-g4xr-4395]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "1.3"
@@ -120,6 +127,7 @@
 
 - id: "CVE-2025-55012"
   aliases: [GHSA-x34m-39xw-g2wr]
+  repo: zed-industries/zed
   kind: cve
   agent: "Zed"
   fixed: "0.197.3"
@@ -139,6 +147,7 @@
 
 - id: "CVE-2025-58372"
   aliases: [GHSA-4pqh-4ggm-jfmm]
+  repo: RooCodeInc/Roo-Code
   kind: cve
   agent: "Roo Code"
   fixed: "3.26.0"
@@ -149,6 +158,7 @@
 
 - id: "CVE-2025-58373"
   aliases: [GHSA-p76r-7mc3-qh7c]
+  repo: RooCodeInc/Roo-Code
   kind: cve
   agent: "Roo Code"
   fixed: "3.26.0"
@@ -181,6 +191,7 @@
 
 - id: "CVE-2025-59944"
   aliases: [GHSA-xcwh-rrwj-gxc7]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "1.7"
@@ -203,6 +214,7 @@
 
 - id: "CVE-2025-61590"
   aliases: [GHSA-xg6w-rmh5-r77r]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "1.7"
@@ -213,6 +225,7 @@
 
 - id: "CVE-2025-61592"
   aliases: [GHSA-v64q-396f-7m79]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "2025.09.17-25b418f"
@@ -223,6 +236,7 @@
 
 - id: "CVE-2025-61593"
   aliases: [GHSA-x2vq-h6v6-jhc6]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "2025.09.17-25b418f"
@@ -235,6 +249,7 @@
 
 - id: "CVE-2025-64109"
   aliases: [GHSA-4hwr-97q3-37w2]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "2025.09.17-25b418f"
@@ -266,6 +281,7 @@
 
 - id: "CVE-2025-68432"
   aliases: [GHSA-29cp-2hmh-hcxj]
+  repo: zed-industries/zed
   kind: cve
   agent: "Zed"
   fixed: "0.218.2-pre"
@@ -278,6 +294,7 @@
 
 - id: "CVE-2025-68433"
   aliases: [GHSA-cv6g-cmxc-vw8j]
+  repo: zed-industries/zed
   kind: cve
   agent: "Zed"
   fixed: "0.218.2-pre"
@@ -305,6 +322,7 @@
 
 - id: "CVE-2026-102231"
   aliases: [GHSA-m8rw-hr26-pw53]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.141.1"
@@ -315,6 +333,7 @@
 
 - id: "CVE-2026-102232"
   aliases: [GHSA-fq62-m6f5-c7h9]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.141.1"
@@ -325,6 +344,7 @@
 
 - id: "CVE-2026-102234"
   aliases: [GHSA-vmmp-977m-xvwx]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.141.1"
@@ -336,6 +356,7 @@
 
 - id: "CVE-2026-102851"
   aliases: [GHSA-qghm-w43w-vx8v]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.141.1"
@@ -406,6 +427,7 @@
 
 - id: "CVE-2026-21518"
   aliases: [GHSA-6xq8-9qf3-p6qv]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.109.1"
@@ -418,6 +440,7 @@
 
 - id: "CVE-2026-21523"
   aliases: [GHSA-3pwg-f3hj-wp8p]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.109.1"
@@ -439,6 +462,7 @@
 
 - id: "CVE-2026-27967"
   aliases: [GHSA-786m-x2vc-5235]
+  repo: zed-industries/zed
   kind: cve
   agent: "Zed"
   fixed: "0.225.9"
@@ -511,6 +535,7 @@
 
 - id: "CVE-2026-44461"
   aliases: [GHSA-63qj-jc2q-7hg5]
+  repo: zed-industries/zed
   kind: cve
   agent: "Zed"
   fixed: "0.227.1"
@@ -521,6 +546,7 @@
 
 - id: "CVE-2026-44465"
   aliases: [GHSA-fj2r-rmw6-h222]
+  repo: zed-industries/zed
   kind: cve
   agent: "Zed"
   fixed: "0.227.1"
@@ -558,6 +584,7 @@
 
 - id: "CVE-2026-47281"
   aliases: [GHSA-5j3g-c7qg-xfvx]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.123.1"
@@ -568,6 +595,7 @@
 
 - id: "CVE-2026-47282"
   aliases: [GHSA-wr9x-42j2-jvh3]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.128.1"
@@ -578,6 +606,7 @@
 
 - id: "CVE-2026-47284"
   aliases: [GHSA-qcxw-jfff-cxpc]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.123.1"
@@ -597,6 +626,7 @@
 
 - id: "CVE-2026-48124"
   aliases: [GHSA-pc9j-3qc2-95wv]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "3.0.0"
@@ -625,6 +655,7 @@
 
 - id: "CVE-2026-58650"
   aliases: [GHSA-h6v9-3cqc-v234]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.132.1"
@@ -645,6 +676,7 @@
 
 - id: "CVE-2026-69370"
   aliases: [GHSA-xf67-g42g-pg73]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.141.1"
@@ -657,6 +689,7 @@
 
 - id: "CVE-2026-70334"
   aliases: [GHSA-q2f8-hh8x-wpc2]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.136.2"
@@ -667,6 +700,7 @@
 
 - id: "CVE-2026-70335"
   aliases: [GHSA-w79w-rj9h-vg4f]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.132.1"
@@ -677,6 +711,7 @@
 
 - id: "CVE-2026-72718"
   aliases: [GHSA-r5pp-p5r8-466r]
+  repo: block/goose
   kind: cve
   agent: "goose"
   fixed: "1.44.0"
@@ -687,6 +722,7 @@
 
 - id: "CVE-2026-73217"
   aliases: [GHSA-p9g2-cr55-cw9c]
+  repo: cursor/cursor
   kind: cve
   agent: "Cursor"
   fixed: "3.1.2"
@@ -697,6 +733,7 @@
 
 - id: "CVE-2026-78462"
   aliases: [GHSA-2cmq-rv52-5rf6]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.136.2"
@@ -707,6 +744,7 @@
 
 - id: "CVE-2026-81376"
   aliases: [GHSA-r2gr-w3c8-wvqv]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.136.2"
@@ -717,6 +755,7 @@
 
 - id: "CVE-2026-81381"
   aliases: [GHSA-rvgr-2w56-2j67]
+  repo: microsoft/vscode
   kind: cve
   agent: "VS Code"
   fixed: "1.136.2"
@@ -746,6 +785,7 @@
 
 - id: "CVE-2026-88066"
   aliases: [GHSA-4p2j-qj3c-6x84]
+  repo: anthropics/claude-code
   kind: cve
   agent: "Claude Desktop"
   fixed: "Desktop 1.8089.0"
@@ -774,6 +814,7 @@
     - {rule: CFG028, severity: error}
 
 - id: "GHSA-x9h6-c6v9-v699"
+  repo: cfgaudit/cfgaudit
   kind: cve
   agent: "cfgaudit"
   fixed: "1.17.1"

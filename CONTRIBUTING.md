@@ -260,7 +260,7 @@ This step also applies when you add a CVE or GHSA to an existing rule, or change
 
 If the rule doc cites a CVE or GHSA, it needs an entry in [`docs/advisories.yml`](docs/advisories.yml):
 
-- **Not listed yet:** add an entry that names the rule, with a short `summary` and a fixture in `testdata/advisories/<id>.txtar`. If the rule fires on the fixture, list it under `rules` with its severity. If the doc only mentions the advisory, list it under `related`.
+- **Not listed yet:** add an entry that names the rule, with a short `summary` and a fixture in `testdata/advisories/<id>.txtar`. Give a GHSA that only its repository publishes a `repo` key, because the weekly validity check asks that repository. If the rule fires on the fixture, list it under `rules` with its severity. If the doc only mentions the advisory, list it under `related`.
 - **Already listed:** add the rule to that entry. Update its severity and `coverage` if the change affects them.
 - **The other way round:** an entry that names a rule needs the citation in that rule's doc.
 
@@ -374,6 +374,7 @@ The steps of a release, including the ones done by hand, are in [RELEASING.md](R
 
 ```text
 cmd/cfgaudit/        # CLI entrypoint, output formatters (text/JSON/SARIF), flag parsing
+cmd/advisorycheck/   # weekly check that the ids in docs/advisories.yml are still valid; not released
 internal/parser/     # settings.json + .claudeignore parsing
 internal/finding/    # Finding/Severity/Scope types
 internal/version/    # Claude Code version detect + compare
