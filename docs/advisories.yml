@@ -498,12 +498,17 @@
     - {rule: CFG004, severity: warn}
 
 - id: "CVE-2026-39861"
+  aliases: [GHSA-vp62-r36r-9xqp]
   kind: cve
   agent: "Claude Code"
-  summary: "A sandbox setting weakens or hijacks the execution sandbox."
-  coverage: full
+  fixed: "2.1.64"
+  summary: "A symlink created by a sandboxed process lets the unsandboxed agent write outside the workspace."
+  coverage: partial
   rules:
-    - {rule: CFG022, severity: error}
+    - {rule: CFG115, severity: warn}
+  related: [CFG022]
+  reason: not-static
+  note: "cfgaudit reports a committed link of this shape. A link the agent creates at run time is invisible to a scan."
 
 - id: "CVE-2026-40068"
   aliases: [GHSA-q5hj-mxqh-vv77]
@@ -636,6 +641,19 @@
     - {rule: CFG067, severity: info}
   reason: not-static
   note: "cfgaudit reports the committed hook. The missing approval is in the editor."
+
+- id: "CVE-2026-50549"
+  aliases: [GHSA-3v8f-48vw-3mjx]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "3.0"
+  summary: "A failed path check lets the agent write through a symlink outside the workspace."
+  coverage: partial
+  rules:
+    - {rule: CFG115, severity: warn}
+  reason: not-static
+  note: "cfgaudit reports a committed link of this shape. A link the agent creates at run time is invisible to a scan."
 
 - id: "CVE-2026-57572"
   kind: cve
