@@ -6,7 +6,7 @@
 # ecosystem updates tag and digest together. The runtime stage's packages are
 # not frozen by the pin: `apk upgrade` below fetches the current patch level at
 # build time, and the Trivy gate in ci.yml checks the result.
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
+FROM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 ARG VERSION=dev
 WORKDIR /build
 COPY go.mod ./
