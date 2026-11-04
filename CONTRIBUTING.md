@@ -92,8 +92,11 @@ The Lint job runs ShellCheck and actionlint at the versions pinned in `ci.yml`. 
 
 ```sh
 .github/scripts/lint-shell.sh  # ShellCheck on every tracked shell script
-actionlint -pyflakes=          # the workflows, and ShellCheck on their run blocks
+# the workflows, and ShellCheck on their run blocks
+actionlint -pyflakes= -ignore '(action|reusable workflow call) "\$/'
 ```
+
+The `-ignore` is there because actionlint does not know `uses: $/` yet, the runner's reference to the commit under test.
 
 The script finds its files itself: every tracked `*.sh` file and every file with a `sh` or `bash` shebang, outside `testdata/`. ShellCheck takes the dialect from the shebang.
 

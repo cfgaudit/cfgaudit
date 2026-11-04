@@ -266,8 +266,14 @@ jobs:
       # reach (#1446).
       - name: Lint shell scripts
         run: PATH="$RUNNER_TEMP/lint-tools:$PATH" .github/scripts/lint-shell.sh
+      # -ignore: actionlint 1.7.12 rejects `uses: $/`, the runner's reference to
+      # the commit under test (#693). Drop it once a release accepts that form.
+      # It is here on the command line, so it is reviewed like the workflow.
       - name: Lint workflows
-        run: '"$RUNNER_TEMP/lint-tools/actionlint" -pyflakes= -shellcheck="$RUNNER_TEMP/lint-tools/shellcheck"'
+        run: |
+          "$RUNNER_TEMP/lint-tools/actionlint" -pyflakes= \
+            -shellcheck="$RUNNER_TEMP/lint-tools/shellcheck" \
+            -ignore '(action|reusable workflow call) "\$/'
 
   deadcode:
     name: Dead code
