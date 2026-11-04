@@ -12,6 +12,14 @@ on:
 permissions:
   contents: read
 
+env:
+  # The ShellCheck that Lint and the CFG045 integration test install, and that
+  # the Docker job expects in the image. The image takes it from Alpine, so an
+  # Alpine bump can move it: update both values to match, after the 7-day
+  # cooldown. The digest is the sha256 of the linux.x86_64.tar.xz release asset.
+  SHELLCHECK_VERSION: "0.11.0"
+  SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+
 jobs:
   build:
     name: Build
@@ -98,6 +106,17 @@ jobs:
         with:
           name: coverage
           path: coverage.out
+      # The tests above use whatever ShellCheck the runner image has, and skip
+      # the real binary when it has none. This step uses the pinned one, and the
+      # variable turns every such skip into a failure (#1445). -run takes all of
+      # CFG045, so renaming a test cannot leave it matching nothing.
+      - name: Install ShellCheck
+        run: .github/scripts/install-shellcheck.sh "$RUNNER_TEMP/shellcheck"
+      - name: CFG045 against the pinned ShellCheck
+        run: |
+          PATH="$RUNNER_TEMP/shellcheck:$PATH" \
+            CFGAUDIT_REQUIRE_SHELLCHECK="$SHELLCHECK_VERSION" \
+            go test -count=1 -v -run '^TestCFG045' ./rules
 
   # Publishes main's coverage to Codecov for the README badge and the history
   # (#703). The floor in the Test job stays the gate: this job never runs on
@@ -223,15 +242,13 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     env:
-      # Both are installed from their releases and checked against these
-      # digests, as pinact is below. They run in this job because Lint is a
-      # required check. The digests are the release assets' sha256 for
-      # linux_amd64 and linux.x86_64.tar.xz. Bump version and digest together,
-      # after the 7-day cooldown.
+      # Installed from its release and checked against this digest, as pinact
+      # is below; ShellCheck is pinned at the top of this file. Both run in this
+      # job because Lint is a required check. The digest is the release asset's
+      # sha256 for linux_amd64. Bump both values together, after the 7-day
+      # cooldown.
       ACTIONLINT_VERSION: "1.7.12"
       ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-      SHELLCHECK_VERSION: "0.11.0"
-      SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -247,19 +264,12 @@ jobs:
         run: |
           set -euo pipefail
           actionlint=actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz
-          shellcheck=shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz
           curl -sSfLo "$RUNNER_TEMP/$actionlint" \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$actionlint"
-          curl -sSfLo "$RUNNER_TEMP/$shellcheck" \
-            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/$shellcheck"
           echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$actionlint" | sha256sum -c -
-          echo "$SHELLCHECK_SHA256  $RUNNER_TEMP/$shellcheck" | sha256sum -c -
-          mkdir "$RUNNER_TEMP/lint-tools"
+          .github/scripts/install-shellcheck.sh "$RUNNER_TEMP/lint-tools"
           tar -xzf "$RUNNER_TEMP/$actionlint" -C "$RUNNER_TEMP/lint-tools" actionlint
-          tar -xJf "$RUNNER_TEMP/$shellcheck" -C "$RUNNER_TEMP/lint-tools" --strip-components=1 \
-            "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
           "$RUNNER_TEMP/lint-tools/actionlint" --version
-          "$RUNNER_TEMP/lint-tools/shellcheck" --version
       # The runner image ships its own ShellCheck; the prepended directory and
       # the -shellcheck flag make sure the pinned one runs. actionlint hands it
       # every bash run block in the workflows, which the script below cannot
@@ -421,6 +431,16 @@ jobs:
           docker run --rm -v "$proj:/work:ro" -w /work cfgaudit:ci \
             --claude-version 2.1.0 --shellcheck --only CFG045 --format json . > cfg045.json
           jq -e 'any(.[]; .RuleID == "CFG045" and (.Message | contains("SC2086")))' cfg045.json > /dev/null
+      # The Test job proves CFG045 against the pinned version, which only says
+      # something about the image while the two agree (#1445).
+      - name: The image ships the pinned ShellCheck
+        run: |
+          set -euo pipefail
+          version=$(docker run --rm --entrypoint shellcheck cfgaudit:ci --version | sed -n 's/^version: //p')
+          if [ "$version" != "$SHELLCHECK_VERSION" ]; then
+            echo "::error::The image ships ShellCheck ${version:-of no known version}, ci.yml pins $SHELLCHECK_VERSION. Update SHELLCHECK_VERSION and SHELLCHECK_SHA256."
+            exit 1
+          fi
 
   hadolint:
     name: Security (hadolint)
