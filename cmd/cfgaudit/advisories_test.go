@@ -4,6 +4,7 @@
 package main
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -305,7 +306,8 @@ func advisorySlug(id string) string {
 func parseTxtar(s string) map[string]string {
 	files := map[string]string{}
 	name := ""
-	for line := range strings.SplitAfterSeq(s, "\n") {
+	// A Windows checkout turns the line endings into CRLF.
+	for line := range strings.SplitAfterSeq(strings.ReplaceAll(s, "\r\n", "\n"), "\n") {
 		p, ok := strings.CutPrefix(strings.TrimSuffix(line, "\n"), "-- ")
 		if ok && strings.HasSuffix(p, " --") {
 			name = strings.TrimSuffix(p, " --")
@@ -322,13 +324,12 @@ func parseTxtar(s string) map[string]string {
 func TestParseTxtar(t *testing.T) {
 	got := parseTxtar("comment\n-- a/b.json --\n{}\n-- empty --\n-- c --\n1\n2\n")
 	want := map[string]string{"a/b.json": "{}\n", "empty": "", "c": "1\n2\n"}
-	if len(got) != len(want) {
-		t.Fatalf("got %q", got)
+	if !maps.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
 	}
-	for name, content := range want {
-		if got[name] != content {
-			t.Errorf("%s: got %q, want %q", name, got[name], content)
-		}
+	crlf := parseTxtar("comment\r\n-- a/b.json --\r\n{}\r\n")
+	if !maps.Equal(crlf, map[string]string{"a/b.json": "{}\n"}) {
+		t.Errorf("CRLF: got %q", crlf)
 	}
 }
 
