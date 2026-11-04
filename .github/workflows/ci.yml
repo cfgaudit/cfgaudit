@@ -162,7 +162,13 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           covered=0 branches=0
           for pkg in $(go list -f '{{.Dir}}' ./... | sed "s|^$PWD|.|"); do
-            line=$("$RUNNER_TEMP/gobco" -branch "$pkg" | grep '^Branch coverage: ')
+            # gobco sends the failures of go test to stdout, so keep them for the
+            # job log instead of filtering them out.
+            if ! "$RUNNER_TEMP/gobco" -branch "$pkg" > "$RUNNER_TEMP/gobco.log" 2>&1; then
+              cat "$RUNNER_TEMP/gobco.log"
+              exit 1
+            fi
+            line=$(grep '^Branch coverage: ' "$RUNNER_TEMP/gobco.log")
             c=${line#Branch coverage: }
             echo "| \`$pkg\` | ${c%/*} | ${c#*/} |" >> "$GITHUB_STEP_SUMMARY"
             covered=$((covered + ${c%/*})) branches=$((branches + ${c#*/}))
