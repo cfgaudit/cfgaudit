@@ -53,6 +53,7 @@ Whether the output stays readable for the tools that consume it, and existing fi
 | Coverage: statement coverage floor (90%) and branch coverage floor (80%) | code that no test exercises | every pull request |
 | Unreachable code: `deadcode` from `cmd/cfgaudit`, against the allowlist `.github/deadcode-allow.txt` (golangci-lint's `unused` covers unexported code) | exported functions nothing calls any more, such as a helper only tests still use after a refactor, so the tests check a path production does not take; allowlist entries that went stale | every pull request |
 | Static analysis: golangci-lint (with gosec), CodeQL | bugs and insecure patterns in cfgaudit's own code | every pull request; CodeQL also weekly |
+| Shell and workflow lint: ShellCheck on every tracked shell script and workflow `run` block, actionlint on the workflows (`.github/scripts/lint-shell.sh`, in the Lint job) | quoting mistakes and non-portable shell, also in scripts only a release or a schedule runs; a bad expression, matrix reference or job dependency that would otherwise surface when a rarely triggered workflow runs | every pull request and push to `main` |
 
 ### Supply chain and repository security
 

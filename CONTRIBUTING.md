@@ -55,6 +55,7 @@ CI additionally runs:
 - `golangci-lint` (latest)
 - `govulncheck` against the module
 - `zizmor` against `.github/workflows/`
+- `actionlint` against `.github/workflows/`, and ShellCheck against every tracked shell script and every `run` block (see [Shell scripts and workflows](#shell-scripts-and-workflows))
 - Branch coverage with `gobco` (see [Tests](#4-tests))
 - `deadcode` from `cmd/cfgaudit`: an exported function that nothing reachable calls fails the build unless `.github/deadcode-allow.txt` lists it with a reason
 - Schema validation of `testdata/settings/valid/*.json` against the live SchemaStore schema (push, PR, and nightly)
@@ -84,6 +85,25 @@ npx markdownlint-cli2@0.23.2 --config .markdownlint-site.jsonc "docs/rules/*.md"
 ```
 
 If you change anything under `.github/workflows/`, run `zizmor .github/workflows/` locally — actions must be pinned to commit SHAs and `persist-credentials: false` must stay on `actions/checkout`.
+
+### Shell scripts and workflows
+
+The Lint job runs ShellCheck and actionlint at the versions pinned in `ci.yml`. To reproduce it, with both tools on `PATH`:
+
+```sh
+.github/scripts/lint-shell.sh  # ShellCheck on every tracked shell script
+actionlint -pyflakes=          # the workflows, and ShellCheck on their run blocks
+```
+
+The script finds its files itself: every tracked `*.sh` file and every file with a `sh` or `bash` shebang, outside `testdata/`. ShellCheck takes the dialect from the shebang.
+
+| Files | Dialect | Why |
+|---|---|---|
+| `bin/cfgaudit` | POSIX `sh` | The plugin wrapper runs on the user's machine, where bash may be missing or old. |
+| `.github/scripts/*.sh` | `bash` | They run on GitHub's runners or on a contributor's machine. |
+| `run` blocks in `.github/workflows/` | `bash` | The default on the Linux runners, and set explicitly for the Windows legs. |
+
+Fix a finding rather than silence it. When the code is right as it is, add `# shellcheck disable=SC1234 # reason` directly above the command, with the narrowest scope that works. There is no central list of disabled checks and no `.shellcheckrc`.
 
 ### Benchmarks
 

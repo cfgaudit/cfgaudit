@@ -68,7 +68,9 @@ jobs:
             exit 0
           fi
 
+          # shellcheck disable=SC2016 # the backticks are Markdown, $ is the sed anchor
           added_md=$(printf '%s' "$added" | sed 's/^/- `server-/; s/$/`/' | grep . || echo "- (none)")
+          # shellcheck disable=SC2016 # the backticks are Markdown, $ is the sed anchor
           removed_md=$(printf '%s' "$removed" | sed 's/^/- `server-/; s/$/`/' | grep . || echo "- (none)")
 
           body=$(cat <<EOF
