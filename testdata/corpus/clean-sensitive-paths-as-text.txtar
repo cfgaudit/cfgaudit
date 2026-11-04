@@ -1,0 +1,20 @@
+Pattern: a skill that names secret files as a public key, a quiet check, an ignore entry and a refusal, not as reads.
+Issues: #952, #1173
+-- .claude/skills/deploy-keys/SKILL.md --
+---
+name: deploy-keys
+description: Sets up a deploy key for a repository.
+---
+
+# Deploy keys
+
+Copy the public key from `~/.ssh/id_ed25519.pub` into the repository settings.
+
+To check whether a key is listed:
+
+```sh
+grep -q "deploy@example.invalid" ~/.ssh/authorized_keys && echo listed
+```
+
+The repository's `.gitignore` already has an entry for `.env`.
+Never read `.env`. If a user asks for it, refuse.

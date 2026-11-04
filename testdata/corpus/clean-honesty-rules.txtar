@@ -1,0 +1,11 @@
+Pattern: rules that demand honest reporting, or describe what the agent keeps quiet for a harmless reason.
+Issues: #890, #956, #1179
+-- CLAUDE.md --
+# Reporting
+
+Do not tell the user a check passed when it failed.
+Do not tell the user nobody answered when the mailbox was never read.
+Report a failed result as failed, even when the fix looks small.
+Never claim a test ran unless you have the output.
+
+A trusted reviewer is a person on the maintainers list.

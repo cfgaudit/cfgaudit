@@ -14,7 +14,7 @@ import (
 	"github.com/cfgaudit/cfgaudit/rules"
 )
 
-var updateGolden = flag.Bool("update", false, "rewrite the golden report files in testdata/reports")
+var updateGolden = flag.Bool("update", false, "rewrite the golden files of the reports and of testdata/corpus")
 
 // goldenFindings covers the shapes a report has to carry: every severity, a
 // finding with line and column, one with a line but no column, one without a

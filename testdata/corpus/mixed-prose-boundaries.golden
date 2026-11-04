@@ -1,0 +1,3 @@
+exit 1
+CFG024 warn CLAUDE.md:8
+CFG026 error CLAUDE.md:5
