@@ -141,9 +141,9 @@
   kind: cve
   agent: "Codex"
   summary: "A symlink inside the workspace leads a write outside it."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1417
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: warn}
 
 - id: "CVE-2025-58372"
   aliases: [GHSA-4pqh-4ggm-jfmm]
@@ -163,9 +163,9 @@
   agent: "Roo Code"
   fixed: "3.26.0"
   summary: "Symlinks bypass .rooignore and reach excluded files."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1417
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: warn}
 
 - id: "CVE-2025-59536"
   aliases: [GHSA-4fgq-fpq9-mr3g]
@@ -389,9 +389,9 @@
   kind: cve
   agent: "AWS Language Servers"
   summary: "A symlink in a workspace leads a file write outside the trust boundary."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1417
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: error}
 
 - id: "CVE-2026-19590"
   kind: cve
@@ -467,9 +467,9 @@
   agent: "Zed"
   fixed: "0.225.9"
   summary: "Agent file tools follow a committed symlink out of the worktree."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1417
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: warn}
 
 - id: "CVE-2026-31951"
   kind: cve

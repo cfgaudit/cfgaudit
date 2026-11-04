@@ -432,8 +432,11 @@ type Target struct {
 	// committed link text. cfgaudit does not read such a file (it would be a file
 	// on the scanning machine, not in the repository); CFG115 reports the link
 	// and every other rule ignores the target.
+	// EscapedWalked says the link was found by the repository walk (#1417), not
+	// by a read of a config path.
 	EscapedLink   string
 	EscapedTarget string
+	EscapedWalked bool
 
 	// ScheduledTasks holds a parsed .claude/scheduled_tasks.json — Claude Code's
 	// cron-scheduler store. A committed file with a non-empty tasks array is

@@ -42,6 +42,9 @@ import (
 type Escape struct {
 	Path string
 	Link string
+	// Walked marks a link the repository walk found by its text (#1417), which
+	// nothing has to open: its target usually does not exist on this machine.
+	Walked bool
 }
 
 var (
@@ -437,8 +440,60 @@ func check(path string) error {
 	if !seen[abs] {
 		seen[abs] = true
 		escapes = append(escapes, Escape{Path: abs, Link: firstLink(abs)})
+	} else {
+		// The walk may have got here first; a read makes it a config path.
+		for i := range escapes {
+			if escapes[i].Path == abs {
+				escapes[i].Walked = false
+			}
+		}
 	}
 	return &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+}
+
+// RecordLink records a symbolic link whose committed text leaves the scanned
+// directory. The target is judged by that text alone and is never followed.
+func RecordLink(path, link string) {
+	mu.Lock()
+	defer mu.Unlock()
+	abs, err := filepath.Abs(path)
+	if err != nil || seen[abs] {
+		return
+	}
+	seen[abs] = true
+	escapes = append(escapes, Escape{Path: abs, Link: link, Walked: true})
+}
+
+// LinkLeaves reports whether the link text of the symbolic link at path points
+// outside the scanned directory. It reads the text only, so a target that does
+// not exist on this machine counts as much as one that does. A leading ~ is not
+// expanded by the operating system, but it is how a link names a home directory
+// and no repository has a directory called that.
+func LinkLeaves(path, link string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	if root == "" {
+		return false
+	}
+	link = filepath.FromSlash(link)
+	if strings.HasPrefix(link, "~") {
+		return true
+	}
+	if isAbsLink(link) {
+		clean := filepath.Clean(link)
+		return !within(clean, root) && !within(clean, resolved)
+	}
+	abs, err := filepath.Abs(path)
+	return err == nil && !within(filepath.Join(filepath.Dir(abs), link), root)
+}
+
+// isAbsLink reports an absolute link text, in the form of either system: a
+// repository is written on one and scanned on another.
+func isAbsLink(link string) bool {
+	if filepath.IsAbs(link) || strings.HasPrefix(link, "/") || strings.HasPrefix(link, `\`) {
+		return true
+	}
+	return len(link) > 2 && link[1] == ':' && (link[2] == '/' || link[2] == '\\')
 }
 
 // firstLink returns the text of the first symbolic link on the way from the
