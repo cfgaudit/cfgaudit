@@ -254,7 +254,19 @@ The consistency test (`rules/consistency_test.go`) requires:
 
 The schema-validation workflow (`.github/workflows/schema-validation.yml`) validates `valid/*.json` against the upstream Claude Code schema on push and nightly. `invalid/*.json` is only checked for parseable JSON (with `jq empty`), since invalid fixtures are intentionally non-compliant.
 
-### 7. Update the rule index
+### 7. Record the advisory
+
+This step also applies when you add a CVE or GHSA to an existing rule, or change what a rule reports for one.
+
+If the rule doc cites a CVE or GHSA, it needs an entry in [`docs/advisories.yml`](docs/advisories.yml):
+
+- **Not listed yet:** add an entry that names the rule, with a short `summary` and a fixture in `testdata/advisories/<id>.txtar`. If the rule fires on the fixture, list it under `rules` with its severity. If the doc only mentions the advisory, list it under `related`.
+- **Already listed:** add the rule to that entry. Update its severity and `coverage` if the change affects them.
+- **The other way round:** an entry that names a rule needs the citation in that rule's doc.
+
+`TestAdvisories_*` in `cmd/cfgaudit/advisories_test.go` checks the structure, the fixtures at the listed severity, and both directions of the link, so a missing entry fails the tests. The website's `/advisories/` page prints this file, and the comment at the top of the file explains the keys. Fixtures keep the configuration shape only: inert commands, `example.invalid` hosts, no working payload.
+
+### 8. Update the rule index
 
 Add a row to the rule table of the agent's section in [`docs/rules/README.md`](docs/rules/README.md):
 
