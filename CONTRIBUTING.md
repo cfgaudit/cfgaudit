@@ -382,7 +382,7 @@ internal/schema/     # bundled SchemaStore schema + lightweight introspection
 rules/               # one file per rule + cross-cutting tests + runner
 docs/rules/          # one Markdown file per rule
 testdata/settings/   # valid/ and invalid/ fixtures (driven by rules/fixtures_test.go)
-.github/workflows/   # CI, Docker release, nightly schema validation
+.github/workflows/   # CI, Docker release, nightly schema validation, weekly advisory check
 ```
 
 If something here looks out of date, please send a PR.
