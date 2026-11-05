@@ -234,11 +234,12 @@ jobs:
           fi
           echo "Branch coverage ${covered}/${branches} = ${total}% (floor ${BRANCH_FLOOR}%)"
 
-  # cfgaudit ships macOS and Windows binaries but the required Test job above runs
-  # Linux only. This non-required leg exercises the OS-sensitive code (filepath /
-  # glob discovery, case-sensitivity, line endings) on the other two platforms.
-  # Kept separate rather than matrixing Test, so the branch-protection "Test"
-  # required check keeps its name; Linux is already covered above.
+  # cfgaudit ships macOS, Windows and Windows on ARM binaries but the Test job
+  # above runs Linux only. These legs exercise the OS-sensitive code (filepath /
+  # glob discovery, case-sensitivity, line endings) on those platforms. Branch
+  # protection requires the Cross-platform job below, not the legs, so a leg can
+  # change without touching the setting; Test keeps covering Linux under its own
+  # required name.
   test-cross:
     name: Cross-platform tests
     runs-on: ${{ matrix.os }}
@@ -269,6 +270,24 @@ jobs:
             go test ./...
           else
             go test -race ./...
+          fi
+
+  # The required check for all legs of test-cross (#1441). always() matters: with
+  # a plain needs this job is skipped when a leg fails, and a skipped required
+  # check can count as passing. A leg that got no runner is cancelled, which
+  # fails here too: rerun it, do not override the check.
+  cross-platform:
+    name: Cross-platform
+    needs: test-cross
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULT: ${{ needs.test-cross.result }}
+        run: |
+          if [ "$RESULT" != success ]; then
+            echo "::error::Cross-platform tests: $RESULT. See the legs of test-cross; rerun a leg that got no runner."
+            exit 1
           fi
 
   lint:
