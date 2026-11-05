@@ -1650,6 +1650,11 @@ var (
 		filepath.Join(".windsurf", "skills", "*", "SKILL.md"),
 		// GitHub Copilot path-specific instructions (.github/instructions) are
 		// walked recursively (see filteredInstructionDirs).
+		// GitHub Copilot prompt files (#1467): manual slash commands whose body is
+		// the prompt, on the same footing as .claude/commands. VS Code reads
+		// .github/prompts one level deep (promptFilesLocator.ts recurses only for
+		// instructions), and only *.prompt.md.
+		filepath.Join(".github", "prompts", "*.prompt.md"),
 		// GitHub Copilot custom agents (#439). The body is the agent's system
 		// prompt, so the instruction-content rules apply, and the frontmatter can
 		// carry an inline mcp-servers block (see attachSubagentBlocks). Copilot

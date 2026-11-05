@@ -95,9 +95,8 @@ func TestAgentSurfacesAreDiscovered(t *testing.T) {
 
 // surfacesNotListed are agent prefixes of the inventory with no line, and why.
 var surfacesNotListed = map[string]string{
-	".claude-plugin/":  "read as a plugin package, not as a project file",
-	".github/prompts/": "no discovery reads it yet",
-	".kimi/":           "Kimi CLI is not read yet (#1012)",
+	".claude-plugin/": "read as a plugin package, not as a project file",
+	".kimi/":          "Kimi CLI is not read yet (#1012)",
 }
 
 // Every agent prefix of the inventory has a line or a reason, so a surface
@@ -112,5 +111,20 @@ func TestAgentSurfacesCoverThePathAgents(t *testing.T) {
 		if listed == excused {
 			t.Errorf("%s (%s): listed %v, excused %v; want exactly one", p.prefix, p.agent, listed, excused)
 		}
+	}
+}
+
+// VS Code reads only *.prompt.md, one level deep (#1467).
+func TestCopilotPromptFiles1467(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.prompt.md", "b.md", "sub/c.prompt.md"} {
+		mustWrite(t, filepath.Join(dir, ".github", "prompts", filepath.FromSlash(name)), "x\n")
+	}
+	code, out, errb := inventoryRun(t, "--format", "json", dir)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	if !strings.Contains(out, ".github/prompts/a.prompt.md") || strings.Contains(out, "b.md") || strings.Contains(out, "c.prompt.md") {
+		t.Errorf("inventory:\n%s", out)
 	}
 }
