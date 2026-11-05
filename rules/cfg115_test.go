@@ -40,14 +40,16 @@ func TestCFG115_SensitiveTargets(t *testing.T) {
 		"~/.bashrc", "~/.bash_profile", "~/.zshrc", "../.profile", "~/.zprofile",
 		"~/.claude/settings.json", "~/.codex/config.toml", "~/.gemini/settings.json", "~/.cursor/mcp.json",
 		"~/.config/claude/x", "/etc/crontab", "/etc/cron.d/job", "/var/spool/cron/root",
-		"~/Library/LaunchAgents/x.plist",
+		"~/Library/LaunchAgents/x.plist", "~/.npmrc", "~/.gitconfig", "~/.config/git/config",
+		"../../repo/.git/config", `..\..\repo\.git\hooks\pre-commit`, "/usr/local/bin/node",
+		"~/.local/bin/helper", `C:\Windows\System32\helper.exe`, `%USERPROFILE%\AppData\Local\Microsoft\WindowsApps\tool.exe`,
 	} {
 		f := CFG115.Check(&Target{EscapedLink: "x", EscapedTarget: target, EscapedWalked: true})
 		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "sensitive location") {
 			t.Errorf("%s: got %+v", target, f)
 		}
 	}
-	for _, target := range []string{"../shared/notes.txt", "/opt/tool", "~/projects/x", "../my.sshfiles/a", "/usr/share/profile.txt", "../.claudeignore"} {
+	for _, target := range []string{"../shared/notes.txt", "/opt/tool", "~/projects/x", "../my.sshfiles/a", "/usr/share/profile.txt", "../.claudeignore", "../project/bin/helper"} {
 		f := CFG115.Check(&Target{EscapedLink: "x", EscapedTarget: target, EscapedWalked: true})
 		if len(f) != 1 || f[0].Severity != finding.Warn || strings.Contains(f[0].Message, "sensitive") {
 			t.Errorf("%s: got %+v", target, f)

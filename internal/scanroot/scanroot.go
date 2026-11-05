@@ -475,7 +475,7 @@ func LinkLeaves(path, link string) bool {
 	if root == "" {
 		return false
 	}
-	link = filepath.FromSlash(link)
+	link = filepath.FromSlash(strings.ReplaceAll(link, `\`, "/"))
 	if strings.HasPrefix(link, "~") {
 		return true
 	}

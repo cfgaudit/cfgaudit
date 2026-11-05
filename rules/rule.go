@@ -98,11 +98,11 @@ type Target struct {
 	HasGitignore bool
 
 	// ArchiveName is the archive a scan target was unpacked from (#1002);
-	// ArchiveEntries are its entry names and ArchiveLinks the link entries
-	// that were not extracted.
+	// ArchiveEntries are its entry names and ArchiveLinks the link entries and
+	// their targets, recorded as metadata but never extracted or followed.
 	ArchiveName    string
 	ArchiveEntries []string
-	ArchiveLinks   []string
+	ArchiveLinks   []ArchiveLink
 
 	// GitModules is the scanned directory's .gitmodules, as text (#994);
 	// GitModulesFile is its path. NestedRepos are the committed directories
@@ -469,6 +469,16 @@ type Target struct {
 	// Claude Code merges the two at runtime, so a deny-absence finding on the
 	// local file would be a false positive (CFG006).
 	SiblingDeny bool
+}
+
+// ArchiveLink is a symbolic or hard link carried by an archive. Name and
+// Target are the archive header's text; neither path has been resolved. A hard
+// link's Target names an entry from the archive root, a symbolic link's Target
+// is relative to the link's own directory.
+type ArchiveLink struct {
+	Name   string
+	Target string
+	Hard   bool
 }
 
 // mcpServerRef is a single MCP server definition paired with the file it was
