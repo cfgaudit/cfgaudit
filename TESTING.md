@@ -27,6 +27,7 @@ Whether cfgaudit reports the right findings, and only those.
 | Doc trigger examples (`cmd/cfgaudit/triggerexamples_test.go`) | a rule change that leaves the example in its docs page behind, so the docs show a case the rule no longer reports | every pull request |
 | Fixtures (`testdata/settings/valid`, `testdata/settings/invalid`) | a rule that fires on a clean, realistic settings file; an invalid fixture that no longer triggers the rule it is named for | every pull request |
 | SchemaStore validation of the fixtures (`schema-validation.yml`) | fixtures that Claude Code's published settings schema rejects, so tests pass on input no user can write; nightly, it opens an issue when the upstream schema drifts | pull requests touching the fixtures, `main`, nightly |
+| Regression corpus (`testdata/corpus/`, `cmd/cfgaudit/corpus_test.go`): multi-file projects scanned as one run through the CLI, from discovery to the JSON report. A `clean-*` case must report nothing; any other case must match its golden, which pins the exit code and each finding's rule, severity, file and line. No case is a live repository, and the run needs no network | a false positive or missed finding that came back, also through the interplay of discovery, parsers and several rules, which a test of one rule does not see | every pull request |
 | Metamorphic test (`cmd/cfgaudit/metamorphic_test.go`) | a rule that matches on how a file is written instead of what it says: every doc trigger example and invalid fixture is rewritten (CRLF line endings, minified, tab-indented, keys in reverse order, letters as `\u` escapes, a BOM on Claude Code settings) and must give the same findings | every pull request |
 
 ### Reports
@@ -88,7 +89,7 @@ Whether cfgaudit's own dependencies, workflows and releases can be trusted.
 
 ### Before each release
 
-Manual checks a maintainer runs before tagging, see [RELEASING.md](RELEASING.md#before-the-release).
+Manual checks a maintainer runs before tagging, see [RELEASING.md](RELEASING.md#before-the-release). They cover what the regression corpus cannot: it holds only shapes someone has already found, while these runs look for new ones on real repositories. What they confirm moves into the corpus, see [CONTRIBUTING.md](CONTRIBUTING.md#promoting-a-finding-into-the-corpus).
 
 | Layer | Protects against | Runs |
 |---|---|---|

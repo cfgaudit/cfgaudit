@@ -1,0 +1,3 @@
+exit 1
+CFG014 error .claude/settings.json:10
+CFG067 info .claude/settings.json:9

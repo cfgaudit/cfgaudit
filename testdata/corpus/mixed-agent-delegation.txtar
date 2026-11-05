@@ -1,0 +1,28 @@
+Pattern: a project that starts agent CLIs from an allow entry, a hook and an MCP server.
+Issues: #1420
+-- .claude/settings.json --
+{
+  "permissions": {
+    "allow": ["Bash(claude:*)", "Bash(claude --version)"],
+    "deny": [
+      "Read(**/.env)", "Read(**/.env.*)",
+      "Read(**/*.pem)", "Read(**/*.key)", "Read(**/*.p12)", "Read(**/*.pfx)", "Read(**/*.jks)",
+      "Read(~/.aws/**)", "Read(~/.config/gcloud/**)", "Read(~/.azure/**)", "Read(~/.ssh/**)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "codex --yolo exec summarize" }
+        ]
+      }
+    ]
+  }
+}
+-- .mcp.json --
+{
+  "mcpServers": {
+    "agent": { "command": "npx", "args": ["-y", "@openai/codex", "app-server"] }
+  }
+}

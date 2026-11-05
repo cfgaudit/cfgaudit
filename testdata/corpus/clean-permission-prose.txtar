@@ -1,0 +1,25 @@
+Pattern: skills that describe permission modes and prompts without telling the agent to skip one.
+Issues: #953, #1154, #1170, #1171
+-- .claude/skills/release-notes/SKILL.md --
+---
+name: release-notes
+description: Drafts release notes from the merged pull requests.
+---
+
+# Release notes
+
+## Bypass Permissions mode
+
+This page documents the mode for readers. Do not use it for this skill.
+
+| Mode | Effect |
+|---|---|
+| Plan | read only |
+| Default | asks before each write |
+
+Do not push a tag without confirmation from a maintainer.
+Never confirm, negotiate, or alter payment terms in a release note.
+
+## Closing
+
+Ask once whether the reader wants to star the repository. If they do not answer, skip the prompt entirely.

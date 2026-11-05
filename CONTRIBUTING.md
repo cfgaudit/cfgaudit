@@ -108,6 +108,17 @@ The script finds its files itself: every tracked `*.sh` file and every file with
 
 Fix a finding rather than silence it. When the code is right as it is, add `# shellcheck disable=SC1234 # reason` directly above the command, with the narrowest scope that works. There is no central list of disabled checks and no `.shellcheckrc`.
 
+### Promoting a finding into the corpus
+
+A false positive or a missed finding from a real repository, from a bug report or from the manual review in [RELEASING.md](RELEASING.md#before-the-release), gets a case in `testdata/corpus/` once it is confirmed. The rule's unit test still comes with the fix; the case adds the scan of a whole project.
+
+1. **Minimize.** Keep the shape, not the source. Rewrite the sentences and commands so that the rule still decides the same way, and drop every file the result does not depend on.
+2. **Strip.** No repository, organization or personal name, no real credential, host or URL that is not needed for the shape, and no copied prose longer than the shape. Use inert commands and `example.invalid`. A value that must look like a credential uses a dummy from the rule docs.
+3. **Write the case.** `<name>.txtar` holds the files, after three header lines. `Pattern:` says which shape it reproduces, `Issues:` names the issues behind it, and the optional `Flags:` adds scan flags such as `--plugins`. Provenance means the rule and the shape, never where it was found.
+4. **Choose the name.** A `clean-*` case must report nothing at all, not even at `info`, and has no golden. Use `mixed-*` when the same scan reports something, for example a real finding next to the form that used to be a false positive.
+5. **Write the golden.** Run `go test ./cmd/cfgaudit -run TestCorpus -update`, then read the diff of the `.golden` files. A new rule that fires on a case shows up there, and each changed line is a decision for the reviewer. The flag never changes a `clean-*` case: when one fails, fix the rule or move the case.
+6. **Check that it catches the bug.** The case must fail without the fix.
+
 ### Benchmarks
 
 The benchmarks scan a corpus that `internal/benchcorpus` generates from a fixed seed: neutral project documentation, skills, commands, rules files, settings and MCP configs. Nothing in it is copied from a real repository.
@@ -405,6 +416,7 @@ internal/schema/     # bundled SchemaStore schema + lightweight introspection
 rules/               # one file per rule + cross-cutting tests + runner
 docs/rules/          # one Markdown file per rule
 testdata/settings/   # valid/ and invalid/ fixtures (driven by rules/fixtures_test.go)
+testdata/corpus/     # whole-project regression cases and their goldens (driven by cmd/cfgaudit/corpus_test.go)
 .github/workflows/   # CI, Docker release, nightly schema validation, weekly advisory check
 ```
 

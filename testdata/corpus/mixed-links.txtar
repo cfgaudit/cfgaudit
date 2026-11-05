@@ -1,0 +1,8 @@
+Pattern: a committed link that leaves the repository next to one that stays inside.
+Issues: #1417
+-- CLAUDE.md --
+# Project
+-- docs/guide.md --
+# Guide
+-- docs/latest.md -> guide.md --
+-- data/output.txt -> ../../outside/output.txt --

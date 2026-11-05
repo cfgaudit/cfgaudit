@@ -1,0 +1,3 @@
+exit 1
+CFG014 error hooks/hooks.json:3
+CFG051 warn skills/risky/SKILL.md:4
