@@ -1,6 +1,6 @@
 # Threat model: running agents against conformance fixtures
 
-Status: proposal for review (#1468). Nothing described here is built yet.
+Status: decided in #1468, not built. The rules below apply if this is ever reopened.
 
 The file list (`docs/agent-surfaces.yml`) and the source comparison (`check-agent-loaders.yml`) show what cfgaudit claims and what changed upstream. Neither shows what an agent really does with a file. This document decides whether a scheduled job may start a real agent to find out, and under which conditions.
 
@@ -75,6 +75,6 @@ Never:
 
 With Codex the run can show which project files reach the MCP list, and whether trust and scope behave as `cmd/cfgaudit` assumes. It cannot show hooks, skills or instructions unless a command that lists them is measured the same way. It is one agent and one surface, so its value is a small, safe proof, not coverage.
 
-## Open question for review
+## Decision
 
-Is that value worth a new job, or is the source check enough for now? The recommendation is to build the Codex run only if a loader alert ever turns out to need it. The source check costs little, and this job adds a third-party binary to CI for one surface.
+Not built. One agent and one surface do not justify a third-party binary in CI, and the source check costs little. Reopen this only when a loader alert turns out to need a running agent. The per-agent table above stays a proposal for that case.
