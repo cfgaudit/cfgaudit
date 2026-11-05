@@ -227,6 +227,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				})
 			}
 		}
+		findings = append(findings, destructiveGoalFinding(src)...)
 	}
 	return findings
 }
