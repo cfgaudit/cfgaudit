@@ -1,0 +1,10 @@
+Fixture for GHSA-q978-78c7-phqw: the vulnerable Inspector launcher shape only.
+-- .mcp.json --
+{
+  "mcpServers": {
+    "inspector": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/inspector@2.11.0"]
+    }
+  }
+}

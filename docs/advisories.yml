@@ -271,13 +271,14 @@
     - {rule: CFG123, severity: warn}
 
 - id: "CVE-2025-6514"
+  aliases: [GHSA-6xpm-ggf7-wc3p]
   kind: cve
   agent: "mcp-remote"
   fixed: "0.1.16"
   summary: "A malicious server's response ran commands through the stdio proxy."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1406
+  coverage: full
+  rules:
+    - {rule: CFG126, severity: error}
 
 - id: "CVE-2025-68432"
   aliases: [GHSA-29cp-2hmh-hcxj]
@@ -831,6 +832,16 @@
   coverage: full
   rules:
     - {rule: CFG028, severity: error}
+
+- id: "GHSA-q978-78c7-phqw"
+  repo: modelcontextprotocol/inspector
+  kind: cve
+  agent: "MCP Inspector"
+  fixed: "2.12.0"
+  summary: "A remote MCP server's OAuth endpoint ran a command on Windows and WSL when Inspector connected."
+  coverage: full
+  rules:
+    - {rule: CFG126, severity: error}
 
 - id: "GHSA-x9h6-c6v9-v699"
   repo: cfgaudit/cfgaudit

@@ -1,0 +1,5 @@
+exit 1
+CFG126 error .codex/config.toml:1
+CFG126 error .cursor/mcp.json:3
+CFG126 error .mcp.json:3
+CFG126 error opencode.json:3
