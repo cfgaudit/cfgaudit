@@ -26,10 +26,60 @@ func (r *cfg010) ID() string { return "CFG010" }
 // package spec, version-pinned with an `@<version>` suffix.
 var npmPackageRunners = map[string]bool{
 	"npx":  true,
+	"npm":  true,
 	"pnpm": true,
 	"yarn": true,
 	"bunx": true,
 	"pnpx": true,
+}
+
+var npmValueFlags = map[string]bool{
+	"--prefix": true, "--workspace": true, "-w": true, "--userconfig": true,
+	"--registry": true, "--cache": true, "--loglevel": true,
+}
+
+// npmExecArgs returns the arguments after npm exec. A bare npm command does
+// not fetch and execute the first positional as a package.
+func npmExecArgs(args []string) ([]string, bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if npmValueFlags[a] {
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "exec" || a == "x" {
+			return args[i+1:], true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// npmNoInstall reports a `--no` or `--no-install` before the package, which
+// runs the installed copy and never fetches, so there is nothing to pin.
+func npmNoInstall(args []string) bool {
+	for _, a := range args {
+		if a == "--no" || a == "--no-install" {
+			return true
+		}
+		if !strings.HasPrefix(a, "-") || a == "--" {
+			return false
+		}
+	}
+	return false
+}
+
+// packageRunnerCall reports whether a runner call fetches a package: npm only
+// through exec, so `npm run start` has no pin to report.
+func packageRunnerCall(runner string, args []string) bool {
+	if runner == "npm" {
+		_, ok := npmExecArgs(args)
+		return ok
+	}
+	return npmPackageRunners[runner] || pyPackageRunners[runner]
 }
 
 // workspaceValueFlags are pnpm and yarn options that take a value, which is
@@ -145,6 +195,16 @@ func analyzeMCPVersionPins(command string, args []string) []string {
 		return nil
 	}
 	specRunner := runner
+	if runner == "npm" {
+		rest, ok := npmExecArgs(args)
+		if !ok {
+			return nil
+		}
+		specRunner, args = "npx", rest
+	}
+	if (runner == "npm" || runner == "npx") && npmNoInstall(args) {
+		return nil
+	}
 	if runner == "pnpm" || runner == "yarn" {
 		rest, ok := dlxArgs(args)
 		if !ok {
@@ -178,6 +238,57 @@ func analyzeMCPVersionPins(command string, args []string) []string {
 		msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" has no @version pin — supply-chain compromise propagates silently to every agent that loads this server")
 	}
 	return msgs
+}
+
+// npmPackageSpecs returns every npm package fetched by an MCP runner. It is
+// shared by rules that reason about package identity or version so runner flags,
+// scoped names and pnpm/yarn dlx forms cannot drift apart (#1433).
+func npmPackageSpecs(command string, args []string) []string {
+	runner, args := windowsRunner(command, args)
+	if !npmPackageRunners[runner] {
+		return nil
+	}
+	if runner == "npm" {
+		rest, ok := npmExecArgs(args)
+		if !ok {
+			return nil
+		}
+		return collectPackageSpecs("npx", rest)
+	}
+	if runner == "pnpm" || runner == "yarn" {
+		rest, ok := dlxArgs(args)
+		if !ok {
+			return nil
+		}
+		return collectPackageSpecs("pnpx", rest)
+	}
+	return collectPackageSpecs(runner, args)
+}
+
+// windowsRunner returns the program a command starts, without a Windows
+// .exe, .cmd or .bat suffix, and looks through `cmd /c`, the way Windows starts
+// npx. The program is "" when cmd runs nothing.
+func windowsRunner(command string, args []string) (string, []string) {
+	base := strings.ToLower(filepath.Base(strings.ReplaceAll(strings.TrimSpace(command), `\`, "/")))
+	for _, suffix := range []string{".exe", ".cmd", ".bat"} {
+		base = strings.TrimSuffix(base, suffix)
+	}
+	if base != "cmd" {
+		return base, args
+	}
+	for i, a := range args {
+		if !strings.EqualFold(a, "/c") && !strings.EqualFold(a, "/k") {
+			continue
+		}
+		rest := args[i+1:]
+		if len(rest) == 1 {
+			rest = strings.Fields(rest[0])
+		}
+		if len(rest) > 0 {
+			return windowsRunner(rest[0], rest[1:])
+		}
+	}
+	return "", nil
 }
 
 // packageFlagValue returns the package spec carried by an inline package flag
@@ -243,7 +354,7 @@ func collectPackageSpecs(runner string, args []string) []string {
 				npmRunAsCommand = true
 				break
 			}
-			if valueNext[a] {
+			if valueNext[a] || npmValueFlags[a] {
 				i++ // skip the flag's value so it is not mistaken for a positional
 				continue
 			}
@@ -302,6 +413,10 @@ func collectPackageSpecs(runner string, args []string) []string {
 				add(args[i+1])
 			}
 			i++ // consumed the flag value so it is not mistaken for the run package
+			continue
+		}
+		if npmPackageRunners[runner] && npmValueFlags[a] {
+			i++ // a registry, a directory or a log level, not the run package
 			continue
 		}
 		if strings.HasPrefix(a, "-") {

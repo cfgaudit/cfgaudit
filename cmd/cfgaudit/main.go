@@ -3219,8 +3219,13 @@ var (
 		filepath.Join(".kimi-code", "mcp.json"), // Kimi Code project MCP — same {mcpServers} shape as .mcp.json; it OVERRIDES the repo-root .mcp.json (Kimi spreads it last) and its stdio entries execute at session start, so it is scanned as its own attributed target rather than merged (which would hide the override)
 	}
 	userAgentMCPFiles = []string{
-		filepath.Join(".cursor", "mcp.json"),                     // Cursor (user-global)
-		filepath.Join(".codeium", "windsurf", "mcp_config.json"), // Windsurf
+		filepath.Join(".cursor", "mcp.json"),                                                    // Cursor (user-global)
+		filepath.Join(".codeium", "windsurf", "mcp_config.json"),                                // Windsurf
+		filepath.Join(".windsurf", "mcp.json"),                                                  // Windsurf path targeted by SANDWORM_MODE
+		filepath.Join(".continue", "config.json"),                                               // Continue path targeted by SANDWORM_MODE
+		filepath.Join(".config", "Claude", "claude_desktop_config.json"),                        // Claude Desktop (Linux)
+		filepath.Join("Library", "Application Support", "Claude", "claude_desktop_config.json"), // Claude Desktop (macOS)
+		filepath.Join("AppData", "Roaming", "Claude", "claude_desktop_config.json"),             // Claude Desktop (Windows)
 	}
 )
 
