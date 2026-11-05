@@ -65,7 +65,7 @@ func TestSensitivePathsFilter(t *testing.T) {
 		".pre-commit-hooks.yaml", "SECURITY.md", "go.mod", "go.sum", "lychee.toml",
 		".markdownlint-cli2.jsonc", ".markdownlint-site.jsonc", ".github/deadcode-allow.txt",
 		".github/framework-versions.json", ".github/mcp-reference-servers.txt", "docs/SECURITY.md",
-		".github/allowed_signers", // #1098
+		".github/allowed_signers",    // #1098
 		".github/coverage-allow.txt", // #1442
 	}, "\n") + "\n"
 	got, code := sensitivePathsScript(t, "", in, "filter")
