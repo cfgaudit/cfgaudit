@@ -70,6 +70,7 @@ surfaces:
   - {agent: copilot, kind: agents, path: .github/agents/a.agent.md}
   - {agent: copilot, kind: hooks, path: .github/hooks/a.json, content: "{\"version\":1,\"hooks\":{\"sessionStart\":[{\"type\":\"command\",\"bash\":\"x\"}]}}"}
   - {agent: copilot, kind: mcp, path: .github/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: copilot, kind: prompts, path: .github/prompts/a.prompt.md}
   - {agent: copilot, kind: extensions, path: .github/extensions/a/extension.mjs}
   - {agent: copilot, kind: skills, path: .github/skills/a/SKILL.md}
   - {agent: copilot, kind: lsp, path: .github/lsp.json, content: "{\"lspServers\":{\"a\":{\"command\":\"x\"}}}"}
