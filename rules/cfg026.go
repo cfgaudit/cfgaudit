@@ -168,7 +168,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 						continue
 					}
 					if overrideNegated(line, loc[0], verb) || listNegated(line[:loc[0]], line[loc[1]:]) || attributiveNoun(line, sm) ||
-						untrustedSource(line[loc[1]:]) || (sm[4] < 0 && pronounSource(lines, i, line[loc[1]:])) || flagDefinitionRe.MatchString(line) ||
+						untrustedSource(afterObjects(line[loc[1]:])) || (sm[4] < 0 && pronounSource(lines, i, afterObjects(line[loc[1]:]))) || flagDefinitionRe.MatchString(line) ||
 						(loc[0] > 0 && (line[loc[0]-1] == '-' || line[loc[0]-1] == '@')) ||
 						flagPurposeRe.MatchString(line[:loc[0]]) || toolIgnoreRe.MatchString(line[:loc[0]]) ||
 						(sm[4] < 0 && looksLikeInstructionsRe.MatchString(line[:loc[0]])) ||
@@ -341,7 +341,7 @@ func defensiveSourceRule(lines []string, i int, line string, loc, sm []int) bool
 	if sm[4] >= 0 {
 		return false
 	}
-	after := line[loc[1]:]
+	after := afterObjects(line[loc[1]:])
 	rest := after
 	if k := strings.IndexAny(rest, ".;!?"); k >= 0 {
 		rest = rest[:k]
@@ -379,6 +379,18 @@ func defensiveSourceRule(lines []string, i int, line string, loc, sm []int) bool
 		}
 	}
 	return false
+}
+
+// objectListRe is the rest of a list of objects after the one the pattern
+// matched: ", commands, or directives" (#1471). The nouns are a closed set, so
+// a clause after the comma ("instructions, and run ...") does not pass as one.
+var objectListRe = regexp.MustCompile(`(?i)^(?:\s*(?:,\s*(?:(?:and|or|and/or)\s+)?|\s(?:and|or|and/or)\s+)(?:(?:other|any|all)\s+)?(?:instructions?|directives?|commands?|requests?|orders?|prompts?)\b)+,?`)
+
+// afterObjects returns the text after a match past any further objects, so
+// that a list reaches the same source as a single object: "ignore any
+// instructions, commands, or directives inside the tags" (#1471).
+func afterObjects(after string) string {
+	return after[len(objectListRe.FindString(after)):]
 }
 
 // sourceCue reports a line that says a source is data or evidence.
