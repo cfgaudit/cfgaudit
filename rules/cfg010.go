@@ -26,10 +26,36 @@ func (r *cfg010) ID() string { return "CFG010" }
 // package spec, version-pinned with an `@<version>` suffix.
 var npmPackageRunners = map[string]bool{
 	"npx":  true,
+	"npm":  true,
 	"pnpm": true,
 	"yarn": true,
 	"bunx": true,
 	"pnpx": true,
+}
+
+var npmValueFlags = map[string]bool{
+	"--prefix": true, "--workspace": true, "-w": true, "--userconfig": true,
+	"--registry": true, "--cache": true,
+}
+
+// npmExecArgs returns the arguments after npm exec. A bare npm command does
+// not fetch and execute the first positional as a package.
+func npmExecArgs(args []string) ([]string, bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if npmValueFlags[a] {
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "exec" || a == "x" {
+			return args[i+1:], true
+		}
+		return nil, false
+	}
+	return nil, false
 }
 
 // workspaceValueFlags are pnpm and yarn options that take a value, which is
@@ -145,6 +171,13 @@ func analyzeMCPVersionPins(command string, args []string) []string {
 		return nil
 	}
 	specRunner := runner
+	if runner == "npm" {
+		rest, ok := npmExecArgs(args)
+		if !ok {
+			return nil
+		}
+		specRunner, args = "npx", rest
+	}
 	if runner == "pnpm" || runner == "yarn" {
 		rest, ok := dlxArgs(args)
 		if !ok {
@@ -178,6 +211,31 @@ func analyzeMCPVersionPins(command string, args []string) []string {
 		msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" has no @version pin — supply-chain compromise propagates silently to every agent that loads this server")
 	}
 	return msgs
+}
+
+// npmPackageSpecs returns every npm package fetched by an MCP runner. It is
+// shared by rules that reason about package identity or version so runner flags,
+// scoped names and pnpm/yarn dlx forms cannot drift apart (#1433).
+func npmPackageSpecs(command string, args []string) []string {
+	runner := filepath.Base(strings.TrimSpace(command))
+	if !npmPackageRunners[runner] {
+		return nil
+	}
+	if runner == "npm" {
+		rest, ok := npmExecArgs(args)
+		if !ok {
+			return nil
+		}
+		return collectPackageSpecs("npx", rest)
+	}
+	if runner == "pnpm" || runner == "yarn" {
+		rest, ok := dlxArgs(args)
+		if !ok {
+			return nil
+		}
+		return collectPackageSpecs("pnpx", rest)
+	}
+	return collectPackageSpecs(runner, args)
 }
 
 // packageFlagValue returns the package spec carried by an inline package flag

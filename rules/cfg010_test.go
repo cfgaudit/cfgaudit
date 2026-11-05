@@ -86,6 +86,9 @@ func TestCFG010_RunnerShapes1203(t *testing.T) {
 		want    string // "" for no finding, else a substring of the one message
 	}{
 		{"pnpm", `["-C","packages/server","exec","node","dist/mcp.js"]`, ""},
+		{"npm", `["install","my-server"]`, ""},
+		{"npm", `["--prefix","packages/server","exec","my-server@1.2.3"]`, ""},
+		{"npm", `["--prefix","packages/server","exec","my-server"]`, `package "my-server" passed to npm`},
 		{"pnpm", `["dev","mcp"]`, ""},
 		{"pnpm", `["--filter","server","start"]`, ""},
 		{"yarn", `["mcp"]`, ""},

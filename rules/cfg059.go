@@ -32,21 +32,26 @@ func (r *cfg059) ID() string { return "CFG059" }
 func (r *cfg059) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
-		runner := filepath.Base(ref.Server.Command)
-		if npmPackageRunners[runner] {
-			spec := mcpPackageArg(runner, ref.Server.Args)
-			if spec != "" && !isPathLikeArg(spec) {
-				if m := bestPackageSquat(spec); m != nil {
-					findings = append(findings, finding.Finding{
-						RuleID:   "CFG059",
-						Severity: m.severity,
-						File:     ref.File,
-						Message: "mcpServers." + ref.Name + " package \"" + npmPackageName(spec) + "\" is suspiciously similar to the official \"" + m.official +
-							"\" (" + m.reason + ") — a typosquatted MCP package runs arbitrary code on server start. Verify the exact package name; if it is intentional, exclude the file with exclude-paths in .cfgaudit.yml",
-					})
-					continue // one finding per server
+		packageFinding := false
+		if specs := npmPackageSpecs(ref.Server.Command, ref.Server.Args); len(specs) > 0 {
+			for _, spec := range specs {
+				if !isPathLikeArg(spec) {
+					if m := bestPackageSquat(spec); m != nil {
+						findings = append(findings, finding.Finding{
+							RuleID:   "CFG059",
+							Severity: m.severity,
+							File:     ref.File,
+							Message: "mcpServers." + ref.Name + " package \"" + npmPackageName(spec) + "\" is suspiciously similar to the official \"" + m.official +
+								"\" (" + m.reason + ") — a typosquatted MCP package runs arbitrary code on server start. Verify the exact package name; if it is intentional, exclude the file with exclude-paths in .cfgaudit.yml",
+						})
+						packageFinding = true
+						break // one finding per server
+					}
 				}
 			}
+		}
+		if packageFinding {
+			continue
 		}
 
 		host := strings.TrimSpace(endpointHost(ref.Server.URL))
@@ -119,6 +124,13 @@ func hookNpmPackageSpecs(command string) []string {
 // runs a remote package, so bare `pnpm install` / `yarn build` (whose first token
 // is a subcommand, not a package) yields "" and is never treated as a package.
 func hookRunnerPackage(runner string, args []string) string {
+	if runner == "npm" {
+		rest, ok := npmExecArgs(args)
+		if !ok {
+			return ""
+		}
+		return firstPositional(rest)
+	}
 	if runner == "pnpm" || runner == "yarn" {
 		for i, a := range args {
 			if a != "dlx" && a != "exec" {

@@ -1,0 +1,25 @@
+Pattern: a vulnerable exact MCP package pin in several supported agent formats, with fixed versions next to it.
+Issues: #1433
+-- .mcp.json --
+{
+  "mcpServers": {
+    "remote": { "command": "npx", "args": ["-y", "mcp-remote@0.1.15", "https://example.invalid/mcp"] },
+    "fixed": { "command": "npx", "args": ["-y", "mcp-remote@0.1.16", "https://example.invalid/mcp"] }
+  }
+}
+-- .cursor/mcp.json --
+{
+  "mcpServers": {
+    "inspector": { "command": "pnpm", "args": ["dlx", "@modelcontextprotocol/inspector@2.11.0"] }
+  }
+}
+-- .codex/config.toml --
+[mcp_servers.remote]
+command = "npm"
+args = ["exec", "mcp-remote@0.0.5", "--", "https://example.invalid/mcp"]
+-- opencode.json --
+{
+  "mcp": {
+    "remote": { "type": "local", "command": ["bunx", "mcp-remote@0.1.15", "https://example.invalid/mcp"] }
+  }
+}
