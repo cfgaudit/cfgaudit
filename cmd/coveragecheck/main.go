@@ -9,11 +9,12 @@
 //
 // Usage:
 //
-//	go test -coverpkg=./... -coverprofile=coverage.out ./...
+//	go test -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
 //	go run ./cmd/coveragecheck -profile coverage.out -base origin/main
 //
 // The profile needs -coverpkg=./..., or a line that only another package's
-// tests reach reads as uncovered. A line counts when a profile block spans it,
+// tests reach reads as uncovered, and -count=1, or a cached test result brings
+// the line numbers of an older checkout into it. A line counts when a profile block spans it,
 // so comments, declarations, tests and code that does not build on this
 // platform do not.
 //
@@ -57,7 +58,7 @@ func run(args []string, dir string, diff differ, stdout, stderr io.Writer) int {
 	profile := fs.String("profile", "coverage.out", "coverage profile, from go test -coverpkg=./...")
 	base := fs.String("base", "origin/main", "commit to compare with")
 	allow := fs.String("allow", "", "file of excepted functions")
-	minPercent := fs.Float64("min", 90, "lowest coverage of the changed lines, in percent")
+	minPercent := fs.Float64("min", 95, "lowest coverage of the changed lines, in percent")
 	slack := fs.Int("slack", 5, "uncovered lines that always pass, however small the change")
 	if err := fs.Parse(args); err != nil {
 		return 2
