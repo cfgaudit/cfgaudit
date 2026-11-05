@@ -44,7 +44,7 @@ Whether the output stays readable for the tools that consume it, and existing fi
 | Layer | Protects against | Runs |
 |---|---|---|
 | Fuzzing (`fuzz.yml`): whole scan, path parsers, JSONC stripping, Markdown instructions, terminal-name parsing, zip and tar extraction, key location, prefilters, the git index reader (#1387) | crashes and hangs on broken or hostile input | short runs on pull requests and `main`, 10 minutes per target weekly |
-| Race detector, Linux, macOS and Windows; the tests also run on Windows on ARM, where Go has no race detector | data races between rules running in parallel, platform-specific path and permission bugs | every pull request |
+| Race detector, Linux, macOS and Windows; the tests also run on Windows on ARM, where Go has no race detector. All are required for a merge: `Test` for Linux, `Cross-platform` for the other three | data races between rules running in parallel, platform-specific path and permission bugs | every pull request |
 | Linear scaling (`rules/scaling_test.go`): every rule on generated inputs of n and 8·n instruction lines, permission entries, MCP servers and hook commands (`internal/benchcorpus`) | a rule whose allocations or run time grow faster than its input, such as a nested loop over the servers of one file, which a fixed-size benchmark corpus does not show | every pull request |
 | Benchmarks (`bench.yml`), pull request against its base | allocation regressions beyond the limit (a gate); time is reported, history is recorded on `main` ([benchmarks page](https://cfgaudit.github.io/benchmarks/)) | pull requests; `main` |
 
