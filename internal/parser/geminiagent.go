@@ -5,6 +5,7 @@ package parser
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -96,10 +97,34 @@ type GeminiRemoteAgent struct {
 	// HasInlineCard reports whether the card is embedded in the committed file
 	// (`agent_card_json`) rather than fetched.
 	HasInlineCard bool
+	// CardLine is the line of the agent_card_json frontmatter key. The embedded
+	// JSON is escaped text, so findings use this line and name the JSON path.
+	CardLine int
+	// UserDescription is the optional remote-agent description Gemini prepends
+	// to the description built from the loaded card.
+	UserDescription string
+	// InlineCardText is the subset of a valid serialized Agent Card that Gemini
+	// places in the model-visible remote-agent tool description.
+	InlineCardText []GeminiAgentCardText
 	// AuthSecrets holds the credential-bearing auth fields by name. The docs use
 	// `$VAR` references throughout, but the schema is plain strings, so a literal
 	// is accepted.
 	AuthSecrets map[string]string
+}
+
+// GeminiAgentCardText is one model-visible string extracted from an inline A2A
+// Agent Card, paired with its JSON path for finding attribution.
+type GeminiAgentCardText struct {
+	Path string
+	Text string
+}
+
+type geminiInlineAgentCard struct {
+	Description string `json:"description"`
+	Skills      []struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	} `json:"skills"`
 }
 
 // geminiAuthSecretFields are the auth-block fields that carry a credential:
@@ -115,11 +140,30 @@ func GeminiAgentRemote(fm *Frontmatter) *GeminiRemoteAgent {
 		return nil
 	}
 	out := &GeminiRemoteAgent{}
+	if s, ok := fm.Raw["description"].(string); ok {
+		out.UserDescription = s
+	}
 	if s, ok := fm.Raw["agent_card_url"].(string); ok {
 		out.CardURL = strings.TrimSpace(s)
 	}
-	if _, ok := fm.Raw["agent_card_json"]; ok {
+	if raw, ok := fm.Raw["agent_card_json"]; ok {
 		out.HasInlineCard = true
+		if serialized, isString := raw.(string); isString {
+			var card geminiInlineAgentCard
+			if json.Unmarshal([]byte(serialized), &card) == nil {
+				if strings.TrimSpace(card.Description) != "" {
+					out.InlineCardText = append(out.InlineCardText, GeminiAgentCardText{Path: "$.description", Text: card.Description})
+				}
+				for i, skill := range card.Skills {
+					if strings.TrimSpace(skill.Name) != "" {
+						out.InlineCardText = append(out.InlineCardText, GeminiAgentCardText{Path: fmt.Sprintf("$.skills[%d].name", i), Text: skill.Name})
+					}
+					if strings.TrimSpace(skill.Description) != "" {
+						out.InlineCardText = append(out.InlineCardText, GeminiAgentCardText{Path: fmt.Sprintf("$.skills[%d].description", i), Text: skill.Description})
+					}
+				}
+			}
+		}
 	}
 	if auth, ok := fm.Raw["auth"].(map[string]any); ok {
 		for _, field := range geminiAuthSecretFields {

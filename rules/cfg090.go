@@ -103,7 +103,7 @@ func (r *cfg090) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSourcesFor(r.ID()) {
 		inFence := false
 		for i, line := range strings.Split(src.Content, "\n") {
 			if isFenceDelimiter(line) {

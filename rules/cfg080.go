@@ -177,7 +177,7 @@ func (r *cfg080) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSourcesFor(r.ID()) {
 		fenced := fencedLines(src.Content)
 		for _, c := range commentSpans(maskInlineCode(src.Content, fenced)) {
 			m := commentDirectiveRe.FindString(c.body)

@@ -2052,6 +2052,9 @@ func attachSubagentBlocks(t *rules.Target) {
 		// (agent_card_url / agent_card_json / auth); the two schemas are separate
 		// and strict, so both are decoded and at most one will be present.
 		t.GeminiRemote = parser.GeminiAgentRemote(fm)
+		if t.GeminiRemote != nil && t.GeminiRemote.HasInlineCard {
+			t.GeminiRemote.CardLine = frontmatterFieldLine(strings.Split(t.InstructionContent, "\n"), "frontmatter agent_card_json")
+		}
 		return
 	}
 

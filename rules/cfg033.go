@@ -82,7 +82,7 @@ func (r *cfg033) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSourcesFor(r.ID()) {
 		for i, line := range strings.Split(src.Content, "\n") {
 			for _, m := range mdImageRe.FindAllStringSubmatchIndex(line, -1) {
 				url := line[m[2]:m[3]]

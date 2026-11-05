@@ -74,7 +74,7 @@ func (r *cfg035) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSourcesFor(r.ID()) {
 		inFence, inComment := false, false
 		lines := strings.Split(src.Content, "\n")
 		fmEnd, descLines := frontmatterDescription(lines)

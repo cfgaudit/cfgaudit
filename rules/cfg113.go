@@ -140,7 +140,7 @@ func (r *cfg113) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSourcesFor(r.ID()) {
 		fenced := fencedLines(src.Content)
 		for i, line := range strings.Split(src.Content, "\n") {
 			ln := i + 1
