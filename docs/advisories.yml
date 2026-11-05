@@ -838,7 +838,7 @@
   kind: cve
   agent: "MCP Inspector"
   fixed: "2.12.0"
-  summary: "A crafted request made Inspector run an arbitrary command on Windows and WSL."
+  summary: "A remote MCP server's OAuth endpoint ran a command on Windows and WSL when Inspector connected."
   coverage: full
   rules:
     - {rule: CFG126, severity: error}

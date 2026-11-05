@@ -126,6 +126,26 @@ func TestCFG059_HookLegitAndUnrelated_NoFinding(t *testing.T) {
 	}
 }
 
+// npm exec fetches a package like npx does, in an MCP server and in a hook (#1433).
+func TestCFG059_NpmExec1433(t *testing.T) {
+	const squat = "@modelcontextprotocol/server-filesytem"
+	for _, tgt := range []*Target{
+		settingsTarget(t, `{"mcpServers":{"m":{"command":"npm","args":["exec","`+squat+`"]}}}`),
+		settingsTarget(t, `{"mcpServers":{"m":{"command":"cmd","args":["/c","npx","-y","`+squat+`"]}}}`),
+		hookTarget(t, "npm exec "+squat),
+	} {
+		if f := CFG059.Check(tgt); len(f) != 1 {
+			t.Errorf("expected one finding, got %+v", f)
+		}
+	}
+	if f := CFG059.Check(settingsTarget(t, `{"mcpServers":{"m":{"command":"npx","args":["./local/tool.js"]}}}`)); len(f) != 0 {
+		t.Errorf("local path: %+v", f)
+	}
+	if got := hookRunnerPackage("npm", []string{"install", "x"}); got != "" {
+		t.Errorf("npm install: got %q", got)
+	}
+}
+
 func TestHookNpmPackageSpecs(t *testing.T) {
 	cases := map[string][]string{
 		"npx foo-pkg":                 {"foo-pkg"},

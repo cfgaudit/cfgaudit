@@ -149,7 +149,7 @@ func MCPInventory(t *Target) []MCPItem {
 			if it.Transport == "" {
 				it.Transport = "stdio"
 			}
-			if r := filepath.Base(s.Command); npmPackageRunners[r] || pyPackageRunners[r] {
+			if r := filepath.Base(s.Command); packageRunnerCall(r, s.Args) {
 				it.Pinned = "yes"
 				if len(analyzeMCPVersionPins(s.Command, s.Args)) > 0 {
 					it.Pinned = "no"

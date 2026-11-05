@@ -87,6 +87,11 @@ func TestCFG010_RunnerShapes1203(t *testing.T) {
 	}{
 		{"pnpm", `["-C","packages/server","exec","node","dist/mcp.js"]`, ""},
 		{"npm", `["install","my-server"]`, ""},
+		{"npm", `["exec","--no","--","my-server"]`, ""},
+		{"npx", `["--no-install","my-server"]`, ""},
+		{"npx", `["--yes","--","my-server"]`, `package "my-server" passed to npx`},
+		{"npx", `["my-server","--no"]`, `package "my-server" passed to npx`},
+		{"npx", `["--registry","https://registry.example.invalid","my-server@1.2.3"]`, ""},
 		{"npm", `["--prefix","packages/server","exec","my-server@1.2.3"]`, ""},
 		{"npm", `["--prefix","packages/server","exec","my-server"]`, `package "my-server" passed to npm`},
 		{"pnpm", `["dev","mcp"]`, ""},
