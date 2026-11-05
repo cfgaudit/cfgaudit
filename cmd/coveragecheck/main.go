@@ -14,9 +14,9 @@
 //
 // The profile needs -coverpkg=./..., or a line that only another package's
 // tests reach reads as uncovered, and -count=1, or a cached test result brings
-// the line numbers of an older checkout into it. A line counts when a profile block spans it,
-// so comments, declarations, tests and code that does not build on this
-// platform do not.
+// the line numbers of an older checkout into it. A line counts when a profile
+// block spans it, so comments, declarations, tests and code that does not build
+// on this platform do not.
 //
 // Generated files are skipped. A function that cannot be tested is excepted by
 // an entry in the file named by -allow: one line each, the path, the function
