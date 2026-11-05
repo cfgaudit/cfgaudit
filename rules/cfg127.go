@@ -4,7 +4,8 @@
 package rules
 
 import (
-	"path/filepath"
+	"path"
+	"regexp"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -18,40 +19,40 @@ func init() { All = append(All, CFG127) }
 
 func (r *cfg127) ID() string { return "CFG127" }
 
-// Check reports user-global MCP servers that start an interpreter on a script
-// kept in a hidden home, cache, or temporary directory. SANDWORM_MODE used this
-// shape to persist a generated server outside the configuration directory.
+// Check reports MCP servers that start an interpreter on a script kept in a
+// hidden home, cache, or temporary directory. SANDWORM_MODE used this shape to
+// persist a generated server outside the configuration directory. The published
+// correlation, MCP_SERVER_NAME naming the hidden directory, is reported in every
+// scope; the location alone only in user scope.
 func (r *cfg127) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
 	}
 	var out []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
-		if !mcpScriptRuntime(ref.Server.Command) {
+		if !mcpScriptRuntimeRe.MatchString(runtimeName(ref.Server.Command)) {
 			continue
 		}
-		path := suspiciousMCPServerScript(ref.Server.Args)
-		if path == "" || reviewedMCPInstallPath(path) {
+		script := suspiciousMCPServerScript(ref.Server.Args)
+		if script == "" {
 			continue
 		}
-		dirName := hiddenPathDirectory(path)
+		dirName := hiddenHomeDir(normalizedMCPPath(script))
 		serverName := strings.TrimSpace(ref.Server.Env["MCP_SERVER_NAME"])
-		correlated := dirName != "" && serverName != "" &&
-			(strings.EqualFold(serverName, dirName) ||
-				(strings.EqualFold(serverName, ref.Name) && strings.EqualFold(ref.Name, dirName)))
+		correlated := dirName != "" && strings.EqualFold(serverName, dirName)
 		if t.Scope != finding.ScopeUser && !correlated {
 			continue
 		}
 
 		severity := finding.Info
 		message := "mcpServers." + ref.Name + " starts " + ref.Server.Command +
-			" on a script in an unusual hidden-home, cache, or temporary directory (" + path +
+			" on a script in an unusual hidden-home, cache, or temporary directory (" + script +
 			"); review the file and move a legitimate server to a documented installation path"
 		if correlated {
 			severity = finding.Error
-			message = "mcpServers." + ref.Name + " starts a hidden-home MCP script (" + path +
-				") and MCP_SERVER_NAME matches its generated directory name \"" + dirName +
-				"\" — this is the published SANDWORM_MODE persistence pattern; remove the server entry and investigate the script and package installation"
+			message = "mcpServers." + ref.Name + " starts a hidden-home MCP script (" + script +
+				") and MCP_SERVER_NAME matches its directory name \"" + dirName +
+				"\": this is the published SANDWORM_MODE persistence pattern. Remove the server entry and investigate the script and package installation"
 		}
 		out = append(out, finding.Finding{
 			RuleID:   "CFG127",
@@ -64,74 +65,97 @@ func (r *cfg127) Check(t *Target) []finding.Finding {
 	return out
 }
 
-func mcpScriptRuntime(command string) bool {
-	base := strings.ToLower(filepath.Base(strings.ReplaceAll(strings.Trim(strings.TrimSpace(command), `"'`), `\`, "/")))
-	base = strings.TrimSuffix(base, ".exe")
-	return base == "node" || base == "bun" || base == "deno" || base == "python" ||
-		base == "python3" || base == "py" || base == "ruby"
+// mcpScriptRuntimeRe matches a language runtime, with a version on Python such
+// as python3.12.
+var mcpScriptRuntimeRe = regexp.MustCompile(`^(?:node|nodejs|bun|deno|ruby|py|pypy3?|python[0-9.]*)$`)
+
+func runtimeName(command string) string {
+	base := path.Base(normalizedMCPPath(command))
+	return strings.TrimSuffix(base, ".exe")
+}
+
+// normalizedMCPPath returns a config path in lower case with forward slashes,
+// so one check covers Linux, macOS and Windows.
+func normalizedMCPPath(p string) string {
+	p = strings.ToLower(strings.ReplaceAll(strings.Trim(strings.TrimSpace(p), `"'`), `\`, "/"))
+	return strings.TrimPrefix(p, "file://")
 }
 
 func suspiciousMCPServerScript(args []string) string {
 	for _, arg := range args {
-		path := strings.Trim(strings.TrimSpace(arg), `"'`)
-		lower := strings.ToLower(strings.ReplaceAll(path, `\`, "/"))
-		if !scriptExtension(lower) {
-			continue
-		}
-		if hiddenHomePath(lower) || temporaryMCPPath(lower) {
-			return path
+		p := normalizedMCPPath(arg)
+		if scriptExtension(p) && !reviewedMCPInstallPath(p) && (hiddenHomeDir(p) != "" || temporaryMCPPath(p)) {
+			return strings.Trim(strings.TrimSpace(arg), `"'`)
 		}
 	}
 	return ""
 }
 
-func scriptExtension(path string) bool {
-	for _, ext := range []string{".js", ".cjs", ".mjs", ".ts", ".py", ".rb"} {
-		if strings.HasSuffix(path, ext) {
-			return true
-		}
-	}
-	return false
-}
-
-func hiddenHomePath(path string) bool {
-	if strings.HasPrefix(path, "~/.") || strings.HasPrefix(path, "$home/.") ||
-		strings.HasPrefix(path, "${home}/.") || strings.HasPrefix(path, "%userprofile%/.") {
+func scriptExtension(p string) bool {
+	switch path.Ext(p) {
+	case ".js", ".cjs", ".mjs", ".ts", ".py", ".rb":
 		return true
 	}
-	parts := strings.Split(strings.TrimPrefix(path, "file://"), "/")
-	for i := 0; i+2 < len(parts); i++ {
-		if (parts[i] == "home" || parts[i] == "users") && parts[i+1] != "" &&
-			strings.HasPrefix(parts[i+2], ".") && len(parts[i+2]) > 1 {
-			return true
-		}
-	}
 	return false
 }
 
-func temporaryMCPPath(path string) bool {
-	p := "/" + strings.TrimPrefix(path, "/")
-	return strings.Contains(p, "/tmp/") || strings.Contains(p, "/var/tmp/") ||
-		strings.Contains(p, "/dev/shm/") || strings.Contains(p, "/.cache/") ||
-		strings.Contains(p, "/library/caches/") || strings.Contains(p, "/appdata/local/temp/")
+// homeRelative returns p below a home directory, and whether p is below one.
+func homeRelative(p string) (string, bool) {
+	for _, home := range []string{"~/", "$home/", "${home}/", "%userprofile%/", "/root/"} {
+		if rest, ok := strings.CutPrefix(p, home); ok {
+			return rest, true
+		}
+	}
+	p = strings.TrimPrefix(p[strings.Index(p, ":")+1:], "/")
+	for _, home := range []string{"home/", "users/"} {
+		if rest, ok := strings.CutPrefix(p, home); ok {
+			if _, below, ok := strings.Cut(rest, "/"); ok {
+				return below, true
+			}
+		}
+	}
+	return "", false
 }
 
-func reviewedMCPInstallPath(path string) bool {
-	p := "/" + strings.TrimPrefix(strings.ToLower(strings.ReplaceAll(path, `\`, "/")), "/")
+// hiddenHomeDir returns the name of the hidden directory directly under a home
+// directory that holds p, without its leading dot, or "".
+func hiddenHomeDir(p string) string {
+	rest, ok := homeRelative(p)
+	if !ok {
+		return ""
+	}
+	dir, _, nested := strings.Cut(rest, "/")
+	if !nested || !strings.HasPrefix(dir, ".") {
+		return ""
+	}
+	return strings.TrimPrefix(dir, ".")
+}
+
+// temporaryMCPPath reports an operating-system temporary or cache location. A
+// project folder that happens to be called tmp or .cache does not count, so a
+// relative path never does.
+func temporaryMCPPath(p string) bool {
+	for _, root := range []string{"/tmp/", "/private/tmp/", "/var/tmp/", "/var/folders/", "/dev/shm/"} {
+		if strings.HasPrefix(p, root) {
+			return true
+		}
+	}
+	rest, ok := homeRelative(p)
+	return ok && (strings.HasPrefix(rest, ".cache/") || strings.HasPrefix(rest, "library/caches/") ||
+		strings.HasPrefix(rest, "appdata/local/temp/"))
+}
+
+func reviewedMCPInstallPath(p string) bool {
+	p = "/" + strings.TrimPrefix(p, "/")
 	for _, part := range []string{
-		"/node_modules/", "/.npm/", "/.nvm/", "/.bun/install/", "/.deno/",
-		"/.local/", "/.cache/pip/", "/.cache/uv/", "/.cache/pnpm/",
-		"/.claude/", "/.cursor/", "/.continue/", "/.windsurf/", "/.codeium/",
+		"/node_modules/", "/.npm/", "/.nvm/", "/.bun/install/", "/.deno/", "/.volta/", "/.fnm/",
+		"/.asdf/", "/.pyenv/", "/.rbenv/", "/.local/", "/.config/", "/.cache/pip/", "/.cache/uv/", "/.cache/pnpm/",
+		"/.claude/", "/.codex/", "/.gemini/", "/.cursor/", "/.continue/", "/.windsurf/", "/.codeium/",
+		"/.vscode/", "/.vscode-server/",
 	} {
 		if strings.Contains(p, part) {
 			return true
 		}
 	}
 	return false
-}
-
-func hiddenPathDirectory(path string) string {
-	p := strings.TrimSuffix(strings.ReplaceAll(strings.Trim(strings.TrimSpace(path), `"'`), `\`, "/"), "/")
-	dir := filepath.Base(filepath.Dir(filepath.FromSlash(p)))
-	return strings.TrimPrefix(dir, ".")
 }
