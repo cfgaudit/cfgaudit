@@ -117,3 +117,18 @@ func TestCodexMCPToolEntries972(t *testing.T) {
 		t.Errorf("CFG014: %+v", f)
 	}
 }
+
+// npm is a package runner only through exec, so `npm run` has no pin state (#1433).
+func TestMCPInventory_NpmPin1433(t *testing.T) {
+	for args, want := range map[string]string{
+		`["run","start"]`:                  "",
+		`["exec","pkg"]`:                   "no",
+		`["exec","pkg@1.2.3"]`:             "yes",
+		`["--prefix","a","x","pkg@1.2.3"]`: "yes",
+	} {
+		items := MCPInventory(settingsTarget(t, `{"mcpServers":{"s":{"command":"npm","args":`+args+`}}}`))
+		if len(items) != 1 || items[0].Pinned != want {
+			t.Errorf("npm %s: got %+v, want pinned %q", args, items, want)
+		}
+	}
+}
