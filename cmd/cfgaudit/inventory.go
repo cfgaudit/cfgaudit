@@ -50,13 +50,13 @@ type inventoryFailed struct {
 var pathAgents = []struct{ prefix, agent string }{
 	{".github/copilot-instructions.md", "copilot"}, {".github/instructions/", "copilot"}, {".github/agents/", "copilot"},
 	{".github/hooks/", "copilot"}, {".github/mcp.json", "copilot"}, {".github/prompts/", "copilot"}, {".github/extensions/", "copilot"},
-	{".github/skills/", "copilot"}, {".claude/", "claude-code"}, {".claude-plugin/", "claude-code"}, {"CLAUDE.md", "claude-code"},
+	{".github/skills/", "copilot"}, {".github/lsp.json", "copilot"}, {".claude/", "claude-code"}, {".claude-plugin/", "claude-code"}, {"CLAUDE.md", "claude-code"},
 	{"CLAUDE.local.md", "claude-code"}, {".mcp.json", "claude-code"}, {".cursor/", "cursor"}, {".cursorrules", "cursor"},
 	{".vscode/", "vscode"}, {".gemini/", "gemini-cli"}, {"GEMINI.md", "gemini-cli"}, {".codex/", "codex"}, {".qwen/", "qwen-code"},
 	{"QWEN.md", "qwen-code"}, {".roo/", "roo-code"}, {".roorules", "roo-code"}, {".roomodes", "roo-code"}, {".continue/", "continue"},
 	{".continuerules", "continue"}, {".devin/", "devin"}, {".windsurf/", "devin-desktop"}, {".windsurfrules", "devin-desktop"},
 	{".zed/", "zed"}, {".rules", "zed"}, {".opencode/", "opencode"}, {"opencode.json", "opencode"}, {"opencode.jsonc", "opencode"},
-	{".kimi-code/", "kimi-code"}, {".kimi/", "kimi-cli"}, {".grok/", "grok"}, {".clinerules", "cline"}, {"cline_mcp_settings.json", "cline"},
+	{".kimi-code/", "kimi-code"}, {".kimi/", "kimi-cli"}, {".grok/", "grok"}, {".cline/", "cline"}, {".clinerules", "cline"}, {"cline_mcp_settings.json", "cline"},
 	{"AGENT.md", "amp"}, {".gitmodules", "git"},
 }
 
