@@ -100,7 +100,9 @@ Manual checks a maintainer runs before tagging, see [RELEASING.md](RELEASING.md#
 
 ### Scheduled watches
 
-Scheduled jobs watch what cfgaudit depends on from outside and open an issue when something drifts: new versions of the OWASP frameworks the rules map to (`check-framework-versions.yml`), AVE records that the mapping cites (`check-ave-ids.yml`), the MCP reference servers behind CFG059's allowlist (`check-typosquat-allowlist.yml`), and Claude Code's published settings schema (the nightly SchemaStore validation above).
+Scheduled jobs watch what cfgaudit depends on from outside and open an issue when something drifts: new versions of the OWASP frameworks the rules map to (`check-framework-versions.yml`), AVE records that the mapping cites (`check-ave-ids.yml`), the MCP reference servers behind CFG059's allowlist (`check-typosquat-allowlist.yml`), Claude Code's published settings schema (the nightly SchemaStore validation above), and the loader files of open-source agents (`check-agent-loaders.yml`).
+
+The loader check compares files listed in `.github/agent-loaders.json` between the release last reviewed and the latest one, reading source only. It starts with `gemini-cli`. A changed file opens or updates an issue and leaves one diff per file as an artifact; it says something moved, not that cfgaudit is wrong. Review the diff against the discovery and `docs/agent-surfaces.yml`, then bump `reviewed_tag`. To add an agent, add its loader files to that list. It cannot cover closed-source agents, a loader that moved to a file not on the list, or behaviour that only a running agent shows.
 
 ## Adding a rule
 

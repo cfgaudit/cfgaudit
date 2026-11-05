@@ -1,0 +1,24 @@
+{
+  "_comment": "The upstream files that decide what an agent loads from a repository, and the release cfgaudit's model of them was last compared with (#1443). check-agent-loaders.yml opens an issue when a newer release changes one of these files. Review the change against the discovery in cmd/cfgaudit and docs/agent-surfaces.yml, then bump reviewed_tag.",
+  "agents": [
+    {
+      "agent": "gemini-cli",
+      "repo": "google-gemini/gemini-cli",
+      "reviewed_tag": "v0.67.0",
+      "files": [
+        "packages/cli/src/config/extension-manager.ts",
+        "packages/cli/src/config/settings.ts",
+        "packages/cli/src/config/trustedFolders.ts",
+        "packages/cli/src/services/FileCommandLoader.ts",
+        "packages/core/src/agents/agentLoader.ts",
+        "packages/core/src/config/constants.ts",
+        "packages/core/src/config/storage.ts",
+        "packages/core/src/hooks/hookRegistry.ts",
+        "packages/core/src/skills/skillLoader.ts",
+        "packages/core/src/skills/skillManager.ts",
+        "packages/core/src/utils/ignorePatterns.ts",
+        "packages/core/src/utils/memoryDiscovery.ts"
+      ]
+    }
+  ]
+}
