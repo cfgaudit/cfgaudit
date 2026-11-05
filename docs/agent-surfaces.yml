@@ -70,6 +70,7 @@ surfaces:
   - {agent: copilot, kind: agents, path: .github/agents/a.agent.md}
   - {agent: copilot, kind: hooks, path: .github/hooks/a.json, content: "{\"version\":1,\"hooks\":{\"sessionStart\":[{\"type\":\"command\",\"bash\":\"x\"}]}}"}
   - {agent: copilot, kind: mcp, path: .github/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: copilot, kind: extensions, path: .github/extensions/a/extension.mjs}
   - {agent: copilot, kind: skills, path: .github/skills/a/SKILL.md}
   - {agent: copilot, kind: lsp, path: .github/lsp.json, content: "{\"lspServers\":{\"a\":{\"command\":\"x\"}}}"}
   # roo-code
@@ -105,6 +106,8 @@ surfaces:
   - {agent: opencode, kind: settings, path: opencode.jsonc, content: "{\"a\":1}"}
   - {agent: opencode, kind: settings, path: .opencode/opencode.json, content: "{\"a\":1}"}
   - {agent: opencode, kind: agents, path: .opencode/agents/a.md}
+  - {agent: opencode, kind: plugins, path: .opencode/plugins/a.ts}
+  - {agent: opencode, kind: tools, path: .opencode/tools/a.ts}
   - {agent: opencode, kind: commands, path: .opencode/commands/a.md}
   # kimi-code
   - {agent: kimi-code, kind: skills, path: .kimi-code/skills/a/SKILL.md}

@@ -151,3 +151,50 @@ func TestLock999_Incomplete(t *testing.T) {
 		t.Errorf("code %d, stderr %s", code, stderr)
 	}
 }
+
+// Committed code an agent runs is in the lock, and a change to it is a trust
+// change that shows without --strict-hash (#1466).
+func TestLockAgentCode1466(t *testing.T) {
+	for _, tc := range []struct{ name, file string }{
+		{"Copilot extension", ".github/extensions/e/extension.mjs"},
+		{"OpenCode plugin", ".opencode/plugins/p.ts"},
+		{"OpenCode tool", ".opencode/tools/t.js"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, filepath.FromSlash(tc.file))
+			mustWrite(t, path, "export default {}\n")
+			if code, _, stderr := lockRun(t, dir); code != 0 || !strings.Contains(stderr, "1 file") {
+				t.Fatalf("lock: %d %s", code, stderr)
+			}
+			if code, stdout, _ := lockRun(t, "--check", dir); code != 0 {
+				t.Fatalf("check unchanged: %d %s", code, stdout)
+			}
+			mustWrite(t, path, "export default { changed: true }\n")
+			if code, stdout, _ := lockRun(t, "--check", dir); code != 1 || !strings.Contains(stdout, tc.file) {
+				t.Fatalf("check changed: %d %s", code, stdout)
+			}
+		})
+	}
+}
+
+// A new code file next to a locked configuration is a difference too.
+func TestLockNewAgentCode1466(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".mcp.json"), `{"mcpServers":{"a":{"command":"node"}}}`)
+	if code, _, stderr := lockRun(t, dir); code != 0 {
+		t.Fatalf("lock: %d %s", code, stderr)
+	}
+	mustWrite(t, filepath.Join(dir, ".github", "extensions", "e", "extension.cjs"), "x\n")
+	if code, stdout, _ := lockRun(t, "--check", dir); code != 1 || !strings.Contains(stdout, "extension.cjs") {
+		t.Fatalf("check: %d %s", code, stdout)
+	}
+}
+
+// A code file that cannot be read keeps its entry, with no hash.
+func TestAgentCodeFileUnreadable1466(t *testing.T) {
+	c := agentCodeFile(filepath.Join(t.TempDir(), "gone.ts"), "plugin")
+	if c.Kind != "plugin" || c.SHA256 != "" {
+		t.Errorf("got %+v", c)
+	}
+}
