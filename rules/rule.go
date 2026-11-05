@@ -472,10 +472,13 @@ type Target struct {
 }
 
 // ArchiveLink is a symbolic or hard link carried by an archive. Name and
-// Target are the archive header's text; neither path has been resolved.
+// Target are the archive header's text; neither path has been resolved. A hard
+// link's Target names an entry from the archive root, a symbolic link's Target
+// is relative to the link's own directory.
 type ArchiveLink struct {
 	Name   string
 	Target string
+	Hard   bool
 }
 
 // mcpServerRef is a single MCP server definition paired with the file it was

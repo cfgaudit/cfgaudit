@@ -78,7 +78,7 @@ type extractor struct {
 	res     archiveResult
 }
 
-func (x *extractor) entry(name string, isDir, isLink bool, linkTarget string, size int64, r io.Reader) error {
+func (x *extractor) entry(name string, isDir bool, link *rules.ArchiveLink, size int64, r io.Reader) error {
 	x.entries++
 	if x.entries > maxArchiveEntries {
 		return fmt.Errorf("more than %d entries", maxArchiveEntries)
@@ -93,8 +93,9 @@ func (x *extractor) entry(name string, isDir, isLink bool, linkTarget string, si
 	}
 	x.res.Entries = append(x.res.Entries, n)
 	switch {
-	case isLink:
-		x.res.Links = append(x.res.Links, rules.ArchiveLink{Name: n, Target: linkTarget})
+	case link != nil:
+		link.Name = n
+		x.res.Links = append(x.res.Links, *link)
 		return nil
 	case isDir:
 		return os.MkdirAll(dst, 0o750) // #nosec G703 -- dst is a cleaned entry name under the private root
@@ -181,20 +182,20 @@ func (x *extractor) zip(p string) error {
 				return err
 			}
 		}
-		linkTarget := ""
+		var link *rules.ArchiveLink
 		if mode&os.ModeSymlink != 0 {
 			body, readErr := io.ReadAll(io.LimitReader(rc, 16<<10))
 			if readErr != nil {
 				_ = rc.Close()
 				return readErr
 			}
-			linkTarget = string(body)
+			link = &rules.ArchiveLink{Target: string(body)}
 		}
 		size := int64(maxArchiveFile + 1)
 		if f.UncompressedSize64 <= maxArchiveFile {
 			size = int64(f.UncompressedSize64) // #nosec G115 -- bounded by maxArchiveFile
 		}
-		err = x.entry(f.Name, mode.IsDir(), mode&os.ModeSymlink != 0, linkTarget, size, rc)
+		err = x.entry(f.Name, mode.IsDir(), link, size, rc)
 		if rc != nil {
 			_ = rc.Close()
 		}
@@ -238,8 +239,11 @@ func (x *extractor) tar(p string, gz bool) error {
 			x.res.Skipped = append(x.res.Skipped, h.Name) // see zip (#1333)
 			continue
 		}
-		link := h.Typeflag == tar.TypeSymlink || h.Typeflag == tar.TypeLink
-		if err := x.entry(h.Name, h.Typeflag == tar.TypeDir, link, h.Linkname, h.Size, tr); err != nil {
+		var link *rules.ArchiveLink
+		if h.Typeflag == tar.TypeSymlink || h.Typeflag == tar.TypeLink {
+			link = &rules.ArchiveLink{Target: h.Linkname, Hard: h.Typeflag == tar.TypeLink}
+		}
+		if err := x.entry(h.Name, h.Typeflag == tar.TypeDir, link, h.Size, tr); err != nil {
 			return err
 		}
 	}

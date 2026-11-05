@@ -368,6 +368,8 @@ func TestLinkLeaves(t *testing.T) {
 		"a":                     false,
 		"../a":                  false,
 		"../../a":               true,
+		`..\..\a`:               true,
+		`..\a`:                  false,
 		"~/.ssh/id":             true,
 		"~":                     true,
 		"/opt/a":                true,
