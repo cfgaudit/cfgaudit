@@ -5,6 +5,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -3059,6 +3061,17 @@ var openCodeCodeDirs = []struct{ dir, kind string }{
 	{filepath.Join(".opencode", "tools"), "tool"},
 }
 
+// agentCodeFile describes a committed code file an agent runs. The hash is what
+// the lock compares; an unreadable file keeps its finding, with no hash.
+func agentCodeFile(path, kind string) *rules.AgentCodeFile {
+	c := &rules.AgentCodeFile{Path: path, Kind: kind}
+	if data, err := scanroot.ReadFile(path); err == nil {
+		sum := sha256.Sum256(data)
+		c.SHA256 = hex.EncodeToString(sum[:])
+	}
+	return c
+}
+
 // openCodeCodeTargets gives CFG114 one target per committed OpenCode plugin or
 // tool file.
 func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
@@ -3075,7 +3088,7 @@ func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
 				}
 				targets = append(targets, &rules.Target{
 					Scope:     finding.ScopeProject,
-					AgentCode: &rules.AgentCodeFile{Path: m, Kind: cd.kind},
+					AgentCode: agentCodeFile(m, cd.kind),
 				})
 			}
 		}
@@ -3106,7 +3119,7 @@ func copilotExtensionTargets(dir string) []*rules.Target {
 			if info, err := scanroot.Stat(p); err == nil && !info.IsDir() {
 				targets = append(targets, &rules.Target{
 					Scope:     finding.ScopeProject,
-					AgentCode: &rules.AgentCodeFile{Path: p, Kind: "copilot-extension"},
+					AgentCode: agentCodeFile(p, "copilot-extension"),
 				})
 				break
 			}

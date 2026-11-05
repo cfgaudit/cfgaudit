@@ -162,8 +162,8 @@ func buildLock(dir string, targets []*rules.Target) lockFile {
 }
 
 // targetFiles returns the files a target was read from: every string field
-// named like SettingsFile or VSCodeTasksFile, the instruction file and the
-// launched scripts. Reading the fields keeps the list in step with the
+// named like SettingsFile or VSCodeTasksFile, the instruction file, the
+// launched scripts and the agent code file. Reading the fields keeps the list in step with the
 // discovery when a new file kind is added.
 func targetFiles(t *rules.Target) []string {
 	var out []string
@@ -178,6 +178,9 @@ func targetFiles(t *rules.Target) []string {
 	}
 	for _, s := range t.LaunchedScripts {
 		out = append(out, s.File)
+	}
+	if t.AgentCode != nil {
+		out = append(out, t.AgentCode.Path)
 	}
 	return out
 }

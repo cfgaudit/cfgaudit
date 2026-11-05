@@ -555,4 +555,7 @@ var All []Rule
 type AgentCodeFile struct {
 	Path string
 	Kind string
+	// SHA256 is the content hash for the lock, empty when the file could not
+	// be read. CFG114 needs only its presence.
+	SHA256 string
 }

@@ -15,8 +15,8 @@ import (
 
 // TrustEntry is one thing in a target that decides what an agent runs, loads
 // or may do without asking (#999): a command that runs on its own, an MCP
-// server, a script such a command starts, an instruction file, an approval
-// setting. `cfgaudit lock` records the entries, so a change that matches no
+// server, a script such a command starts, a code file the agent runs, an
+// instruction file, an approval setting. `cfgaudit lock` records the entries, so a change that matches no
 // rule still shows up as a difference in review.
 type TrustEntry struct {
 	// Kind is "command", "mcp", "mcp_tool", "script", "instructions" or
@@ -63,6 +63,11 @@ func TrustEntries(t *Target) []TrustEntry {
 			name = name[i+2:]
 		}
 		out = append(out, TrustEntry{Kind: "script", File: s.File, Name: name, Value: hex.EncodeToString(sum[:])})
+	}
+	// Code the agent runs on its own, so its content is a trust entry like a
+	// launched script's, and a change shows without --strict-hash (#1466).
+	if c := t.AgentCode; c != nil {
+		out = append(out, TrustEntry{Kind: "script", File: c.Path, Name: c.Kind, Value: c.SHA256})
 	}
 	if t.InstructionFile != "" && !t.ContentPath {
 		out = append(out, TrustEntry{Kind: "instructions", File: t.InstructionFile, Name: "instructions"})
