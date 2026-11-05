@@ -60,9 +60,22 @@ func (r *cfg122) Check(t *Target) []finding.Finding {
 				Message: "the archive carries " + e + " at its root — on Windows a program in the current directory runs before the installed one, so an agent or editor that starts " + strings.TrimSuffix(strings.ToLower(e), path.Ext(e)) + " in the unpacked folder runs this file. A source archive has no reason to ship it"})
 		}
 	}
-	if len(t.ArchiveLinks) > 0 {
+	var ordinary []string
+	for _, link := range t.ArchiveLinks {
+		label := link.Name
+		if link.Target != "" {
+			label += " -> " + normalizedLinkTarget(link.Target)
+		}
+		if sensitiveLinkTarget(link.Target) {
+			out = append(out, finding.Finding{RuleID: "CFG122", Severity: finding.Error, File: t.ArchiveName + "/" + link.Name,
+				Message: "the archive carries a link to the sensitive location \"" + normalizedLinkTarget(link.Target) + "\". cfgaudit did not extract or follow it; unpacking elsewhere may let project activity read or modify credentials, configuration, persistence, or executable paths"})
+			continue
+		}
+		ordinary = append(ordinary, label)
+	}
+	if len(ordinary) > 0 {
 		out = append(out, finding.Finding{RuleID: "CFG122", Severity: finding.Warn, File: t.ArchiveName,
-			Message: "the archive carries links (" + quoteList(capList(t.ArchiveLinks, 5)) + andMore(len(t.ArchiveLinks), 5) + "), which cfgaudit does not extract, so the files they stand for were not scanned. Unpacked, a link can point outside the folder; check where each one leads"})
+			Message: "the archive carries links (" + quoteList(capList(ordinary, 5)) + andMore(len(ordinary), 5) + "), which cfgaudit does not extract or follow, so the files they stand for were not scanned. Unpacked, a link can point outside the folder; check where each one leads"})
 	}
 	return out
 }

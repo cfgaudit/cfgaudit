@@ -6,6 +6,7 @@ package rules
 import (
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -20,15 +21,33 @@ func (r *cfg115) ID() string { return "CFG115" }
 
 // sensitiveLinkTargetRe matches a link target where a write through the link
 // gives an attacker code execution or access: SSH and cloud credentials, shell
-// start-up files, agent configuration in the home directory, and the cron and
-// launchd folders. It is matched on the committed text, on slashes.
+// start-up files, agent and package-manager configuration, Git configuration
+// and hooks, persistence folders, and executable search paths. It is matched
+// on link metadata only, after normalising both separator styles to slashes.
 var sensitiveLinkTargetRe = regexp.MustCompile(`(?i)(?:^|/)(?:` +
 	`\.ssh|\.aws|\.gnupg|` +
+	`\.npmrc|` +
 	`\.bashrc|\.bash_profile|\.bash_login|\.zshrc|\.zprofile|\.profile|` +
 	`\.claude|\.codex|\.gemini|\.cursor|` +
-	`\.config/(?:claude|codex|gemini|cursor)|` +
-	`crontab|cron\.d|spool/cron|LaunchAgents|LaunchDaemons` +
+	`\.config/(?:claude|codex|gemini|cursor|git)|` +
+	`\.gitconfig|\.git/(?:config|hooks)|` +
+	`crontab|cron\.d|spool/cron|LaunchAgents|LaunchDaemons|` +
+	`\.local/bin|windows/system32|windowsapps` +
 	`)(?:/|$)`)
+
+var executableLinkTargetRe = regexp.MustCompile(`(?i)^(?:` +
+	`/(?:s?bin|usr/(?:local/)?s?bin)|` +
+	`(?:~|\$home|\$\{home\}|%userprofile%)/bin` +
+	`)(?:/|$)`)
+
+func normalizedLinkTarget(target string) string {
+	return strings.ReplaceAll(filepath.ToSlash(target), `\`, "/")
+}
+
+func sensitiveLinkTarget(target string) bool {
+	normalized := normalizedLinkTarget(target)
+	return sensitiveLinkTargetRe.MatchString(normalized) || executableLinkTargetRe.MatchString(normalized)
+}
 
 // Check reports a path in the scanned repository that is, or passes through, a
 // symbolic link resolving outside the repository.
@@ -58,10 +77,10 @@ func (r *cfg115) Check(t *Target) []finding.Finding {
 	if link == "" {
 		link = "a path outside the repository"
 	} else {
-		link = "\"" + filepath.ToSlash(link) + "\""
+		link = "\"" + normalizedLinkTarget(link) + "\""
 	}
 	severity, sensitive := finding.Warn, ""
-	if sensitiveLinkTargetRe.MatchString(filepath.ToSlash(t.EscapedTarget)) {
+	if sensitiveLinkTarget(t.EscapedTarget) {
 		severity, sensitive = finding.Error, " That is a sensitive location: a write through the link gives access or runs code on the developer's machine."
 	}
 	message := "this path is a symbolic link to " + link + ", outside the scanned repository. An agent that opens it loads a file from the machine that checked the repository out, not from the repository." +

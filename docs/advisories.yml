@@ -461,6 +461,16 @@
     - {rule: CFG005, severity: error}
   related: [CFG016]
 
+- id: "CVE-2026-25724"
+  aliases: [GHSA-4q92-rfm6-2cqx]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "2.1.7"
+  summary: "A permission deny rule could be bypassed by reading the denied file through a workspace symlink."
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: warn}
+
 - id: "CVE-2026-27967"
   aliases: [GHSA-786m-x2vc-5235]
   repo: zed-industries/zed
