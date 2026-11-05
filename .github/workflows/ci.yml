@@ -53,6 +53,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A pull request runs on its merge commit; the check of the changed
+          # lines below compares it with its first parent, the base.
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -61,14 +64,15 @@ jobs:
       # -coverpkg=./... counts a statement as covered when any package's tests
       # run it, not only its own package's (#706). Parser code is mostly
       # exercised by the rule tests, which assert on the findings it feeds;
-      # without the flag it reads as untested.
-      - run: go test -race -coverpkg=./... -coverprofile=coverage.out ./...
+      # without the flag it reads as untested. -count=1 because a cached result
+      # brings the line numbers of an older checkout into the profile (#1442).
+      - run: go test -race -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
       # Shows the total and per-package coverage on the run's summary page and
       # fails below COVERAGE_FLOOR (#674). Raise the floor in a PR when the
-      # total has moved up; it was 91.5% when the floor was last set (#706).
+      # total has moved up; it was 96.5% when the floor was last set (#1442).
       - name: Coverage
         env:
-          COVERAGE_FLOOR: "90.0"
+          COVERAGE_FLOOR: "95.0"
         run: |
           set -euo pipefail
           total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub("%", "", $NF); print $NF }')
@@ -102,6 +106,15 @@ jobs:
             exit 1
           fi
           echo "Total coverage ${total}% (floor ${COVERAGE_FLOOR}%)"
+      # A change cannot hide behind the total above: the lines it adds must be
+      # covered themselves (#1442). Only .github/coverage-allow.txt excepts a
+      # function. The thresholds are the defaults of cmd/coveragecheck.
+      - name: Coverage of the changed lines
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          go run ./cmd/coveragecheck -profile coverage.out -base HEAD^1 \
+            -allow .github/coverage-allow.txt | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage
@@ -167,7 +180,10 @@ jobs:
         run: go build -o "$RUNNER_TEMP/gobco" github.com/rillig/gobco
       - name: Branch coverage
         env:
-          BRANCH_FLOOR: "80.0"
+          # The total was 90.4% when these were last set (#1442). The critical
+          # packages have their own floors in the case below, so a drop there
+          # cannot be hidden by the rest of the repository.
+          BRANCH_FLOOR: "88.0"
         run: |
           set -euo pipefail
           # gobco copies each package to a temporary module that cannot resolve
@@ -176,10 +192,10 @@ jobs:
           {
             echo "## Branch coverage (gobco)"
             echo
-            echo "| Package | Covered | Branches |"
-            echo "|---|---|---|"
+            echo "| Package | Covered | Branches | Coverage | Floor |"
+            echo "|---|---|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
-          covered=0 branches=0
+          covered=0 branches=0 below=""
           for pkg in $(go list -f '{{.Dir}}' ./... | sed "s|^$PWD|.|"); do
             # gobco sends the failures of go test to stdout, so keep them for the
             # job log instead of filtering them out.
@@ -189,7 +205,20 @@ jobs:
             fi
             line=$(grep '^Branch coverage: ' "$RUNNER_TEMP/gobco.log")
             c=${line#Branch coverage: }
-            echo "| \`$pkg\` | ${c%/*} | ${c#*/} |" >> "$GITHUB_STEP_SUMMARY"
+            case "$pkg" in
+              ./cmd/cfgaudit) floor=84.0 ;;
+              ./internal/parser) floor=90.0 ;;
+              ./internal/scanroot) floor=87.0 ;;
+              ./rules) floor=90.0 ;;
+              *) floor="" ;;
+            esac
+            percent=$(awk -v c="${c%/*}" -v b="${c#*/}" 'BEGIN { printf "%.1f", 100 * c / b }')
+            mark=""
+            if [ -n "$floor" ] && awk -v t="$percent" -v f="$floor" 'BEGIN { exit !(t < f) }'; then
+              mark=" **below**"
+              below="$below $pkg ($percent% < $floor%)"
+            fi
+            echo "| \`$pkg\` | ${c%/*} | ${c#*/} | ${percent}%${mark} | ${floor:+$floor%} |" >> "$GITHUB_STEP_SUMMARY"
             covered=$((covered + ${c%/*})) branches=$((branches + ${c#*/}))
           done
           total=$(awk -v c="$covered" -v b="$branches" 'BEGIN { printf "%.1f", 100 * c / b }')
@@ -197,6 +226,10 @@ jobs:
           echo "Total: ${covered}/${branches} = ${total}% (floor ${BRANCH_FLOOR}%)" >> "$GITHUB_STEP_SUMMARY"
           if awk -v t="$total" -v f="$BRANCH_FLOOR" 'BEGIN { exit !(t < f) }'; then
             echo "::error::Branch coverage ${total}% is below the floor of ${BRANCH_FLOOR}%"
+            exit 1
+          fi
+          if [ -n "$below" ]; then
+            echo "::error::Branch coverage below the package floor:$below"
             exit 1
           fi
           echo "Branch coverage ${covered}/${branches} = ${total}% (floor ${BRANCH_FLOOR}%)"

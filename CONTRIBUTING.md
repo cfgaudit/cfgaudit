@@ -222,7 +222,20 @@ Settings expose typed fields (`Permissions`, `Env`, `Hooks`, `MCPServers`) plus 
 
 ### 4. Tests
 
-Every change in behaviour comes with tests: a new rule, a new scanned file or surface, a fix, a new flag or output. A fix adds a test that fails without it. A change that only moves code keeps the existing tests passing unchanged. CI fails when total statement coverage drops below the floor in `ci.yml`, or when branch coverage drops below 80%.
+Every change in behaviour comes with tests: a new rule, a new scanned file or surface, a fix, a new flag or output. A fix adds a test that fails without it. A change that only moves code keeps the existing tests passing unchanged. CI enforces coverage in three ways, with the numbers in `ci.yml`:
+
+- Total statement coverage must stay above the floor.
+- The Go lines a pull request adds must be covered: at least 95% of them, unless at most 5 are uncovered. A line is covered when any package's tests run it. Comments, tests and generated files do not count, and neither does code that does not build on Linux.
+- Branch coverage must stay above the floor for the repository, and above their own floors for `cmd/cfgaudit`, `internal/parser`, `internal/scanroot` and `rules`.
+
+To check the changed lines before you push (without `-coverpkg=./...` a line only another package's tests reach reads as uncovered, and without `-count=1` a cached test result brings old line numbers into the profile):
+
+```sh
+go test -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
+go run ./cmd/coveragecheck -profile coverage.out -base origin/main -allow .github/coverage-allow.txt
+```
+
+The check lists the uncovered lines. Add tests for them. Only code no test can reach, such as a `main` that is one `os.Exit` call, may be excepted, by a line with a reason in `.github/coverage-allow.txt`. That file is a sensitive path, so a change to it needs maintainer review. Do not lower a floor to get a change through.
 
 Branch coverage is measured with [gobco](https://github.com/rillig/gobco), which counts a branch as covered only when the package's own tests take it. To see the uncovered branches of a package, build gobco from the pinned module and run it on a copy of the checkout with the dependencies vendored (gobco cannot resolve them from the module cache; do not commit the `vendor/` directory):
 
@@ -347,7 +360,7 @@ Every change, including the maintainer's own, lands through a pull request; noth
 **What the reviewer checks:**
 
 - **Scope.** The change does what its issue asks and nothing unrelated; a change in behaviour has an issue.
-- **Tests.** The tests cover the change, and a fix adds a test that fails without it (see [Tests](#4-tests)). Coverage stays above both floors.
+- **Tests.** The tests cover the change, and a fix adds a test that fails without it (see [Tests](#4-tests)). Coverage passes the checks in [Tests](#4-tests).
 - **Rules.** A new or changed rule has its doc page, fixtures and rule-index row, follows the agent's real loader (measured, not assumed), and its message names keys and files, never a secret value.
 - **The trust boundary.** Scanned content is still never executed or evaluated, every read of repository content still goes through `internal/scanroot`, and the scanner opens no network connection. A change that adds a process, a network call or a new kind of input updates [docs/design.md](docs/design.md).
 - **Dependencies.** A new or updated dependency follows [Dependencies](#dependencies).
