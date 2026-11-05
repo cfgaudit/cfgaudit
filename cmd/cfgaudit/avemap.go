@@ -98,6 +98,7 @@ var aveByRule = map[string]string{
 	"CFG019": "AVE-2026-00055", // MCP inline script → untrusted launch config command exec
 	"CFG020": "AVE-2026-00055", // MCP env code injection → untrusted launch config command exec
 	"CFG070": "AVE-2026-00055", // MCP repo-relative command → untrusted launch config command exec
+	"CFG127": "AVE-2026-00055", // hidden-home MCP runtime → untrusted launch config command exec
 
 	// Approval gate bypassed by declarative configuration (AVE-2026-00063).
 	// The record is explicit that it is "distinct from AVE-2026-00048" and
