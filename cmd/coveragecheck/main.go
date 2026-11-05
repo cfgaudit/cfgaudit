@@ -139,7 +139,7 @@ func check(dir, profile, base, allow string, diff differ) (result, error) {
 	if err != nil {
 		return result{}, err
 	}
-	blocks, err := readProfile(filepath.Join(dir, profile), module)
+	blocks, err := readProfile(underDir(dir, profile), module)
 	if err != nil {
 		return result{}, err
 	}
@@ -304,6 +304,14 @@ func parseDiff(text string) (map[string][]int, error) {
 	return changed, nil
 }
 
+// underDir resolves a path from the command line, which may be absolute.
+func underDir(dir, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(dir, path)
+}
+
 // readAllow returns the excepted functions per file. An unusable entry is an
 // error, so the list can only hold what it says.
 func readAllow(dir, path string) (map[string][]string, error) {
@@ -311,7 +319,7 @@ func readAllow(dir, path string) (map[string][]string, error) {
 	if path == "" {
 		return excepted, nil
 	}
-	data, err := os.ReadFile(filepath.Join(dir, path)) //nolint:gosec // G304: a path the caller passes on the command line
+	data, err := os.ReadFile(underDir(dir, path)) //nolint:gosec // G304: a path the caller passes on the command line
 	if err != nil {
 		return nil, err
 	}

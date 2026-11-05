@@ -163,6 +163,17 @@ func TestRun_SourceThatDoesNotParse(t *testing.T) {
 	}
 }
 
+func TestRun_AbsolutePaths(t *testing.T) {
+	dir := setup(t)
+	other := t.TempDir()
+	write(t, other, "profile.out", testProfile)
+	write(t, other, "allow.txt", "p/p.go excepted # glue\n")
+	code, out := runCheck(t, dir, hunk(14, 16), "-profile", filepath.Join(other, "profile.out"), "-allow", filepath.Join(other, "allow.txt"), "-slack", "0")
+	if code != 0 || !strings.Contains(out, "no executable") {
+		t.Errorf("exit %d, want 0:\n%s", code, out)
+	}
+}
+
 func TestRun_Allow(t *testing.T) {
 	for _, tc := range []struct {
 		name, allow string
