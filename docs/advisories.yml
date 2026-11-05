@@ -883,13 +883,14 @@
   coverage: partial
   rules:
     - {rule: CFG052, severity: info}
+    - {rule: CFG127, severity: error}
   reason: not-static
-  note: "The planted git hook and CI workflow are outside agent configuration."
+  note: "The planted git hook and CI workflow are outside agent configuration. CFG127 detects the correlated hidden-home MCP entry statically but cannot inspect runtime tool descriptions."
   steps:
     - step: "Git hook and CI workflow planted"
       reason: not-static
     - step: "MCP server added to agent settings"
-      rules: [CFG052]
+      rules: [CFG052, CFG127]
 
 - id: "s1ngularity"
   kind: campaign
