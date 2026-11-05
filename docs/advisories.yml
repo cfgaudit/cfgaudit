@@ -304,12 +304,13 @@
     - {rule: CFG019, severity: error}
 
 - id: "CVE-2025-8217"
+  aliases: [GHSA-7g7f-ff96-5gcw]
   kind: cve
   agent: "Amazon Q Developer"
   summary: "An instruction gave the agent a destructive goal in prose."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1415
+  coverage: full
+  rules:
+    - {rule: CFG026, severity: error}
 
 - id: "CVE-2026-101884"
   aliases: [GHSA-hf34-gmq4-h679]
