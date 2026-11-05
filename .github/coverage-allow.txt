@@ -1,0 +1,8 @@
+# Functions cmd/coveragecheck does not count when it checks the changed lines of
+# a pull request (#1442). One per line: the path, the function (`name` or
+# `Type.method`), then `#` and the reason. Only for code no test can reach. An
+# entry without a reason, or for a function that no longer exists, fails the
+# check.
+cmd/advisorycheck/main.go main # one line: os.Exit around run, which the tests call
+cmd/cfgaudit/main.go main # one line: os.Exit around run, which the tests call
+cmd/coveragecheck/main.go main # one line: os.Exit around run, which the tests call
