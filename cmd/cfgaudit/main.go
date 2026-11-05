@@ -216,6 +216,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
 		return 2
 	}
+	packageDocs, err := capabilityPackageTargets(dir, targets)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
+	}
+	targets = append(targets, packageDocs...)
 	docTargets, err := contentPathTargets(dir, append(append([]string(nil), cfg.ContentPathGlobs()...), contentPaths...), targets)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
