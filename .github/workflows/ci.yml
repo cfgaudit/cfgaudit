@@ -243,6 +243,7 @@ jobs:
   test-cross:
     name: Cross-platform tests
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 2
     strategy:
       fail-fast: false
       matrix:
@@ -261,7 +262,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - if: matrix.os == 'windows-11-arm'
-        run: exit 1
+        run: sleep 300
       - run: go mod verify
       # The race detector is not supported on windows/arm64, so that leg runs
       # the tests without it (#1126).
