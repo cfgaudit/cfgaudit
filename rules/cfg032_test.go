@@ -197,6 +197,6 @@ func TestCFG032_BoundariesAndBracketTags1005(t *testing.T) {
 	} {
 		if f := CFG032.Check(claudeMDTarget(line)); len(f) != 0 {
 			t.Errorf("%q: %+v", line, f)
-			}
+		}
 	}
 }
