@@ -316,6 +316,22 @@ func TestArchiveErrorPaths1327(t *testing.T) {
 		t.Error("corrupt zip data: expected an error")
 	}
 
+	// A symlink entry whose data is corrupt fails while its target is read.
+	b.Reset()
+	zw = zip.NewWriter(&b)
+	h := &zip.FileHeader{Name: "link", Method: zip.Deflate, CompressedSize64: 4, UncompressedSize64: 100, CRC32: 1}
+	h.SetMode(os.ModeSymlink | 0o777)
+	w, _ = zw.CreateRaw(h)
+	_, _ = w.Write([]byte{0xff, 0xff, 0xff, 0xff})
+	_ = zw.Close()
+	corruptLink := filepath.Join(dir, "corrupt-link.zip")
+	if err := os.WriteFile(corruptLink, b.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := extractArchive(corruptLink); err == nil {
+		t.Error("corrupt zip link: expected an error")
+	}
+
 	// A tar whose entry is shorter than its header says.
 	b.Reset()
 	tw := tar.NewWriter(&b)
