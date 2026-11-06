@@ -128,8 +128,8 @@ type Target struct {
 	SkillHelper string
 
 	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
-	// workspace tasks). A task set to run on folder-open is a zero-click code
-	// execution vector when committed to a repo (CFG047). Nil when absent;
+	// workspace tasks). A task set to run on folder-open is a code execution
+	// vector when committed to a repo (CFG047). Nil when absent;
 	// VSCodeTasksFile is its path, used to attribute findings.
 	VSCodeTasks     *parser.VSCodeTasks
 	VSCodeTasksFile string

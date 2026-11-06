@@ -164,3 +164,20 @@ func TestCFG047_ZedHookTaskIsCommandSite(t *testing.T) {
 		t.Errorf("args should be joined into the command, got %q", sites[0].Command)
 	}
 }
+
+// The message names the gate measured on VS Code 1.116, not "zero-click" (#1181).
+func TestCFG047_MessageNamesTheGate(t *testing.T) {
+	for _, reveal := range []string{"", "never"} {
+		f := CFG047.Check(tasksTarget(parser.VSCodeTask{
+			Label: "x", Command: "./run.sh",
+			RunOptions:   &parser.VSCodeRunOptions{RunOn: "folderOpen"},
+			Presentation: &parser.VSCodePresentation{Reveal: reveal},
+		}))
+		if len(f) != 1 {
+			t.Fatalf("findings: %+v", f)
+		}
+		if m := f[0].Message; strings.Contains(m, "zero-click") || !strings.Contains(m, "trusted") || !strings.Contains(m, "automatic tasks are allowed") {
+			t.Errorf("message: %s", m)
+		}
+	}
+}
