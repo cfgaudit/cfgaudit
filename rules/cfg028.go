@@ -35,9 +35,19 @@ func (r *cfg028) ID() string { return "CFG028" }
 // static analyzer cannot know the target filesystem, the evading spelling is
 // contrived in legitimate config, and the miss it prevents is a full trust-file
 // overwrite.
-const trustName = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settings\.json|\.mcp\.json|\.vscode/mcp\.json)`
+//
+// The two lists cover every file discovery reads, per docs/agent-surfaces.yml,
+// which TestCFG028_CoversTheSurfaceList enforces. A longer name goes first, as
+// the alternation takes the first that matches.
+const trustName = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settings\.json|\.mcp\.json|\.vscode/mcp\.json|` +
+	`\.vscode/tasks\.json|\.github/mcp\.json|\.github/lsp\.json|\.github/copilot-instructions\.md|` +
+	`AGENTS\.md|AGENT\.md|GEMINI\.md|QWEN\.md|SKILL\.md|` +
+	`\.cursorrules|\.windsurfrules|\.clinerules|\.roorules|\.roomodes|\.continuerules|\.rules|` +
+	`opencode\.jsonc?|kilo\.jsonc?|cline_mcp_settings\.json|mcp_config\.json|claude_desktop_config\.json)`
 
-const trustDir = `(?i:\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/)`
+const trustDir = `(?i:\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/|\.agents/|\.windsurf/|\.opencode/|\.qwen/|\.kimi/|\.kimi-code/|` +
+	`\.devin/|\.continue/|\.zed/|\.grok/|\.kilo/|\.kilocode/|\.cline/|\.pi/|\.goose/|` +
+	`\.github/hooks/|\.github/agents/|\.github/instructions/|\.github/prompts/|\.github/extensions/|\.github/skills/)`
 
 const trustFile = `(?:` + trustName + `|` + trustDir + `)`
 
@@ -87,27 +97,47 @@ func (r *cfg028) Check(t *Target) []finding.Finding {
 	return findings
 }
 
-// claudeLogRe matches a log file under .claude/, which the agent never reads
-// as configuration: "echo '...' >>~/.claude/worktree-hook.log" (#874).
-var claudeLogRe = regexp.MustCompile(`(?i)^\.claude/[\w.\-/]*\.log$`)
+// agentLogRe matches a log file under an agent's folder, which the agent never
+// reads as configuration: "echo '...' >>~/.claude/worktree-hook.log" (#874).
+var agentLogRe = regexp.MustCompile(`(?i)^\.[\w\-/.]*\.log$`)
+
+// startsPathPart reports whether a name found at start begins a path component,
+// so that "my.rules" and "MY_AGENTS.md" are not read as ".rules" and "AGENTS.md".
+// A write pattern always matches something before the name, so start is above 0.
+func startsPathPart(cmd string, start int) bool {
+	switch c := cmd[start-1]; {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-', c == '.':
+		return false
+	}
+	return true
+}
 
 // trustWriteTarget returns the trust file a command writes to, or "" when it
-// writes to none. A write whose target is a log file under .claude/ does not
-// count.
+// writes to none. A write whose target is a log file in an agent's folder does
+// not count.
 func trustWriteTarget(cmd string) string {
 	for _, re := range trustWritePatterns {
 		for _, loc := range re.FindAllStringIndex(cmd, -1) {
 			m := cmd[loc[0]:loc[1]]
+			// The last name that starts a path component: ".github/agents/a.agent.md"
+			// holds "agent.md" too, inside the file name.
 			tl := trustFileRe.FindAllStringIndex(m, -1)
-			start := loc[0] + tl[len(tl)-1][0]
+			last := len(tl) - 1
+			for last >= 0 && !startsPathPart(cmd, loc[0]+tl[last][0]) {
+				last--
+			}
+			if last < 0 {
+				continue
+			}
+			start := loc[0] + tl[last][0]
 			end := start
 			for end < len(cmd) && !strings.ContainsRune(" \t\n;|&)'\"", rune(cmd[end])) {
 				end++
 			}
-			if claudeLogRe.MatchString(cmd[start:end]) {
+			if agentLogRe.MatchString(cmd[start:end]) {
 				continue
 			}
-			return cmd[start : loc[0]+tl[len(tl)-1][1]]
+			return cmd[start : loc[0]+tl[last][1]]
 		}
 	}
 	return ""

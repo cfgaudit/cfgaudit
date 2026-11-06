@@ -4,10 +4,12 @@
 package rules
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"gopkg.in/yaml.v3"
 )
 
 func TestCFG028_RedirectWrites(t *testing.T) {
@@ -196,5 +198,86 @@ func TestCFG028_Issue874(t *testing.T) {
 		if trustWriteTarget(c) == "" {
 			t.Errorf("expected a trust write in %q", c)
 		}
+	}
+}
+
+// cfg028NotTrustFiles are surface-list paths a write to which is not reported,
+// and why.
+var cfg028NotTrustFiles = map[string]string{
+	".gitmodules":      "git's file, not an agent's",
+	"a.code-workspace": "the name is free, so it cannot be told from any other file",
+	"Library/Application Support/Claude/claude_desktop_config.json": "a redirect target is one shell word, and this path has a space",
+}
+
+// Every file discovery reads is a trust file, so a surface added to the list
+// cannot stay out of this rule (#1397).
+func TestCFG028_CoversTheSurfaceList(t *testing.T) {
+	data, err := os.ReadFile("../docs/agent-surfaces.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Surfaces []struct {
+			Path string `yaml:"path"`
+		} `yaml:"surfaces"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Surfaces) == 0 {
+		t.Fatal("no surfaces")
+	}
+	for _, s := range doc.Surfaces {
+		got := CFG028.Check(hookTarget(t, "echo x >> "+s.Path))
+		if _, excused := cfg028NotTrustFiles[s.Path]; excused != (len(got) == 0) {
+			t.Errorf("%s: %d findings, excused %v", s.Path, len(got), excused)
+		}
+	}
+}
+
+func TestCFG028_OtherAgentsFiles1397(t *testing.T) {
+	for _, cmd := range []string{
+		"echo 'note' >> AGENTS.md",
+		"cat p | tee -a ./docs/AGENTS.md",
+		"sed -i s/a/b/ GEMINI.md",
+		"cp /tmp/x .github/copilot-instructions.md",
+		"mv /tmp/x .windsurfrules",
+		"echo x > .pi/settings.json",
+		`echo x > "$HOME/.kilo/kilo.jsonc"`,
+		"echo x > kilo.jsonc",
+		"echo x > .github/agents/a.agent.md",
+		"curl -o x; cp x .opencode/plugins/a.ts",
+	} {
+		if f := CFG028.Check(hookTarget(t, cmd)); len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("%q: %+v", cmd, f)
+		}
+	}
+}
+
+// A name inside a longer one is another file.
+func TestCFG028_NamePartOfALongerName(t *testing.T) {
+	for _, cmd := range []string{
+		"echo x > my.rules",
+		"echo x > MY_AGENTS.md",
+		"echo x > data.pi/out.txt",
+		"echo x > backup-settings.json",
+		"echo x > v2.opencode.json",
+		"cat AGENTS.md > /tmp/notes.txt",
+	} {
+		if f := CFG028.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%q: %+v", cmd, f)
+		}
+	}
+}
+
+// A log file is not configuration in any agent's folder.
+func TestCFG028_LogFileInAnAgentFolder(t *testing.T) {
+	for _, cmd := range []string{"echo x >> .devin/hook.log", "echo x >> ~/.pi/logs/a.log", "echo x >> .github/hooks/run.log"} {
+		if f := CFG028.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%q: %+v", cmd, f)
+		}
+	}
+	if f := CFG028.Check(hookTarget(t, "echo x >> .devin/a.log.md")); len(f) != 1 {
+		t.Errorf("a.log.md: %+v", f)
 	}
 }
