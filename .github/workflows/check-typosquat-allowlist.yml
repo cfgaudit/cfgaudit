@@ -26,6 +26,7 @@ jobs:
   check:
     name: Check CFG059 reference-server allowlist
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write

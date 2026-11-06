@@ -40,6 +40,7 @@ jobs:
   verify:
     name: Fetch and verify the attestations
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read # download release assets
       attestations: read # read the attestations API
@@ -132,6 +133,7 @@ jobs:
     needs: verify
     if: inputs.upload
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write # upload release assets
     steps:

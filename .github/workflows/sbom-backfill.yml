@@ -35,6 +35,7 @@ jobs:
   attest-sbom:
     name: Attest SBOM for an existing digest
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       packages: write # read the published image, push the attestation to ghcr
       id-token: write # keyless signing via Sigstore
