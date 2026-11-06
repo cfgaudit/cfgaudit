@@ -124,6 +124,7 @@ Added in the 2026-08-14 refresh, against AVE-2026-00071 through AVE-2026-00077. 
 
 | CFG | Why no class |
 |---|---|
+| CFG128 known-malicious package-version IOC | AVE has behavioral classes for supply-chain substitution and server impersonation, but no class for an offline exact artifact-reputation match. Mapping it to CFG010's unpinned-dependency class would erase the distinction: CFG128 fires precisely when the version is pinned |
 | CFG100 Grok `[plugins]` `enabled` / `paths` | AVE-2026-00064 would be the candidate, but it requires that the loader runs plugin code at project load with no prompt, which is unverified for Grok. The `enabled` half is besides the same wider supply-chain shape CFG055 and CFG089 already sit outside the map for |
 | CFG101 deny rule walked past by flag reordering | An ineffective guardrail rather than an attacker behaviour. AVE-2026-00063 is a flag that *removes* a gate; AVE-2026-00068 is composition through shared shell state. Neither is "the denylist misses an equivalent spelling of the same flags" |
 | CFG111 invisible character in a permission rule or hook matcher | The same kind of ineffective guardrail as CFG101: the rule is present and matches nothing. AVE-2026-00063 is a gate a configuration *removes*; here the gate is declared and silently inert, which no record describes |
