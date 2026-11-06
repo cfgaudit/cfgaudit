@@ -14,16 +14,18 @@ import (
 )
 
 // fakeLoaderGH answers like gh from files: <dir>/latest is the latest tag,
-// <dir>/repo/<ref>/<path> a file at a ref, <dir>/open the number of an open
-// issue. Every issue command is appended to <dir>/calls.
+// <dir>/releases the release list, <dir>/repo/<ref>/<path> a file at a ref,
+// <dir>/open the number of an open issue. Every command that changes an issue
+// is appended to <dir>/calls.
 const fakeLoaderGH = `#!/usr/bin/env bash
 dir=$(dirname "$0")
 case "$1 $2" in
   "issue list") cat "$dir/open" 2>/dev/null; exit 0 ;;
-  "issue edit"|"issue create") echo "$*" >>"$dir/calls"; exit 0 ;;
+  "issue create"|"api -X") echo "$*" >>"$dir/calls"; exit 0 ;;
 esac
 for arg in "$@"; do
   case "$arg" in
+    */releases\?*) cat "$dir/releases"; exit 0 ;;
     */releases/latest) [ -e "$dir/down" ] && { echo "HTTP 502" >&2; exit 1; }; cat "$dir/latest"; exit 0 ;;
     *contents/*)
       p=${arg#*contents/}; path=${p%%\?ref=*}; ref=${p##*ref=}
@@ -82,7 +84,7 @@ func (c *loaderCheck) write(name, text string) {
 func (c *loaderCheck) run(env ...string) (string, int) {
 	c.t.Helper()
 	cmd := exec.Command("bash", ".github/scripts/check-agent-loaders.sh", filepath.Join(c.dir, "config.json"), c.out) //nolint:gosec // G204: fixed script, test paths
-	cmd.Env = append(append(os.Environ(), "PATH="+c.dir+string(os.PathListSeparator)+os.Getenv("PATH")), env...)
+	cmd.Env = append(append(os.Environ(), "PATH="+c.dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GITHUB_REPOSITORY=o/self"), env...)
 	out, err := cmd.CombinedOutput()
 	code := 0
 	if ee, ok := err.(*exec.ExitError); ok {
@@ -162,8 +164,49 @@ func TestAgentLoaders_OpenIssueIsUpdated(t *testing.T) {
 	c.write("repo/v3/src/a.ts", "new\n")
 	c.write("open", "42\n")
 	out, code := c.run()
-	if code != 0 || !strings.Contains(c.calls(), "issue edit 42 --body-file") || strings.Contains(c.calls(), "issue create") {
+	if code != 0 || !strings.Contains(c.calls(), "api -X PATCH repos/o/self/issues/42 -F body=@") || strings.Contains(c.calls(), "issue create") {
 		t.Errorf("exit %d, calls %q:\n%s", code, c.calls(), out)
+	}
+}
+
+// tagPattern replaces the config with one that limits the tags to a pattern.
+func (c *loaderCheck) tagPattern(pattern string) {
+	c.t.Helper()
+	cfg, err := json.Marshal(map[string]any{"agents": []map[string]any{{
+		"agent": "demo", "repo": "o/r", "reviewed_tag": "v1", "tag_pattern": pattern, "files": []string{"src/a.ts"},
+	}}})
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	c.write("config.json", string(cfg))
+}
+
+// The newest release of the repository is another product, then a nightly and
+// a draft; the check has to skip them and take the newest matching full release.
+func TestAgentLoaders_TagPattern(t *testing.T) {
+	c := newLoaderCheck(t, "sdk-v9")
+	c.tagPattern(`^v[0-9]+$`)
+	c.write("releases", `[
+		{"tag_name":"sdk-v9","draft":false,"prerelease":false},
+		{"tag_name":"v3-nightly","draft":false,"prerelease":true},
+		{"tag_name":"v4","draft":true,"prerelease":false},
+		{"tag_name":"v3","draft":false,"prerelease":true},
+		{"tag_name":"v2","draft":false,"prerelease":false},
+		{"tag_name":"v1","draft":false,"prerelease":false}]`)
+	c.write("repo/v1/src/a.ts", "old\n")
+	c.write("repo/v2/src/a.ts", "new\n")
+	out, code := c.run("DRY_RUN=true")
+	if code != 0 || !strings.Contains(out, "between `v1` and `v2`") {
+		t.Errorf("exit %d:\n%s", code, out)
+	}
+}
+
+func TestAgentLoaders_TagPatternMatchesNothing(t *testing.T) {
+	c := newLoaderCheck(t, "sdk-v9")
+	c.tagPattern(`^v[0-9]+$`)
+	c.write("releases", `[{"tag_name":"sdk-v9","draft":false,"prerelease":false}]`)
+	if out, code := c.run(); code == 0 || !strings.Contains(out, "unexpected release tag") {
+		t.Errorf("exit %d:\n%s", code, out)
 	}
 }
 

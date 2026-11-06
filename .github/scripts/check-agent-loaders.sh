@@ -35,6 +35,18 @@ file_at() { # repo path ref output
   return 1
 }
 
+# The newest release of a repository. With a pattern, the newest full release
+# whose tag matches it: a repository can release several products, and then
+# releases/latest is whichever came last.
+latest_tag() { # repo pattern
+  if [ -z "$2" ]; then
+    gh api "repos/$1/releases/latest" --jq .tag_name
+    return
+  fi
+  gh api "repos/$1/releases?per_page=100" |
+    jq -r --arg pattern "$2" 'map(select((.draft or .prerelease | not) and (.tag_name | test($pattern)))) | .[0].tag_name // empty'
+}
+
 # Opens the issue, or brings an open one with the same title up to date.
 report() { # title body-file
   local title=$1 body=$2 number
@@ -46,7 +58,9 @@ report() { # title body-file
   number=$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
     --jq "map(select(.title == \"$title\")) | .[0].number // empty")
   if [ -n "$number" ]; then
-    gh issue edit "$number" --body-file "$body"
+    # REST, not gh issue edit: that one also queries the retired Projects
+    # (classic) API and fails.
+    gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$number" -F "body=@$body" --silent
     echo "updated issue #$number: $title"
   else
     gh issue create --title "$title" --label enhancement --label tests --body-file "$body"
@@ -58,7 +72,7 @@ jq -c '.agents[]' "$config" | while read -r entry; do
   agent=$(jq -r .agent <<<"$entry")
   repo=$(jq -r .repo <<<"$entry")
   reviewed=$(jq -r .reviewed_tag <<<"$entry")
-  latest=$(gh api "repos/$repo/releases/latest" --jq .tag_name)
+  latest=$(latest_tag "$repo" "$(jq -r '.tag_pattern // empty' <<<"$entry")")
   # A tag comes from upstream and ends up in a URL and in an issue.
   if ! [[ $latest =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
     echo "::error::$agent: unexpected release tag"

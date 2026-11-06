@@ -1,5 +1,5 @@
 {
-  "_comment": "The upstream files that decide what an agent loads from a repository, and the release cfgaudit's model of them was last compared with (#1443). check-agent-loaders.yml opens an issue when a newer release changes one of these files. Review the change against the discovery in cmd/cfgaudit and docs/agent-surfaces.yml, then bump reviewed_tag.",
+  "_comment": "The upstream files that decide what an agent loads from a repository, and the release cfgaudit's model of them was last compared with (#1443). check-agent-loaders.yml opens an issue when a newer release changes one of these files. tag_pattern is for a repository whose latest release can be another product, and limits the check to matching tags. Review the change against the discovery in cmd/cfgaudit and docs/agent-surfaces.yml, then bump reviewed_tag.",
   "agents": [
     {
       "agent": "gemini-cli",
@@ -18,6 +18,97 @@
         "packages/core/src/skills/skillManager.ts",
         "packages/core/src/utils/ignorePatterns.ts",
         "packages/core/src/utils/memoryDiscovery.ts"
+      ]
+    },
+    {
+      "agent": "codex",
+      "repo": "openai/codex",
+      "reviewed_tag": "rust-v0.167.0",
+      "files": [
+        "codex-rs/config/src/config_requirements.rs",
+        "codex-rs/config/src/loader/layer_io.rs",
+        "codex-rs/config/src/loader/local.rs",
+        "codex-rs/config/src/loader/managed_requirements.rs",
+        "codex-rs/config/src/loader/mod.rs",
+        "codex-rs/config/src/loader/project_discovery.rs",
+        "codex-rs/core-plugins/src/manifest.rs",
+        "codex-rs/core/src/agents_md.rs",
+        "codex-rs/core/src/exec_policy.rs",
+        "codex-rs/exec-server/src/discoverV2/capability_locations.rs",
+        "codex-rs/hooks/src/engine/discovery.rs"
+      ]
+    },
+    {
+      "agent": "goose",
+      "repo": "aaif-goose/goose",
+      "reviewed_tag": "v1.57.0",
+      "files": [
+        "crates/goose-agent/src/skills/discovery.rs",
+        "crates/goose/src/hints/import_files.rs",
+        "crates/goose/src/hints/load_hints.rs",
+        "crates/goose/src/plugins/discovery.rs",
+        "crates/goose/src/plugins/mod.rs",
+        "crates/goose/src/recipe/local_recipes.rs",
+        "crates/goose/src/sources.rs"
+      ]
+    },
+    {
+      "agent": "kilo-code",
+      "repo": "Kilo-Org/kilocode",
+      "reviewed_tag": "v7.8.27",
+      "files": [
+        "packages/core/src/config.ts",
+        "packages/core/src/config/plugin/agent.ts",
+        "packages/core/src/config/plugin/command.ts",
+        "packages/core/src/instruction-context.ts",
+        "packages/core/src/skill.ts",
+        "packages/opencode/src/config/agent.ts",
+        "packages/opencode/src/config/config.ts",
+        "packages/opencode/src/config/managed.ts",
+        "packages/opencode/src/config/paths.ts",
+        "packages/opencode/src/config/plugin.ts",
+        "packages/opencode/src/kilocode/paths.ts",
+        "packages/opencode/src/skill/discovery.ts",
+        "packages/opencode/src/skill/index.ts",
+        "packages/opencode/src/tool/registry.ts"
+      ]
+    },
+    {
+      "agent": "opencode",
+      "repo": "anomalyco/opencode",
+      "reviewed_tag": "v1.19.5",
+      "files": [
+        "packages/opencode/src/command/index.ts",
+        "packages/opencode/src/config/agent.ts",
+        "packages/opencode/src/config/command.ts",
+        "packages/opencode/src/config/config.ts",
+        "packages/opencode/src/config/managed.ts",
+        "packages/opencode/src/config/paths.ts",
+        "packages/opencode/src/config/plugin.ts",
+        "packages/opencode/src/session/instruction.ts",
+        "packages/opencode/src/skill/discovery.ts",
+        "packages/opencode/src/skill/index.ts",
+        "packages/opencode/src/tool/registry.ts"
+      ]
+    },
+    {
+      "agent": "qwen-code",
+      "repo": "QwenLM/qwen-code",
+      "reviewed_tag": "v0.26.8",
+      "tag_pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "files": [
+        "packages/cli/src/config/settings.ts",
+        "packages/cli/src/config/trustedFolders.ts",
+        "packages/cli/src/services/FileCommandLoader.ts",
+        "packages/core/src/config/storage.ts",
+        "packages/core/src/extension/extensionManager.ts",
+        "packages/core/src/hooks/hookRegistry.ts",
+        "packages/core/src/skills/skill-load.ts",
+        "packages/core/src/skills/skill-manager.ts",
+        "packages/core/src/skills/skill-paths.ts",
+        "packages/core/src/subagents/subagent-manager.ts",
+        "packages/core/src/utils/memory-constants.ts",
+        "packages/core/src/utils/qwenIgnoreParser.ts"
       ]
     }
   ]
