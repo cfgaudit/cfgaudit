@@ -165,7 +165,8 @@ func TestCFG047_ZedHookTaskIsCommandSite(t *testing.T) {
 	}
 }
 
-// The message names the gate measured on VS Code 1.116, not "zero-click" (#1181).
+// The message names the gates of each editor, because the file cannot say which
+// one opens it, and the weakest one first (#1181, #1502).
 func TestCFG047_MessageNamesTheGate(t *testing.T) {
 	for _, reveal := range []string{"", "never"} {
 		f := CFG047.Check(tasksTarget(parser.VSCodeTask{
@@ -176,7 +177,9 @@ func TestCFG047_MessageNamesTheGate(t *testing.T) {
 		if len(f) != 1 {
 			t.Fatalf("findings: %+v", f)
 		}
-		if m := f[0].Message; strings.Contains(m, "zero-click") || !strings.Contains(m, "trusted") || !strings.Contains(m, "automatic tasks are allowed") {
+		m := f[0].Message
+		cursor, vscode := strings.Index(m, "Cursor runs it on open with no prompt"), strings.Index(m, "VS Code and Windsurf run it once the folder is trusted")
+		if cursor < 0 || vscode < cursor {
 			t.Errorf("message: %s", m)
 		}
 	}

@@ -22,11 +22,14 @@ func (r *cfg047) ID() string { return "CFG047" }
 // Check flags .vscode/tasks.json tasks that run automatically when the folder is
 // opened (runOptions.runOn: "folderOpen"). VS Code and its forks (Cursor,
 // Windsurf) read this committable file, and such tasks are actively abused in
-// the wild. VS Code gates them: the folder must be trusted, and
-// task.allowAutomaticTasks, a user-level setting that is off by default, must
-// be on. Answering Allow to the prompt turns it on for every trusted workspace,
-// and from then on the task runs with no further question, measured on 1.116
-// (#1181). A silent presentation (reveal: "never") hides it from the user.
+// the wild. The gates differ per editor. VS Code wants a trusted folder and
+// task.allowAutomaticTasks on, which is off by default: answering Allow to the
+// prompt turns it on for every trusted workspace, and from then on the task runs
+// with no further question, measured on 1.116 (#1181). Windsurf's code has the
+// same checks. Cursor 3.29.9 ships with both gates open: workspace trust off,
+// the setting on, and no prompt in its code (#1502). The file cannot say which
+// editor opens it, so the message names both. A silent presentation
+// (reveal: "never") hides it from the user.
 func (r *cfg047) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -170,10 +173,11 @@ func anyDependency(task parser.VSCodeTask, all []parser.VSCodeTask, pred func(pa
 	return walk(task)
 }
 
-// folderOpenGate says what stands between a committed task and its execution,
-// as measured on VS Code 1.116 (#1181).
-const folderOpenGate = "VS Code runs it once the folder is trusted and automatic tasks are allowed. " +
-	"One Allow turns that on for every trusted workspace, and after it the task runs on open with no further prompt."
+// folderOpenGate says what stands between a committed task and its execution in
+// each editor: read from the code of Cursor 3.29.9 and Devin 1.126 (Windsurf),
+// measured on VS Code 1.116 (#1181, #1502).
+const folderOpenGate = "Cursor runs it on open with no prompt, because it ships with workspace trust off and automatic tasks on. " +
+	"VS Code and Windsurf run it once the folder is trusted and automatic tasks are allowed, and one Allow there turns that on for every trusted workspace."
 
 func (r *cfg047) checkVSCode(t *Target) []finding.Finding {
 	if t.VSCodeTasks == nil {
