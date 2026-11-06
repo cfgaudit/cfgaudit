@@ -38,15 +38,7 @@ func contentPathTargets(dir string, globs []string, targets []*rules.Target) ([]
 	if len(globs) == 0 {
 		return nil, nil
 	}
-	known := map[string]bool{}
-	for _, t := range targets {
-		if t.InstructionFile == "" {
-			continue
-		}
-		if abs, err := filepath.Abs(t.InstructionFile); err == nil {
-			known[abs] = true
-		}
-	}
+	known := knownInstructionFiles(targets)
 	var out []*rules.Target
 	err := scanroot.WalkDir(dir, func(path string, d fs.DirEntry, err error) error { // dir is the directory the user asked to scan; reads go through scanroot
 		if err != nil {
@@ -65,19 +57,42 @@ func contentPathTargets(dir string, globs []string, targets []*rules.Target) ([]
 		if abs, err := filepath.Abs(path); err != nil || known[abs] {
 			return nil
 		}
-		data, err := scanroot.ReadFile(path)
-		if err != nil || !utf8.Valid(data) || bytes.Contains(data, []byte{0}) {
-			return nil
+		if t := contentPathTarget(path); t != nil {
+			out = append(out, t)
 		}
-		out = append(out, &rules.Target{
-			Scope:              finding.ScopeProject,
-			InstructionFile:    path,
-			InstructionContent: string(data),
-			ContentPath:        true,
-		})
 		return nil
 	})
 	return out, err
+}
+
+// knownInstructionFiles returns the absolute paths of the files targets already
+// scan as instructions.
+func knownInstructionFiles(targets []*rules.Target) map[string]bool {
+	known := map[string]bool{}
+	for _, t := range targets {
+		if t.InstructionFile == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(t.InstructionFile); err == nil {
+			known[abs] = true
+		}
+	}
+	return known
+}
+
+// contentPathTarget returns the target for one text file, or nil for a file
+// that cannot be read or is not text.
+func contentPathTarget(path string) *rules.Target {
+	data, err := scanroot.ReadFile(path)
+	if err != nil || !utf8.Valid(data) || bytes.Contains(data, []byte{0}) {
+		return nil
+	}
+	return &rules.Target{
+		Scope:              finding.ScopeProject,
+		InstructionFile:    path,
+		InstructionContent: string(data),
+		ContentPath:        true,
+	}
 }
 
 func matchesAny(globs []string, rel string) bool {

@@ -222,6 +222,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	targets = append(targets, docTargets...)
+	// After content paths, so that a file named there keeps its wider rule set.
+	packageDocs, err := capabilityPackageTargets(dir, targets)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
+	}
+	targets = append(targets, packageDocs...)
 	targets = append(targets, escapedLinkTargets()...)
 	applyClaudeHooksDisabled(targets)
 

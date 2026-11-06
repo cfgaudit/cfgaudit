@@ -116,6 +116,12 @@ type Target struct {
 	// ContentPathRules to it and reports at most warn.
 	ContentPath bool
 
+	// CapabilityPackage marks an automatically discovered setup document from
+	// an MCP server, agent skill or plugin package (#1437). It remains a
+	// ContentPath target (documentation is not trusted agent context), but Run
+	// applies the narrower CapabilityPackageRules instead of the general set.
+	CapabilityPackage bool
+
 	// SkillHelper is the SKILL.md a Markdown file sits beside (#987): a file
 	// such as references/policy.md that the skill tells the agent to read. Run
 	// applies only SkillHelperRules to it and reports at most warn.
