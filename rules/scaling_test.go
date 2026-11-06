@@ -48,16 +48,18 @@ var scalingInputs = []scalingInput{
 }
 
 // perCall is the time one call of f takes: after a garbage collection, f runs
-// until a millisecond has passed, five times, and the fastest of the five
-// averages counts. Single calls of a few microseconds, and a collection that
-// happens to fall into one window, are too noisy to compare.
-func perCall(f func()) time.Duration {
+// until window has passed, five times, and the fastest of the five averages
+// counts. Single calls of a few microseconds, and a collection that happens to
+// fall into one window, are too noisy to compare. Both sizes need the same
+// window: on a busy machine a short one can fit between two preemptions while
+// a long call cannot, which reads as growth however often it is repeated.
+func perCall(f func(), window time.Duration) time.Duration {
 	best := time.Duration(1<<63 - 1)
 	for range 5 {
 		runtime.GC()
 		calls := 0
 		start := time.Now()
-		for calls == 0 || time.Since(start) < time.Millisecond {
+		for calls == 0 || time.Since(start) < window {
 			f()
 			calls++
 		}
@@ -68,15 +70,34 @@ func perCall(f func()) time.Duration {
 	return best
 }
 
+// scalingAttempts is how many times a run time over the limit is measured
+// before the test fails.
+const scalingAttempts = 3
+
+// measureScalingTime reports the time one call takes on the small and the large
+// input, and whether the ratio stays within the limit. An attempt over the
+// limit is measured again: noise only makes a call slower, so one attempt
+// within the limit shows the rule is, and a superlinear rule exceeds it every
+// time. A stall can last longer than the windows of perCall, which is what a
+// single attempt cannot tell from growth (#1484).
+func measureScalingTime(measure func() (small, large time.Duration)) (st, lt time.Duration, ok bool) {
+	for range scalingAttempts {
+		st, lt = measure()
+		if lt <= 100*time.Microsecond || lt <= 4*scalingFactor*st {
+			return st, lt, true
+		}
+	}
+	return st, lt, false
+}
+
 // TestRulesScaleLinearly runs every rule on inputs of size n and 8·n and fails
 // when its allocations or its run time grow clearly faster than the input
 // (#1105). A nested loop over the servers, hooks, permission entries or lines
 // of one file grows 64-fold here; a linear rule about 8-fold. The limits are
 // generous so shared runners do not make the test flaky: allocations may grow
 // 3·8-fold, and time 4·8-fold once one call on the larger input takes more
-// than 100 µs. CI
-// runs it under the race detector, which slows both sizes alike, so the
-// ratio holds there too.
+// than 100 µs, on one of scalingAttempts attempts. CI runs it under the race
+// detector, which slows both sizes alike, so the ratio holds there too.
 func TestRulesScaleLinearly(t *testing.T) {
 	if testing.Short() {
 		t.Skip("measures every rule on large inputs")
@@ -100,16 +121,56 @@ func TestRulesScaleLinearly(t *testing.T) {
 				// slower, never faster, so one fast call is enough to tell.
 				start := time.Now()
 				r.Check(large)
-				if time.Since(start) < 100*time.Microsecond {
+				once := time.Since(start)
+				if once < 100*time.Microsecond {
 					return
 				}
-				st := perCall(func() { r.Check(small) })
-				lt := perCall(func() { r.Check(large) })
-				if lt > 100*time.Microsecond && lt > 4*scalingFactor*st {
+				window := max(once, time.Millisecond)
+				st, lt, ok := measureScalingTime(func() (time.Duration, time.Duration) {
+					return perCall(func() { r.Check(small) }, window), perCall(func() { r.Check(large) }, window)
+				})
+				if !ok {
 					t.Errorf("run time grows %.0f-fold (%v -> %v) for an input %d times larger", float64(lt)/float64(max(st, 1)), st, lt, scalingFactor)
 				}
 			})
 		}
+	}
+}
+
+// TestMeasureScalingTime locks the retry: a slow attempt does not fail the test
+// by itself, and every attempt has to exceed the limit.
+func TestMeasureScalingTime(t *testing.T) {
+	const us = time.Microsecond
+	within := [2]time.Duration{100 * us, 800 * us}
+	stalled := [2]time.Duration{us, 50 * time.Millisecond}
+	cases := []struct {
+		name      string
+		attempts  [][2]time.Duration
+		wantCalls int
+		wantOK    bool
+	}{
+		{"within the limit", [][2]time.Duration{within}, 1, true},
+		{"exactly the limit", [][2]time.Duration{{100 * us, 3200 * us}}, 1, true},
+		{"large input too fast to compare", [][2]time.Duration{{us, 100 * us}}, 1, true},
+		{"a stall in the first attempt", [][2]time.Duration{stalled, within}, 2, true},
+		{"two stalls in a row", [][2]time.Duration{stalled, stalled, within}, 3, true},
+		{"over the limit every time", [][2]time.Duration{stalled, stalled, stalled}, scalingAttempts, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			calls := 0
+			st, lt, ok := measureScalingTime(func() (time.Duration, time.Duration) {
+				a := c.attempts[calls]
+				calls++
+				return a[0], a[1]
+			})
+			if ok != c.wantOK || calls != c.wantCalls {
+				t.Fatalf("ok = %v after %d calls, want %v after %d", ok, calls, c.wantOK, c.wantCalls)
+			}
+			if last := c.attempts[calls-1]; st != last[0] || lt != last[1] {
+				t.Errorf("got %v -> %v, want the last attempt %v -> %v", st, lt, last[0], last[1])
+			}
+		})
 	}
 }
 
