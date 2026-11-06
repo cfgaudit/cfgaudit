@@ -47,7 +47,7 @@ Rechecked 2026-10-12 for the v1.16.0 release: the published record set is unchan
 
 Rechecked 2026-10-05 for the v1.15.0 release, against **AVE-2026-00084 through AVE-2026-00087**, the four records added since. 00084 (HookPry, a plugin update that silently rebinds its hooks) is `static_detection`, but its detection is a diff against the last-reviewed plugin version, which a single repository snapshot cannot provide; CFG055 touches the committed half and is not remapped. 00085 (ColluSkill) needs correlation across skills, the same deferral as 00059. 00086 and 00087 are `runtime_observed`. The five rules added since v1.14.0: **CFG113** maps to AVE-2026-00001 (external config fetch, previously in no bucket); **CFG109, CFG110, CFG111 and CFG112** are gaps, each recorded below with its reason.
 
-The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the four config records among them were mapped, AVE-2026-00065 (A2A agent card poisoning) became a gap, and AVE-2026-00060 (STDIO shell injection) and AVE-2026-00069 (image-hidden instructions in a skill package) went out of scope as server-source and binary-content analysis. The out-of-scope records are a note back to AVE — see the last section.
+The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the four config records among them were mapped, AVE-2026-00065 (A2A agent card poisoning) became a gap (closed by #1436), and AVE-2026-00060 (STDIO shell injection) and AVE-2026-00069 (image-hidden instructions in a skill package) went out of scope as server-source and binary-content analysis. The out-of-scope records are a note back to AVE — see the last section.
 
 ---
 
@@ -104,6 +104,7 @@ Added in the 2026-08-04 refresh, against the records AVE shipped from [aveprojec
 | CFG010 unpinned `@latest`/`:latest` · CFG074 `skills-lock.json` with no integrity pin · CFG055 / CFG089 unpinned marketplace source · CFG098 `marketplace.json` archive with no `sha256` | AVE-2026-00062 unpinned dependency, supply-chain substitution |
 | CFG075 MCP `env`/`args` TLS-verify killswitch | AVE-2026-00061 TLS certificate verification disabled in component configuration |
 | CFG097 Gemini remote-agent `auth` literal | AVE-2026-00047 hardcoded credentials in component |
+| CFG024 / CFG026 / CFG030–CFG033 / CFG036 / CFG057 / CFG080 / CFG113 / CFG120 on inline Gemini Agent Card descriptions and skills | AVE-2026-00065 A2A Agent Card poisoning via embedded adversarial instructions |
 
 ### Config-declared infrastructure choice
 
@@ -179,7 +180,7 @@ Three shapes still have no class in either direction, the first of them only par
 
 | A **declared configuration that never loads**, so the guardrails a repository states are absent while its files read as configured | CFG109, and the discarded-file case of CFG012 | No record covers it, and the whole set was read to be sure. AVE-2026-00083 is the nearest in effect — a protection that executes but never evaluates — but it is `runtime_observed` and scoped to a mechanism's own comparison logic, while this is a file the agent never loads. AVE-2026-00063 is a gate a configuration *removes*; here the configuration declares nothing that takes effect. Measured both directions: Codex logs "Invalid configuration; using defaults" and runs, Claude Code discards a settings file over one top-level type mismatch and starts the session |
 
-Going the other way, **AVE-2026-00065** (A2A agent card poisoning via embedded adversarial instructions) is a class cfgaudit does *not* cover: an inline `agent_card_json` in a `.gemini/agents/*.md` is recognised but its contents are not audited.
+Going the other way, **AVE-2026-00065** (A2A agent card poisoning via embedded adversarial instructions) is now covered for committed inline Gemini cards. cfgaudit parses the serialized `agent_card_json` string and scans exactly what Gemini copies into the remote-agent tool description: the card description and each skill name/description. A remote card fetched at runtime remains outside static analysis.
 
 The pattern: **AVE models what a malicious skill/server *does*; cfgaudit models what a repository's *config* silently permits.** The two are complementary; the classes above are the clearest contribution direction if AVE wants coverage beyond skill/MCP content.
 

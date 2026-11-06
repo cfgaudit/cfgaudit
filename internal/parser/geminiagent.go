@@ -5,6 +5,7 @@ package parser
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -96,10 +97,54 @@ type GeminiRemoteAgent struct {
 	// HasInlineCard reports whether the card is embedded in the committed file
 	// (`agent_card_json`) rather than fetched.
 	HasInlineCard bool
+	// CardLine is the line of the agent_card_json frontmatter key. The embedded
+	// JSON is escaped text, so findings use this line and name the JSON path.
+	CardLine int
+	// DescriptionLine is the line of the frontmatter description key.
+	DescriptionLine int
+	// UserDescription is the optional remote-agent description Gemini prepends
+	// to the description built from the loaded card.
+	UserDescription string
+	// InlineCardText is the subset of a valid serialized Agent Card that Gemini
+	// places in the model-visible remote-agent tool description.
+	InlineCardText []GeminiAgentCardText
 	// AuthSecrets holds the credential-bearing auth fields by name. The docs use
 	// `$VAR` references throughout, but the schema is plain strings, so a literal
 	// is accepted.
 	AuthSecrets map[string]string
+}
+
+// GeminiAgentCardText is one model-visible string extracted from an inline A2A
+// Agent Card, paired with its JSON path for finding attribution.
+type GeminiAgentCardText struct {
+	Path string
+	Text string
+}
+
+// geminiInlineCardText returns the model-visible strings of a serialized card.
+// Gemini checks only that the value is valid JSON, not the card's shape, so
+// each field is read on its own: a number in one skill must not hide the text
+// around it.
+func geminiInlineCardText(serialized string) []GeminiAgentCardText {
+	var card map[string]any
+	if json.Unmarshal([]byte(serialized), &card) != nil {
+		return nil
+	}
+	var out []GeminiAgentCardText
+	add := func(path string, v any) {
+		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+			out = append(out, GeminiAgentCardText{Path: path, Text: s})
+		}
+	}
+	add("$.description", card["description"])
+	skills, _ := card["skills"].([]any)
+	for i, raw := range skills {
+		if skill, ok := raw.(map[string]any); ok {
+			add(fmt.Sprintf("$.skills[%d].name", i), skill["name"])
+			add(fmt.Sprintf("$.skills[%d].description", i), skill["description"])
+		}
+	}
+	return out
 }
 
 // geminiAuthSecretFields are the auth-block fields that carry a credential:
@@ -115,11 +160,17 @@ func GeminiAgentRemote(fm *Frontmatter) *GeminiRemoteAgent {
 		return nil
 	}
 	out := &GeminiRemoteAgent{}
+	if s, ok := fm.Raw["description"].(string); ok {
+		out.UserDescription = s
+	}
 	if s, ok := fm.Raw["agent_card_url"].(string); ok {
 		out.CardURL = strings.TrimSpace(s)
 	}
-	if _, ok := fm.Raw["agent_card_json"]; ok {
+	if raw, ok := fm.Raw["agent_card_json"]; ok {
 		out.HasInlineCard = true
+		if serialized, isString := raw.(string); isString {
+			out.InlineCardText = geminiInlineCardText(serialized)
+		}
 	}
 	if auth, ok := fm.Raw["auth"].(map[string]any); ok {
 		for _, field := range geminiAuthSecretFields {

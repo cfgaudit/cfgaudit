@@ -26,6 +26,9 @@ type instructionSource struct {
 	// Content is the text to scan. For a prompt-hook this is the injected prompt;
 	// line numbers a rule reports are relative to this text.
 	Content string
+	// Rules restricts a structured source to the content rules that are
+	// semantically valid for it. Nil means every instruction-content rule.
+	Rules map[string]bool
 }
 
 // instructionSources returns every block of instruction text to scan: the
@@ -34,12 +37,17 @@ type instructionSource struct {
 // no prompt-hooks yields exactly that one source, so the content rules behave
 // identically to before. Frontmatter-based rules (CFG051/056) read Frontmatter
 // directly and do not use this. Returns nil for a nil target.
-func (t *Target) instructionSources() []instructionSource {
+//
+// ruleID leaves out the sources limited to other rules; empty keeps them all.
+func (t *Target) instructionSources(ruleID string) []instructionSource {
 	if t == nil {
 		return nil
 	}
 	var srcs []instructionSource
-	if t.InstructionContent != "" {
+	// Gemini ignores a remote agent file's Markdown body. For an inline card,
+	// the raw serialized JSON is also not a second model-visible representation;
+	// its selected fields are registered below with their JSON paths instead.
+	if t.InstructionContent != "" && (t.GeminiRemote == nil || !t.GeminiRemote.HasInlineCard) {
 		srcs = append(srcs, instructionSource{
 			File:    t.InstructionFile,
 			Name:    t.instructionName(),
@@ -51,6 +59,57 @@ func (t *Target) instructionSources() []instructionSource {
 	srcs = append(srcs, t.continueHookPromptSources()...)
 	srcs = append(srcs, t.openCodePromptSources()...)
 	srcs = append(srcs, t.copilotPromptOverrideSources()...)
+	srcs = append(srcs, t.geminiAgentCardSources()...)
+	if ruleID == "" {
+		return srcs
+	}
+	filtered := srcs[:0]
+	for _, src := range srcs {
+		if src.Rules == nil || src.Rules[ruleID] {
+			filtered = append(filtered, src)
+		}
+	}
+	return filtered
+}
+
+var geminiAgentCardContentRules = map[string]bool{
+	"CFG024": true, "CFG026": true, "CFG030": true, "CFG031": true,
+	"CFG032": true, "CFG033": true, "CFG036": true, "CFG057": true,
+	"CFG080": true, "CFG113": true, "CFG120": true,
+}
+
+// geminiAgentCardSources returns exactly the fields Gemini CLI copies into the
+// remote-agent tool description: the frontmatter description, card description,
+// and each skill name/description. Other valid Agent Card fields are opaque to
+// the model in agentRegistry.registerRemoteAgent and are deliberately omitted.
+func (t *Target) geminiAgentCardSources() []instructionSource {
+	remote := t.GeminiRemote
+	if remote == nil || !remote.HasInlineCard {
+		return nil
+	}
+	seen := map[string]bool{}
+	var srcs []instructionSource
+	// The leading newlines put a finding on the key's line. A field with line
+	// breaks of its own counts on from there; the source name holds the path.
+	add := func(name, content string, line int) {
+		content = strings.TrimSpace(content)
+		if content == "" || seen[content] {
+			return
+		}
+		seen[content] = true
+		srcs = append(srcs, instructionSource{
+			File: t.InstructionFile, Name: name,
+			Content: strings.Repeat("\n", max(line-1, 0)) + content, Rules: geminiAgentCardContentRules,
+		})
+	}
+	for _, field := range remote.InlineCardText {
+		if field.Path == "$.description" ||
+			(strings.HasPrefix(field.Path, "$.skills[") &&
+				(strings.HasSuffix(field.Path, "].name") || strings.HasSuffix(field.Path, "].description"))) {
+			add("agent_card_json "+field.Path, field.Text, remote.CardLine)
+		}
+	}
+	add("Gemini remote agent frontmatter description", remote.UserDescription, remote.DescriptionLine)
 	return srcs
 }
 
