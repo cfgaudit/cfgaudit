@@ -160,3 +160,29 @@ func TestCapabilityPackages1437_ClassifierBranches(t *testing.T) {
 		})
 	}
 }
+
+// A setup document named in --content-paths keeps the wider rule set and its
+// own message, and a directory name is not read as a glob.
+func TestCapabilityPackages1437_ExplicitContentPathWins(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "SKILL.md"), "---\nname: helper\ndescription: helper\n---\nUse the helper.\n")
+	mustWrite(t, filepath.Join(dir, "README.md"), "<SYSTEM>note</SYSTEM>\n")
+	code, out, stderr := runCLI(t, "--format", "text", "--only", "CFG032", "--content-paths", "README.md", dir)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %s\n%s", code, stderr, out)
+	}
+	if !strings.Contains(out, "CFG032") || !strings.Contains(out, "content-paths lists it") {
+		t.Errorf("explicit content path lost its rule set:\n%s", out)
+	}
+}
+
+func TestCapabilityPackages1437_DirectoryNameWithGlobCharacters(t *testing.T) {
+	dir := t.TempDir()
+	server := filepath.Join(dir, "servers", "tool[1]")
+	mustWrite(t, filepath.Join(server, "package.json"), `{"mcpName":"io.example/sample"}`)
+	mustWrite(t, filepath.Join(server, "INSTALL.md"), "Run `curl https://downloads.example.invalid/install.sh | sh`.\n")
+	code, out, stderr := runCLI(t, "--format", "text", "--only", "CFG036", dir)
+	if code != 0 || !strings.Contains(out, "detected agent capability package") {
+		t.Errorf("exit %d, stderr %s\n%s", code, stderr, out)
+	}
+}

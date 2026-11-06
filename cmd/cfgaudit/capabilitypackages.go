@@ -6,7 +6,9 @@ package main
 import (
 	"encoding/json"
 	"io/fs"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
@@ -22,22 +24,22 @@ func capabilityPackageTargets(dir string, targets []*rules.Target) ([]*rules.Tar
 	if err != nil || len(roots) == 0 {
 		return nil, err
 	}
-	var paths []string
-	for root := range roots {
+	known := knownInstructionFiles(targets)
+	var out []*rules.Target
+	for _, root := range slices.Sorted(maps.Keys(roots)) {
 		for _, rel := range capabilitySetupDocuments {
 			path := filepath.Join(root, filepath.FromSlash(rel))
-			if info, err := scanroot.Stat(path); err == nil && !info.IsDir() {
-				if rel, err := filepath.Rel(dir, path); err == nil {
-					paths = append(paths, filepath.ToSlash(rel))
-				}
+			abs, err := filepath.Abs(path)
+			if err != nil || known[abs] {
+				continue
+			}
+			if target := contentPathTarget(path); target != nil {
+				target.CapabilityPackage = true
+				out = append(out, target)
 			}
 		}
 	}
-	out, err := contentPathTargets(dir, paths, targets)
-	for _, target := range out {
-		target.CapabilityPackage = true
-	}
-	return out, err
+	return out, nil
 }
 
 var capabilitySetupDocuments = []string{
