@@ -435,6 +435,9 @@ type MCPConfig struct {
 	Servers    map[string]MCPServer `json:"servers,omitempty"`
 }
 
+// utf8BOM is a UTF-8 byte-order mark.
+var utf8BOM = []byte{0xef, 0xbb, 0xbf}
+
 // ParseMCPConfig reads and decodes an MCP config file. The VS Code "servers"
 // variant is folded into MCPServers so callers see a single map; on a name
 // collision the mcpServers entry wins.
@@ -505,15 +508,21 @@ func ParseProjectMCPConfig(path string) (*MCPConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	return parseMCPConfigBytes(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf}), path)
+	return parseMCPConfigBytes(bytes.TrimPrefix(data, utf8BOM), path)
 }
 
 func parseMCPConfigBytes(data []byte, path string) (*MCPConfig, error) {
 	// VS Code reads .vscode/mcp.json as JSON with comments, like its other
-	// workspace files (#829). The other MCP files stay strict: with a comment
+	// workspace files (#829). Most other MCP files stay strict: with a comment
 	// in .mcp.json, Claude Code 2.1.310 lists "[Failed to parse] Project config"
 	// and loads no server from it, so there it is a real CFG109.
 	if isVSCodeWorkspaceFile(path) {
+		data = stripJSONC(data)
+	}
+	// Cursor 3.29.9 strips comments and trailing commas before JSON.parse
+	// (parseMcpServersFromFile), so such a file loads. A byte-order mark is not
+	// stripped there, and an empty file is its own "JSON syntax error" (#1189).
+	if isCursorMCPFile(path) && !bytes.HasPrefix(data, utf8BOM) {
 		data = stripJSONC(data)
 	}
 	// Copilot CLI reads .github/mcp.json strictly and only under mcpServers:
@@ -567,6 +576,12 @@ func isCopilotWorkspaceMCP(path string) bool {
 // isVSCodeWorkspaceFile reports whether path is a file in a .vscode directory.
 func isVSCodeWorkspaceFile(path string) bool {
 	return filepath.Base(filepath.Dir(path)) == ".vscode"
+}
+
+// isCursorMCPFile reports whether path is Cursor's mcp.json, in a project or in
+// the home directory.
+func isCursorMCPFile(path string) bool {
+	return filepath.Base(path) == "mcp.json" && filepath.Base(filepath.Dir(path)) == ".cursor"
 }
 
 // ParseSettings reads and decodes a settings.json file.
