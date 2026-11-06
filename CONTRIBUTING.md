@@ -424,6 +424,7 @@ The steps of a release, including the ones done by hand, are in [RELEASING.md](R
 ```text
 cmd/cfgaudit/        # CLI entrypoint, output formatters (text/JSON/SARIF), flag parsing
 cmd/advisorycheck/   # weekly check that the ids in docs/advisories.yml are still valid; not released
+cmd/ciduration/      # weekly report of how long the workflows take; not released
 cmd/ioccheck/        # validates internal/maliciousioc/npm.json and its review date, weekly in CI; not released
 internal/parser/     # settings.json + .claudeignore parsing
 internal/finding/    # Finding/Severity/Scope types

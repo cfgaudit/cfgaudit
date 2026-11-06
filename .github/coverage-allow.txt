@@ -5,4 +5,5 @@
 # check.
 cmd/advisorycheck/main.go main # one line: os.Exit around run, which the tests call
 cmd/cfgaudit/main.go main # one line: os.Exit around run, which the tests call
+cmd/ciduration/main.go main # one line: os.Exit around realMain, which the tests call
 cmd/coveragecheck/main.go main # one line: os.Exit around run, which the tests call
