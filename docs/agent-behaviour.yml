@@ -22,6 +22,7 @@
 #             hosts are example.invalid.
 #   fires     rule to severity: each must be reported on the fixture
 #   silent    rules that must not be reported on the fixture
+#   plugin    the fixture folder to pass to --plugins, when the entry is about one
 
 behaviours:
   # malformed
@@ -107,6 +108,19 @@ behaviours:
     fires: {CFG010: warn}
     silent: [CFG109]
 
+  - id: claude-code/plugin-mcp-bom
+    agent: claude-code
+    topic: malformed
+    claim: Unlike the repository-root file, a plugin's .mcp.json with a leading BOM yields no server.
+    version: 2.1.319
+    evidence: "measured: claude --plugin-dir mcp list named the server without the BOM and not with it"
+    issue: 1496
+    plugin: plugin
+    files:
+      plugin/.claude-plugin/plugin.json: "{\"name\":\"p\",\"version\":\"1.0.0\"}"
+      plugin/.mcp.json: "\uFEFF{\"mcpServers\":{\"s\":{\"command\":\"npx\",\"args\":[\"-y\",\"example-mcp\"]}}}"
+    silent: [CFG010]
+
   # precedence
   - id: claude-code/duplicate-key-last-wins
     agent: claude-code
@@ -153,6 +167,32 @@ behaviours:
     files:
       .claude/settings.json: "{\"permissions\":{\"allow\":[\"Bash\"],\"deny\":[\"Bash\"]}}"
     silent: [CFG001]
+
+  - id: claude-code/plugin-mcp-without-manifest-entry
+    agent: claude-code
+    topic: precedence
+    claim: A plugin's root .mcp.json loads with no entry in plugin.json.
+    version: 2.1.319
+    evidence: "measured: claude --plugin-dir mcp list named the server"
+    issue: 1496
+    plugin: plugin
+    files:
+      plugin/.claude-plugin/plugin.json: "{\"name\":\"p\",\"version\":\"1.0.0\"}"
+      plugin/.mcp.json: "{\"mcpServers\":{\"s\":{\"command\":\"npx\",\"args\":[\"-y\",\"example-mcp\"]}}}"
+    fires: {CFG010: warn}
+
+  - id: claude-code/plugin-mcp-replaces-manifest
+    agent: claude-code
+    topic: precedence
+    claim: A plugin's root .mcp.json with servers replaces the manifest's mcpServers, so a server named only in the manifest does not start.
+    version: 2.1.319
+    evidence: "measured: claude --plugin-dir mcp list named only the server of .mcp.json, and the inline one once the file was empty, broken or had a BOM"
+    issue: 1496
+    plugin: plugin
+    files:
+      plugin/.claude-plugin/plugin.json: "{\"name\":\"p\",\"version\":\"1.0.0\",\"mcpServers\":{\"i\":{\"command\":\"npx\",\"args\":[\"-y\",\"example-mcp\"]}}}"
+      plugin/.mcp.json: "{\"mcpServers\":{\"s\":{\"command\":\"/usr/bin/node\",\"args\":[\"x.js\"]}}}"
+    silent: [CFG010]
 
   # ignore
   - id: claude-code/untrusted-folder-ignores-allow

@@ -131,3 +131,42 @@ func TestPluginRootOf(t *testing.T) {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
+
+// #1496: what Claude Code 2.1.319 does with a plugin's root .mcp.json.
+func TestPluginDefaultMCP(t *testing.T) {
+	const wrapped = `{"mcpServers":{"s":{"command":"node"}}}`
+	for name, c := range map[string]struct {
+		manifest, content string
+		want              bool
+	}{
+		"wrapped":       {".claude-plugin/plugin.json", wrapped, true},
+		"top level":     {".claude-plugin/plugin.json", `{"s":{"url":"https://example.invalid"}}`, true},
+		"bom":           {".claude-plugin/plugin.json", "\uFEFF" + wrapped, false},
+		"broken":        {".claude-plugin/plugin.json", `{"mcpServers":{`, false},
+		"no server":     {".claude-plugin/plugin.json", `{}`, false},
+		"not a server":  {".claude-plugin/plugin.json", `{"s":{"note":"x"}}`, false},
+		"not an object": {".claude-plugin/plugin.json", `{"s":1}`, false},
+		"no file":       {".claude-plugin/plugin.json", "", false},
+		"other folder":  {"plugin.json", wrapped, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			manifest := filepath.Join(dir, filepath.FromSlash(c.manifest))
+			if err := os.MkdirAll(filepath.Dir(manifest), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if c.content != "" {
+				if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(c.content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			servers, file := PluginDefaultMCP(manifest)
+			if got := len(servers) == 1; got != c.want {
+				t.Fatalf("servers = %v", servers)
+			}
+			if c.want && file != filepath.Join(dir, ".mcp.json") {
+				t.Errorf("file = %s", file)
+			}
+		})
+	}
+}

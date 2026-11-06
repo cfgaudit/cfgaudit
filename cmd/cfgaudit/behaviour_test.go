@@ -32,6 +32,7 @@ type agentBehaviour struct {
 	Files    map[string]string `yaml:"files"`
 	Fires    map[string]string `yaml:"fires"`
 	Silent   []string          `yaml:"silent"`
+	Plugin   string            `yaml:"plugin"`
 }
 
 func loadBehaviours(t *testing.T) []agentBehaviour {
@@ -85,15 +86,19 @@ func checkBehaviourEntry(b agentBehaviour) error {
 }
 
 // scanBehaviour scans the fixture and returns rule to severity.
-func scanBehaviour(t *testing.T, files map[string]string) map[string]string {
+func scanBehaviour(t *testing.T, b agentBehaviour) map[string]string {
 	t.Helper()
 	dir := t.TempDir()
 	setHome(t, t.TempDir())
-	for name, content := range files {
+	for name, content := range b.Files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(name)), content)
 	}
 	var out, errb bytes.Buffer
-	code := run([]string{"cfgaudit", "--format", "json", "--claude-version", "2.1.317", dir}, nil, &out, &errb)
+	args := []string{"cfgaudit", "--format", "json", "--claude-version", "2.1.317"}
+	if b.Plugin != "" {
+		args = append(args, "--plugins", filepath.Join(dir, filepath.FromSlash(b.Plugin)))
+	}
+	code := run(append(args, dir), nil, &out, &errb)
 	if code != 0 && code != 1 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
@@ -124,7 +129,7 @@ func TestAgentBehaviours(t *testing.T) {
 				t.Fatal("listed twice")
 			}
 			seen[b.ID] = true
-			got := scanBehaviour(t, b.Files)
+			got := scanBehaviour(t, b)
 			for rule, severity := range b.Fires {
 				if got[rule] != severity {
 					t.Errorf("%s: got %q, want %q (%s)", rule, got[rule], severity, b.Claim)
