@@ -169,6 +169,8 @@ jobs:
           | `benchmarks` | per benchmark (name without the `Benchmark` prefix and CPU suffix): the median of each unit (`ns/op`, `B/op`, `allocs/op`, and custom units such as `init-ms/op`) over 10 runs, plus `ratio`, the median `ns/op` of this commit divided by that of `tag` measured in the same job, or `null` when `tag` predates the benchmarks |
 
           Time depends on the runner; read it through `ratio`. `B/op` and `allocs/op` do not.
+
+          `ci-durations.jsonl` holds one JSON object per week, written by `.github/workflows/ci-durations.yml` (#1489): `schema`, `date`, `days`, `budget_minutes`, and in `workflows` and `jobs` the `name`, `runs`, `median`, `p90` and `max` in minutes.
           EOF
             git add README.md
           fi
