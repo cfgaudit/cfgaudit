@@ -7,6 +7,10 @@ name: Check advisories
 # rejected, withdrawn or unknown id opens an issue, so the entry can be removed
 # or marked and the website stops citing it. A service that could not be asked
 # only fails the run: an outage says nothing about the ids.
+#
+# The malicious-package data has a review date of its own. Once that has passed,
+# the second job opens an issue. It only reads the data file in the repository,
+# so an outage cannot trigger it.
 
 on:
   schedule:
@@ -76,6 +80,64 @@ jobs:
             cat "$report"
             echo
             echo "Remove or mark each entry in \`docs/advisories.yml\`. The rule stays: the configuration can be risky without the advisory."
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > "$RUNNER_TEMP/issue.md"
+          gh issue create --title "$title" --label enhancement --body-file "$RUNNER_TEMP/issue.md"
+
+  ioc-review:
+    name: Check IOC review date
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check the review date
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          report="$RUNNER_TEMP/ioccheck.txt"
+          # Not go run: a failed build must not read as a failed check.
+          go build -o "$RUNNER_TEMP/ioccheck" ./cmd/ioccheck
+          rc=0
+          "$RUNNER_TEMP/ioccheck" > "$report" 2>&1 || rc=$?
+          cat "$report"
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+          case "$rc" in
+            0) exit 0 ;;
+            1) ;;
+            *)
+              echo "::error::ioccheck could not run; see the report"
+              exit "$rc"
+              ;;
+          esac
+
+          title="IOC update: internal/maliciousioc/npm.json needs a review"
+          if [ "${DRY_RUN:-}" = "true" ]; then
+            echo "[dry-run] would open: $title"
+            exit 0
+          fi
+          if [ "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')" != "0" ]; then
+            echo "an open issue already exists: $title"
+            exit 0
+          fi
+          {
+            cat "$report"
+            echo
+            echo "Review every entry against its source, then advance \`last_reviewed\` and \`review_after\`. See \`docs/rules/CFG128.md\`."
             echo
             echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           } > "$RUNNER_TEMP/issue.md"
