@@ -14,12 +14,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The surface list (#1443): docs/agent-surfaces.yml says which project files
-// cfgaudit reads for which agent. These tests hold it to the real discovery, in
-// both directions.
+// The surface list (#1443): docs/agent-surfaces.yml says which project and
+// user-global files cfgaudit reads for which agent. These tests hold it to the
+// real discovery, in both directions.
 
 type agentSurface struct {
 	Agent   string `yaml:"agent"`
+	Scope   string `yaml:"scope"`
 	Kind    string `yaml:"kind"`
 	Path    string `yaml:"path"`
 	Content string `yaml:"content"`
@@ -46,31 +47,33 @@ func loadSurfaces(t *testing.T) []agentSurface {
 }
 
 // Every line is true: the file alone, in an otherwise empty directory, is
-// listed under that agent.
+// listed under that agent. A user-global file goes into an empty home.
 func TestAgentSurfacesAreDiscovered(t *testing.T) {
 	seen := map[string]bool{}
 	for _, s := range loadSurfaces(t) {
-		t.Run(s.Path, func(t *testing.T) {
+		t.Run(s.Scope+"/"+s.Path, func(t *testing.T) {
 			if s.Agent == "" || s.Kind == "" || s.Path == "" {
 				t.Fatalf("incomplete entry: %+v", s)
 			}
-			if seen[s.Path] {
+			if s.Scope != "" && s.Scope != "user" {
+				t.Fatalf("unknown scope: %+v", s)
+			}
+			if seen[s.Scope+"/"+s.Path] {
 				t.Fatalf("%s is listed twice", s.Path)
 			}
-			seen[s.Path] = true
+			seen[s.Scope+"/"+s.Path] = true
 			content := s.Content
 			if content == "" {
 				content = "x\n"
 			}
-			dir := t.TempDir()
-			path := filepath.Join(dir, filepath.FromSlash(s.Path))
-			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-				t.Fatal(err)
+			dir, home := t.TempDir(), t.TempDir()
+			setHome(t, home)
+			root, want, args := dir, s.Path, []string{"--format", "json"}
+			if s.Scope == "user" {
+				root, want, args = home, "~/"+s.Path, append(args, "--user")
 			}
-			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			code, out, errb := inventoryRun(t, "--format", "json", dir)
+			mustWrite(t, filepath.Join(root, filepath.FromSlash(s.Path)), content)
+			code, out, errb := inventoryRun(t, append(args, dir)...)
 			if code != 0 {
 				t.Fatalf("exit %d: %s", code, errb)
 			}
@@ -80,7 +83,7 @@ func TestAgentSurfacesAreDiscovered(t *testing.T) {
 			}
 			for _, a := range inv.Agents {
 				for _, f := range a.Files {
-					if f.Path == s.Path {
+					if f.Path == want {
 						if a.Agent != s.Agent {
 							t.Errorf("listed under %q, want %q", a.Agent, s.Agent)
 						}
@@ -90,6 +93,51 @@ func TestAgentSurfacesAreDiscovered(t *testing.T) {
 			}
 			t.Errorf("not in the inventory:\n%s", out)
 		})
+	}
+}
+
+// A user-global file is read only with --user.
+func TestAgentSurfacesUserNeedsTheFlag(t *testing.T) {
+	dir, home := t.TempDir(), t.TempDir()
+	setHome(t, home)
+	for _, s := range loadSurfaces(t) {
+		if s.Scope == "user" {
+			mustWrite(t, filepath.Join(home, filepath.FromSlash(s.Path)), s.Content+"\n")
+		}
+	}
+	code, out, errb := inventoryRun(t, "--format", "json", dir)
+	if code != 0 || strings.Contains(out, "~/") {
+		t.Errorf("exit %d: %s\n%s", code, errb, out)
+	}
+}
+
+// Every list of user paths has its lines, so a path added to one cannot stay
+// out of the surface list. The single files read by name have no such list.
+func TestAgentSurfacesCoverTheUserLists(t *testing.T) {
+	var user []string
+	for _, s := range loadSurfaces(t) {
+		if s.Scope == "user" {
+			user = append(user, filepath.FromSlash(s.Path))
+		}
+	}
+	matches := func(glob string) bool {
+		return slices.ContainsFunc(user, func(p string) bool {
+			ok, err := filepath.Match(glob, p)
+			return err == nil && ok
+		})
+	}
+	under := func(dir string) bool {
+		return slices.ContainsFunc(user, func(p string) bool { return strings.HasPrefix(p, dir+string(filepath.Separator)) })
+	}
+	for _, glob := range slices.Concat(userInstructionGlobs, userAgentMCPFiles) {
+		if !matches(glob) {
+			t.Errorf("%s has no user line", glob)
+		}
+	}
+	for _, dir := range slices.Concat(recursiveInstructionDirs, userSkillsDirs) {
+		if !under(dir) {
+			t.Errorf("%s has no user line", dir)
+		}
 	}
 }
 
