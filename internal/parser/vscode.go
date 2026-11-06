@@ -23,7 +23,7 @@ type VSCodeTasks struct {
 
 // VSCodeTask is a single task entry. A task whose RunOptions.RunOn is
 // "folderOpen" executes automatically when the workspace is opened — a
-// zero-click execution vector when the file is committed to a repo (CFG047).
+// code execution vector when the file is committed to a repo (CFG047).
 type VSCodeTask struct {
 	Label        string              `json:"label,omitempty"`
 	Type         string              `json:"type,omitempty"`
