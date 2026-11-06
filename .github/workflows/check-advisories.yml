@@ -29,6 +29,7 @@ jobs:
   check:
     name: Check advisory ids
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: write
@@ -88,6 +89,7 @@ jobs:
   ioc-review:
     name: Check IOC review date
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       issues: write
