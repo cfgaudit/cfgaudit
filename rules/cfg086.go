@@ -19,18 +19,35 @@ func init() { All = append(All, CFG086) }
 
 func (r *cfg086) ID() string { return "CFG086" }
 
-// zeroClickHookEvents fire without the user asking the agent to do anything —
-// opening the folder or starting a session is enough. Cursor's workspaceOpen
-// fires "once when Cursor opens a workspace and again on every workspace folder
-// change"; the session events fire as soon as a session begins.
+// startingASession is the "when" phrasing for an agent whose only event of this
+// kind is its session start.
+const startingASession = "starting a session"
+
+// cursorZeroClickEvents fire without the user asking the agent to do anything.
+// workspaceOpen fires "when Cursor opens a workspace and on every workspace
+// folder change". sessionStart is not tied to opening the project: Cursor 3.29.9
+// fires it when a composer is created (createComposerImpl), and the 2026.11.05
+// CLI at the start of a run that resumes nothing, both before any prompt (#1186).
 //
 // Keys are the normalized event name (see normalizeHookEvent): matched with case,
 // separators, and spelling collapsed, because Copilot accepts camelCase and
 // PascalCase for every event and Grok additionally accepts snake_case
 // (session_start). A rule keyed to one spelling would miss files written another.
-var zeroClickHookEvents = map[string]string{
-	"workspaceopen": "opening the workspace — and again on every workspace folder change",
-	"sessionstart":  "starting a session",
+var cursorZeroClickEvents = map[string]string{
+	"workspaceopen": "opening the workspace, and again on every workspace folder change",
+	"sessionstart":  "starting a conversation (a new chat in the IDE, or a new CLI run)",
+}
+
+// sessionZeroClickEvents are the same for Copilot and Grok, which have no
+// workspace-open event.
+var sessionZeroClickEvents = map[string]string{"sessionstart": startingASession}
+
+// agentHookZeroClickEvents returns the events of the agent named by kind.
+func agentHookZeroClickEvents(kind string) map[string]string {
+	if kind == "Cursor" {
+		return cursorZeroClickEvents
+	}
+	return sessionZeroClickEvents
 }
 
 // normalizeHookEvent lower-cases an event name and strips the separators that
@@ -55,8 +72,9 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 	// Cursor / Copilot (AgentHooks: a flat event → handlers map). Copilot's
 	// disableAllHooks turns the whole file off.
 	if ah := t.AgentHooks; ah != nil && !ah.DisableAllHooks && len(ah.Hooks) > 0 {
+		events := agentHookZeroClickEvents(t.AgentHooksKind)
 		for _, event := range sortedKeys2(ah.Hooks) {
-			when, zeroClick := zeroClickHookEvents[normalizeHookEvent(event)]
+			when, zeroClick := events[normalizeHookEvent(event)]
 			if !zeroClick {
 				continue
 			}
@@ -82,7 +100,7 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 	// deliberately absent from this rule.)
 	if ch := t.ContinueHooks; ch != nil && !ch.DisableAllHooks && len(ch.Hooks) > 0 {
 		if groups, ok := ch.Hooks[continueZeroClickEvent]; ok && grokEventHasCommand(groups, nil) {
-			findings = append(findings, zeroClickFinding(t, "Continue", continueZeroClickEvent, zeroClickHookEvents["sessionstart"], t.ContinueHooksFile))
+			findings = append(findings, zeroClickFinding(t, "Continue", continueZeroClickEvent, startingASession, t.ContinueHooksFile))
 		}
 	}
 
@@ -90,7 +108,7 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 	// has SessionStart as its zero-click event and no disableAllHooks switch.
 	if gh := t.GrokHooks; gh != nil && len(gh.Hooks) > 0 {
 		for _, event := range sortedKeys2(gh.Hooks) {
-			when, zeroClick := zeroClickHookEvents[normalizeHookEvent(event)]
+			when, zeroClick := sessionZeroClickEvents[normalizeHookEvent(event)]
 			if !zeroClick {
 				continue
 			}
@@ -109,7 +127,7 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 	// and here).
 	if g := t.Gemini; g != nil && !g.HooksDisabled() && len(g.Hooks) > 0 {
 		if groups, ok := g.Hooks[geminiZeroClickEvent]; ok && grokEventHasCommand(groups, g.DisabledHookNames()) {
-			findings = append(findings, zeroClickFinding(t, "Gemini", geminiZeroClickEvent, zeroClickHookEvents["sessionstart"], t.GeminiFile))
+			findings = append(findings, zeroClickFinding(t, "Gemini", geminiZeroClickEvent, startingASession, t.GeminiFile))
 		}
 	}
 
@@ -137,7 +155,7 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 	// documents no trust step for project hooks (#613).
 	if d := t.Devin; d != nil && len(d.Hooks) > 0 {
 		if groups, ok := d.Hooks[devinZeroClickEvent]; ok && grokEventHasCommand(groups, nil) {
-			findings = append(findings, zeroClickFinding(t, "Devin", devinZeroClickEvent, zeroClickHookEvents["sessionstart"], t.DevinFile))
+			findings = append(findings, zeroClickFinding(t, "Devin", devinZeroClickEvent, startingASession, t.DevinFile))
 		}
 	}
 	return findings
@@ -160,7 +178,7 @@ const geminiZeroClickEvent = "SessionStart"
 // qwenZeroClickEvents are qwen's exact-PascalCase hook events that fire before the
 // user does anything, mapped to the "when" phrasing for the finding message.
 var qwenZeroClickEvents = map[string]string{
-	"SessionStart":       "starting a session",
+	"SessionStart":       startingASession,
 	"InstructionsLoaded": "loading its instruction files (QWEN.md and context) at session start",
 }
 
@@ -172,7 +190,7 @@ func zeroClickFinding(t *Target, kind, event, when, file string) finding.Finding
 		Scope:    t.Scope,
 		File:     file,
 		Message: kind + " hooks." + event + " runs a shell command on " + when +
-			" — committed to a repository, this executes on every teammate who opens it, before they have asked the agent to do anything. Move it to a hook that runs on an explicit action, or to machine-local configuration" + userScopeNote(t),
+			" — committed to a repository, this executes for every teammate, before they have asked the agent to do anything. Move it to a hook that runs on an explicit action, or to machine-local configuration" + userScopeNote(t),
 	}
 }
 
