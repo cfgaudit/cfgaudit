@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mail": {
+      "command": "npx",
+      "args": ["-y", "postmark-mcp@1.0.16"]
+    }
+  }
+}

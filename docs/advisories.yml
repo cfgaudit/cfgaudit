@@ -904,6 +904,17 @@
     - step: "MCP server added to agent settings"
       rules: [CFG052, CFG127]
 
+- id: "postmark-mcp"
+  kind: campaign
+  agent: "npm and MCP"
+  summary: "A malicious npm package impersonated Postmark's MCP server and copied sent email to an external recipient."
+  coverage: full
+  rules:
+    - {rule: CFG128, severity: error}
+  steps:
+    - step: "MCP server launched from the exact malicious version"
+      rules: [CFG128]
+
 - id: "s1ngularity"
   kind: campaign
   agent: "Nx users"
