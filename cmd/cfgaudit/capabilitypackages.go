@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"maps"
+	pathpkg "path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -20,7 +21,7 @@ import (
 // A mention of AI/MCP, or an MCP SDK dependency on its own, is deliberately not
 // evidence: ordinary applications use those dependencies too.
 func capabilityPackageTargets(dir string, targets []*rules.Target) ([]*rules.Target, error) {
-	roots, err := capabilityPackageRoots(dir)
+	roots, docs, err := capabilityPackageRoots(dir)
 	if err != nil || len(roots) == 0 {
 		return nil, err
 	}
@@ -30,7 +31,7 @@ func capabilityPackageTargets(dir string, targets []*rules.Target) ([]*rules.Tar
 		for _, rel := range capabilitySetupDocuments {
 			path := filepath.Join(root, filepath.FromSlash(rel))
 			abs, err := filepath.Abs(path)
-			if err != nil || known[abs] {
+			if !docs[path] || err != nil || known[abs] {
 				continue
 			}
 			if target := contentPathTarget(path); target != nil {
@@ -47,9 +48,20 @@ var capabilitySetupDocuments = []string{
 	"docs/install.md", "docs/installation.md", "docs/setup.md", "docs/getting-started.md",
 }
 
-func capabilityPackageRoots(dir string) (map[string]bool, error) {
-	roots := map[string]bool{}
-	err := scanroot.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+// capabilitySetupNames holds the file names of capabilitySetupDocuments.
+var capabilitySetupNames = func() map[string]bool {
+	names := map[string]bool{}
+	for _, rel := range capabilitySetupDocuments {
+		names[pathpkg.Base(rel)] = true
+	}
+	return names
+}()
+
+// capabilityPackageRoots returns the package directories under dir and the
+// files that could be their setup documents, so that absent ones cost no read.
+func capabilityPackageRoots(dir string) (roots, docs map[string]bool, err error) {
+	roots, docs = map[string]bool{}, map[string]bool{}
+	err = scanroot.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -58,6 +70,9 @@ func capabilityPackageRoots(dir string) (map[string]bool, error) {
 				return filepath.SkipDir
 			}
 			return nil
+		}
+		if capabilitySetupNames[d.Name()] {
+			docs[path] = true
 		}
 		switch d.Name() {
 		case "SKILL.md":
@@ -80,7 +95,7 @@ func capabilityPackageRoots(dir string) (map[string]bool, error) {
 		}
 		return nil
 	})
-	return roots, err
+	return roots, docs, err
 }
 
 func validJSONFile(path string) bool {
