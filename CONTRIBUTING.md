@@ -147,6 +147,12 @@ The Benchmarks workflow (`.github/workflows/bench.yml`) does the same on every p
 
 On every push to `main`, the Benchmark history workflow (`.github/workflows/bench-history.yml`) appends one line with the medians, the runner CPU and the time ratio against the latest release to `bench.jsonl` on the `bench-data` branch. The branch's README describes the format.
 
+Every Monday, the CI durations workflow (`.github/workflows/ci-durations.yml`) runs `cmd/ciduration` and appends median, p90 and maximum per workflow, and for the jobs of the 30 newest `CI` runs, to `ci-durations.jsonl` on the same branch. A workflow with at least 5 runs and a p90 above 15 minutes opens an issue, or updates the open one. Duration is not a check on pull requests, because hosted runners vary too much. To see the report:
+
+```sh
+GITHUB_TOKEN=$(gh auth token) go run ./cmd/ciduration
+```
+
 `TestBenchCorpus_ScansClean` and `TestBenchCorpus_PrefilterPassRate` keep the corpus honest: it must produce no findings, and a few percent of its lines must still pass the literal prefilter. If a rule change makes the corpus match, adjust the rule or the corpus in a commit of its own, because a corpus change moves every benchmark number.
 
 ---
