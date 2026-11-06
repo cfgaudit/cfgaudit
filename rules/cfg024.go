@@ -171,7 +171,7 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	// One finding per source: the first hidden codepoint in each instruction
 	// file / prompt-hook is enough to flag it for cleanup.
-	for _, src := range t.instructionSourcesFor(r.ID()) {
+	for _, src := range t.instructionSources(r.ID()) {
 		runes := []rune(src.Content)
 		line, col := 1, 0
 		riRun, riLine, riCol := 0, 0, 0

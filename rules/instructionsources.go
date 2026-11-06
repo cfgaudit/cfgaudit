@@ -37,11 +37,9 @@ type instructionSource struct {
 // no prompt-hooks yields exactly that one source, so the content rules behave
 // identically to before. Frontmatter-based rules (CFG051/056) read Frontmatter
 // directly and do not use this. Returns nil for a nil target.
-func (t *Target) instructionSources() []instructionSource {
-	return t.instructionSourcesFor("")
-}
-
-func (t *Target) instructionSourcesFor(ruleID string) []instructionSource {
+//
+// ruleID leaves out the sources limited to other rules; empty keeps them all.
+func (t *Target) instructionSources(ruleID string) []instructionSource {
 	if t == nil {
 		return nil
 	}
@@ -75,9 +73,9 @@ func (t *Target) instructionSourcesFor(ruleID string) []instructionSource {
 }
 
 var geminiAgentCardContentRules = map[string]bool{
-	"CFG026": true, "CFG030": true, "CFG031": true, "CFG032": true,
-	"CFG033": true, "CFG036": true, "CFG080": true, "CFG113": true,
-	"CFG120": true,
+	"CFG024": true, "CFG026": true, "CFG030": true, "CFG031": true,
+	"CFG032": true, "CFG033": true, "CFG036": true, "CFG057": true,
+	"CFG080": true, "CFG113": true, "CFG120": true,
 }
 
 // geminiAgentCardSources returns exactly the fields Gemini CLI copies into the
@@ -89,10 +87,11 @@ func (t *Target) geminiAgentCardSources() []instructionSource {
 	if remote == nil || !remote.HasInlineCard {
 		return nil
 	}
-	prefix := strings.Repeat("\n", max(remote.CardLine-1, 0))
 	seen := map[string]bool{}
 	var srcs []instructionSource
-	add := func(name, content string) {
+	// The leading newlines put a finding on the key's line. A field with line
+	// breaks of its own counts on from there; the source name holds the path.
+	add := func(name, content string, line int) {
 		content = strings.TrimSpace(content)
 		if content == "" || seen[content] {
 			return
@@ -100,17 +99,17 @@ func (t *Target) geminiAgentCardSources() []instructionSource {
 		seen[content] = true
 		srcs = append(srcs, instructionSource{
 			File: t.InstructionFile, Name: name,
-			Content: prefix + content, Rules: geminiAgentCardContentRules,
+			Content: strings.Repeat("\n", max(line-1, 0)) + content, Rules: geminiAgentCardContentRules,
 		})
 	}
 	for _, field := range remote.InlineCardText {
 		if field.Path == "$.description" ||
 			(strings.HasPrefix(field.Path, "$.skills[") &&
 				(strings.HasSuffix(field.Path, "].name") || strings.HasSuffix(field.Path, "].description"))) {
-			add("agent_card_json "+field.Path, field.Text)
+			add("agent_card_json "+field.Path, field.Text, remote.CardLine)
 		}
 	}
-	add("Gemini remote agent frontmatter description", remote.UserDescription)
+	add("Gemini remote agent frontmatter description", remote.UserDescription, remote.DescriptionLine)
 	return srcs
 }
 

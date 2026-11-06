@@ -684,7 +684,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSourcesFor(r.ID()) {
+	for _, src := range t.instructionSources(r.ID()) {
 		lines := strings.Split(src.Content, "\n")
 		fenced := fencedLines(src.Content)
 		for i, line := range lines {

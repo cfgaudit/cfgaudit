@@ -104,7 +104,7 @@ Added in the 2026-08-04 refresh, against the records AVE shipped from [aveprojec
 | CFG010 unpinned `@latest`/`:latest` · CFG074 `skills-lock.json` with no integrity pin · CFG055 / CFG089 unpinned marketplace source · CFG098 `marketplace.json` archive with no `sha256` | AVE-2026-00062 unpinned dependency, supply-chain substitution |
 | CFG075 MCP `env`/`args` TLS-verify killswitch | AVE-2026-00061 TLS certificate verification disabled in component configuration |
 | CFG097 Gemini remote-agent `auth` literal | AVE-2026-00047 hardcoded credentials in component |
-| CFG026 / CFG030–CFG033 / CFG036 / CFG080 / CFG113 / CFG120 on inline Gemini Agent Card descriptions and skills | AVE-2026-00065 A2A Agent Card poisoning via embedded adversarial instructions |
+| CFG024 / CFG026 / CFG030–CFG033 / CFG036 / CFG057 / CFG080 / CFG113 / CFG120 on inline Gemini Agent Card descriptions and skills | AVE-2026-00065 A2A Agent Card poisoning via embedded adversarial instructions |
 
 ### Config-declared infrastructure choice
 

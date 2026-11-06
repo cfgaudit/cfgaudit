@@ -2053,7 +2053,9 @@ func attachSubagentBlocks(t *rules.Target) {
 		// and strict, so both are decoded and at most one will be present.
 		t.GeminiRemote = parser.GeminiAgentRemote(fm)
 		if t.GeminiRemote != nil && t.GeminiRemote.HasInlineCard {
-			t.GeminiRemote.CardLine = frontmatterFieldLine(strings.Split(t.InstructionContent, "\n"), "frontmatter agent_card_json")
+			lines := strings.Split(t.InstructionContent, "\n")
+			t.GeminiRemote.CardLine = frontmatterFieldLine(lines, "frontmatter agent_card_json")
+			t.GeminiRemote.DescriptionLine = frontmatterFieldLine(lines, "frontmatter description")
 		}
 		return
 	}
