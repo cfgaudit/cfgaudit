@@ -29,7 +29,13 @@ var (
 	// settings.json) and the bare word "credentials" are deliberately NOT listed:
 	// skills legitimately run their own .claude/ scripts and mention "credentials"
 	// in prose — only real secret files belong here (credentials.json is anchored).
-	cmdSubstSensitiveRe = mustFiltered("(?i)(?:\\$\\(|`)[^)`]*\\s[^)`]*(?:~/\\.ssh|~/\\.aws|~/\\.gcp|~/\\.config/gcloud|/etc/passwd|/etc/shadow|\\.env\\b|id_rsa|id_ed25519|credentials\\.json)")
+	//
+	// ~/.aws counts as the directory and its secret files, not a tool's own file
+	// below it. .env has to start a path segment or end the name (.env,
+	// ./.env.local, @.env, .env*, secrets.env), so that integration.env.json,
+	// qa-env.env.TOKEN and a grep for '\.env(\.|$)' are not read as the file
+	// (#1370).
+	cmdSubstSensitiveRe = mustFiltered("(?i)(?:\\$\\(|`)[^)`]*\\s(?:[^)`]*(?:~/\\.ssh|~/\\.aws(?:/(?:credentials|config|sso/cache|cli/cache)\\b|/?\\*?(?:$|[\\s\"'`);|&]))|~/\\.gcp|~/\\.config/gcloud|/etc/passwd|/etc/shadow|id_rsa|id_ed25519|credentials\\.json)|(?:[^)`]*[\\s\"'=/:<(@])?\\.env(?:\\.[\\w\\-]+)*\\*?(?:$|[\\s\"'`);|&,>])|[^)`]*[\\w\\-]\\.env(?:$|[\\s\"'`);|&,>]))")
 	// Auto-execution directive (Pattern B; on its own it is no longer a finding,
 	// #1176).
 	autoExecRe = mustFiltered(`(?i)(?:before\s+(?:each|every|any)\s+(?:task|session|request|command|run|step)|always\s+(?:run|execute|do)|at\s+(?:startup|session\s+start|the\s+start)|automatically\s+(?:run|execute))`)
@@ -44,9 +50,10 @@ var (
 	// A download piped into a shell or run through one (Part D, #791):
 	// curl … https://… | sh, bash <(curl …), sh -c "$(curl …)", and the same
 	// into python reading its script from stdin (no arguments, or "-"; not
-	// python3 -m json.tool). The URL is required, so prose like "no
-	// curl|bash installers" is not one.
-	pipeShellRe = mustFiltered(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b`)
+	// python3 -m json.tool). The URL is required in every form, so prose like
+	// "no curl|bash installers" and a table naming bash <(curl ...) are not one
+	// (#1370).
+	pipeShellRe = mustFiltered(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b[^)\n]*\bhttps?://|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b[^)\n]*\bhttps?://`)
 	// A literal base64 string decoded straight into a shell (Part E, #906):
 	// "echo '<base64>' | base64 -D | bash". A reader cannot see what it runs.
 	// A variable or placeholder ($b64, <BASE64>) is not a literal and does
@@ -54,7 +61,7 @@ var (
 	// Any length of blob (#993): "echo aGVsbG8K | base64 -d | bash" hides the
 	// command as well as a long one does, and the decoded text need not match
 	// anything. Interpreters and PowerShell's iex count as the shell.
-	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:'%s'\s+)?['"]?[A-Za-z0-9+/]{4,}={0,2}['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
+	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:'%s'\s+)?['"]?([A-Za-z0-9+/]{4,}={0,2})['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
 	// A downloaded password-protected archive whose content the text says to
 	// run (Part F, #908): "Download [x](https://.../x.zip) (extract using
 	// pass: `1234`) and run the executable". The password keeps scanners out
@@ -147,12 +154,13 @@ func passwordArchiveRun(lines []string, i int) bool {
 // kin, and .env.schema, which lists the expected variables, #978), an
 // identifier ending in .env (process.env, import.meta.env), and the
 // destination of a copy or move (cp .env.example .env, Copy-Item ...), a
-// permission change (chmod 600 .../.env), and a public key (id_ed25519.pub).
+// permission change (chmod 600 .../.env), the file ssh-keygen -f writes or
+// fingerprints (#1370), and a public key (id_ed25519.pub).
 // A ${Name.method(...)} or ${name.member} span is a JavaScript template
 // literal, not a shell expansion, whose variable names cannot hold a dot:
 // `Bearer ${Deno.env.get("OPENAI_API_KEY")}` (#885), `Bearer
 // ${c.env.AI_GATEWAY_TOKEN}` in a Cloudflare Worker (#955).
-var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?|schema)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b|\S*\.ssh/[\w.\-]+\.pub\b`)
+var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?|schema)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\bssh-keygen\b[^|;&)]*\s-f\s+\S+|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b|\S*\.ssh/[\w.\-]+\.pub\b`)
 
 // inlineCodeSpanRe matches a Markdown inline-code span: a pair of backticks
 // around text with no backtick in it.
@@ -243,12 +251,17 @@ func loopbackOnly(line string) bool {
 // $(ls apps/web/.env.local apps/web/.env 2>/dev/null | head -1).
 // The env file may sit under a variable directory ($BACKEND_DIR/.env,
 // "${DIR}"/.env), the key may hold non-ASCII letters, and sed -n
-// 's/^KEY=//p' is a lookup as well (#1175).
-var envKeyLookupRe = regexp.MustCompile(`^\$\(\s*(?:(?:grep\s+(?:-\w+\s+)*["']?(?:\^[\p{L}_<][\p{L}\d_<>]*|[\p{Lu}_<][\p{Lu}\d_<>]*)=?["']?|sed\s+-n\s+["']s/\^[\p{L}_][\p{L}\d_]*=//p["'])\s+(?:"?\$\{?\w+\}?"?/)?[\w./\-]*\.env[\w.\-]*|ls\s+[^|)]*)\s*(?:2>\s*/dev/null\s*)?(?:\|\s*(?:cut|tr|sed|head|tail|xargs|awk)\b[^|)]*)*\)$`)
+// 's/^KEY=//p' and dotenvx get KEY -f .env.dev are lookups as well (#1175,
+// #1370).
+var envKeyLookupRe = regexp.MustCompile(`^\$\(\s*(?:(?:grep\s+(?:-\w+\s+)*["']?(?:\^[\p{L}_<][\p{L}\d_<>]*|[\p{Lu}_<][\p{Lu}\d_<>]*)=?["']?|sed\s+-n\s+["']s/\^[\p{L}_][\p{L}\d_]*=//p["'])\s+(?:"?\$\{?\w+\}?"?/)?[\w./\-]*\.env[\w.\-]*|dotenvx\s+get\s+[\p{L}_][\p{L}\d_]*(?:\s+-f\s+[\w./\-]*\.env[\w.\-]*)?|ls\s+[^|)]*)\s*(?:2>\s*/dev/null\s*)?(?:\|\s*(?:cut|tr|sed|head|tail|xargs|awk)\b[^|)]*)*\)$`)
 
 // substAssignedRe is a shell variable assignment right before a substitution:
-// NAME=$( or NAME="$(.
-var substAssignedRe = regexp.MustCompile(`(?:^|[\s;(])(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*="?$`)
+// NAME=$( or NAME="$(, also right after an opening backtick.
+var substAssignedRe = regexp.MustCompile("(?:^|[\\s;(`])(?:export\\s+)?[A-Za-z_][A-Za-z0-9_]*=\"?$")
+
+// shellUnescaper undoes one level of quoting, for a command written inside
+// another one's double quotes: ssh host "KEY=\"\$(sed -n 's/^KEY=//p' .env)\" run".
+var shellUnescaper = strings.NewReplacer(`\"`, `"`, `\$`, `$`)
 
 // envKeyLookup reports whether the substitution at loc stores one key of an env
 // file in a shell variable, or lists env files (#868). That is how a skill
@@ -258,11 +271,12 @@ var substAssignedRe = regexp.MustCompile(`(?:^|[\s;(])(?:export\s+)?[A-Za-z_][A-
 // ("curl -H \"X: $(grep '^TOKEN=' .env)\" ..."), a whole-file read and an open
 // search ("grep token .env") are still Part A.
 func envKeyLookup(line string, loc []int) bool {
-	sub := line[loc[0]:loc[1]]
-	if !singleKeyLookup(line, loc) {
+	sub := shellUnescaper.Replace(line[loc[0]:loc[1]])
+	if !envKeyLookupRe.MatchString(sub) && !singleKeyLookup(line, loc) {
 		return false
 	}
-	return strings.HasPrefix(strings.TrimSpace(sub[2:]), "ls") || substAssignedRe.MatchString(line[:loc[0]])
+	before := strings.TrimSuffix(shellUnescaper.Replace(line[:loc[0]]), `\`)
+	return strings.HasPrefix(strings.TrimSpace(sub[2:]), "ls") || substAssignedRe.MatchString(before)
 }
 
 // pyKeyLookupRe is a Python one-liner that loads a TOML or JSON file and
@@ -417,6 +431,17 @@ func remoteSensitiveURL(span string) bool {
 // account names, not password hashes. A substitution whose only sensitive
 // path it is, "for user in $(grep /bin/bash /etc/passwd | cut -d: -f1)", lists
 // accounts and is a warning unless the line also sends data out (#966).
+// base64Literal reports whether the operand of a decodeShellRe match can be
+// encoded text: at least 8 characters, and not a path. Encoded ASCII never starts
+// with "/", and a "/" inside needs a digit, "+" or "=" to be told from a path, so
+// "echo /bin/bash | base64 -d | sh" in a table of encodings is not one (#1370).
+func base64Literal(s string) bool {
+	if len(s) < 8 || strings.HasPrefix(s, "/") {
+		return false
+	}
+	return !strings.Contains(s, "/") || strings.ContainsAny(s, "+=0123456789")
+}
+
 var passwdRe = regexp.MustCompile(`/etc/passwd\b`)
 
 // ruleExpressionRe matches a code span that is a rule-language comparison,
@@ -600,7 +625,7 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 			if loc := archivePasswordRe.FindStringIndex(line); loc != nil && passwordArchiveRun(lines, i) {
 				add(i, loc[0], finding.Error, "asks to run a downloaded password-protected archive (Part F) — the password keeps malware scanners out of the archive, and nothing in the file says what it runs. Point to the tool's own signed release or package instead")
 			}
-			if loc := decodeShellRe.FindStringIndex(line); loc != nil {
+			if loc := decodeShellRe.FindStringSubmatchIndex(line); loc != nil && base64Literal(line[loc[2]:loc[3]]) {
 				add(i, loc[0], finding.Error, "decodes a literal base64 string into a shell (Part E) — nobody reading the file can see the command it runs; documentation has no reason to hide one this way. Write the command out")
 			}
 		}
