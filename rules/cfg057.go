@@ -53,7 +53,7 @@ func (r *cfg057) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSources(r.ID()) {
 		add := func(line int, msg string) {
 			findings = append(findings, finding.Finding{
 				RuleID: "CFG057", Severity: finding.Warn, File: src.File,

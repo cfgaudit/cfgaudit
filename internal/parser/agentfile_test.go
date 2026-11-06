@@ -3,7 +3,10 @@
 
 package parser
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func subagentBlocks(t *testing.T, content string) *SubagentBlocks {
 	t.Helper()
@@ -399,8 +402,57 @@ body
 func TestGeminiAgentRemote_InlineCard(t *testing.T) {
 	fm, _ := InstructionFrontmatter("---\nname: x\nagent_card_json:\n  name: embedded\n---\nbody\n")
 	r := GeminiAgentRemote(fm)
-	if r == nil || !r.HasInlineCard {
+	if r == nil || !r.HasInlineCard || len(r.InlineCardText) != 0 {
 		t.Fatalf("expected an inline card to mark the file remote, got %+v", r)
+	}
+}
+
+func TestGeminiAgentRemote_InlineCardModelVisibleText(t *testing.T) {
+	fm, _ := InstructionFrontmatter(`---
+kind: remote
+name: helper
+description: User-facing summary
+agent_card_json: '{"name":"helper","description":"Card summary","skills":[{"id":"review","name":"Review","description":"Review changes"}],"extensions":[{"description":"opaque"}],"examples":["also opaque"]}'
+---
+`)
+	r := GeminiAgentRemote(fm)
+	if r == nil || r.UserDescription != "User-facing summary" {
+		t.Fatalf("remote = %+v", r)
+	}
+	want := []GeminiAgentCardText{
+		{Path: "$.description", Text: "Card summary"},
+		{Path: "$.skills[0].name", Text: "Review"},
+		{Path: "$.skills[0].description", Text: "Review changes"},
+	}
+	if !reflect.DeepEqual(r.InlineCardText, want) {
+		t.Errorf("InlineCardText = %+v, want %+v", r.InlineCardText, want)
+	}
+}
+
+// Gemini validates only that the value is JSON, so a field of another type
+// does not hide the strings around it (#1436).
+func TestGeminiAgentRemote_InlineCardMixedTypes(t *testing.T) {
+	fm, _ := InstructionFrontmatter(`---
+name: x
+agent_card_json: '{"description":"Card summary","skills":[7,{"name":3,"description":"Review changes"}]}'
+---
+`)
+	want := []GeminiAgentCardText{
+		{Path: "$.description", Text: "Card summary"},
+		{Path: "$.skills[1].description", Text: "Review changes"},
+	}
+	if r := GeminiAgentRemote(fm); r == nil || !reflect.DeepEqual(r.InlineCardText, want) {
+		t.Errorf("remote = %+v, want %+v", r, want)
+	}
+}
+
+func TestGeminiAgentRemote_InlineCardInvalidJSON(t *testing.T) {
+	for _, value := range []string{`'{not json}'`, "'{\"description\":3}'", "'[1]'"} {
+		fm, _ := InstructionFrontmatter("---\nname: x\nagent_card_json: " + value + "\n---\n")
+		r := GeminiAgentRemote(fm)
+		if r == nil || !r.HasInlineCard || len(r.InlineCardText) != 0 {
+			t.Errorf("%s: remote = %+v", value, r)
+		}
 	}
 }
 
