@@ -95,6 +95,8 @@ func TestInventory1000_Edges(t *testing.T) {
 	for rel, want := range map[string]string{
 		"x.code-workspace": "vscode", ".github/copilot-instructions.md": "copilot", ".claude/agents/a.md": "claude-code",
 		".gitmodules": "git", "skills/x/SKILL.md": "shared", ".roomodes": "roo-code",
+		"~/.claude/settings.json": "claude-code", "~/.agents/skills/a/SKILL.md": "shared",
+		"~/.config/Claude/claude_desktop_config.json": "claude-desktop",
 	} {
 		if got := agentOfPath(rel); got != want {
 			t.Errorf("%s: %s, want %s", rel, got, want)

@@ -8,12 +8,23 @@
 # fails on an agent prefix of the inventory that no line covers.
 #
 # A path with a name in it, such as .claude/skills/a/SKILL.md, stands for the
-# whole family. User-global and managed files are not listed yet.
+# whole family.
+#
+# Lines with `scope: user` are the user-global files `--user` reads, with the
+# path relative to the home directory. The test writes them into a temporary
+# home. Plugin packages under ~/.claude/plugins and ~/.claude/skills stay out,
+# like .claude-plugin/ in a project: they are read as packages.
+#
+# Managed files are not listed, because cfgaudit reads none. They sit outside
+# the repository and the home directory, under paths such as /etc, and an
+# administrator controls them, not a repository. A rule that needs one can only
+# state what it assumes.
 #
 # Keys:
 #   agent    the name `cfgaudit inventory` prints
 #   kind     what the file configures, one word
 #   path     the file, relative to the repository root
+#   scope    user for a user-global file; project when absent
 #   content  a minimal file that yields a target; plain text when absent.
 #            Inert: nothing here is executed, the scan only reads it.
 
@@ -124,3 +135,31 @@ surfaces:
   - {agent: amp, kind: instructions, path: AGENT.md}
   # git
   - {agent: git, kind: submodules, path: .gitmodules, content: "[submodule \"a\"]\n\tpath = a\n\turl = https://example.invalid/a.git"}
+
+  # user-global
+  - {agent: claude-code, scope: user, kind: settings, path: .claude/settings.json, content: "{\"permissions\":{\"allow\":[\"Read\"]}}"}
+  - {agent: claude-code, scope: user, kind: instructions, path: .claude/CLAUDE.md}
+  - {agent: claude-code, scope: user, kind: agents, path: .claude/agents/a.md}
+  - {agent: claude-code, scope: user, kind: commands, path: .claude/commands/a.md}
+  - {agent: claude-code, scope: user, kind: instructions, path: .claude/output-styles/a.md}
+  - {agent: claude-code, scope: user, kind: instructions, path: .claude/rules/a.md}
+  - {agent: claude-code, scope: user, kind: skills, path: .claude/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: claude-desktop, scope: user, kind: mcp, path: .config/Claude/claude_desktop_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: claude-desktop, scope: user, kind: mcp, path: "Library/Application Support/Claude/claude_desktop_config.json", content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: claude-desktop, scope: user, kind: mcp, path: AppData/Roaming/Claude/claude_desktop_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: gemini-cli, scope: user, kind: settings, path: .gemini/settings.json, content: "{\"a\":1}"}
+  - {agent: gemini-cli, scope: user, kind: instructions, path: .gemini/GEMINI.md}
+  - {agent: gemini-cli, scope: user, kind: skills, path: .gemini/skills/SKILL.md}
+  - {agent: gemini-cli, scope: user, kind: skills, path: .gemini/skills/a/SKILL.md}
+  - {agent: qwen-code, scope: user, kind: settings, path: .qwen/settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/QWEN.md}
+  - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/output-styles/a.md}
+  - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/rules/a.md}
+  - {agent: codex, scope: user, kind: settings, path: .codex/config.toml, content: "model=\"x\""}
+  - {agent: continue, scope: user, kind: settings, path: .continue/config.yaml, content: "name: a"}
+  - {agent: continue, scope: user, kind: mcp, path: .continue/config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: cursor, scope: user, kind: mcp, path: .cursor/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: cursor, scope: user, kind: skills, path: .cursor/skills/a/SKILL.md}
+  - {agent: devin-desktop, scope: user, kind: mcp, path: .codeium/windsurf/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: devin-desktop, scope: user, kind: mcp, path: .windsurf/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: shared, scope: user, kind: skills, path: .agents/skills/a/SKILL.md}

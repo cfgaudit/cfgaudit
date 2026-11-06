@@ -58,10 +58,15 @@ var pathAgents = []struct{ prefix, agent string }{
 	{".zed/", "zed"}, {".rules", "zed"}, {".opencode/", "opencode"}, {"opencode.json", "opencode"}, {"opencode.jsonc", "opencode"},
 	{".kimi-code/", "kimi-code"}, {".kimi/", "kimi-cli"}, {".grok/", "grok"}, {".cline/", "cline"}, {".clinerules", "cline"}, {"cline_mcp_settings.json", "cline"},
 	{"AGENT.md", "amp"}, {".gitmodules", "git"},
+	// Only read with --user, from the home directory.
+	{".codeium/windsurf/", "devin-desktop"}, {".config/Claude/", "claude-desktop"},
+	{"Library/Application Support/Claude/", "claude-desktop"}, {"AppData/Roaming/Claude/", "claude-desktop"},
 }
 
-// agentOfPath returns the agent that reads rel.
+// agentOfPath returns the agent that reads rel. A file in the home directory
+// is named from there, as ~/.claude/settings.json.
 func agentOfPath(rel string) string {
+	rel = strings.TrimPrefix(rel, "~/")
 	if strings.HasSuffix(rel, ".code-workspace") {
 		return "vscode"
 	}
