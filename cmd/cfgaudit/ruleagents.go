@@ -28,6 +28,7 @@ var knownAgents = map[string]string{
 	"gemini-cli":     "Gemini CLI",
 	"goose":          "goose",
 	"grok":           "xAI Grok CLI",
+	"kilo-code":      "Kilo Code",
 	"kimi-cli":       "Kimi CLI",
 	"kimi-code":      "Kimi Code",
 	"openhands":      "OpenHands",

@@ -230,3 +230,45 @@ func TestPolicy_QwenGrok(t *testing.T) {
 		t.Fatalf("exit %d, other rules fired:\n%s", code, out)
 	}
 }
+
+// OpenCode and Kilo Code read rules by the last match, across their files in
+// order (#1515).
+func TestPolicy_OpenCodeKilo(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".cfgaudit.yml":  "policy:\n  deny:\n    commands: [\"git push\"]\n    fetch: [\"example.com\"]\n",
+		"opencode.json":  `{"permission":{"bash":{"git push *":"deny"}}}`,
+		"opencode.jsonc": `{"permission":{"bash":{"git *":"allow"}}}`,
+		"kilo.jsonc":     `{"permission":{"bash":{"git push *":"deny"},"webfetch":{"*://example.com/*":"deny"}}}`,
+	})
+	got := policyFindings(t, root)
+	// Kilo Code reads opencode.jsonc after its own file, so that allow reopens
+	// its deny too.
+	want := []string{
+		`opencode.jsonc|CFG025|policy deny.commands "git push": no rule denies it as the last match, so Kilo Code does not block it; add "git push *": "deny" under "bash" after the rules it has to override`,
+		`opencode.jsonc|CFG025|policy deny.commands "git push": no rule denies it as the last match, so OpenCode does not block it; add "git push *": "deny" under "bash" after the rules it has to override`,
+		`opencode.jsonc|CFG118|policy deny.fetch cannot be enforced for OpenCode from a permission file in the repository: OpenCode applies webfetch to every URL, so the only way to deny a domain is to turn the tool off`,
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got:\n%s", strings.Join(got, "\n"))
+	}
+
+	// Named without a file: the missing deny names the file to create.
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml": "policy:\n  deny:\n    read: [\"**/.env\"]\n  agents: [opencode, kilo-code]\n",
+	})
+	got = policyFindings(t, root)
+	if len(got) != 2 || !strings.HasPrefix(got[0], "kilo.json|CFG025|") || !strings.HasPrefix(got[1], "opencode.json|CFG025|") {
+		t.Fatalf("got %q", got)
+	}
+
+	// A whole-tool deny leaves nothing for CFG118, and .kilo marks Kilo Code.
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml":        "policy:\n  deny:\n    commands: [\"rm\"]\n    fetch: [\"example.com\"]\n",
+		"opencode.json":        `{"permission":{"webfetch":"deny"}}`,
+		".kilo/rules/style.md": "rules\n",
+	})
+	got = policyFindings(t, root)
+	if len(got) != 2 || !strings.Contains(got[0], "Kilo Code does not block it") || !strings.Contains(got[1], "OpenCode does not block it") {
+		t.Fatalf("got %q", got)
+	}
+}
