@@ -63,7 +63,7 @@ func TestPolicy_NeutralDefaultAgents(t *testing.T) {
 	got := policyFindings(t, root)
 	want := []string{
 		`.devin/config.json|CFG025|policy deny.commands "git push": no permissions.deny entry covers it, so Devin CLI does not block it; add "Exec(git push)"`,
-		`.zed|CFG118|policy deny.commands cannot be enforced for Zed from the repository: Zed reads its permission rules from user settings only, so each contributor has to add the rules to their own settings`,
+		`.zed|CFG118|policy deny.commands cannot be enforced for Zed from a permission file in the repository: Zed reads its permission rules from user settings only, so each contributor has to add the rules to their own settings`,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -86,7 +86,7 @@ func TestPolicy_NeutralListedAgents(t *testing.T) {
 	got := policyFindings(t, root)
 	want := []string{
 		`.claude/settings.json|CFG025|policy deny.commands "git push": no permissions.deny entry covers it, so Claude Code does not block it; add "Bash(git push *)"`,
-		`.continue|CFG118|policy deny.commands cannot be enforced for Continue from the repository: Continue reads its permission rules from user settings only, so each contributor has to add the rules to their own settings`,
+		`.continue|CFG118|policy deny.commands cannot be enforced for Continue from a permission file in the repository: Continue reads its permission rules from user settings only, so each contributor has to add the rules to their own settings`,
 		`.devin/config.json|CFG025|policy deny.commands "git push": no permissions.deny entry covers it, so Devin CLI does not block it; add "Exec(git push)"`,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -112,5 +112,44 @@ func TestPolicy_UnknownAgentExit2(t *testing.T) {
 	code, _, errOut := runCLI(t, "--claude-version", "2.1.316", root)
 	if code != 2 || !strings.Contains(errOut, `policy.agents: "cursor" is not an agent the policy can check yet`) {
 		t.Fatalf("exit %d: %s", code, errOut)
+	}
+}
+
+// goose, Kimi CLI and Cline have no committed permission file. Each is found
+// by its markers, and Cline's finding names the hook instead of user settings.
+func TestPolicy_AgentsWithoutPermissionFile(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".cfgaudit.yml":        "policy:\n  deny:\n    commands: [\"git push\"]\n",
+		".goosehints":          "hints\n",
+		".kimi/AGENTS.md":      "notes\n",
+		".clinerules/style.md": "rules\n",
+	})
+	got := policyFindings(t, root)
+	want := []string{".clinerules|CFG118|", ".goosehints|CFG118|", ".kimi|CFG118|"}
+	if len(got) != len(want) {
+		t.Fatalf("got %q", got)
+	}
+	for i, prefix := range want {
+		if !strings.HasPrefix(got[i], prefix) {
+			t.Errorf("finding %d: got %q, want prefix %q", i, got[i], prefix)
+		}
+	}
+	if !strings.Contains(got[0], "only a PreToolUse hook committed under .cline/hooks") {
+		t.Errorf("Cline reason: %q", got[0])
+	}
+	if !strings.Contains(got[1], "goose reads its permission rules from user settings only") {
+		t.Errorf("goose reason: %q", got[1])
+	}
+}
+
+// A listed agent with no marker in the repository is reported at its first
+// marker, which is what a team wants to see when it names the agent up front.
+func TestPolicy_ListedAgentWithoutMarker(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".cfgaudit.yml": "policy:\n  deny:\n    read: [\"**/.env\"]\n  agents: [goose]\n",
+	})
+	got := policyFindings(t, root)
+	if len(got) != 1 || !strings.HasPrefix(got[0], ".goose|CFG118|") {
+		t.Fatalf("got %q", got)
 	}
 }
