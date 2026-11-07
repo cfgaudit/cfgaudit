@@ -432,6 +432,12 @@ type Target struct {
 	PolicyRoo           *RooPolicy
 	PolicyGeminiAllowed []string
 
+	// PolicyRulesyncConflicts are contradictions between .cfgaudit.yml and the
+	// Rulesync file (CFG025), and PolicyRulesyncSkipped its rules with no neutral
+	// form (CFG118). PolicyFile is the Rulesync file on that target (#1519).
+	PolicyRulesyncConflicts []string
+	PolicyRulesyncSkipped   []string
+
 	// PolicyBlocks are the permission blocks of an agent that resolves rules by
 	// the last match, in the order it reads them, and PolicyFile the file a
 	// finding names (#1515).

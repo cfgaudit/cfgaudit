@@ -118,6 +118,10 @@
             "mcp-tools": { "$ref": "#/definitions/policyMCPTools" }
           }
         },
+        "rulesync": {
+          "description": "Add .rulesync/permissions.jsonc to the policy.",
+          "type": ["boolean", "null"]
+        },
         "agents": {
           "description": "The agents the agent-neutral policy applies to. Without it, every agent with configuration in the repository.",
           "type": ["array", "null"],

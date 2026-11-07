@@ -37,6 +37,9 @@ func (r *cfg025) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	findings := checkNeutralPolicy(t)
+	for _, c := range t.PolicyRulesyncConflicts {
+		findings = append(findings, finding.Finding{RuleID: "CFG025", Severity: finding.Error, File: t.PolicyFile, Message: c})
+	}
 	if len(t.PolicyRequireDeny) == 0 && len(t.PolicyForbidAllow) == 0 {
 		return findings
 	}
