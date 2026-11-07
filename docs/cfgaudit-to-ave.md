@@ -19,11 +19,11 @@ Even within the 44, the boundary is real: cfgaudit does not connect to servers, 
 | Bucket | Count |
 |---|--:|
 | Covered — ≥1 CFG rule maps cleanly | 34 |
-| Partial — committable slice or adjacent shape only | 11 |
+| Partial — committable slice or adjacent shape only | 12 |
 | Gap — committable, no CFG rule (rule candidate) | 4 |
-| Out of scope — labelled static by AVE, beyond static-config auditing | 10 |
+| Out of scope — labelled static by AVE, beyond static-config auditing | 9 |
 
-cfgaudit maps (covered + partial) to **45 of 49** (AVE-2026-00001, counted in none of the buckets until #621, is now covered by CFG113). Counts refreshed 2026-08-14 for AVE-2026-00071 through AVE-2026-00077, all seven of them `static_detection`. Four are now covered by rules that had no class before: AVE-2026-00071 (daemon redirect) by CFG082, AVE-2026-00072 (bind-all, which the record also calls NeighborJack) by CFG018, AVE-2026-00073 (endpoint redirect via a static value) by CFG005/CFG046/CFG099, and AVE-2026-00076 (steering an approval classifier) by CFG094. AVE-2026-00077 (cross-origin tool and resource declaration in one MCP manifest) was first listed as a gap and moved out of scope in #1439: the tool and resource URLs it compares arrive at run time, so no committed file carries them. AVE-2026-00074 (reclaimable dead external anchor) and AVE-2026-00075 (`.pyc` bytecode poisoning) join the out-of-scope list: the first needs the anchor resolved over the network, the second is binary-content analysis, and cfgaudit does neither.
+cfgaudit maps (covered + partial) to **46 of 49** (AVE-2026-00001, counted in none of the buckets until #621, is now covered by CFG113). Counts refreshed 2026-08-14 for AVE-2026-00071 through AVE-2026-00077, all seven of them `static_detection`. Four are now covered by rules that had no class before: AVE-2026-00071 (daemon redirect) by CFG082, AVE-2026-00072 (bind-all, which the record also calls NeighborJack) by CFG018, AVE-2026-00073 (endpoint redirect via a static value) by CFG005/CFG046/CFG099, and AVE-2026-00076 (steering an approval classifier) by CFG094. AVE-2026-00077 (cross-origin tool and resource declaration in one MCP manifest) was first listed as a gap and moved out of scope in #1439: the tool and resource URLs it compares arrive at run time, so no committed file carries them. AVE-2026-00074 (reclaimable dead external anchor) joins the out-of-scope list: it needs the anchor resolved over the network. AVE-2026-00075 (`.pyc` bytecode poisoning) is partial through CFG129 (#1398): it reads the `.pyc` header, not the bytecode, so it finds a file that can run instead of its source, not one whose code differs.
 
 Refreshed again 2026-08-23 against AVE-2026-00078 through AVE-2026-00080. **None of the three is a static configuration surface**: 00078 is consensus poisoning in a multi-agent pipeline, 00079 is plan hijacking through a false completion signal, and 00080 is silent agent substitution at a routing slot during a retry. All three are orchestration-runtime behaviours, so they add no home for a previously unmapped rule and shift no existing mapping. Of cfgaudit's four new rules, CFG104 and CFG105 map to AVE-2026-00063, CFG103 maps to AVE-2026-00076 for one of its three findings, and CFG106 is deliberately unmapped.
 
@@ -90,6 +90,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG007 / CFG050 / CFG054 / CFG065 / CFG073 hardcoded secrets | AVE-2026-00047 hardcoded credentials in component |
 | CFG059 typosquat | AVE-2026-00017 server impersonation / spoofing |
 | CFG019 inline script · CFG020 env code injection · CFG070 repo-relative command · CFG127 hidden-home runtime | AVE-2026-00055 command execution via untrusted MCP launch config |
+| CFG129 `.pyc` that runs instead of its source (partial: header only) | AVE-2026-00075 bytecode poisoning |
 
 **Partial, worth flagging** — AVE-2026-00002 (tool-description injection), AVE-2026-00041 (server-card injection) and AVE-2026-00046 (tool-hook hijack) describe reading a **live** tool manifest or intercepting a running registry. cfgaudit does not connect to servers, so it covers these **only** when the tool description or hook ships in a committed `--plugins` package. For live servers they are behavioral-scanner (SkillSpector / clawscan) territory.
 

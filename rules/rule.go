@@ -90,6 +90,10 @@ type Target struct {
 	YarnPath   string
 	YarnrcFile string
 
+	// Bytecode are the committed .pyc files that can run instead of the
+	// source a reader reviews (#1398). Set on one target per scan.
+	Bytecode []BytecodeFile
+
 	// Gitignore is the project's .gitignore, read during discovery so a
 	// symlink that leaves the tree is reported by CFG115 like any other
 	// (#1023); HasGitignore is whether it could be read. Set on the project

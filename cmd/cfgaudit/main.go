@@ -1059,6 +1059,9 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// Files that stand in for a tool: root binaries, venvs, yarnPath (#997).
 	targets = append(targets, standinTargets(dir)...)
 
+	// Python bytecode that runs instead of its source (#1398).
+	targets = append(targets, bytecodeTargets(dir)...)
+
 	// The scripts the auto-run commands of every target start (#1217), once
 	// all targets exist.
 	attachLaunchedScripts(dir, targets)
