@@ -548,8 +548,22 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	qwenPath := filepath.Join(dir, ".qwen", "settings.json")
 	grokPath := filepath.Join(dir, ".grok", "config.toml")
 	codexPath := filepath.Join(dir, ".codex", "config.toml")
-	var claude, devin, cursor, qwen, grok, codex *rules.Target
+	var claude, devin, cursor, qwen, grok, codex, vscode *rules.Target
+	var rooServers map[string]parser.MCPServer
+	var geminiSettings *parser.GeminiSettings
+	var geminiFile string
 	for _, t := range targets {
+		if t.Scope == finding.ScopeProject {
+			switch {
+			case t.VSCodeSettings != nil:
+				vscode = t
+			case t.ProjectMCPFile == filepath.Join(dir, ".roo", "mcp.json"):
+				rooServers = t.ProjectMCP
+			}
+			if t.Gemini != nil && t.GeminiFile == filepath.Join(dir, ".gemini", "settings.json") {
+				geminiSettings, geminiFile = t.Gemini, t.GeminiFile
+			}
+		}
 		switch {
 		case t.Scope != finding.ScopeProject:
 		case t.SettingsFile == claudePath:
@@ -608,6 +622,26 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				targets = append(targets, qwen)
 			}
 			qwen.PolicyAgent, qwen.PolicyDeny, qwen.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "roo-code":
+			targets = append(targets, rooPolicyTarget(dir, p, vscode, rooServers))
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Roo Code", Path: filepath.Join(dir, ".roo"), Categories: rooUnenforced(p.Deny),
+				Reason: "has no rule for a domain or for a path outside the project"})
+		case "gemini-cli":
+			t := &rules.Target{Scope: finding.ScopeProject, PolicyAgent: agent, PolicyForbid: p.ForbidAllow.PolicyRules,
+				PolicyFile: filepath.Join(dir, ".gemini", "settings.json")}
+			var off map[string]bool
+			if geminiSettings != nil {
+				off, t.PolicyFile = geminiToolsOff(geminiSettings, p.Deny), geminiFile
+				if geminiSettings.Tools != nil {
+					t.PolicyGeminiAllowed = geminiSettings.Tools.Allowed
+				}
+			}
+			targets = append(targets, t)
+			unenforceable = append(unenforceable, toolSwitchAgent(agent, "Gemini CLI", t.PolicyFile, off,
+				"can only switch a tool off as a whole with tools.exclude, or a server with mcp.excluded")...)
+		case "pi":
+			unenforceable = append(unenforceable, toolSwitchAgent(agent, "pi", filepath.Join(dir, ".pi", "settings.json"), piToolsOff(dir),
+				"can only switch a tool off as a whole with defaultTools")...)
 		case "codex":
 			if codex == nil {
 				codex = &rules.Target{Scope: finding.ScopeProject, Codex: &parser.CodexConfig{}, CodexFile: codexPath}
@@ -766,6 +800,12 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 			present = isDir(".grok")
 		case "codex":
 			present = isDir(".codex")
+		case "roo-code":
+			present = isDir(".roo") || anyPolicyFile(dir, []string{".roomodes", ".roorules", ".rooignore"})
+		case "gemini-cli":
+			present = isDir(".gemini") || anyPolicyFile(dir, []string{"GEMINI.md"})
+		case "pi":
+			present = isDir(".pi")
 		case "opencode":
 			present = isDir(".opencode") || anyPolicyFile(dir, orderedPolicyFiles[agent])
 		case "kilo-code":

@@ -33,6 +33,7 @@ var knownAgents = map[string]string{
 	"kimi-code":      "Kimi Code",
 	"openhands":      "OpenHands",
 	"opencode":       "OpenCode",
+	"pi":             "pi",
 	"qwen-code":      "qwen-code",
 	"roo-code":       "Roo Code",
 	"vscode":         "VS Code",

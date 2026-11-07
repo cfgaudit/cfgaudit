@@ -427,6 +427,11 @@ type Target struct {
 	CodexRules     []parser.CodexRule
 	CodexRulesFile string
 
+	// PolicyRoo is Roo Code's side of the neutral policy, and
+	// PolicyGeminiAllowed the tools.allowed list of .gemini/settings.json (#1517).
+	PolicyRoo           *RooPolicy
+	PolicyGeminiAllowed []string
+
 	// PolicyBlocks are the permission blocks of an agent that resolves rules by
 	// the last match, in the order it reads them, and PolicyFile the file a
 	// finding names (#1515).

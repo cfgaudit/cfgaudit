@@ -13,7 +13,10 @@
       "grok",
       "opencode",
       "kilo-code",
-      "codex"
+      "codex",
+      "roo-code",
+      "gemini-cli",
+      "pi"
     ],
     "deny": {
       "commands": [
