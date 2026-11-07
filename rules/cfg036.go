@@ -535,11 +535,36 @@ func directiveReaches(lines []string, i int, loc []int, j int) bool {
 	return start >= 0 && start <= partBReach
 }
 
+// agentOrderRe matches text that tells the agent to run the install line that
+// follows: "Run the install script", "If the CLI is not installed, run:",
+// "install it before continuing". A "run" must open a sentence, clause or list
+// item, so "npm run build" and "run.sh" are not orders, and it is not the
+// Dockerfile instruction "RUN" or the workflow key "- run:" (#1371).
+var agentOrderRe = regexp.MustCompile(`[.:;!?,(*_` + "`" + `]\s*[Rr]un(?:\s|:|$)|^\s*(?:(?:[-+#>]+|\d+[.)])\s*)?[Rr]un(?:\s|$)|(?i:\b(?:please|then|first,?)\s+run\b|\bnot\s+(?:yet\s+)?(?:installed|found|available)\b|\b(?:missing|absent)\b|\binstall\s+(?:it|them|this|the\s+\S+)\s+(?:first|before)\b|\bbefore\s+(?:continuing|proceeding)\b)`)
+
+// orderReach is how many lines above an install line an order still applies.
+const orderReach = 3
+
+// toldToRun reports whether the text before col on line i, or one of the
+// orderReach lines above it, tells the agent to run the install line (#1371).
+func toldToRun(lines []string, i, col int) bool {
+	if agentOrderRe.MatchString(lines[i][:col]) {
+		return true
+	}
+	for j := max(0, i-orderReach); j < i; j++ {
+		if agentOrderRe.MatchString(lines[j]) {
+			return true
+		}
+	}
+	return false
+}
+
 // Check flags CLAUDE.md text that makes Claude run shell commands on the
 // attacker's behalf. A: command substitution reading a credential path (error,
 // independent). B: an auto-execution or conditional directive co-occurring with
 // a network command within 3 lines (error). C: an auto-execution directive
-// alone (warn). D: a download piped into a shell, without a directive (warn).
+// alone (warn). D: a download piped into a shell, without a directive (warn, or
+// info on a page beside a skill that does not tell the agent to run it).
 // Matches inside fenced code blocks are still reported.
 func (r *cfg036) Check(t *Target) []finding.Finding {
 	if t == nil {
@@ -641,6 +666,10 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 				loc := pipeShellRe.FindStringIndex(lines[i])
 				if autoInstallRe.MatchString(lines[i]) {
 					add(i, loc[0], finding.Warn, "installs a missing tool by piping a download into a shell (Part D, auto-install) — the agent runs it whenever the tool is missing, and nobody reads the command before it runs. Ask the person to install the tool, or point to a pinned, checksummed download")
+					continue
+				}
+				if t.SkillHelper != "" && !toldToRun(lines, i, loc[0]) {
+					add(i, loc[0], finding.Info, "a reference page beside a skill shows a download piped into a shell (Part D), and nothing around it tells the agent to run it. Point to a pinned, checksummed download or to the tool's own install docs instead")
 					continue
 				}
 				add(i, loc[0], finding.Warn, "pipes a download into a shell (Part D) — the agent runs whatever the server returns at that moment. If this is install documentation, point to a pinned, checksummed download or to the tool's own install docs instead")
