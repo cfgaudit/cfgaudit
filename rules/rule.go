@@ -427,6 +427,10 @@ type Target struct {
 	CodexRules     []parser.CodexRule
 	CodexRulesFile string
 
+	// PolicyMCP holds the servers of .agents/mcp_config.json for Antigravity, which
+	// cfgaudit reads for the policy only until #1057 (#1520).
+	PolicyMCP map[string]parser.MCPServer
+
 	// PolicyRoo is Roo Code's side of the neutral policy, and
 	// PolicyGeminiAllowed the tools.allowed list of .gemini/settings.json (#1517).
 	PolicyRoo           *RooPolicy

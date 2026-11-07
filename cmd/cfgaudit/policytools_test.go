@@ -150,3 +150,34 @@ func TestPolicy_AllowOnlyAgents(t *testing.T) {
 		t.Fatal("broken settings")
 	}
 }
+
+// Kimi Code, Junie, Copilot CLI and Antigravity keep their rules outside the
+// repository, except Antigravity's MCP tools (#1520).
+func TestPolicy_UserScopedAgents(t *testing.T) {
+	policy := "policy:\n  deny:\n    commands: [\"git push\"]\n"
+	for path, want := range map[string]string{
+		".kimi-code/AGENTS.md":            ".kimi-code|CFG118|policy deny.commands cannot be enforced for Kimi Code",
+		".junie/guidelines.md":            ".junie|CFG118|policy deny.commands cannot be enforced for Junie",
+		".github/copilot/settings.json":   ".github/copilot|CFG118|policy deny.commands cannot be enforced for Copilot CLI",
+		".github/copilot-instructions.md": ".github/copilot-instructions.md|CFG118|policy deny.commands cannot be enforced for Copilot CLI",
+		".agents/hooks.json":              ".agents/mcp_config.json|CFG118|policy deny.commands cannot be enforced for Antigravity",
+	} {
+		got := policyFindings(t, runFixture(t, map[string]string{".cfgaudit.yml": policy, path: "{}\n"}))
+		if len(got) != 1 || !strings.HasPrefix(got[0], want) {
+			t.Errorf("%s: got %q", path, got)
+		}
+	}
+
+	// .agents alone may be any agent, and a skill there is not Antigravity's mark.
+	if got := policyFindings(t, runFixture(t, map[string]string{".cfgaudit.yml": policy, ".agents/skills/x/SKILL.md": "---\nname: x\n---\nhi\n"})); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+
+	got := policyFindings(t, runFixture(t, map[string]string{
+		".cfgaudit.yml":           "policy:\n  deny:\n    mcp-tools: [\"gh:delete_repo\", \"gh:create\", \"absent:x\"]\n",
+		".agents/mcp_config.json": `{"mcpServers":{"gh":{"command":"x","disabledTools":["delete_repo"]}}}`,
+	}))
+	if len(got) != 1 || got[0] != `.agents/mcp_config.json|CFG025|policy deny.mcp-tools "gh:create": nothing covers it, so Antigravity does not block it; add "create" to disabledTools of gh` {
+		t.Fatalf("got %q", got)
+	}
+}

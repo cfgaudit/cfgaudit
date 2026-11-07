@@ -18,7 +18,11 @@
       "gemini-cli",
       "pi",
       "cursor",
-      "vscode"
+      "vscode",
+      "kimi-code",
+      "junie",
+      "copilot",
+      "antigravity"
     ],
     "deny": {
       "commands": [
