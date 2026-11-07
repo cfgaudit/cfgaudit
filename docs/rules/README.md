@@ -91,8 +91,6 @@ The root **`.mcp.json` is not Claude-Code-only**: Kimi Code CLI reads the same r
 | [CFG058](CFG058.md) | warn | MCP server uses the deprecated `type: "sse"` transport — superseded by Streamable HTTP (`type: "http"`); weaker transport with DNS-rebinding/Origin pitfalls | LLM02 |
 | [CFG059](CFG059.md) | error/warn | MCP server / hook package or endpoint host is a typosquat of a known-good identifier — covers `mcpServers` launchers and `npx`/`bunx`/`pnpm dlx`/`yarn dlx` packages run from any command site (homoglyph / one-char → error; two-char / unofficial scope → warn) | LLM04 |
 
-CFG017 is not reused. It reported a `dangerouslyAllowBrowser` key that no agent reads in an MCP configuration (#1525).
-
 #### OWASP MCP Top 10 mapping (secondary)
 
 The MCP-server rules above carry a **secondary** mapping to the [OWASP Top 10 for Model Context Protocol](https://owasp.org/www-project-mcp-top-10/), in addition to their primary LLM Top 10 risk. It is a complementary lens for readers who think in the MCP taxonomy; the LLM mapping stays primary.
