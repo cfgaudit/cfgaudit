@@ -94,7 +94,7 @@ func (r *cfg028) Check(t *Target) []finding.Finding {
 				"\" — a self-perpetuating prompt-injection / persistence vector: it can re-inject hidden instructions or re-enable dangerous settings every session and restore itself after cleanup. A hook should never modify its agent's own configuration" + userScopeNote(t),
 		})
 	}
-	return findings
+	return append(findings, r.instructionFindings(t)...)
 }
 
 // agentLogRe matches a log file under an agent's folder, which the agent never
