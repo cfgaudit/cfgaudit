@@ -46,7 +46,7 @@ const trustName = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settin
 	`opencode\.jsonc?|kilo\.jsonc?|cline_mcp_settings\.json|mcp_config\.json|claude_desktop_config\.json)`
 
 const trustDir = `(?i:\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/|\.agents/|\.windsurf/|\.opencode/|\.qwen/|\.kimi/|\.kimi-code/|` +
-	`\.devin/|\.continue/|\.zed/|\.grok/|\.kilo/|\.kilocode/|\.cline/|\.pi/|\.goose/|` +
+	`\.devin/|\.junie/|\.continue/|\.zed/|\.grok/|\.kilo/|\.kilocode/|\.cline/|\.pi/|\.goose/|` +
 	`\.github/hooks/|\.github/agents/|\.github/instructions/|\.github/prompts/|\.github/extensions/|\.github/skills/)`
 
 const trustFile = `(?:` + trustName + `|` + trustDir + `)`

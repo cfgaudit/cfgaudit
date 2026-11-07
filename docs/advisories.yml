@@ -374,9 +374,9 @@
   agent: "Junie CLI"
   fixed: "26.8.3"
   summary: "An untrusted project's MCP configuration leads to code execution."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1413
+  coverage: full
+  rules:
+    - {rule: CFG019, severity: error}
 
 - id: "CVE-2026-12537"
   aliases: [GHSA-wpqr-6v78-jr5g]

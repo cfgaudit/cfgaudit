@@ -2075,6 +2075,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range goosehintsFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
+	for _, m := range junieInstructionFiles(dir) {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
 	clineRules, err := clineRulesFiles(dir)
 	if err != nil {
 		return nil, err
@@ -3540,6 +3543,12 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			return nil, err
 		}
 	}
+	for _, p := range junieMCPFiles(dir) {
+		if err := add(p, finding.ScopeProject); err != nil {
+			return nil, err
+		}
+	}
+	targets = append(targets, junieTargets(dir)...)
 
 	// Zed declares its MCP servers inside the project settings file rather than a
 	// dedicated MCP config, so it needs its own loader: a different key

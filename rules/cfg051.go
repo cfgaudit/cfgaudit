@@ -145,7 +145,9 @@ const (
 func skillRootKind(path string) int {
 	p := strings.ReplaceAll(path, `\`, "/")
 	switch {
-	case strings.Contains(p, ".github/skills/"), strings.Contains(p, ".opencode/skill/"), strings.Contains(p, ".opencode/skills/"):
+	// Junie documents name and description for a skill, and tools for a
+	// subagent; allowed-tools is not one of its fields (#1413).
+	case strings.Contains(p, ".github/skills/"), strings.Contains(p, ".opencode/skill/"), strings.Contains(p, ".opencode/skills/"), strings.Contains(p, ".junie/"):
 		return rootIgnoresField
 	case strings.Contains(p, ".agents/skills/"), strings.Contains(p, ".codex/"), strings.Contains(p, ".cursor/skills/"):
 		return rootUnmeasured

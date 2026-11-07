@@ -58,7 +58,7 @@ var pathAgents = []struct{ prefix, agent string }{
 	{".zed/", "zed"}, {".rules", "zed"}, {".opencode/", "opencode"}, {"opencode.json", "opencode"}, {"opencode.jsonc", "opencode"},
 	{".kimi-code/", "kimi-code"}, {".kimi/", "kimi-cli"}, {".grok/", "grok"}, {".cline/", "cline"}, {".clinerules", "cline"}, {"cline_mcp_settings.json", "cline"},
 	{"AGENT.md", "amp"}, {".gitmodules", "git"},
-	{".goose/", "goose"}, {".goosehints", "goose"}, {".agents/recipes/", "goose"}, {".agents/plugins/", "goose"},
+	{".goose/", "goose"}, {".junie/", "junie"}, {".goosehints", "goose"}, {".agents/recipes/", "goose"}, {".agents/plugins/", "goose"},
 	// Only read with --user, from the home directory.
 	{".codeium/windsurf/", "devin-desktop"}, {".config/Claude/", "claude-desktop"},
 	{"Library/Application Support/Claude/", "claude-desktop"}, {"AppData/Roaming/Claude/", "claude-desktop"},
