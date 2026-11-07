@@ -64,6 +64,11 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 		strings.HasSuffix(name, "/copilot-instructions.md") {
 		return nil
 	}
+	// A Copilot prompt file runs only when a person invokes it, so nothing
+	// selects it by its description (#1467).
+	if strings.HasSuffix(name, ".prompt.md") {
+		return nil
+	}
 
 	// A Cursor .mdc rule is selected by its description only as an "agent
 	// requested" rule: alwaysApply false and no globs (#1195). An always-on

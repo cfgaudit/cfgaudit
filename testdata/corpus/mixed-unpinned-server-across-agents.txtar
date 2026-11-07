@@ -1,0 +1,26 @@
+Pattern: the same unpinned MCP server in the config of several agents, with a pinned one next to it.
+Issues: #1048
+-- .mcp.json --
+{
+  "mcpServers": {
+    "search": { "command": "npx", "args": ["-y", "@example/search-mcp"] },
+    "pinned": { "command": "npx", "args": ["-y", "@example/search-mcp@2.0.1"] },
+    "packaged": { "command": "npx", "args": ["-y", "-p", "@example/tool-mcp@3.1.0", "tool-mcp"] }
+  }
+}
+-- .cursor/mcp.json --
+{
+  "mcpServers": {
+    "search": { "command": "npx", "args": ["-y", "@example/search-mcp"] }
+  }
+}
+-- .codex/config.toml --
+[mcp_servers.search]
+command = "npx"
+args = ["-y", "@example/search-mcp"]
+-- opencode.json --
+{
+  "mcp": {
+    "search": { "type": "local", "command": ["npx", "-y", "@example/search-mcp"] }
+  }
+}

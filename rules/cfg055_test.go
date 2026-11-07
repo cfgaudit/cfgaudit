@@ -4,6 +4,9 @@
 package rules
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -145,14 +148,14 @@ func TestCFG055_Issue872(t *testing.T) {
 		switch {
 		case f.Severity == finding.Error && strings.Contains(f.Message, "cypress@cypress"):
 			errs++
-		case f.Severity == finding.Warn && strings.Contains(f.Message, "typescript-lsp@claude-plugins-official"):
+		case f.Severity == finding.Info && strings.Contains(f.Message, "typescript-lsp@claude-plugins-official"):
 			warns++
 		case strings.Contains(f.Message, "\"claude-plugins-official\""):
 			t.Errorf("official marketplace registration reported: %+v", f)
 		}
 	}
 	if errs != 1 || warns != 1 {
-		t.Errorf("expected one error for cypress and one warn for the official plugin, got %d/%d", errs, warns)
+		t.Errorf("expected one error for cypress and one info for the official plugin (#1178), got %d/%d", errs, warns)
 	}
 	tg = settingsTarget(t, `{"extraKnownMarketplaces":{"claude-plugins-official":{"source":{"source":"github","repo":"someone/claude-plugins-official"}}},"enabledPlugins":{"x@claude-plugins-official":true}}`)
 	errs = 0
@@ -197,5 +200,58 @@ func TestCFG055_Issue893(t *testing.T) {
 		if got := sevOf(s, "p@mkt"); string(got) != c.want {
 			t.Errorf("%s: expected %s for the enable, got %s", c.source, c.want, got)
 		}
+	}
+}
+
+// A marketplace on the repository owner's own GitHub account is warn, a
+// fork's upstream or another owner stays error, and a plugin from the
+// official marketplace is info (#1178).
+func TestCFG055_OwnerAndOfficial1178(t *testing.T) {
+	sevs := func(origin, settings string) []finding.Severity {
+		t.Helper()
+		tg := settingsTarget(t, settings)
+		dir := t.TempDir()
+		if origin != "" {
+			if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			cfg := "[core]\n\tbare = false\n[remote \"origin\"]\n\turl = " + origin + "\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n"
+			if err := os.WriteFile(filepath.Join(dir, ".git", "config"), []byte(cfg), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		tg.ProjectDir = dir
+		var out []finding.Severity
+		for _, f := range CFG055.Check(tg) {
+			if strings.HasPrefix(f.Message, "enabledPlugins") {
+				out = append(out, f.Severity)
+			}
+		}
+		return out
+	}
+	gh := `{"extraKnownMarketplaces":{"m":{"source":{"source":"github","repo":"My-Org/plugins"}}},"enabledPlugins":{"p@m":true}}`
+	git := `{"extraKnownMarketplaces":{"m":{"source":{"source":"git","url":"https://github.com/my-org/plugins.git"}}},"enabledPlugins":{"p@m":true}}`
+	for _, c := range []struct {
+		name, origin, settings string
+		want                   finding.Severity
+	}{
+		{"same owner, github", "git@github.com:my-org/app.git", gh, finding.Warn},
+		{"same owner, git URL", "https://github.com/MY-ORG/app", git, finding.Warn},
+		{"fork of the owner's repo", "https://github.com/someone/app.git", gh, finding.Error},
+		{"no origin", "", gh, finding.Error},
+		{"unknown marketplace, same file", "https://github.com/my-org/app", `{"extraKnownMarketplaces":{"m":{"source":{"source":"github","repo":"other/plugins"}}},"enabledPlugins":{"p@m":true}}`, finding.Error},
+		{"official", "", `{"enabledPlugins":{"code-review@claude-plugins-official":true}}`, finding.Info},
+		{"other marketplace", "", `{"enabledPlugins":{"x@somewhere":true}}`, finding.Warn},
+	} {
+		got := sevs(c.origin, c.settings)
+		if len(got) != 1 || got[0] != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+	if marketplaceOwner(json.RawMessage(`{"m":{"source":{"source":"github","repo":"noslash"}}}`), "m") != "" {
+		t.Error("a repo without an owner has no owner")
+	}
+	if marketplaceOwner(json.RawMessage(`{"m":{"source":{"source":"url","url":"https://example.com/m.json"}}}`), "m") != "" {
+		t.Error("a url source has no GitHub owner")
 	}
 }

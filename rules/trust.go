@@ -15,11 +15,12 @@ import (
 
 // TrustEntry is one thing in a target that decides what an agent runs, loads
 // or may do without asking (#999): a command that runs on its own, an MCP
-// server, a script such a command starts, an instruction file, an approval
-// setting. `cfgaudit lock` records the entries, so a change that matches no
+// server, a script such a command starts, a code file the agent runs, an
+// instruction file, an approval setting. `cfgaudit lock` records the entries, so a change that matches no
 // rule still shows up as a difference in review.
 type TrustEntry struct {
-	// Kind is "command", "mcp", "script", "instructions" or "setting".
+	// Kind is "command", "mcp", "mcp_tool", "script", "instructions" or
+	// "setting".
 	Kind string `json:"kind"`
 	// File is the file the entry is in, as the target names it.
 	File string `json:"file"`
@@ -45,6 +46,7 @@ func TrustEntries(t *Target) []TrustEntry {
 	for _, lc := range LaunchCommands(t) {
 		out = append(out, TrustEntry{Kind: "command", File: lc.File, Name: lc.Label, Value: lc.Command})
 	}
+	out = append(out, codexMCPToolEntries(t)...)
 	for _, ref := range t.mcpServerRefs() {
 		v := strings.TrimSpace(ref.Server.Command + " " + strings.Join(ref.Server.Args, " "))
 		if ref.Server.URL != "" {
@@ -61,6 +63,11 @@ func TrustEntries(t *Target) []TrustEntry {
 			name = name[i+2:]
 		}
 		out = append(out, TrustEntry{Kind: "script", File: s.File, Name: name, Value: hex.EncodeToString(sum[:])})
+	}
+	// Code the agent runs on its own, so its content is a trust entry like a
+	// launched script's, and a change shows without --strict-hash (#1466).
+	if c := t.AgentCode; c != nil {
+		out = append(out, TrustEntry{Kind: "script", File: c.Path, Name: c.Kind, Value: c.SHA256})
 	}
 	if t.InstructionFile != "" && !t.ContentPath {
 		out = append(out, TrustEntry{Kind: "instructions", File: t.InstructionFile, Name: "instructions"})
@@ -142,7 +149,7 @@ func MCPInventory(t *Target) []MCPItem {
 			if it.Transport == "" {
 				it.Transport = "stdio"
 			}
-			if r := filepath.Base(s.Command); npmPackageRunners[r] || pyPackageRunners[r] {
+			if r := filepath.Base(s.Command); packageRunnerCall(r, s.Args) {
 				it.Pinned = "yes"
 				if len(analyzeMCPVersionPins(s.Command, s.Args)) > 0 {
 					it.Pinned = "no"
@@ -159,5 +166,34 @@ func MCPInventory(t *Target) []MCPItem {
 		}
 		return out[i].Name < out[j].Name
 	})
+	return out
+}
+
+// codexMCPToolEntries are the Codex hooks that call an MCP tool (#972), one
+// per handler: Name is the event, Value the server, the tool and the input as
+// canonical JSON, so a lock notices a changed call.
+func codexMCPToolEntries(t *Target) []TrustEntry {
+	ch := t.CodexHooks
+	if ch == nil {
+		return nil
+	}
+	var out []TrustEntry
+	for _, event := range ch.EventNames() {
+		for _, group := range ch.Events[event] {
+			for _, h := range group.Hooks {
+				server, tool, ok := h.MCPToolCall(event)
+				if !ok {
+					continue
+				}
+				v := server + " " + tool
+				if len(h.Input) > 0 {
+					if b, err := json.Marshal(h.Input); err == nil {
+						v += " " + string(b)
+					}
+				}
+				out = append(out, TrustEntry{Kind: "mcp_tool", File: t.CodexHooksFile, Name: "Codex hooks." + event, Value: v})
+			}
+		}
+	}
 	return out
 }

@@ -122,6 +122,30 @@ func continuedFrom(lines []string, i int) string {
 	return lines[i-1] + " "
 }
 
+// closedClauseRe finds the end of a sentence, also when emphasis closes after the
+// punctuation: "... that exact" / "trade.** Call once ...".
+var closedClauseRe = regexp.MustCompile("[.;!?][*_`\"')]*\\s")
+
+// wrappedClause returns the part of the previous line that belongs to the clause
+// holding the match, when that clause wraps there: "Do not change its framework
+// or" / "hosting model without approval." (#1470). It is empty when the match
+// opens a clause of its own, or the previous line ends one, is a heading, or
+// is a list item this line does not continue by indentation.
+func wrappedClause(lines []string, i, start int) string {
+	prev := continuedFrom(lines, i)
+	if prev == "" || closedClauseRe.MatchString(lines[i][:start]) {
+		return ""
+	}
+	t := strings.TrimSpace(prev)
+	if strings.HasSuffix(t, ":") || strings.HasPrefix(t, "#") {
+		return ""
+	}
+	if m := listItemRe.FindStringSubmatch(prev); m != nil && len(lines[i])-len(strings.TrimLeft(lines[i], " \t")) <= len(m[1]) {
+		return ""
+	}
+	return prev[clauseStart(prev, len(prev)):]
+}
+
 // clauseRest returns the text after a match up to the end of its sentence.
 func clauseRest(after string) string {
 	for i := 0; i+1 < len(after); i++ {
@@ -181,10 +205,10 @@ func clauseStart(line string, end int) int {
 //     is not negated by anything and keeps reporting. Checking this first is
 //     what keeps the rule's main true positive alive.
 //
-//   - A negation precedes the match in the same clause ("Never auto-approve
-//     destructive operations", "Do not install new packages without confirming
-//     with the user"). The second one is the inverse of the finding: it demands
-//     confirmation.
+//   - A negation precedes the match in the same clause, on this line or wrapped
+//     from the one above ("Never auto-approve destructive operations", "Do not
+//     install new packages without confirming with the user"). The second one
+//     is the inverse of the finding: it demands confirmation.
 //
 //   - The line is a list item whose governing line is a prohibition ("**Never
 //     without explicit user request:**" above a list holding "Push to remote
@@ -212,7 +236,8 @@ func negated(lines []string, i int, loc []int) bool {
 		return false
 	}
 	before := line[clauseStart(line, loc[0]):loc[0]]
-	if prohibitionRe.MatchString(before) {
+	wrapped := wrappedClause(lines, i, loc[0])
+	if prohibitionRe.MatchString(wrapped + before) {
 		return true
 	}
 	if strings.HasPrefix(strings.ToLower(match), "without") && noWithoutRe.MatchString(before) {
@@ -659,7 +684,7 @@ func (r *cfg029) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSources(r.ID()) {
 		lines := strings.Split(src.Content, "\n")
 		fenced := fencedLines(src.Content)
 		for i, line := range lines {

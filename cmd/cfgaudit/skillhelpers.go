@@ -20,6 +20,10 @@ const maxSkillHelper = 1 << 20
 // scripts, whose lines the command rules read.
 var skillScriptExts = map[string]bool{".sh": true, ".bash": true, ".zsh": true}
 
+// skillCodeExts are the other scripts a skill ships. CFG119 reads them for its
+// markers, and the line rules do not, whose patterns are shell syntax (#1409).
+var skillCodeExts = map[string]bool{".py": true, ".js": true, ".mjs": true, ".cjs": true, ".ts": true}
+
 // skillHelperTargets reads the files a skill ships next to its SKILL.md
 // (#987). Only SKILL.md got the instruction rules, so a skill could keep a
 // harmless SKILL.md and move the payload into a file it tells the agent to
@@ -70,7 +74,7 @@ func skillHelperTargets(dir string, targets []*rules.Target) []*rules.Target {
 			}
 			ext := strings.ToLower(filepath.Ext(path))
 			isMD := ext == ".md" && d.Name() != "SKILL.md"
-			if (!isMD && !skillScriptExts[ext]) || known[absPath(path)] {
+			if (!isMD && !skillScriptExts[ext] && !skillCodeExts[ext]) || known[absPath(path)] {
 				return nil
 			}
 			data, err := scanroot.ReadFile(path)

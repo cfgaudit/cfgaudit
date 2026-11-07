@@ -87,6 +87,17 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 	if !ok {
 		return nil
 	}
+	if t.PolicyAgent == "opencode" || t.PolicyAgent == "kilo-code" {
+		return checkOrderedPolicy(t, sp)
+	}
+	switch t.PolicyAgent {
+	case "codex":
+		return checkCodexPolicy(t, sp)
+	case "roo-code":
+		return checkRooPolicy(t, sp)
+	case "gemini-cli":
+		return checkGeminiPolicy(t, sp)
+	}
 	var file, note string
 	var allow, deny []string
 	switch t.PolicyAgent {
@@ -101,13 +112,33 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 		if t.Devin != nil && t.Devin.Permissions != nil {
 			allow, deny = t.Devin.Permissions.Allow, t.Devin.Permissions.Deny
 		}
+	case "cursor-cli":
+		file = t.CursorCLIFile
+		if t.CursorCLI != nil && t.CursorCLI.Permissions != nil {
+			allow, deny = t.CursorCLI.Permissions.Allow, t.CursorCLI.Permissions.Deny
+		}
+	case "qwen-code":
+		file = t.QwenFile
+		if t.Qwen != nil {
+			allow, deny = t.Qwen.PolicyEntries()
+		}
+	case "grok":
+		file = t.GrokFile
+		if t.Grok != nil {
+			allow, deny = t.Grok.PolicyEntries()
+		}
 	}
+	allow = append(slices.Clone(allow), t.PolicyInheritedAllow...)
+	deny = append(slices.Clone(deny), t.PolicyInheritedDeny...)
 
 	var findings []finding.Finding
 	add := func(msg string) {
 		findings = append(findings, finding.Finding{RuleID: "CFG025", Severity: finding.Error, File: file, Message: msg})
 	}
 	for _, c := range policyCategories {
+		if c.key == sp.unenforced {
+			continue
+		}
 		for _, v := range c.entries(t.PolicyDeny) {
 			if !slices.ContainsFunc(deny, func(e string) bool { return sp.covers(c.key, e, v) }) {
 				add("policy deny." + c.key + " \"" + v + "\": no permissions.deny entry covers it, so " + sp.name +

@@ -22,7 +22,7 @@ inputs:
     required: false
     default: "false"
   user:
-    description: Also scan user-global config under ~/.claude ("true" to enable).
+    description: Also scan the user-scope config of each agent (~/.claude/, ~/.codex/, ~/.cursor/, ~/.gemini/, ...) ("true" to enable).
     required: false
     default: "false"
   config:
@@ -63,7 +63,7 @@ inputs:
   image:
     description: cfgaudit container image to run (advanced; override to pin a digest).
     required: false
-    default: ghcr.io/cfgaudit/cfgaudit:1.19.0
+    default: ghcr.io/cfgaudit/cfgaudit:1.20.0
 
 outputs:
   exit-code:

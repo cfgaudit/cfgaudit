@@ -16,6 +16,11 @@ cfgaudit /path/to/project --format sarif
 # text when piped or redirected. Force either with --format table / --format text.
 # The table shows a location once for consecutive findings at it, such as
 # CFG041 to CFG044 on one deny list; text keeps one full line per finding.
+# Text and table print a finding once for byte-identical files that get the
+# same one, such as a skill kept at .claude/skills/x and .agents/skills/x, and
+# name the copies below it ("also in 1 identical copy: ..."); the summary
+# counts every finding. JSON, SARIF, Code Climate and baselines keep one per
+# file (#1346).
 cfgaudit --format table
 
 # Text and table output colour the severity and rule ID on a terminal. Turn it
@@ -53,6 +58,10 @@ cfgaudit --skip CFG006,CFG009
 # Use an explicit config file (otherwise .cfgaudit.yml is auto-discovered)
 cfgaudit --config path/to/.cfgaudit.yml
 
+# Also scan the user-scope config of each agent (~/.claude/, ~/.codex/config.toml,
+# ~/.cursor/mcp.json, ~/.gemini/settings.json, ...)
+cfgaudit --user
+
 # Also scan a Claude Code plugin/skill package
 cfgaudit --plugins ./my-plugin
 
@@ -80,7 +89,10 @@ cfgaudit lock --check
 cfgaudit inventory
 cfgaudit inventory --format cyclonedx > agent-bom.json
 
-# Scan a skill, plugin or release archive without unpacking it yourself
+# Scan a skill, plugin or release archive without unpacking it yourself.
+# .zip, .tar and .tar.gz/.tgz are unpacked into a private temporary directory,
+# up to 50,000 entries and 512 MiB; a larger entry than 32 MiB is listed, not
+# unpacked. Findings name the paths inside the archive
 cfgaudit skill.zip
 cfgaudit release.tar.gz
 
@@ -107,13 +119,17 @@ cfgaudit policy apply --dry-run     # preview: .cfgaudit.yml require-deny -> set
 cfgaudit policy apply               # write the missing deny entries
 ```
 
+**Capability-package setup documentation.** A normal scan automatically reads setup documents (`README.md`, `INSTALL.md`, `SETUP.md`, `GETTING_STARTED.md` and their named `docs/` counterparts) when structural evidence identifies their directory as an agent capability package: a `SKILL.md`, a Claude plugin or marketplace manifest, an official MCP Registry `server.json`, an npm `mcpName`, or an MCP-named npm `bin` entrypoint together with the MCP SDK. An AI/MCP phrase, an SDK dependency by itself, or an unrelated CLI `bin` is not enough, so an ordinary application's README is not pulled into the scan merely because the application uses MCP.
+
+These files use the existing CFG024, CFG036, CFG057, CFG080 and CFG120 semantics. Findings are capped at `warn`: an agent can discover and relay setup steps, but does not load this documentation as trusted instructions. CFG014 and CFG119 remain complementary checks for commands and scripts that configuration actually launches; this mode does not reinterpret prose as auto-run code. Additional Python/JavaScript files beside a skill remain tracked by #1409. OpenClaw's user/project skill roots are not inferred here: adding a new agent's verified load surfaces is a separate discovery decision.
+
 **`baseline` subcommand** — writes one entry per current finding to `.cfgaudit-baseline.json` (or the file `-o` names), so a repository can adopt cfgaudit without fixing everything first (#998). It takes the scan's flags and directory. `--baseline <file>` then leaves out the findings the file lists, as many times as it lists each, and reports the rest; the exit code counts only those. Two lines on stderr say how many findings the baseline covered and which entries no longer match anything, so the file can be rewritten when findings are fixed.
 
 The entry is a fingerprint of the rule, the file relative to the scanned directory, the reported key and the message with its line numbers taken out, so adding a line above a finding does not make it new; changing what the finding says does. Findings of a secret written into a file (CFG007, CFG050, CFG054, CFG065, CFG073) are left out of the baseline and always reported: the secret is leaked whether or not CI fails, and is only gone once it is removed and rotated.
 
 Keep the file in the repository and update it in reviewed commits. In CI for pull requests from people you do not fully trust, read the base branch's copy, as for `--config`: a pull request could otherwise add its own findings to the baseline.
 
-**`lock` subcommand** — writes `.cfgaudit.lock` in the scanned directory (or the file `-o` names): the trust-relevant agent configuration, as entries, plus the SHA-256 of every agent file it read (#999). The entries are every command that runs without the user asking (hooks, status lines, credential helpers, folder-open tasks, MCP server launches), every MCP server, the content hash of every repository script such a command starts, every instruction file by its path, and the approval settings: `permissions.allow`, `defaultMode`, `additionalDirectories`, the MCP and plugin enablement keys and helper commands of Claude Code, and the auto-approve settings of VS Code. It uses the scan's discovery and takes `--plugins` and `--user`.
+**`lock` subcommand** — writes `.cfgaudit.lock` in the scanned directory (or the file `-o` names): the trust-relevant agent configuration, as entries, plus the SHA-256 of every agent file it read (#999). The entries are every command that runs without the user asking (hooks, status lines, credential helpers, folder-open tasks, MCP server launches), every MCP server, every committed code file an agent runs (Copilot extensions, OpenCode plugins and tools), every Codex hook that calls an MCP tool (server, tool and input, #972), the content hash of every repository script such a command starts, every instruction file by its path, and the approval settings: `permissions.allow`, `defaultMode`, `additionalDirectories`, the MCP and plugin enablement keys and helper commands of Claude Code, and the auto-approve settings of VS Code. It uses the scan's discovery and takes `--plugins` and `--user`.
 
 `cfgaudit lock --check` compares the current state with the lock and exits 1 when they differ, listing each change by entry: `new MCP server helper in .mcp.json`, `changed command hooks.SessionStart command in .claude/settings.json: ... -> ...`, `changed launched script scripts/fmt.sh (...)`. Prose and formatting do not change an entry, so editing a `CLAUDE.md` does not touch the lock; `--strict-hash` compares the whole files as well. A rule reports only what it knows, and about half of the repository-borne agent advisories cfgaudit was measured against matched no rule, so the lock makes such a change visible in review: whoever adds a hook or a server has to update the lock in the same pull request. It pairs with a CODEOWNERS entry for `.cfgaudit.lock`.
 
@@ -183,7 +199,7 @@ Some rules require a minimum Claude Code release before they make sense. cfgaudi
 |------|---------|
 | `0` | No findings, or only `warn`/`info` (without `--strict`) |
 | `1` | At least one `error`-severity finding (or any `warn` under `--strict` / `strict: true`) |
-| `2` | Usage or tool error: `--format` names an unknown format, the scan path or the `--plugins` path is not a directory, more than one scan path is given, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, `--shellcheck` analysis fails, or a path in the scan exists but cannot be read (the scan still runs and lists every such path on stderr) |
+| `2` | Usage or tool error: `--format` names an unknown format, the scan path or the `--plugins` path is not a directory, more than one scan path is given, the `--config` file is missing, `.cfgaudit.yml` does not parse or has an unknown key or an invalid severity, `--only` names no known rule, `--shellcheck` analysis fails, an archive scan target cannot be unpacked, a `--baseline` file cannot be read or a baseline cannot be written, or a path in the scan exists but cannot be read (the scan still runs and lists every such path on stderr; `--write-baseline` and `cfgaudit baseline` then write nothing). A symbolic link whose target does not exist is read as absent, as the agents read it: it is named on stderr and does not change the exit code (#1363) |
 
 A directory without any agent configuration exits 0, because that is a valid state, but the text and table formats add `cfgaudit: no agent configuration found in <dir>; nothing was audited` on stderr. A scan in the wrong directory, or after a checkout step that failed, then does not read like a clean repository. JSON, SARIF and Code Climate output are unchanged.
 
@@ -258,7 +274,7 @@ policy:
     - "Bash(git commit:*)"   # must not be grantable by permissions.allow
 ```
 
-For a team on more than one agent, the policy can be written once and checked against each agent's committed permission file. Claude Code and Devin CLI are checked today; Zed and Continue, which keep permission rules in user settings only, get a CFG118 info finding:
+For a team on more than one agent, the policy can be written once and checked against each agent's committed permission file. Claude Code, Devin CLI, Cursor CLI, Qwen Code, Grok, OpenCode, Kilo Code, Codex and Roo Code are checked today, and Gemini CLI and pi through the tools they switch off; Zed, Continue, goose, Kimi CLI and Cline, which have no committed permission file, get a CFG118 info finding:
 
 ```yaml path=.cfgaudit.yml
 policy:

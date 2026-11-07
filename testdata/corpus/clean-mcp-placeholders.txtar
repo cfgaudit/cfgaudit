@@ -1,0 +1,18 @@
+Pattern: MCP configs with environment references, placeholders and a relative key file instead of credentials.
+Issues: #891, #1368
+-- .mcp.json --
+{
+  "mcpServers": {
+    "tracker": {
+      "command": "npx",
+      "args": ["-y", "@example/tracker-mcp@1.4.2"],
+      "env": {
+        "TRACKER_TOKEN": "${TRACKER_TOKEN}",
+        "GITHUB_TOKEN": "YOUR_GITHUB_PAT_HERE",
+        "OPENAI_API_KEY": "sk-your-key-here",
+        "SSL_KEY_FILE": "./certs/dev.key",
+        "USE_SECRET_STORE": "true"
+      }
+    }
+  }
+}

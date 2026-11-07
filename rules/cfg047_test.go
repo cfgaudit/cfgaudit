@@ -164,3 +164,23 @@ func TestCFG047_ZedHookTaskIsCommandSite(t *testing.T) {
 		t.Errorf("args should be joined into the command, got %q", sites[0].Command)
 	}
 }
+
+// The message names the gates of each editor, because the file cannot say which
+// one opens it, and the weakest one first (#1181, #1502).
+func TestCFG047_MessageNamesTheGate(t *testing.T) {
+	for _, reveal := range []string{"", "never"} {
+		f := CFG047.Check(tasksTarget(parser.VSCodeTask{
+			Label: "x", Command: "./run.sh",
+			RunOptions:   &parser.VSCodeRunOptions{RunOn: "folderOpen"},
+			Presentation: &parser.VSCodePresentation{Reveal: reveal},
+		}))
+		if len(f) != 1 {
+			t.Fatalf("findings: %+v", f)
+		}
+		m := f[0].Message
+		cursor, vscode := strings.Index(m, "Cursor runs it on open with no prompt"), strings.Index(m, "VS Code and Windsurf run it once the folder is trusted")
+		if cursor < 0 || vscode < cursor {
+			t.Errorf("message: %s", m)
+		}
+	}
+}

@@ -90,6 +90,10 @@ type Target struct {
 	YarnPath   string
 	YarnrcFile string
 
+	// Bytecode are the committed .pyc files that can run instead of the
+	// source a reader reviews (#1398). Set on one target per scan.
+	Bytecode []BytecodeFile
+
 	// Gitignore is the project's .gitignore, read during discovery so a
 	// symlink that leaves the tree is reported by CFG115 like any other
 	// (#1023); HasGitignore is whether it could be read. Set on the project
@@ -98,11 +102,11 @@ type Target struct {
 	HasGitignore bool
 
 	// ArchiveName is the archive a scan target was unpacked from (#1002);
-	// ArchiveEntries are its entry names and ArchiveLinks the link entries
-	// that were not extracted.
+	// ArchiveEntries are its entry names and ArchiveLinks the link entries and
+	// their targets, recorded as metadata but never extracted or followed.
 	ArchiveName    string
 	ArchiveEntries []string
-	ArchiveLinks   []string
+	ArchiveLinks   []ArchiveLink
 
 	// GitModules is the scanned directory's .gitmodules, as text (#994);
 	// GitModulesFile is its path. NestedRepos are the committed directories
@@ -116,14 +120,20 @@ type Target struct {
 	// ContentPathRules to it and reports at most warn.
 	ContentPath bool
 
+	// CapabilityPackage marks an automatically discovered setup document from
+	// an MCP server, agent skill or plugin package (#1437). It remains a
+	// ContentPath target (documentation is not trusted agent context), but Run
+	// applies the narrower CapabilityPackageRules instead of the general set.
+	CapabilityPackage bool
+
 	// SkillHelper is the SKILL.md a Markdown file sits beside (#987): a file
 	// such as references/policy.md that the skill tells the agent to read. Run
 	// applies only SkillHelperRules to it and reports at most warn.
 	SkillHelper string
 
 	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
-	// workspace tasks). A task set to run on folder-open is a zero-click code
-	// execution vector when committed to a repo (CFG047). Nil when absent;
+	// workspace tasks). A task set to run on folder-open is a code execution
+	// vector when committed to a repo (CFG047). Nil when absent;
 	// VSCodeTasksFile is its path, used to attribute findings.
 	VSCodeTasks     *parser.VSCodeTasks
 	VSCodeTasksFile string
@@ -395,20 +405,47 @@ type Target struct {
 	// several targets is attached to the first one only.
 	LaunchedScripts []LaunchedScript
 
+	// ClineHooks are the project's Cline hook files (#1523). They run on their
+	// event like a hook command, so each becomes a LaunchedScript.
+	ClineHooks []ClineHook
+
 	PolicyRequireDeny []string
 	PolicyForbidAllow []string
 
 	// PolicyAgent names the agent this target's permission file is checked as
 	// against the agent-neutral policy (#1081): "claude-code" for the project
-	// .claude/settings.json target, "devin" for .devin/config.json. PolicyDeny
+	// .claude/settings.json target, "devin" for .devin/config.json, "cursor-cli"
+	// for .cursor/cli.json, "qwen-code" for .qwen/settings.json, "grok" for
+	// .grok/config.toml. PolicyDeny
 	// and PolicyForbid are the neutral entries; empty unless PolicyAgent is set.
 	PolicyAgent  string
 	PolicyDeny   config.PolicyRules
 	PolicyForbid config.PolicyRules
 
+	// CodexRules are the prefix rules of .codex/rules/*.rules, and CodexRulesFile
+	// the file a finding names (#1516).
+	CodexRules     []parser.CodexRule
+	CodexRulesFile string
+
+	// PolicyRoo is Roo Code's side of the neutral policy, and
+	// PolicyGeminiAllowed the tools.allowed list of .gemini/settings.json (#1517).
+	PolicyRoo           *RooPolicy
+	PolicyGeminiAllowed []string
+
+	// PolicyBlocks are the permission blocks of an agent that resolves rules by
+	// the last match, in the order it reads them, and PolicyFile the file a
+	// finding names (#1515).
+	PolicyBlocks []parser.OpenCodePermissionBlock
+	PolicyFile   string
+
 	// PolicyUnenforceable lists the agents in the policy's scope that have no
 	// file in the repository a deny rule could be written to (CFG118).
 	PolicyUnenforceable []UnenforceableAgent
+	// PolicyInheritedAllow and PolicyInheritedDeny hold entries the agent takes
+	// from another agent's committed file: Cursor CLI and Grok add
+	// .claude/settings.json to their own.
+	PolicyInheritedAllow []string
+	PolicyInheritedDeny  []string
 
 	// ShellCheck enables CFG045 (running the shellcheck binary over command
 	// sites). Set by the CLI when --shellcheck / config requests it and the
@@ -432,8 +469,11 @@ type Target struct {
 	// committed link text. cfgaudit does not read such a file (it would be a file
 	// on the scanning machine, not in the repository); CFG115 reports the link
 	// and every other rule ignores the target.
+	// EscapedWalked says the link was found by the repository walk (#1417), not
+	// by a read of a config path.
 	EscapedLink   string
 	EscapedTarget string
+	EscapedWalked bool
 
 	// ScheduledTasks holds a parsed .claude/scheduled_tasks.json — Claude Code's
 	// cron-scheduler store. A committed file with a non-empty tasks array is
@@ -466,6 +506,16 @@ type Target struct {
 	// Claude Code merges the two at runtime, so a deny-absence finding on the
 	// local file would be a false positive (CFG006).
 	SiblingDeny bool
+}
+
+// ArchiveLink is a symbolic or hard link carried by an archive. Name and
+// Target are the archive header's text; neither path has been resolved. A hard
+// link's Target names an entry from the archive root, a symbolic link's Target
+// is relative to the link's own directory.
+type ArchiveLink struct {
+	Name   string
+	Target string
+	Hard   bool
 }
 
 // mcpServerRef is a single MCP server definition paired with the file it was
@@ -543,6 +593,8 @@ type Rule interface {
 	Check(t *Target) []finding.Finding
 }
 
+// CFG017 is retired and its ID is not reused: it reported a key no agent reads
+// in an MCP configuration (#1525).
 // All is the ordered list of rules run on every target.
 var All []Rule
 
@@ -552,4 +604,7 @@ var All []Rule
 type AgentCodeFile struct {
 	Path string
 	Kind string
+	// SHA256 is the content hash for the lock, empty when the file could not
+	// be read. CFG114 needs only its presence.
+	SHA256 string
 }

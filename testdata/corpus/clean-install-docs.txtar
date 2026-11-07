@@ -1,0 +1,9 @@
+Pattern: setup docs that tell a person what to run, and image links that are plain badges or paths.
+Issues: #873, #1187, #1190
+-- CLAUDE.md --
+# Setup
+
+Download the installer from https://nodejs.org/ and run it. The agent never does this step.
+
+![build](https://img.shields.io/badge/build-passing-green)
+![logo](https://raw.githubusercontent.com/example/project/main/assets/logo.png)

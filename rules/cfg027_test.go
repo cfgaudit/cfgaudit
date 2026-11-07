@@ -93,11 +93,39 @@ func TestCFG027_Issue892(t *testing.T) {
 		`if true; then install -m 644 job /etc/cron.d/job; fi`,
 		"echo ok\ncp evil.plist ~/Library/LaunchAgents/",
 		`touch ~/.config/systemd/user/evil.service`,
-		`crontab -l | grep backup`,
 	}
 	for _, cmd := range writes {
 		if f := CFG027.Check(hookTarget(t, cmd)); len(f) != 1 || f[0].Severity != finding.Error {
 			t.Errorf("expected 1 Error for %q, got %+v", cmd, f)
+		}
+	}
+}
+
+// crontab installs a job only with a file, "-" or "-e", or with no argument
+// at the end of a pipe (#1367).
+func TestCFG027_CrontabInstallOnly(t *testing.T) {
+	for _, cmd := range []string{
+		"crontab -l | grep backup",
+		"if command -v crontab >/dev/null 2>&1; then echo yes; fi",
+		"which crontab",
+		"crontab -r",
+		"crontab -l 2>/dev/null | grep -q my-job && echo scheduled",
+		"run-crontab-check --dry",
+	} {
+		if f := CFG027.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%q: expected no finding, got %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		"crontab jobs.txt",
+		`(crontab -l; echo "* * * * * x") | crontab -`,
+		"crontab -e",
+		"crontab -u root /tmp/jobs",
+		"echo '* * * * * x' | crontab",
+		"sudo crontab ./cron.txt",
+	} {
+		if f := CFG027.Check(hookTarget(t, cmd)); len(f) != 1 {
+			t.Errorf("%q: expected 1 finding, got %d", cmd, len(f))
 		}
 	}
 }

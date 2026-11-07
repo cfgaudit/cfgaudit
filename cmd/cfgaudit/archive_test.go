@@ -18,6 +18,7 @@ import (
 type archEntry struct {
 	name, body string
 	link       bool
+	hard       bool
 	dir        bool
 }
 
@@ -59,7 +60,9 @@ func writeTar(t testing.TB, p string, gz bool, es []archEntry) {
 		h := &tar.Header{Name: e.name, Mode: 0o644, Size: int64(len(e.body)), Typeflag: tar.TypeReg}
 		switch {
 		case e.link:
-			h.Typeflag, h.Linkname, h.Size = tar.TypeSymlink, "/etc/passwd", 0
+			h.Typeflag, h.Linkname, h.Size = tar.TypeSymlink, e.body, 0
+		case e.hard:
+			h.Typeflag, h.Linkname, h.Size = tar.TypeLink, e.body, 0
 		case e.dir:
 			h.Typeflag, h.Size = tar.TypeDir, 0
 		}
@@ -120,6 +123,40 @@ func TestArchiveScan1002(t *testing.T) {
 	}
 }
 
+func TestArchiveLinkTargets1435(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"links.zip", "links.tar"} {
+		p := filepath.Join(dir, name)
+		entries := []archEntry{{name: "project/key", body: "../../.ssh/id_ed25519", link: true}}
+		if strings.HasSuffix(name, ".zip") {
+			writeZip(t, p, entries)
+		} else {
+			writeTar(t, p, false, entries)
+		}
+		root, res, err := extractArchive(p)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		_ = os.RemoveAll(root)
+		if len(res.Links) != 1 || res.Links[0].Name != "project/key" || res.Links[0].Target != "../../.ssh/id_ed25519" || res.Links[0].Hard {
+			t.Errorf("%s: links = %+v", name, res.Links)
+		}
+	}
+}
+
+func TestArchiveHardLink1435(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "hard.tar")
+	writeTar(t, p, false, []archEntry{{name: "copy", body: "dir/original", hard: true}})
+	root, res, err := extractArchive(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.RemoveAll(root)
+	if len(res.Links) != 1 || res.Links[0].Target != "dir/original" || !res.Links[0].Hard {
+		t.Errorf("links = %+v", res.Links)
+	}
+}
+
 func TestArchiveErrors1002(t *testing.T) {
 	dir := t.TempDir()
 	bad := filepath.Join(dir, "bad.zip")
@@ -165,24 +202,24 @@ func TestArchiveErrors1002(t *testing.T) {
 // single entry is skipped.
 func TestArchiveLimits1002(t *testing.T) {
 	x := &extractor{root: t.TempDir(), entries: maxArchiveEntries}
-	if err := x.entry("a", false, false, 1, strings.NewReader("a")); err == nil {
+	if err := x.entry("a", false, nil, 1, strings.NewReader("a")); err == nil {
 		t.Error("entry limit: expected an error")
 	}
 	x = &extractor{root: t.TempDir(), total: maxArchiveTotal}
-	if err := x.entry("b", false, false, 1, strings.NewReader("b")); err == nil {
+	if err := x.entry("b", false, nil, 1, strings.NewReader("b")); err == nil {
 		t.Error("total limit: expected an error")
 	}
 	x = &extractor{root: t.TempDir()}
-	if err := x.entry("big", false, false, maxArchiveFile+1, strings.NewReader("")); err != nil || len(x.res.Skipped) != 1 {
+	if err := x.entry("big", false, nil, maxArchiveFile+1, strings.NewReader("")); err != nil || len(x.res.Skipped) != 1 {
 		t.Errorf("declared size: %v %+v", err, x.res)
 	}
 	x = &extractor{root: t.TempDir()}
-	if err := x.entry("lies", false, false, 1, strings.NewReader(strings.Repeat("z", maxArchiveFile+2))); err != nil || len(x.res.Skipped) != 1 {
+	if err := x.entry("lies", false, nil, 1, strings.NewReader(strings.Repeat("z", maxArchiveFile+2))); err != nil || len(x.res.Skipped) != 1 {
 		t.Errorf("actual size: %v %+v", err, x.res)
 	}
 	x = &extractor{root: filepath.Join(t.TempDir(), "f")}
 	mustWrite(t, x.root, "a file where a directory goes")
-	if err := x.entry("d/x", false, false, 1, strings.NewReader("x")); err == nil {
+	if err := x.entry("d/x", false, nil, 1, strings.NewReader("x")); err == nil {
 		t.Error("mkdir under a file: expected an error")
 	}
 }
@@ -245,7 +282,7 @@ func (failReader) Read([]byte) (int, error) { return 0, errors.New("read failed"
 // The error paths of the extraction (#1327).
 func TestArchiveErrorPaths1327(t *testing.T) {
 	x := &extractor{root: t.TempDir()}
-	if err := x.entry("f", false, false, 1, failReader{}); err == nil {
+	if err := x.entry("f", false, nil, 1, failReader{}); err == nil {
 		t.Error("read error: expected an error")
 	}
 
@@ -277,6 +314,22 @@ func TestArchiveErrorPaths1327(t *testing.T) {
 	}
 	if _, _, err := extractArchive(corrupt); err == nil {
 		t.Error("corrupt zip data: expected an error")
+	}
+
+	// A symlink entry whose data is corrupt fails while its target is read.
+	b.Reset()
+	zw = zip.NewWriter(&b)
+	h := &zip.FileHeader{Name: "link", Method: zip.Deflate, CompressedSize64: 4, UncompressedSize64: 100, CRC32: 1}
+	h.SetMode(os.ModeSymlink | 0o777)
+	w, _ = zw.CreateRaw(h)
+	_, _ = w.Write([]byte{0xff, 0xff, 0xff, 0xff})
+	_ = zw.Close()
+	corruptLink := filepath.Join(dir, "corrupt-link.zip")
+	if err := os.WriteFile(corruptLink, b.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := extractArchive(corruptLink); err == nil {
+		t.Error("corrupt zip link: expected an error")
 	}
 
 	// A tar whose entry is shorter than its header says.

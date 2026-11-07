@@ -21,9 +21,15 @@ func (r *cfg047) ID() string { return "CFG047" }
 
 // Check flags .vscode/tasks.json tasks that run automatically when the folder is
 // opened (runOptions.runOn: "folderOpen"). VS Code and its forks (Cursor,
-// Windsurf) read this committable file, so an auto-run task is zero-click code
-// execution on anyone who opens the repo — actively abused in the wild. A silent
-// presentation (reveal: "never") hides it from the user entirely.
+// Windsurf) read this committable file, and such tasks are actively abused in
+// the wild. The gates differ per editor. VS Code wants a trusted folder and
+// task.allowAutomaticTasks on, which is off by default: answering Allow to the
+// prompt turns it on for every trusted workspace, and from then on the task runs
+// with no further question, measured on 1.116 (#1181). Windsurf's code has the
+// same checks. Cursor 3.29.9 ships with both gates open: workspace trust off,
+// the setting on, and no prompt in its code (#1502). The file cannot say which
+// editor opens it, so the message names both. A silent presentation
+// (reveal: "never") hides it from the user.
 func (r *cfg047) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -38,7 +44,7 @@ func (r *cfg047) Check(t *Target) []finding.Finding {
 //
 // **warn, not error.** The trigger is narrower than `folderOpen`: Zed's only hook
 // today is `create_worktree`, which needs the user to create a git worktree
-// first. That is a deliberate action, so this is not the zero-click case CFG047's
+// first. That is a deliberate action, so this is not the folder-open case CFG047's
 // error covers. What the user is never asked about is the command, and the file
 // carrying it is not gated: `.zed/settings.json` is applied only when the
 // worktree is trusted, but the Tasks arm of the same SettingsObserver applies
@@ -167,6 +173,12 @@ func anyDependency(task parser.VSCodeTask, all []parser.VSCodeTask, pred func(pa
 	return walk(task)
 }
 
+// folderOpenGate says what stands between a committed task and its execution in
+// each editor: read from the code of Cursor 3.29.9 and Devin 1.126 (Windsurf),
+// measured on VS Code 1.116 (#1181, #1502).
+const folderOpenGate = "Cursor runs it on open with no prompt, because it ships with workspace trust off and automatic tasks on. " +
+	"VS Code and Windsurf run it once the folder is trusted and automatic tasks are allowed, and one Allow there turns that on for every trusted workspace."
+
 func (r *cfg047) checkVSCode(t *Target) []finding.Finding {
 	if t.VSCodeTasks == nil {
 		return nil
@@ -184,20 +196,20 @@ func (r *cfg047) checkVSCode(t *Target) []finding.Finding {
 			name = "(unnamed)"
 		}
 		msg := "task \"" + name + "\" runs automatically when the folder is opened (runOptions.runOn: \"folderOpen\")" +
-			" — committed to a repo this is zero-click code execution on anyone who opens it. Remove the auto-run or put the command behind an explicit invocation"
+			": " + folderOpenGate + " Remove the auto-run or put the command behind an explicit invocation."
 		if task.Presentation != nil && strings.EqualFold(task.Presentation.Reveal, "never") {
 			msg = "task \"" + name + "\" runs automatically and silently when the folder is opened (runOptions.runOn: \"folderOpen\", presentation.reveal: \"never\")" +
-				" — committed to a repo this is invisible zero-click code execution on anyone who opens it. Remove it"
+				": " + folderOpenGate + " Remove it."
 		}
 		sev := finding.Error
 		switch {
 		case taskRunsConfigDirFile(task, t.VSCodeTasks.Tasks):
-			msg += "; the command runs a file inside an agent or editor configuration directory (.claude/, .vscode/, .cursor/, ...), where a project keeps no build code"
+			msg += " The command runs a file inside an agent or editor configuration directory (.claude/, .vscode/, .cursor/, ...), where a project keeps no build code."
 		case devWorkflowTask(task, t.VSCodeTasks.Tasks):
 			// #1181 option C: the project's own build, watch, dev-server, test
 			// or dependency-sync command is warn; anything else stays error.
 			sev = finding.Warn
-			msg += " (a build, watch, dev-server, test or dependency-sync command of the project, reported at warn)"
+			msg += " This is a build, watch, dev-server, test or dependency-sync command of the project, reported at warn."
 		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG047",

@@ -5,6 +5,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -76,7 +78,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fset := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fset.SetOutput(stderr)
 	format := fset.String("format", "auto", "output format: auto (table on a TTY, text otherwise), text, table, json, sarif, codeclimate")
-	user := fset.Bool("user", false, "also scan ~/.claude/settings.json")
+	user := fset.Bool("user", false, "also scan the user-scope config of each agent (~/.claude/, ~/.codex/, ~/.cursor/, ~/.gemini/, ...)")
 	claudeVersion := fset.String("claude-version", "", "override the Claude Code version used for rule gating (default: detect via `claude --version`)")
 	var configPaths stringFlagValues
 	fset.Var(&configPaths, "config", "path to a .cfgaudit.yml (default: auto-discover in the scanned dir)")
@@ -220,6 +222,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	targets = append(targets, docTargets...)
+	// After content paths, so that a file named there keeps its wider rule set.
+	packageDocs, err := capabilityPackageTargets(dir, targets)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %v\n", err)
+		return 2
+	}
+	targets = append(targets, packageDocs...)
 	targets = append(targets, escapedLinkTargets()...)
 	applyClaudeHooksDisabled(targets)
 
@@ -322,27 +331,41 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "table":
 		if color.Enabled(*noColor, stdout) {
 			var b strings.Builder
-			renderTable(&b, all, cfgauditVersion)
+			renderTableEntries(&b, groupIdenticalCopies(dir, all), cfgauditVersion)
 			_, _ = io.WriteString(stdout, color.Table(b.String()))
 		} else {
-			renderTable(stdout, all, cfgauditVersion)
+			renderTableEntries(stdout, groupIdenticalCopies(dir, all), cfgauditVersion)
 		}
 	default:
 		colored := color.Enabled(*noColor, stdout)
-		for _, f := range all {
-			line := f.String()
+		entries := groupIdenticalCopies(dir, all)
+		for _, e := range entries {
+			line := e.String()
 			if colored {
 				line = color.TextLine(line)
 			}
 			_, _ = fmt.Fprintln(stdout, line)
+			if len(e.copies) > 0 {
+				_, _ = fmt.Fprintln(stdout, copiesLine(e.copies))
+			}
 		}
-		_, _ = fmt.Fprintf(stdout, "\ncfgaudit %s — %d %s\n", cfgauditVersion, len(all), pluralize("finding", len(all)))
+		_, _ = fmt.Fprintf(stdout, "\ncfgaudit %s — %s\n", cfgauditVersion, findingsSummary(entries))
 	}
 
 	// A path that exists but cannot be read, usually for lack of permission on
 	// the scanning machine, used to stop the scan, turn into CFG109, or be
 	// skipped without a word (#1043). The scan now covers everything else and
 	// names every such path; exit 2 because the result is incomplete.
+	if links := scanroot.DanglingLinks(); len(links) > 0 {
+		verb := "points to a missing file and was"
+		if len(links) > 1 {
+			verb = "point to a missing file and were"
+		}
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %d symbolic %s %s skipped as absent:\n", len(links), pluralize("link", len(links)), verb)
+		for _, p := range links {
+			_, _ = fmt.Fprintf(stderr, "  %s\n", p)
+		}
+	}
 	if len(readErrs) > 0 {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: could not read %d %s, results are incomplete:\n", len(readErrs), pluralize("path", len(readErrs)))
 		for _, p := range readErrs {
@@ -512,8 +535,8 @@ func parseInterleaved(fset *flag.FlagSet, args []string) ([]string, error) {
 // and CFG118 check. The Claude Code lists (require-deny and the list form of
 // forbid-allow) go on the project .claude/settings.json target only. The
 // agent-neutral entries go on the permission file of each agent in scope,
-// with a target created for an agent that has none yet, and the agents that
-// cannot carry a committed deny get one CFG118 target (#1081).
+// with a target created for an agent that has none yet, and the agents with
+// no committed permission file get one CFG118 target (#1081).
 func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*rules.Target {
 	if cfg == nil || !cfg.Policy.Configured() {
 		return targets
@@ -521,19 +544,49 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	p := cfg.Policy
 	claudePath := filepath.Join(dir, ".claude", "settings.json")
 	devinPath := filepath.Join(dir, ".devin", "config.json")
-	var claude, devin *rules.Target
+	cursorPath := filepath.Join(dir, ".cursor", "cli.json")
+	qwenPath := filepath.Join(dir, ".qwen", "settings.json")
+	grokPath := filepath.Join(dir, ".grok", "config.toml")
+	codexPath := filepath.Join(dir, ".codex", "config.toml")
+	var claude, devin, cursor, qwen, grok, codex, vscode *rules.Target
+	var rooServers map[string]parser.MCPServer
+	var geminiSettings *parser.GeminiSettings
+	var geminiFile string
 	for _, t := range targets {
+		if t.Scope == finding.ScopeProject {
+			switch {
+			case t.VSCodeSettings != nil:
+				vscode = t
+			case t.ProjectMCPFile == filepath.Join(dir, ".roo", "mcp.json"):
+				rooServers = t.ProjectMCP
+			}
+			if t.Gemini != nil && t.GeminiFile == filepath.Join(dir, ".gemini", "settings.json") {
+				geminiSettings, geminiFile = t.Gemini, t.GeminiFile
+			}
+		}
 		switch {
 		case t.Scope != finding.ScopeProject:
 		case t.SettingsFile == claudePath:
 			claude = t
 		case t.DevinFile == devinPath && t.Devin != nil:
 			devin = t
+		case t.CursorCLIFile == cursorPath && t.CursorCLI != nil:
+			cursor = t
+		case t.QwenFile == qwenPath && t.Qwen != nil:
+			qwen = t
+		case t.CodexFile == codexPath && t.Codex != nil:
+			codex = t
+		case t.GrokFile == grokPath && t.Grok != nil:
+			grok = t
 		}
 	}
+	var claudeAllow, claudeDeny []string
 	if claude != nil {
 		claude.PolicyRequireDeny = p.RequireDeny
 		claude.PolicyForbidAllow = p.ForbidAllow.Claude
+		if claude.Settings != nil && claude.Settings.Permissions != nil {
+			claudeAllow, claudeDeny = claude.Settings.Permissions.Allow, claude.Settings.Permissions.Deny
+		}
 	}
 	if p.Deny.Empty() && p.ForbidAllow.Empty() {
 		return targets
@@ -554,9 +607,75 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				targets = append(targets, devin)
 			}
 			devin.PolicyAgent, devin.PolicyDeny, devin.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "cursor-cli":
+			if cursor == nil {
+				cursor = &rules.Target{Scope: finding.ScopeProject, CursorCLI: &parser.CursorCLIConfig{}, CursorCLIFile: cursorPath}
+				targets = append(targets, cursor)
+			}
+			cursor.PolicyAgent, cursor.PolicyDeny, cursor.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+			cursor.PolicyInheritedAllow, cursor.PolicyInheritedDeny = claudeAllow, claudeDeny
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Cursor CLI", Path: cursorPath, Categories: []string{"fetch"},
+				Reason: "consults a WebFetch deny only to decide whether to skip approval, so a user or a WebFetch allow can still approve the fetch"})
+		case "qwen-code":
+			if qwen == nil {
+				qwen = &rules.Target{Scope: finding.ScopeProject, Qwen: &parser.QwenSettings{}, QwenFile: qwenPath}
+				targets = append(targets, qwen)
+			}
+			qwen.PolicyAgent, qwen.PolicyDeny, qwen.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "roo-code":
+			targets = append(targets, rooPolicyTarget(dir, p, vscode, rooServers))
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Roo Code", Path: filepath.Join(dir, ".roo"), Categories: rooUnenforced(p.Deny),
+				Reason: "has no rule for a domain or for a path outside the project"})
+		case "gemini-cli":
+			t := &rules.Target{Scope: finding.ScopeProject, PolicyAgent: agent, PolicyForbid: p.ForbidAllow.PolicyRules,
+				PolicyFile: filepath.Join(dir, ".gemini", "settings.json")}
+			var off map[string]bool
+			if geminiSettings != nil {
+				off, t.PolicyFile = geminiToolsOff(geminiSettings, p.Deny), geminiFile
+				if geminiSettings.Tools != nil {
+					t.PolicyGeminiAllowed = geminiSettings.Tools.Allowed
+				}
+			}
+			targets = append(targets, t)
+			unenforceable = append(unenforceable, toolSwitchAgent(agent, "Gemini CLI", t.PolicyFile, off,
+				"can only switch a tool off as a whole with tools.exclude, or a server with mcp.excluded")...)
+		case "pi":
+			unenforceable = append(unenforceable, toolSwitchAgent(agent, "pi", filepath.Join(dir, ".pi", "settings.json"), piToolsOff(dir),
+				"can only switch a tool off as a whole with defaultTools")...)
+		case "codex":
+			if codex == nil {
+				codex = &rules.Target{Scope: finding.ScopeProject, Codex: &parser.CodexConfig{}, CodexFile: codexPath}
+				targets = append(targets, codex)
+			}
+			codex.PolicyAgent, codex.PolicyDeny, codex.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+			codex.CodexRules, codex.CodexRulesFile = codexRules(dir)
+		case "opencode", "kilo-code":
+			files := orderedPolicyFiles[agent]
+			t := &rules.Target{Scope: finding.ScopeProject, PolicyAgent: agent, PolicyDeny: p.Deny, PolicyForbid: p.ForbidAllow.PolicyRules,
+				PolicyFile: filepath.Join(dir, files[0])}
+			for _, rel := range files {
+				path := filepath.Join(dir, rel)
+				if cfg, err := loadOpenCodeConfigOptional(path); err == nil && cfg != nil {
+					t.PolicyBlocks = append(t.PolicyBlocks, cfg.PermissionBlocks()...)
+					t.PolicyFile = path
+				}
+			}
+			targets = append(targets, t)
+			if agent == "opencode" && !rules.OrderedDeniesFetch(t.PolicyBlocks) {
+				unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "OpenCode", Path: t.PolicyFile, Categories: []string{"fetch"},
+					Reason: "applies webfetch to every URL, so the only way to deny a domain is to turn the tool off"})
+			}
+		case "grok":
+			if grok == nil {
+				grok = &rules.Target{Scope: finding.ScopeProject, Grok: &parser.GrokConfig{}, GrokFile: grokPath}
+				targets = append(targets, grok)
+			}
+			grok.PolicyAgent, grok.PolicyDeny, grok.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+			grok.PolicyInheritedAllow, grok.PolicyInheritedDeny = claudeAllow, claudeDeny
 		default:
-			a := userOnlyPolicyAgents[agent]
-			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: a.name, Dir: filepath.Join(dir, a.dir)})
+			a := noPermissionFileAgents[agent]
+			path, _ := a.marker(dir)
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: a.name, Path: path, Reason: a.reason})
 		}
 	}
 	if len(unenforceable) > 0 && !p.Deny.Empty() {
@@ -565,11 +684,90 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	return targets
 }
 
-// userOnlyPolicyAgents are the agents whose permission rules live in user
-// settings only, with the directory that marks their use in a repository.
-var userOnlyPolicyAgents = map[string]struct{ name, dir string }{
-	"zed":      {"Zed", ".zed"},
-	"continue": {"Continue", ".continue"},
+// orderedPolicyFiles are the project files of the agents that resolve rules by
+// the last match, in the order they read them. OpenCode's come from
+// openCodeConfigFiles; Kilo Code discovers kilo before opencode files, then the
+// .kilocode and .kilo directories (packages/opencode/src/config/config.ts).
+var orderedPolicyFiles = map[string][]string{
+	"opencode": openCodeConfigFiles,
+	"kilo-code": {
+		"kilo.json", "kilo.jsonc", "opencode.json", "opencode.jsonc",
+		filepath.Join(".kilocode", "kilo.json"), filepath.Join(".kilocode", "kilo.jsonc"),
+		filepath.Join(".kilo", "kilo.json"), filepath.Join(".kilo", "kilo.jsonc"),
+	},
+}
+
+// codexRules reads the prefix rules of .codex/rules, the *.rules files directly
+// in it, as load_exec_policy does, and names the file a finding should point at:
+// the first one, or the default a new rule would go in.
+func codexRules(dir string) ([]parser.CodexRule, string) {
+	rulesDir := filepath.Join(dir, ".codex", "rules")
+	out, file := []parser.CodexRule(nil), filepath.Join(rulesDir, "default.rules")
+	entries, err := scanroot.ReadDir(rulesDir)
+	if err != nil {
+		return nil, file
+	}
+	first := true
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".rules") || e.IsDir() {
+			continue
+		}
+		path := filepath.Join(rulesDir, e.Name())
+		if data, err := scanroot.ReadFile(path); err == nil {
+			out = append(out, parser.ParseCodexRules(string(data))...)
+			if first {
+				file, first = path, false
+			}
+		}
+	}
+	return out, file
+}
+
+func anyPolicyFile(dir string, files []string) bool {
+	for _, rel := range files {
+		if _, err := scanroot.Stat(filepath.Join(dir, rel)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// userSettingsOnly is the CFG118 reason for an agent whose permission rules
+// live in user settings.
+const userSettingsOnly = "reads its permission rules from user settings only, so each contributor has to add the rules to their own settings"
+
+// noPermissionFile is an agent no committed permission file can carry a deny
+// for, with the paths that mark its use in a repository.
+type noPermissionFile struct {
+	name, reason string
+	markers      []string
+}
+
+// marker returns the first marker present in dir, or the first one with false
+// when none is, which is where a finding for a listed agent points.
+func (a noPermissionFile) marker(dir string) (string, bool) {
+	for _, m := range a.markers {
+		path := filepath.Join(dir, m)
+		if _, err := scanroot.Stat(path); err == nil {
+			return path, true
+		}
+	}
+	return filepath.Join(dir, a.markers[0]), false
+}
+
+// noPermissionFileAgents are checked against each agent's source and docs:
+// goose keeps per-tool permissions in the user's permission.yaml, and Kimi CLI
+// has no deny list and reads hooks from the user's config.toml. Cline's CLI
+// reference says it "has no allow or deny list for shell commands", and
+// .clineignore is documented as no security boundary, but it runs a PreToolUse
+// hook from the workspace.
+var noPermissionFileAgents = map[string]noPermissionFile{
+	"zed":      {"Zed", userSettingsOnly, []string{".zed"}},
+	"continue": {"Continue", userSettingsOnly, []string{".continue"}},
+	"goose":    {"goose", userSettingsOnly, []string{".goose", ".goosehints"}},
+	"kimi-cli": {"Kimi CLI", userSettingsOnly, []string{".kimi"}},
+	"cline": {"Cline", "has no allow or deny list; only a PreToolUse hook committed under .cline/hooks can block these calls",
+		[]string{".cline", ".clinerules"}},
 }
 
 // policyAgents returns the agents the neutral policy applies to: the ones
@@ -592,8 +790,28 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 			present = claudeTarget || isDir(".claude")
 		case "devin":
 			present = isDir(".devin")
+		case "cursor-cli":
+			_, err := scanroot.Stat(filepath.Join(dir, ".cursor", "cli.json"))
+			present = err == nil
+		case "qwen-code":
+			_, err := scanroot.Stat(filepath.Join(dir, "QWEN.md"))
+			present = err == nil || isDir(".qwen")
+		case "grok":
+			present = isDir(".grok")
+		case "codex":
+			present = isDir(".codex")
+		case "roo-code":
+			present = isDir(".roo") || anyPolicyFile(dir, []string{".roomodes", ".roorules", ".rooignore"})
+		case "gemini-cli":
+			present = isDir(".gemini") || anyPolicyFile(dir, []string{"GEMINI.md"})
+		case "pi":
+			present = isDir(".pi")
+		case "opencode":
+			present = isDir(".opencode") || anyPolicyFile(dir, orderedPolicyFiles[agent])
+		case "kilo-code":
+			present = isDir(".kilo") || isDir(".kilocode") || anyPolicyFile(dir, []string{"kilo.json", "kilo.jsonc"})
 		default:
-			present = isDir(userOnlyPolicyAgents[agent].dir)
+			_, present = noPermissionFileAgents[agent].marker(dir)
 		}
 		if present {
 			out = append(out, agent)
@@ -694,7 +912,7 @@ var unreadable []unreadableFile
 // stays a hard error.
 func skipUnreadable(path string, err error) {
 	if scanroot.IsDanglingLink(path) {
-		return // already on the could-not-read list (#1189)
+		return // a dangling link reads as absent and is named on stderr (#1363)
 	}
 	unreadable = append(unreadable, unreadableFile{path: path, reason: unreadableReason(path, err)})
 }
@@ -748,6 +966,7 @@ func unreadableTargets(dir string) []*rules.Target {
 // most one per available CPU (#1017); each result goes into its own slot, which
 // keeps the output identical to a sequential run.
 func runRules(targets []*rules.Target, detected *version.Version, accept func(rules.Rule) bool) []finding.Finding {
+	decodeTargetTexts(targets)
 	per := make([][]finding.Finding, len(targets))
 	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
 	var wg sync.WaitGroup
@@ -769,12 +988,26 @@ func runRules(targets []*rules.Target, detected *version.Version, accept func(ru
 // escapedLinkTargets turns the symlinks scanroot refused to follow into one
 // target each, so CFG115 reports them and every other rule ignores them.
 func escapedLinkTargets() []*rules.Target {
+	escapes := scanroot.Escapes()
+	covered := map[string]bool{}
+	for _, e := range escapes {
+		// A file read through a linked directory already names the link.
+		if !e.Walked {
+			for d := filepath.Dir(e.Path); d != filepath.Dir(d) && !covered[d]; d = filepath.Dir(d) {
+				covered[d] = true
+			}
+		}
+	}
 	var out []*rules.Target
-	for _, e := range scanroot.Escapes() {
+	for _, e := range escapes {
+		if e.Walked && covered[e.Path] {
+			continue
+		}
 		out = append(out, &rules.Target{
 			Scope:         finding.ScopeProject,
 			EscapedLink:   e.Path,
 			EscapedTarget: e.Link,
+			EscapedWalked: e.Walked,
 		})
 	}
 	return out
@@ -1020,6 +1253,14 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 
 	// Files that stand in for a tool: root binaries, venvs, yarnPath (#997).
 	targets = append(targets, standinTargets(dir)...)
+
+	// Python bytecode that runs instead of its source (#1398).
+	targets = append(targets, bytecodeTargets(dir)...)
+
+	// Cline's hook files, which run like the commands below (#1523).
+	if t := clineHookTarget(dir); t != nil {
+		targets = append(targets, t)
+	}
 
 	// The scripts the auto-run commands of every target start (#1217), once
 	// all targets exist.
@@ -1619,6 +1860,11 @@ var (
 		filepath.Join(".windsurf", "skills", "*", "SKILL.md"),
 		// GitHub Copilot path-specific instructions (.github/instructions) are
 		// walked recursively (see filteredInstructionDirs).
+		// GitHub Copilot prompt files (#1467): manual slash commands whose body is
+		// the prompt, on the same footing as .claude/commands. VS Code reads
+		// .github/prompts one level deep (promptFilesLocator.ts recurses only for
+		// instructions), and only *.prompt.md.
+		filepath.Join(".github", "prompts", "*.prompt.md"),
 		// GitHub Copilot custom agents (#439). The body is the agent's system
 		// prompt, so the instruction-content rules apply, and the frontmatter can
 		// carry an inline mcp-servers block (see attachSubagentBlocks). Copilot
@@ -1956,6 +2202,7 @@ func attachSkillHooks(t *rules.Target) {
 }
 
 func attachFrontmatterHooks(t *rules.Target, kind string) {
+	t.InstructionContent = decodeInstructionText(t.InstructionContent)
 	fm, ok := parser.InstructionFrontmatter(t.InstructionContent)
 	if !ok {
 		return
@@ -2015,6 +2262,11 @@ func attachSubagentBlocks(t *rules.Target) {
 		// (agent_card_url / agent_card_json / auth); the two schemas are separate
 		// and strict, so both are decoded and at most one will be present.
 		t.GeminiRemote = parser.GeminiAgentRemote(fm)
+		if t.GeminiRemote != nil && t.GeminiRemote.HasInlineCard {
+			lines := strings.Split(t.InstructionContent, "\n")
+			t.GeminiRemote.CardLine = frontmatterFieldLine(lines, "frontmatter agent_card_json")
+			t.GeminiRemote.DescriptionLine = frontmatterFieldLine(lines, "frontmatter description")
+		}
 		return
 	}
 
@@ -2566,7 +2818,7 @@ func loadClaudeMD(path string) (string, error) {
 		}
 		return "", err
 	}
-	return string(data), nil
+	return decodeInstructionText(string(data)), nil
 }
 
 // parseSettingsOptional parses a settings.json, returning (nil, nil) when the
@@ -3029,6 +3281,17 @@ var openCodeCodeDirs = []struct{ dir, kind string }{
 	{filepath.Join(".opencode", "tools"), "tool"},
 }
 
+// agentCodeFile describes a committed code file an agent runs. The hash is what
+// the lock compares; an unreadable file keeps its finding, with no hash.
+func agentCodeFile(path, kind string) *rules.AgentCodeFile {
+	c := &rules.AgentCodeFile{Path: path, Kind: kind}
+	if data, err := scanroot.ReadFile(path); err == nil {
+		sum := sha256.Sum256(data)
+		c.SHA256 = hex.EncodeToString(sum[:])
+	}
+	return c
+}
+
 // openCodeCodeTargets gives CFG114 one target per committed OpenCode plugin or
 // tool file.
 func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
@@ -3045,7 +3308,7 @@ func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
 				}
 				targets = append(targets, &rules.Target{
 					Scope:     finding.ScopeProject,
-					AgentCode: &rules.AgentCodeFile{Path: m, Kind: cd.kind},
+					AgentCode: agentCodeFile(m, cd.kind),
 				})
 			}
 		}
@@ -3076,7 +3339,7 @@ func copilotExtensionTargets(dir string) []*rules.Target {
 			if info, err := scanroot.Stat(p); err == nil && !info.IsDir() {
 				targets = append(targets, &rules.Target{
 					Scope:     finding.ScopeProject,
-					AgentCode: &rules.AgentCodeFile{Path: p, Kind: "copilot-extension"},
+					AgentCode: agentCodeFile(p, "copilot-extension"),
 				})
 				break
 			}
@@ -3171,8 +3434,13 @@ var (
 		filepath.Join(".kimi-code", "mcp.json"), // Kimi Code project MCP — same {mcpServers} shape as .mcp.json; it OVERRIDES the repo-root .mcp.json (Kimi spreads it last) and its stdio entries execute at session start, so it is scanned as its own attributed target rather than merged (which would hide the override)
 	}
 	userAgentMCPFiles = []string{
-		filepath.Join(".cursor", "mcp.json"),                     // Cursor (user-global)
-		filepath.Join(".codeium", "windsurf", "mcp_config.json"), // Windsurf
+		filepath.Join(".cursor", "mcp.json"),                                                    // Cursor (user-global)
+		filepath.Join(".codeium", "windsurf", "mcp_config.json"),                                // Windsurf
+		filepath.Join(".windsurf", "mcp.json"),                                                  // Windsurf path targeted by SANDWORM_MODE
+		filepath.Join(".continue", "config.json"),                                               // Continue path targeted by SANDWORM_MODE
+		filepath.Join(".config", "Claude", "claude_desktop_config.json"),                        // Claude Desktop (Linux)
+		filepath.Join("Library", "Application Support", "Claude", "claude_desktop_config.json"), // Claude Desktop (macOS)
+		filepath.Join("AppData", "Roaming", "Claude", "claude_desktop_config.json"),             // Claude Desktop (Windows)
 	}
 )
 
@@ -3511,7 +3779,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				ProjectMCPFile: grokPath,
 			})
 		}
-		if grokCfg.Plugins != nil {
+		if grokCfg.Plugins != nil || grokCfg.Permission != nil {
 			targets = append(targets, &rules.Target{
 				Scope:    finding.ScopeProject,
 				Grok:     grokCfg,

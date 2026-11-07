@@ -4,18 +4,22 @@
 package rules
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/config"
 )
 
-// UnenforceableAgent is an agent in the policy's scope whose permission rules
-// live in user-level settings only, so no committed file can carry a deny.
-// Dir is the agent's directory in the repository.
+// UnenforceableAgent is an agent in the policy's scope that no committed
+// permission file can carry a deny for. Path is what marks the agent's use in
+// the repository, and Reason completes "<Name> ..." with why that is so.
+// Categories limits the report to those policy categories; empty means all.
 type UnenforceableAgent struct {
-	Agent string
-	Name  string
-	Dir   string
+	Agent      string
+	Name       string
+	Path       string
+	Reason     string
+	Categories []string
 }
 
 // policyCategory is one category of the agent-neutral policy.
@@ -42,11 +46,22 @@ type policySpelling struct {
 	overlaps func(category, e, v string) bool
 	// spell is the deny entry that blocks v, in the agent's syntax.
 	spell func(category, v string) string
+	// unenforced is a category CFG118 reports for this agent instead of
+	// CFG025 checking it.
+	unenforced string
 }
 
 var policySpellings = map[string]policySpelling{
 	"claude-code": {name: "Claude Code", covers: claudeCovers, overlaps: claudeOverlaps, spell: claudeSpell},
 	"devin":       {name: "Devin CLI", covers: devinCovers, overlaps: devinOverlaps, spell: devinSpell},
+	"cursor-cli":  {name: "Cursor CLI", covers: cursorCovers, overlaps: cursorOverlaps, spell: cursorSpell, unenforced: "fetch"},
+	"qwen-code":   {name: "Qwen Code", covers: qwenCovers, overlaps: qwenOverlaps, spell: qwenSpell},
+	"grok":        {name: "Grok", covers: grokCovers, overlaps: grokOverlaps, spell: grokSpell},
+	"codex":       {name: "Codex"},
+	"roo-code":    {name: "Roo Code"},
+	"gemini-cli":  {name: "Gemini CLI"},
+	"opencode":    {name: "OpenCode", unenforced: "fetch"},
+	"kilo-code":   {name: "Kilo Code"},
 }
 
 // claudeCovers follows Claude Code's permission syntax: Bash(prefix *) or
@@ -196,6 +211,127 @@ func devinSpell(category, v string) string {
 		return "Fetch(domain:" + v + ")"
 	default:
 		return mcpSpell(v)
+	}
+}
+
+// starGlobRe compiles a pattern the way Cursor CLI does, and Grok for a command:
+// anchored, every * is .* and crosses path separators, and nothing else is
+// special. A pattern with a * in the value it is matched against treats that *
+// as text, which only a * in the pattern can consume, so a match means the
+// pattern covers every string the value stands for.
+func starGlobRe(p string) *regexp.Regexp {
+	return regexp.MustCompile("(?s)^" + strings.ReplaceAll(regexp.QuoteMeta(strings.TrimSpace(p)), `\*`, ".*") + "$")
+}
+
+func starGlob(p, s string) bool {
+	return starGlobRe(p).MatchString(s)
+}
+
+// cursorShellArg returns the argument of a shell entry. The CLI reads Bash(...)
+// as well as Shell(...), which matters for the entries it takes from
+// .claude/settings.json.
+func cursorShellArg(e string) (string, bool) {
+	if arg, ok := toolArg(e, "Shell"); ok {
+		return arg, true
+	}
+	return toolArg(e, "Bash")
+}
+
+// cursorShellMatches is the CLI's matchesShell for one command. Base is the
+// first word and args the rest. A pattern with a colon matches command and
+// args apart, and any pattern also matches the whole command, the base, or a
+// word prefix.
+func cursorShellMatches(pattern, command string) bool {
+	base, args, _ := strings.Cut(command, " ")
+	args = strings.TrimSpace(args)
+	if cmd, argp, ok := strings.Cut(pattern, ":"); ok &&
+		(starGlob(cmd, base) || starGlob(cmd, command)) && starGlob(argp, args) {
+		return true
+	}
+	return starGlob(pattern, command) || strings.HasPrefix(command, pattern+" ") ||
+		starGlob(pattern, base) || base == pattern
+}
+
+// cursorPathTarget is what a neutral path entry stands for in the CLI, which
+// compares a pattern with the whole absolute path: a repository path has to
+// match at any depth, because the CLI never resolves a pattern against the
+// workspace.
+func cursorPathTarget(v string) string {
+	if strings.HasPrefix(v, "~/") || strings.HasPrefix(v, "**/") {
+		return v
+	}
+	return "**/" + v
+}
+
+// cursorCovers follows the matching code of the Cursor CLI package
+// (2026.11.05-86047df): Shell(...) or Bash(...), Read(glob) and Write(glob), and
+// Mcp(server:tool). A path pattern such as .env* or src/** never matches,
+// because the absolute path has to match the whole pattern, and a Read deny
+// does not block writes. A bare git push runs past Shell(git push *), so a
+// command entry has to match the command with and without arguments.
+func cursorCovers(category, e, v string) bool {
+	e = strings.TrimSpace(e)
+	switch category {
+	case "commands":
+		arg, ok := cursorShellArg(e)
+		return ok && cursorShellMatches(arg, v) && cursorShellMatches(arg, v+" *")
+	case "read", "write":
+		tool := "Read"
+		if category == "write" {
+			tool = "Write"
+		}
+		arg, ok := toolArg(e, tool)
+		return ok && arg != "" && starGlob(arg, cursorPathTarget(v))
+	case "mcp-tools":
+		server, tool, ok := cursorMcpArg(e)
+		vs, vt, _ := strings.Cut(strings.ToLower(v), ":")
+		return ok && starGlob(server, vs) && starGlob(tool, vt)
+	}
+	return false
+}
+
+// cursorMcpArg splits an Mcp(server:tool) entry, in lower case as the CLI
+// compares it.
+func cursorMcpArg(e string) (server, tool string, ok bool) {
+	arg, ok := toolArg(e, "Mcp")
+	if !ok {
+		return "", "", false
+	}
+	return strings.Cut(strings.ToLower(arg), ":")
+}
+
+func cursorOverlaps(category, e, v string) bool {
+	e = strings.TrimSpace(e)
+	switch category {
+	case "commands":
+		arg, ok := cursorShellArg(e)
+		if !ok {
+			return false
+		}
+		if cursorShellMatches(arg, v) || cursorShellMatches(arg, v+" *") {
+			return true
+		}
+		// A narrower allow, Shell(git push --force) under "git push".
+		literal, _, _ := strings.Cut(strings.Replace(arg, ":", " ", 1), "*")
+		return hasCmdPrefix(strings.TrimSpace(literal), v)
+	case "mcp-tools":
+		server, tool, ok := cursorMcpArg(e)
+		vs, vt, _ := strings.Cut(strings.ToLower(v), ":")
+		return ok && starGlob(server, vs) && (starGlob(tool, vt) || starGlob(vt, tool))
+	}
+	return false
+}
+
+func cursorSpell(category, v string) string {
+	switch category {
+	case "commands":
+		return "Shell(" + v + ")"
+	case "read":
+		return "Read(" + cursorPathTarget(v) + ")"
+	case "write":
+		return "Write(" + cursorPathTarget(v) + ")"
+	default:
+		return "Mcp(" + v + ")"
 	}
 }
 

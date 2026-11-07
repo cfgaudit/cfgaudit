@@ -86,8 +86,10 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkContinueRequestOptions(t)...)
 	findings = append(findings, r.checkZedEnv(t)...)
 	for _, site := range commandSitesWithScripts(t) {
-		for _, what := range commandSecrets(site.Command) {
-			findings = append(findings, secretFinding(site.Label, what, site.File, t))
+		for _, what := range commandSecrets(site.raw()) {
+			f := secretFinding(site.Label, what, site.File, t)
+			f.Line = site.Line
+			findings = append(findings, f)
 		}
 	}
 	for _, ref := range t.mcpServerRefs() {

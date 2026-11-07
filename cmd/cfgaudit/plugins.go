@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -23,8 +24,9 @@ import (
 //   - SKILL.md          → instruction target (the instruction-content rules,
 //     plus the frontmatter rules CFG051/056)
 //   - hooks.json        → hook command target (CFG008/009/014/015/027/028)
-//   - plugin.json       → MCP server target (CFG010/011/017–021), and the
-//     plugin's slash commands and agents as instruction targets (#937, #939)
+//   - plugin.json       → MCP server target (CFG010/011/017–021) from the
+//     plugin's .mcp.json or the manifest, and the plugin's slash commands and
+//     agents as instruction targets (#937, #939)
 //
 // Project-root settings.json / .mcp.json are intentionally left to buildTargets
 // so nothing is scanned twice.
@@ -45,6 +47,14 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 			manifest := filepath.Join(root, claudePluginDir, "plugin.json")
 			m, err := parser.ParsePluginManifest(manifest)
 			if err != nil {
+				if scanroot.IsAbsent(err) {
+					// A folder under .claude/skills without a manifest is a
+					// plain skill, not a broken plugin: auto-discovery already
+					// skips manifest-less folders (#1412), so an explicit
+					// --plugins on one is ignored as a plugin package too. A
+					// dangling manifest link reads as absent with it (#1363).
+					continue
+				}
 				all = append(all, unreadablePluginTarget(dir, manifest, err))
 				continue
 			}
@@ -53,7 +63,7 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 			// the scan, as for every other committed config (#606).
 			ts = skillsDirPluginTargets(root, manifest, m, func(path string, err error) {
 				if scanroot.IsDanglingLink(path) {
-					return // a dangling link is on the could-not-read list (#1189)
+					return // a dangling link reads as absent (#1363)
 				}
 				all = append(all, unreadablePluginTarget(dir, path, err))
 			})
@@ -66,7 +76,7 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 			var fatal error
 			unreadable := func(path string, err error) {
 				if scanroot.IsDanglingLink(path) {
-					return // a dangling link is on the could-not-read list (#1189)
+					return // a dangling link reads as absent (#1363)
 				}
 				if root == explicit && fatal == nil && ownPluginFile(root, path) {
 					fatal = err
@@ -82,7 +92,7 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 		if err != nil {
 			return nil, err
 		}
-		all = append(all, ts...)
+		all = append(all, withoutProjectMCP(dir, ts)...)
 	}
 	return all, nil
 }
@@ -694,17 +704,21 @@ func pluginHooksTarget(path string) (*rules.Target, error) {
 	return &rules.Target{SettingsFile: path, Settings: &s}, nil
 }
 
-// pluginMCPTarget extracts mcpServers from a plugin.json into a target so the MCP
-// rules apply. Returns nil when the manifest declares no servers.
+// pluginMCPTarget returns a target with the MCP servers a plugin loads, so the
+// MCP rules apply, or nil when it loads none. A usable .mcp.json in the plugin
+// root comes first, because it replaces what the manifest declares (#1496).
 //
-// mcpServers has two spellings and both are honoured by Claude Code: an inline
-// object, and a string path to an external config resolved against the plugin
-// root. The finding is attributed to whichever file really declares the servers,
-// so a reader is sent to the file they have to edit (#505).
+// The manifest's mcpServers has two spellings and both are honoured by Claude
+// Code: an inline object, and a string path to an external config resolved
+// against the plugin root. The finding is attributed to whichever file really
+// declares the servers, so a reader is sent to the file they have to edit (#505).
 func pluginMCPTarget(path string) (*rules.Target, error) {
 	m, err := parser.ParsePluginManifest(path)
 	if err != nil {
 		return nil, err
+	}
+	if servers, file := parser.PluginDefaultMCP(path); len(servers) > 0 {
+		return &rules.Target{ProjectMCPFile: file, ProjectMCP: servers}, nil
 	}
 	servers, file, err := m.MCPServerRef(path)
 	if err != nil {
@@ -714,6 +728,15 @@ func pluginMCPTarget(path string) (*rules.Target, error) {
 		return nil, nil
 	}
 	return &rules.Target{ProjectMCPFile: file, ProjectMCP: servers}, nil
+}
+
+// withoutProjectMCP drops the targets of a plugin that name the repository's
+// own .mcp.json, which buildTargets has already scanned (#1378).
+func withoutProjectMCP(dir string, targets []*rules.Target) []*rules.Target {
+	project := absPath(filepath.Join(dir, ".mcp.json"))
+	return slices.DeleteFunc(targets, func(t *rules.Target) bool {
+		return t.ProjectMCPFile != "" && absPath(t.ProjectMCPFile) == project
+	})
 }
 
 func dirExists(p string) bool {

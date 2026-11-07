@@ -137,6 +137,36 @@ func (m *PluginManifest) MCPServerRef(manifestPath string) (servers map[string]M
 	return cfg.MCPServers, target, nil
 }
 
+// PluginDefaultMCP returns the servers of the .mcp.json next to a plugin's
+// .claude-plugin directory, and that file. Claude Code loads it without a
+// manifest entry, and on 2.1.319 a file with servers replaces the manifest's
+// mcpServers, inline or by path. A file it cannot use yields nothing, and then
+// the manifest counts: one that does not parse, with a leading BOM, or without
+// a server (#1496). The servers can also sit at the top level of the file.
+func PluginDefaultMCP(manifestPath string) (map[string]MCPServer, string) {
+	if filepath.Base(filepath.Dir(manifestPath)) != ".claude-plugin" {
+		return nil, ""
+	}
+	path := filepath.Join(PluginRootOf(manifestPath), ".mcp.json")
+	if cfg, err := ParseMCPConfig(path); err == nil && len(cfg.MCPServers) > 0 {
+		return cfg.MCPServers, path
+	}
+	data, err := scanroot.ReadFile(path)
+	if err != nil {
+		return nil, ""
+	}
+	var flat map[string]MCPServer
+	if json.Unmarshal(data, &flat) != nil || len(flat) == 0 {
+		return nil, ""
+	}
+	for _, server := range flat {
+		if server.Command == "" && server.URL == "" {
+			return nil, ""
+		}
+	}
+	return flat, path
+}
+
 // PluginRootOf returns the directory a plugin's relative paths resolve against.
 // A manifest at <root>/.claude-plugin/plugin.json resolves against <root>;
 // anywhere else it resolves against its own directory.

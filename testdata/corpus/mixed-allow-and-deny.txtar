@@ -1,0 +1,14 @@
+Pattern: broad allow entries, one of them blocked by the same file's deny list.
+Issues: #1041, #1204
+-- .claude/settings.json --
+{
+  "permissions": {
+    "allow": ["Bash(curl *)", "Bash(node --version)", "Bash(python3 *)"],
+    "deny": [
+      "Bash(curl *)",
+      "Read(**/.env)", "Read(**/.env.*)",
+      "Read(**/*.pem)", "Read(**/*.key)", "Read(**/*.p12)", "Read(**/*.pfx)", "Read(**/*.jks)",
+      "Read(~/.aws/**)", "Read(~/.config/gcloud/**)", "Read(~/.azure/**)", "Read(~/.ssh/**)"
+    ]
+  }
+}

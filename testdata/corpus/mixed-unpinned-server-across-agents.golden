@@ -1,0 +1,5 @@
+exit 0
+CFG010 warn .codex/config.toml:3
+CFG010 warn .cursor/mcp.json:3
+CFG010 warn .mcp.json:3
+CFG010 warn opencode.json:3

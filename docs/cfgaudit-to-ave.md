@@ -19,11 +19,11 @@ Even within the 44, the boundary is real: cfgaudit does not connect to servers, 
 | Bucket | Count |
 |---|--:|
 | Covered — ≥1 CFG rule maps cleanly | 34 |
-| Partial — committable slice or adjacent shape only | 11 |
-| Gap — committable, no CFG rule (rule candidate) | 5 |
+| Partial — committable slice or adjacent shape only | 12 |
+| Gap — committable, no CFG rule (rule candidate) | 4 |
 | Out of scope — labelled static by AVE, beyond static-config auditing | 9 |
 
-cfgaudit maps (covered + partial) to **45 of 50** (AVE-2026-00001, counted in none of the buckets until #621, is now covered by CFG113). Counts refreshed 2026-08-14 for AVE-2026-00071 through AVE-2026-00077, all seven of them `static_detection`. Four are now covered by rules that had no class before: AVE-2026-00071 (daemon redirect) by CFG082, AVE-2026-00072 (bind-all, which the record also calls NeighborJack) by CFG018, AVE-2026-00073 (endpoint redirect via a static value) by CFG005/CFG046/CFG099, and AVE-2026-00076 (steering an approval classifier) by CFG094. AVE-2026-00077 (cross-origin tool and resource declaration in one MCP manifest) is a new gap. AVE-2026-00074 (reclaimable dead external anchor) and AVE-2026-00075 (`.pyc` bytecode poisoning) join the out-of-scope list: the first needs the anchor resolved over the network, the second is binary-content analysis, and cfgaudit does neither.
+cfgaudit maps (covered + partial) to **46 of 49** (AVE-2026-00001, counted in none of the buckets until #621, is now covered by CFG113). Counts refreshed 2026-08-14 for AVE-2026-00071 through AVE-2026-00077, all seven of them `static_detection`. Four are now covered by rules that had no class before: AVE-2026-00071 (daemon redirect) by CFG082, AVE-2026-00072 (bind-all, which the record also calls NeighborJack) by CFG018, AVE-2026-00073 (endpoint redirect via a static value) by CFG005/CFG046/CFG099, and AVE-2026-00076 (steering an approval classifier) by CFG094. AVE-2026-00077 (cross-origin tool and resource declaration in one MCP manifest) was first listed as a gap and moved out of scope in #1439: the tool and resource URLs it compares arrive at run time, so no committed file carries them. AVE-2026-00074 (reclaimable dead external anchor) joins the out-of-scope list: it needs the anchor resolved over the network. AVE-2026-00075 (`.pyc` bytecode poisoning) is partial through CFG129 (#1398): it reads the `.pyc` header, not the bytecode, so it finds a file that can run instead of its source, not one whose code differs.
 
 Refreshed again 2026-08-23 against AVE-2026-00078 through AVE-2026-00080. **None of the three is a static configuration surface**: 00078 is consensus poisoning in a multi-agent pipeline, 00079 is plan hijacking through a false completion signal, and 00080 is silent agent substitution at a routing slot during a retry. All three are orchestration-runtime behaviours, so they add no home for a previously unmapped rule and shift no existing mapping. Of cfgaudit's four new rules, CFG104 and CFG105 map to AVE-2026-00063, CFG103 maps to AVE-2026-00076 for one of its three findings, and CFG106 is deliberately unmapped.
 
@@ -47,7 +47,7 @@ Rechecked 2026-10-12 for the v1.16.0 release: the published record set is unchan
 
 Rechecked 2026-10-05 for the v1.15.0 release, against **AVE-2026-00084 through AVE-2026-00087**, the four records added since. 00084 (HookPry, a plugin update that silently rebinds its hooks) is `static_detection`, but its detection is a diff against the last-reviewed plugin version, which a single repository snapshot cannot provide; CFG055 touches the committed half and is not remapped. 00085 (ColluSkill) needs correlation across skills, the same deferral as 00059. 00086 and 00087 are `runtime_observed`. The five rules added since v1.14.0: **CFG113** maps to AVE-2026-00001 (external config fetch, previously in no bucket); **CFG109, CFG110, CFG111 and CFG112** are gaps, each recorded below with its reason.
 
-The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the four config records among them were mapped, AVE-2026-00065 (A2A agent card poisoning) became a gap, and AVE-2026-00060 (STDIO shell injection) and AVE-2026-00069 (image-hidden instructions in a skill package) went out of scope as server-source and binary-content analysis. The out-of-scope records are a note back to AVE — see the last section.
+The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the four config records among them were mapped, AVE-2026-00065 (A2A agent card poisoning) became a gap (closed by #1436), and AVE-2026-00060 (STDIO shell injection) and AVE-2026-00069 (image-hidden instructions in a skill package) went out of scope as server-source and binary-content analysis. The out-of-scope records are a note back to AVE — see the last section.
 
 ---
 
@@ -89,7 +89,8 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 |---|---|
 | CFG007 / CFG050 / CFG054 / CFG065 / CFG073 hardcoded secrets | AVE-2026-00047 hardcoded credentials in component |
 | CFG059 typosquat | AVE-2026-00017 server impersonation / spoofing |
-| CFG019 inline script · CFG020 env code injection · CFG070 repo-relative command | AVE-2026-00055 command execution via untrusted MCP launch config |
+| CFG019 inline script · CFG020 env code injection · CFG070 repo-relative command · CFG127 hidden-home runtime | AVE-2026-00055 command execution via untrusted MCP launch config |
+| CFG129 `.pyc` that runs instead of its source (partial: header only) | AVE-2026-00075 bytecode poisoning |
 
 **Partial, worth flagging** — AVE-2026-00002 (tool-description injection), AVE-2026-00041 (server-card injection) and AVE-2026-00046 (tool-hook hijack) describe reading a **live** tool manifest or intercepting a running registry. cfgaudit does not connect to servers, so it covers these **only** when the tool description or hook ships in a committed `--plugins` package. For live servers they are behavioral-scanner (SkillSpector / clawscan) territory.
 
@@ -104,6 +105,7 @@ Added in the 2026-08-04 refresh, against the records AVE shipped from [aveprojec
 | CFG010 unpinned `@latest`/`:latest` · CFG074 `skills-lock.json` with no integrity pin · CFG055 / CFG089 unpinned marketplace source · CFG098 `marketplace.json` archive with no `sha256` | AVE-2026-00062 unpinned dependency, supply-chain substitution |
 | CFG075 MCP `env`/`args` TLS-verify killswitch | AVE-2026-00061 TLS certificate verification disabled in component configuration |
 | CFG097 Gemini remote-agent `auth` literal | AVE-2026-00047 hardcoded credentials in component |
+| CFG024 / CFG026 / CFG030–CFG033 / CFG036 / CFG057 / CFG080 / CFG113 / CFG120 on inline Gemini Agent Card descriptions and skills | AVE-2026-00065 A2A Agent Card poisoning via embedded adversarial instructions |
 
 ### Config-declared infrastructure choice
 
@@ -124,6 +126,7 @@ Added in the 2026-08-14 refresh, against AVE-2026-00071 through AVE-2026-00077. 
 
 | CFG | Why no class |
 |---|---|
+| CFG128 known-malicious package-version IOC | AVE has behavioral classes for supply-chain substitution and server impersonation, but no class for an offline exact artifact-reputation match. Mapping it to CFG010's unpinned-dependency class would erase the distinction: CFG128 fires precisely when the version is pinned |
 | CFG100 Grok `[plugins]` `enabled` / `paths` | AVE-2026-00064 would be the candidate, but it requires that the loader runs plugin code at project load with no prompt, which is unverified for Grok. The `enabled` half is besides the same wider supply-chain shape CFG055 and CFG089 already sit outside the map for |
 | CFG101 deny rule walked past by flag reordering | An ineffective guardrail rather than an attacker behaviour. AVE-2026-00063 is a flag that *removes* a gate; AVE-2026-00068 is composition through shared shell state. Neither is "the denylist misses an equivalent spelling of the same flags" |
 | CFG111 invisible character in a permission rule or hook matcher | The same kind of ineffective guardrail as CFG101: the rule is present and matches nothing. AVE-2026-00063 is a gate a configuration *removes*; here the gate is declared and silently inert, which no record describes |
@@ -137,14 +140,13 @@ Added in the 2026-08-14 refresh, against AVE-2026-00071 through AVE-2026-00077. 
 
 ## Direction 2 — AVE gaps → cfgaudit rule candidates
 
-Four `static_detection` classes with no CFG rule today (CFG090 ships AVE-2026-00032; AVE-2026-00036 was implemented as a rule that was reverted after a pre-release FP analysis, and its CFG091 id has since been reused for the qwen approval-mode rule — see below):
+Three `static_detection` classes with no CFG rule today (CFG090 ships AVE-2026-00032; AVE-2026-00036 was implemented as a rule that was reverted after a pre-release FP analysis, and its CFG091 id has since been reused for the qwen approval-mode rule — see below):
 
 | AVE | Status | Note |
 |---|---|---|
 | **AVE-2026-00036** lateral movement / agent pivot | deferred (the reverted rule; its CFG091 id is now the qwen approvalMode rule) | a pre-release FP analysis found the vocabulary ("lateral movement", "pivot to other systems") is intent-ambiguous — it appears overwhelmingly in security-tool self-description, defensive/detection contexts ("prevent/identify lateral movement"), and offensive-agent capability tables that a static linter cannot distinguish from a malicious directive. Not statically detectable with acceptable precision |
 | **AVE-2026-00015** system-prompt extraction | deferred | maps to OWASP LLM08, which cfgaudit treats as runtime — the *leak* is runtime, the *instruction* is static; decide the boundary before filing |
 | **AVE-2026-00059** fragmented cross-description injection (ShareLock-class) | deferred | structurally needs multi-source correlation cfgaudit can't do today (every rule checks one file in isolation; the attack's defining property is that no single description is flaggable) — the attack-chain-correlation idea would serve both |
-| **AVE-2026-00077** cross-origin tool and resource declaration in one MCP server manifest | open (new 2026-08-14) | committable and checkable: the URLs live in a manifest cfgaudit already parses, and the test is whether they resolve to more than one root domain. The nearest existing rule, CFG066, is wildcard CORS, a different question |
 
 ---
 
@@ -179,7 +181,7 @@ Three shapes still have no class in either direction, the first of them only par
 
 | A **declared configuration that never loads**, so the guardrails a repository states are absent while its files read as configured | CFG109, and the discarded-file case of CFG012 | No record covers it, and the whole set was read to be sure. AVE-2026-00083 is the nearest in effect — a protection that executes but never evaluates — but it is `runtime_observed` and scoped to a mechanism's own comparison logic, while this is a file the agent never loads. AVE-2026-00063 is a gate a configuration *removes*; here the configuration declares nothing that takes effect. Measured both directions: Codex logs "Invalid configuration; using defaults" and runs, Claude Code discards a settings file over one top-level type mismatch and starts the session |
 
-Going the other way, **AVE-2026-00065** (A2A agent card poisoning via embedded adversarial instructions) is a class cfgaudit does *not* cover: an inline `agent_card_json` in a `.gemini/agents/*.md` is recognised but its contents are not audited.
+Going the other way, **AVE-2026-00065** (A2A agent card poisoning via embedded adversarial instructions) is now covered for committed inline Gemini cards. cfgaudit parses the serialized `agent_card_json` string and scans exactly what Gemini copies into the remote-agent tool description: the card description and each skill name/description. A remote card fetched at runtime remains outside static analysis.
 
 The pattern: **AVE models what a malicious skill/server *does*; cfgaudit models what a repository's *config* silently permits.** The two are complementary; the classes above are the clearest contribution direction if AVE wants coverage beyond skill/MCP content.
 
@@ -187,7 +189,7 @@ The pattern: **AVE models what a malicious skill/server *does*; cfgaudit models 
 
 ## Note back to AVE — `static_detection` over-includes
 
-Five records carry `detection_stage: static_detection` but are not auditable from committed configuration:
+Six records carry `detection_stage: static_detection` but are not auditable from committed configuration:
 
 | AVE | Actually requires |
 |---|---|
@@ -196,6 +198,7 @@ Five records carry `detection_stage: static_detection` but are not auditable fro
 | AVE-2026-00051 OAuth discovery rebinding | runtime auth-flow redirect |
 | AVE-2026-00052 command injection via tool-call parameter | **server-side source** (SAST of the MCP implementation) |
 | AVE-2026-00053 path traversal via path parameter | **server-side source** (SAST) |
+| AVE-2026-00077 cross-origin tool and resource declaration in one MCP server manifest | the **live tool list**: a committed config says how to start or reach a server, and the tools and resources arrive through `tools/list` at run time |
 
 AVE-2026-00052 / AVE-2026-00053 are server *implementation* flaws, a distinct layer from the rest of AVE. A finer `detection_layer` value (e.g. `server_source`) would let consumers tell config-auditable from SAST-required.
 

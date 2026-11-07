@@ -1,0 +1,933 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Known attacks behind cfgaudit's rules. This file is the source of the website's
+# /advisories/ page, and cmd/cfgaudit/advisories_test.go checks it.
+#
+# An advisory is listed when it depends on something a repository file can carry.
+# Server bugs and model behaviour without a configuration precondition are left
+# out.
+#
+# Keys:
+#   id        CVE, GHSA or campaign name. Entries are sorted by id, campaigns last.
+#   aliases   other ids of the same advisory
+#   repo      owner/name of the repository that publishes the GHSA, when it is
+#             not in the GitHub Advisory Database
+#   kind      cve (also for a GHSA) or campaign
+#   agent     the affected product
+#   fixed     the first fixed version, when there is one
+#   summary   one short sentence for the website, with no working attack in it
+#   coverage  full, partial or none
+#   rules     rule and severity the fixture testdata/advisories/<id>.txtar must
+#             produce; required unless coverage is none
+#   related   rules whose docs cite the advisory but do not fire on its fixture
+#   reason    why cfgaudit does not see everything; required unless coverage is full
+#               not-static   needs run-time state a file scan cannot see
+#               no-rule-yet  visible in a file, no rule yet; needs issue
+#               by-design    deliberately not reported; needs note
+#   issue     tracking issue for no-rule-yet
+#   note      one sentence on what is missing; required for not-static and by-design
+#   steps     for a campaign: each step with the rules that see it, or a reason
+
+- id: "CVE-2021-42574"
+  kind: cve
+  agent: "any"
+  summary: "Trojan Source: bidirectional Unicode controls make text read differently to a person than to a parser."
+  coverage: full
+  rules:
+    - {rule: CFG024, severity: error}
+
+- id: "CVE-2025-11445"
+  kind: cve
+  agent: "Kilo Code"
+  summary: "A prompt injection tells the agent to widen its own permission settings."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1411
+
+- id: "CVE-2025-49596"
+  aliases: [GHSA-7f8r-222p-6f5g]
+  kind: cve
+  agent: "MCP Inspector"
+  fixed: "0.14.1"
+  summary: "A web page can reach an older MCP Inspector's local proxy and run commands through it."
+  coverage: full
+  rules:
+    - {rule: CFG126, severity: error}
+
+- id: "CVE-2025-53098"
+  aliases: [GHSA-5x8h-m52g-5v54]
+  repo: RooCodeInc/Roo-Code
+  kind: cve
+  agent: "Roo Code"
+  fixed: "3.20.3"
+  summary: "An agent write to .roo/mcp.json adds an MCP server."
+  coverage: partial
+  rules:
+    - {rule: CFG019, severity: error}
+  reason: not-static
+  note: "cfgaudit reports a committed server with an inline script. A write at run time is invisible to a scan."
+
+- id: "CVE-2025-53536"
+  aliases: [GHSA-3765-5vjr-qjgm]
+  repo: RooCodeInc/Roo-Code
+  kind: cve
+  agent: "Roo Code"
+  fixed: "3.22.6"
+  summary: "An agent write to .vscode/settings.json points an executable-path setting at a program of the attacker's choice."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: error}
+
+- id: "CVE-2025-53773"
+  aliases: [GHSA-3m2x-p87c-pwv6]
+  kind: cve
+  agent: "GitHub Copilot"
+  fixed: "August 2025 Copilot Chat update"
+  summary: "A committed setting turns off every tool confirmation in Copilot Chat."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2025-54130"
+  aliases: [GHSA-vqv7-vq92-x87f]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "1.3.9"
+  summary: "An agent write to .vscode/settings.json changes the terminal profile to a program inside the repository."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: error}
+
+- id: "CVE-2025-54135"
+  aliases: [GHSA-4cxx-hrm3-49rm]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "1.3.9"
+  summary: "CurXecute: prompt injection makes the agent create a .cursor/mcp.json whose server runs a command."
+  coverage: partial
+  rules:
+    - {rule: CFG019, severity: error}
+  related: [CFG070]
+  reason: not-static
+  note: "cfgaudit sees the committed file. A file the agent writes at run time is invisible to a scan."
+
+- id: "CVE-2025-54136"
+  aliases: [GHSA-24mc-g4xr-4395]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "1.3"
+  summary: "MCPoison: an approved MCP server in a committed .cursor/mcp.json is swapped for another command without a new approval."
+  coverage: partial
+  rules:
+    - {rule: CFG019, severity: error}
+  reason: not-static
+  note: "cfgaudit reports the swapped command. The approval state lives in the editor."
+
+- id: "CVE-2025-55012"
+  aliases: [GHSA-x34m-39xw-g2wr]
+  repo: zed-industries/zed
+  kind: cve
+  agent: "Zed"
+  fixed: "0.197.3"
+  summary: "The always-allow setting turned off per-tool approval."
+  coverage: none
+  related: [CFG047]
+  reason: by-design
+  note: "Zed drops this key from a committed project settings file, so the file has no effect today."
+
+- id: "CVE-2025-55345"
+  kind: cve
+  agent: "Codex"
+  summary: "A symlink inside the workspace leads a write outside it."
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: warn}
+
+- id: "CVE-2025-58372"
+  aliases: [GHSA-4pqh-4ggm-jfmm]
+  repo: RooCodeInc/Roo-Code
+  kind: cve
+  agent: "Roo Code"
+  fixed: "3.26.0"
+  summary: "A .code-workspace file written by the agent runs tasks when the workspace is reopened."
+  coverage: full
+  rules:
+    - {rule: CFG047, severity: error}
+
+- id: "CVE-2025-58373"
+  aliases: [GHSA-p76r-7mc3-qh7c]
+  repo: RooCodeInc/Roo-Code
+  kind: cve
+  agent: "Roo Code"
+  fixed: "3.26.0"
+  summary: "Symlinks bypass .rooignore and reach excluded files."
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: warn}
+
+- id: "CVE-2025-59536"
+  aliases: [GHSA-4fgq-fpq9-mr3g]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "1.0.111"
+  summary: "Committed hooks and MCP settings ran before the trust dialog."
+  coverage: full
+  rules:
+    - {rule: CFG003, severity: error}
+    - {rule: CFG067, severity: info}
+  related: [CFG016, CFG053, CFG086]
+
+- id: "CVE-2025-59828"
+  aliases: [GHSA-2jjv-qf24-vfm4]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "1.0.39"
+  summary: "A committed Yarn config ran repository JavaScript when the agent called yarn before the trust dialog."
+  coverage: full
+  rules:
+    - {rule: CFG123, severity: warn}
+
+- id: "CVE-2025-59944"
+  aliases: [GHSA-xcwh-rrwj-gxc7]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "1.7"
+  summary: "A case variant of a sensitive path passes the guard on a case-insensitive filesystem."
+  coverage: partial
+  rules:
+    - {rule: CFG028, severity: error}
+  reason: not-static
+  note: "cfgaudit reports a committed command that writes such a path. The guard itself runs in the agent."
+
+- id: "CVE-2025-61260"
+  aliases: [GHSA-xrxf-jgv3-qmrm]
+  kind: cve
+  agent: "Codex"
+  summary: "A project config declares an MCP server that starts without confirmation."
+  coverage: full
+  rules:
+    - {rule: CFG019, severity: error}
+  related: [CFG070]
+
+- id: "CVE-2025-61590"
+  aliases: [GHSA-xg6w-rmh5-r77r]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "1.7"
+  summary: "Settings written into a .code-workspace file bypass the .vscode/settings.json protection."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: error}
+
+- id: "CVE-2025-61592"
+  aliases: [GHSA-v64q-396f-7m79]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "2025.09.17-25b418f"
+  summary: "A committed .cursor/cli.json allowlists shell commands."
+  coverage: full
+  rules:
+    - {rule: CFG093, severity: error}
+
+- id: "CVE-2025-61593"
+  aliases: [GHSA-x2vq-h6v6-jhc6]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "2025.09.17-25b418f"
+  summary: "A case-variant path bypasses the guard on .cursor/cli.json."
+  coverage: partial
+  rules:
+    - {rule: CFG093, severity: error}
+  reason: not-static
+  note: "cfgaudit reads the case variant. The guard itself runs in the agent."
+
+- id: "CVE-2025-64109"
+  aliases: [GHSA-4hwr-97q3-37w2]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "2025.09.17-25b418f"
+  summary: "A committed .cursor/mcp.json server starts in Cursor CLI as soon as the folder opens."
+  coverage: partial
+  rules:
+    - {rule: CFG070, severity: warn}
+  reason: not-static
+  note: "An ordinary command in the file is not a finding on its own: cfgaudit cannot tell a harmless server from a harmful one."
+
+- id: "CVE-2025-65099"
+  aliases: [GHSA-5hhx-v7f6-x7gv]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "1.0.39"
+  summary: "Second record of the Yarn config issue: repository JavaScript ran before the trust dialog."
+  coverage: full
+  rules:
+    - {rule: CFG123, severity: warn}
+
+- id: "CVE-2025-6514"
+  aliases: [GHSA-6xpm-ggf7-wc3p]
+  kind: cve
+  agent: "mcp-remote"
+  fixed: "0.1.16"
+  summary: "A malicious server's response ran commands through the stdio proxy."
+  coverage: full
+  rules:
+    - {rule: CFG126, severity: error}
+
+- id: "CVE-2025-68432"
+  aliases: [GHSA-29cp-2hmh-hcxj]
+  repo: zed-industries/zed
+  kind: cve
+  agent: "Zed"
+  fixed: "0.218.2-pre"
+  summary: "A committed language-server binary setting runs a program of the repository's choice once the worktree is trusted."
+  coverage: partial
+  rules:
+    - {rule: CFG019, severity: error}
+  reason: not-static
+  note: "cfgaudit reports inline scripts and interpreter flags. A plain path to a program is not reported."
+
+- id: "CVE-2025-68433"
+  aliases: [GHSA-cv6g-cmxc-vw8j]
+  repo: zed-industries/zed
+  kind: cve
+  agent: "Zed"
+  fixed: "0.218.2-pre"
+  summary: "A committed context server runs an inline shell once the worktree is trusted."
+  coverage: full
+  rules:
+    - {rule: CFG019, severity: error}
+
+- id: "CVE-2025-8217"
+  aliases: [GHSA-7g7f-ff96-5gcw]
+  kind: cve
+  agent: "Amazon Q Developer"
+  summary: "An instruction gave the agent a destructive goal in prose."
+  coverage: full
+  rules:
+    - {rule: CFG026, severity: error}
+
+- id: "CVE-2026-101884"
+  aliases: [GHSA-hf34-gmq4-h679]
+  kind: cve
+  agent: "coding agents"
+  summary: "An agent environment sanitizer left runtime start-up hooks in place, so a configured variable loaded code."
+  coverage: full
+  rules:
+    - {rule: CFG020, severity: error}
+
+- id: "CVE-2026-102231"
+  aliases: [GHSA-m8rw-hr26-pw53]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.141.1"
+  summary: "A workspace setting sends the Azure DevOps token to an endpoint the repository chooses."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2026-102232"
+  aliases: [GHSA-fq62-m6f5-c7h9]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.141.1"
+  summary: "Workspace settings register custom hook and agent folders the agent could edit without approval."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2026-102234"
+  aliases: [GHSA-vmmp-977m-xvwx]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.141.1"
+  summary: "A workspace setting adds terminal link schemes, skipping the warning before a link opens a protocol handler."
+  coverage: none
+  related: [CFG048]
+  reason: by-design
+  note: "The setting widens what a click may open and approves nothing the agent does."
+
+- id: "CVE-2026-102851"
+  aliases: [GHSA-qghm-w43w-vx8v]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.141.1"
+  summary: "MCP sandbox grants in the shared root of mcp.json applied to every server in the file."
+  coverage: none
+  reason: not-static
+  note: "The sandbox schema has not been measured yet, so the grants are not read."
+
+- id: "CVE-2026-111091"
+  kind: cve
+  agent: "Junie CLI"
+  fixed: "26.8.3"
+  summary: "An untrusted project's MCP configuration leads to code execution."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1413
+
+- id: "CVE-2026-12537"
+  aliases: [GHSA-wpqr-6v78-jr5g]
+  kind: cve
+  agent: "Gemini CLI"
+  fixed: "0.39.1"
+  summary: "In untrusted folders a committed .gemini/.env was loaded."
+  coverage: full
+  rules:
+    - {rule: CFG060, severity: error}
+    - {rule: CFG110, severity: error}
+
+- id: "CVE-2026-12958"
+  kind: cve
+  agent: "AWS Language Servers"
+  summary: "A symlink in a workspace leads a file write outside the trust boundary."
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: error}
+
+- id: "CVE-2026-19590"
+  kind: cve
+  agent: "Codex Desktop"
+  summary: "Automated git operations trusted a repository-local hooks path."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1408
+
+- id: "CVE-2026-19592"
+  kind: cve
+  agent: "Codex"
+  summary: "Metadata collection ran a repository-local core.fsmonitor."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1408
+
+- id: "CVE-2026-19593"
+  kind: cve
+  agent: "Codex Desktop"
+  summary: "Git status on a preserved .git/config activated a filter driver."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1408
+
+- id: "CVE-2026-19884"
+  kind: cve
+  agent: "Eclipse Theia"
+  summary: "Opening a folder started source control integration before any trust decision."
+  coverage: full
+  rules:
+    - {rule: CFG121, severity: error}
+
+- id: "CVE-2026-21518"
+  aliases: [GHSA-6xq8-9qf3-p6qv]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.109.1"
+  summary: "A committed .vscode/mcp.json server started without the workspace being trusted."
+  coverage: partial
+  rules:
+    - {rule: CFG019, severity: error}
+  reason: not-static
+  note: "cfgaudit reports inline scripts. An ordinary server command in the file is not a finding on its own."
+
+- id: "CVE-2026-21523"
+  aliases: [GHSA-3pwg-f3hj-wp8p]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.109.1"
+  summary: "A workspace setting makes the terminal type a reply by itself when a pattern appears."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2026-21852"
+  aliases: [GHSA-jh7p-qr78-84p7]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "2.0.65"
+  summary: "A committed base URL sends API requests, and the key, to another endpoint before the trust dialog."
+  coverage: full
+  rules:
+    - {rule: CFG005, severity: error}
+  related: [CFG016]
+
+- id: "CVE-2026-25724"
+  aliases: [GHSA-4q92-rfm6-2cqx]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "2.1.7"
+  summary: "A permission deny rule could be bypassed by reading the denied file through a workspace symlink."
+  coverage: partial
+  rules:
+    - {rule: CFG115, severity: warn}
+  reason: by-design
+  note: "A link that stays inside the repository and points at a denied file is not reported."
+
+- id: "CVE-2026-27967"
+  aliases: [GHSA-786m-x2vc-5235]
+  repo: zed-industries/zed
+  kind: cve
+  agent: "Zed"
+  fixed: "0.225.9"
+  summary: "Agent file tools follow a committed symlink out of the worktree."
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: warn}
+
+- id: "CVE-2026-31951"
+  kind: cve
+  agent: "MCP servers"
+  summary: "A templated credential is forwarded to a cleartext or raw-IP MCP endpoint."
+  coverage: full
+  rules:
+    - {rule: CFG068, severity: error}
+
+- id: "CVE-2026-33010"
+  kind: cve
+  agent: "MCP servers"
+  summary: "An MCP server configured with a wildcard CORS origin answers requests from any web page."
+  coverage: full
+  rules:
+    - {rule: CFG066, severity: error}
+
+- id: "CVE-2026-33068"
+  aliases: [GHSA-mmgp-wc2j-qcv7]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "2.1.53"
+  summary: "A committed bypassPermissions default skipped the trust dialog."
+  coverage: full
+  rules:
+    - {rule: CFG004, severity: warn}
+
+- id: "CVE-2026-39861"
+  aliases: [GHSA-vp62-r36r-9xqp]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "2.1.64"
+  summary: "A symlink created by a sandboxed process lets the unsandboxed agent write outside the workspace."
+  coverage: partial
+  rules:
+    - {rule: CFG115, severity: warn}
+  related: [CFG022]
+  reason: not-static
+  note: "cfgaudit reports a committed link of this shape. A link the agent creates at run time is invisible to a scan."
+
+- id: "CVE-2026-40068"
+  aliases: [GHSA-q5hj-mxqh-vv77]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "2.1.84"
+  summary: "A crafted .git file pointing at a trusted path skipped the trust dialog."
+  coverage: partial
+  rules:
+    - {rule: CFG067, severity: info}
+  reason: not-static
+  note: "cfgaudit reports the committed hook. The trust check runs in the agent."
+
+- id: "CVE-2026-41495"
+  kind: cve
+  agent: "MCP servers"
+  summary: "An HTTP MCP server without log redaction writes secrets to its logs."
+  coverage: full
+  rules:
+    - {rule: CFG069, severity: warn}
+
+- id: "CVE-2026-42282"
+  kind: cve
+  agent: "MCP servers"
+  summary: "An HTTP MCP server without log redaction writes secrets to its logs."
+  coverage: full
+  rules:
+    - {rule: CFG069, severity: warn}
+
+- id: "CVE-2026-44461"
+  aliases: [GHSA-63qj-jc2q-7hg5]
+  repo: zed-industries/zed
+  kind: cve
+  agent: "Zed"
+  fixed: "0.227.1"
+  summary: "An environment variable name carrying a command substitution ran when Zed built a remote terminal command."
+  coverage: full
+  rules:
+    - {rule: CFG020, severity: error}
+
+- id: "CVE-2026-44465"
+  aliases: [GHSA-fj2r-rmw6-h222]
+  repo: zed-industries/zed
+  kind: cve
+  agent: "Zed"
+  fixed: "0.227.1"
+  summary: "A command key in a distributed repository's own .git/config ran when the folder opened."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1408
+
+- id: "CVE-2026-44641"
+  kind: cve
+  agent: "Microsoft APM"
+  fixed: "0.8.12"
+  summary: "Plugin component paths leave the plugin root."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1410
+
+- id: "CVE-2026-44995"
+  kind: cve
+  agent: "MCP servers"
+  summary: "An interpreter start-up variable in an MCP server env block loads code when the server starts."
+  coverage: full
+  rules:
+    - {rule: CFG020, severity: error}
+
+- id: "CVE-2026-45033"
+  aliases: [GHSA-9ccr-r5hg-74gf]
+  kind: cve
+  agent: "GitHub Copilot CLI"
+  fixed: "1.0.42"
+  summary: "A committed nested bare repository runs a git command key when the agent uses git inside it."
+  coverage: full
+  rules:
+    - {rule: CFG121, severity: error}
+
+- id: "CVE-2026-47281"
+  aliases: [GHSA-5j3g-c7qg-xfvx]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.123.1"
+  summary: "A committed .code-workspace sets a remote authority that connects the extension host to another server."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: error}
+
+- id: "CVE-2026-47282"
+  aliases: [GHSA-wr9x-42j2-jvh3]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.128.1"
+  summary: "Copilot debug settings send requests and the token to an upstream the repository chooses."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2026-47284"
+  aliases: [GHSA-qcxw-jfff-cxpc]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.123.1"
+  summary: "A .gitmodules URL with a lookalike host received the GitHub credential on submodule update."
+  coverage: full
+  rules:
+    - {rule: CFG121, severity: warn}
+
+- id: "CVE-2026-47751"
+  kind: cve
+  agent: "Claude Code Action"
+  fixed: "1.0.74"
+  summary: "The action read .mcp.json from a checked-out pull request head."
+  coverage: full
+  rules:
+    - {rule: CFG019, severity: error}
+
+- id: "CVE-2026-48124"
+  aliases: [GHSA-pc9j-3qc2-95wv]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "3.0.0"
+  summary: "Cursor ran hook commands from a workspace .claude/settings.local.json without approval."
+  coverage: partial
+  rules:
+    - {rule: CFG067, severity: info}
+  reason: not-static
+  note: "cfgaudit reports the committed hook. The missing approval is in the editor."
+
+- id: "CVE-2026-50549"
+  aliases: [GHSA-3v8f-48vw-3mjx]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "3.0"
+  summary: "A failed path check lets the agent write through a symlink outside the workspace."
+  coverage: partial
+  rules:
+    - {rule: CFG115, severity: warn}
+  reason: not-static
+  note: "cfgaudit reports a committed link of this shape. A link the agent creates at run time is invisible to a scan."
+
+- id: "CVE-2026-57572"
+  kind: cve
+  agent: "MCP servers"
+  summary: "A browser flag in an MCP server's arguments runs a program as the browser subprocess."
+  coverage: full
+  rules:
+    - {rule: CFG083, severity: error}
+
+- id: "CVE-2026-57860"
+  kind: cve
+  agent: "ForgeCode"
+  summary: "MCP servers from a repository .mcp.json start without confirmation."
+  coverage: full
+  rules:
+    - {rule: CFG019, severity: error}
+
+- id: "CVE-2026-58650"
+  aliases: [GHSA-h6v9-3cqc-v234]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.132.1"
+  summary: "An extension recommendation link runs a task in a restricted workspace."
+  coverage: partial
+  rules:
+    - {rule: CFG048, severity: warn}
+  reason: not-static
+  note: "cfgaudit reports lookalike extension ids. The notification link is built by the editor."
+
+- id: "CVE-2026-63093"
+  kind: cve
+  agent: "Cursor"
+  summary: "A git.exe at the repository root is planted in place of the real git on Windows."
+  coverage: full
+  rules:
+    - {rule: CFG123, severity: error}
+
+- id: "CVE-2026-69370"
+  aliases: [GHSA-xf67-g42g-pg73]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.141.1"
+  summary: "A recommendation's text becomes a command link in the install-error notification."
+  coverage: partial
+  rules:
+    - {rule: CFG048, severity: warn}
+  reason: not-static
+  note: "cfgaudit reports lookalike extension ids. The notification link is built by the editor."
+
+- id: "CVE-2026-70334"
+  aliases: [GHSA-q2f8-hh8x-wpc2]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.136.2"
+  summary: "A restricted setting in nested-object form skipped the Restricted Mode filter."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2026-70335"
+  aliases: [GHSA-w79w-rj9h-vg4f]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.132.1"
+  summary: "An injected agent writes a .github/agents file whose frontmatter hooks run shell commands."
+  coverage: none
+  reason: not-static
+  note: "A hook with an ordinary command is not a finding on its own, and the write itself happens at run time."
+
+- id: "CVE-2026-72718"
+  aliases: [GHSA-r5pp-p5r8-466r]
+  repo: block/goose
+  kind: cve
+  agent: "goose"
+  fixed: "1.44.0"
+  summary: "A committed nested bare repository runs a git command key when the agent uses git inside it."
+  coverage: full
+  rules:
+    - {rule: CFG121, severity: error}
+
+- id: "CVE-2026-73217"
+  aliases: [GHSA-p9g2-cr55-cw9c]
+  repo: cursor/cursor
+  kind: cve
+  agent: "Cursor"
+  fixed: "3.1.2"
+  summary: "A wrapper replacing a virtual environment's interpreter later ran outside the sandbox."
+  coverage: full
+  rules:
+    - {rule: CFG123, severity: warn}
+
+- id: "CVE-2026-78462"
+  aliases: [GHSA-2cmq-rv52-5rf6]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.136.2"
+  summary: "Workspace settings connect the editor to another agent host and grant it local file access."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2026-81376"
+  aliases: [GHSA-r2gr-w3c8-wvqv]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.136.2"
+  summary: "Nested-object settings that connect the editor to another service skipped Restricted Mode."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2026-81381"
+  aliases: [GHSA-rvgr-2w56-2j67]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.136.2"
+  summary: "A workspace setting sends the Azure DevOps token to an endpoint the repository chooses."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
+- id: "CVE-2026-85623"
+  kind: cve
+  agent: "goose"
+  summary: "A recipe's stdio extension runs commands without inspection."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1414
+
+- id: "CVE-2026-86063"
+  aliases: [GHSA-pq7j-f95f-qfcv]
+  kind: cve
+  agent: "Claude Code"
+  fixed: "2.1.179"
+  summary: "A plugin install checked out a pinned SHA without verifying that the result was that commit."
+  coverage: none
+  related: [CFG074, CFG089]
+  reason: not-static
+  note: "The check belongs to the installing client. A pin looks the same either way."
+
+- id: "CVE-2026-88066"
+  aliases: [GHSA-4p2j-qj3c-6x84]
+  repo: anthropics/claude-code
+  kind: cve
+  agent: "Claude Desktop"
+  fixed: "Desktop 1.8089.0"
+  summary: "A git.exe committed at the project root ran in place of the real git on Windows."
+  coverage: full
+  rules:
+    - {rule: CFG123, severity: error}
+
+- id: "CVE-2026-95660"
+  kind: cve
+  agent: "Kimi Code"
+  summary: "A project MCP configuration runs a command, and planted tools shadow fd and stty."
+  coverage: partial
+  rules:
+    - {rule: CFG019, severity: error}
+  reason: no-rule-yet
+  issue: 1407
+  note: "The MCP step is reported. The planted tool names are not on the list yet."
+
+- id: "GHSA-mhg7-666j-cqg4"
+  kind: cve
+  agent: "Claude Code"
+  summary: "A command rewrites the agent's own settings, which survive cleanup and re-enable themselves."
+  coverage: full
+  rules:
+    - {rule: CFG028, severity: error}
+
+- id: "GHSA-q978-78c7-phqw"
+  repo: modelcontextprotocol/inspector
+  kind: cve
+  agent: "MCP Inspector"
+  fixed: "2.12.0"
+  summary: "A remote MCP server's OAuth endpoint ran a command on Windows and WSL when Inspector connected."
+  coverage: full
+  rules:
+    - {rule: CFG126, severity: error}
+
+- id: "GHSA-x9h6-c6v9-v699"
+  repo: cfgaudit/cfgaudit
+  kind: cve
+  agent: "cfgaudit"
+  fixed: "1.17.1"
+  summary: "cfgaudit's own advisory: a symlink made the scanner read a file outside the repository and quote it in a report."
+  coverage: none
+  related: [CFG115]
+  reason: by-design
+  note: "A bug in cfgaudit, fixed in v1.17.1. It is listed because CFG115 cites it."
+
+- id: "ClawHavoc"
+  kind: campaign
+  agent: "Agent skills"
+  summary: "Published skills tell the reader to run an install step that fetches a payload."
+  coverage: full
+  rules:
+    - {rule: CFG036, severity: warn}
+  steps:
+    - step: "Skill text asks for a download and run"
+      rules: [CFG036]
+
+- id: "Contagious Interview"
+  kind: campaign
+  agent: "VS Code"
+  summary: "A task that runs when a folder opens starts the payload of a fake interview repository."
+  coverage: full
+  rules:
+    - {rule: CFG047, severity: error}
+  steps:
+    - step: "Task runs on folder open"
+      rules: [CFG047]
+
+- id: "SANDWORM"
+  kind: campaign
+  agent: "npm and MCP"
+  summary: "Packages plant git hooks and CI workflows and add an MCP server to agent configs."
+  coverage: partial
+  rules:
+    - {rule: CFG052, severity: info}
+    - {rule: CFG127, severity: error}
+  reason: not-static
+  note: "The planted git hook and CI workflow are outside agent configuration. CFG127 detects the correlated hidden-home MCP entry statically but cannot inspect runtime tool descriptions."
+  steps:
+    - step: "Git hook and CI workflow planted"
+      reason: not-static
+    - step: "MCP server added to agent settings"
+      rules: [CFG052, CFG127]
+
+- id: "postmark-mcp"
+  kind: campaign
+  agent: "npm and MCP"
+  summary: "A malicious npm package impersonated Postmark's MCP server and copied sent email to an external recipient."
+  coverage: full
+  rules:
+    - {rule: CFG128, severity: error}
+  steps:
+    - step: "MCP server launched from the exact malicious version"
+      rules: [CFG128]
+
+- id: "s1ngularity"
+  kind: campaign
+  agent: "Nx users"
+  summary: "A compromised npm package used installed AI CLIs with bypass flags to search the machine."
+  coverage: partial
+  rules:
+    - {rule: CFG125, severity: error}
+  reason: not-static
+  note: "The package itself is out of reach. cfgaudit sees the same flags only in a committed agent config."
+  steps:
+    - step: "Package install script runs"
+      reason: not-static
+    - step: "Agent CLI started with a bypass flag"
+      rules: [CFG125]

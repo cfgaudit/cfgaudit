@@ -49,6 +49,7 @@ func (r *cfg037) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG037",
 			Severity: finding.Error,
 			File:     site.File,
+			Line:     site.Line,
 			Message:  site.Label + " reads or copies an SSH private key — exfiltrating it enables lateral movement to every server the developer can reach. A hook must not access ~/.ssh key material" + userScopeNote(t),
 		})
 	}

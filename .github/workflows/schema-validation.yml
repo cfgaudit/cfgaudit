@@ -35,6 +35,7 @@ jobs:
   validate:
     name: Validate fixtures against SchemaStore
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
@@ -107,6 +108,7 @@ jobs:
   reports:
     name: Validate reports against their schemas
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -144,6 +146,7 @@ jobs:
   config-schema:
     name: Validate the .cfgaudit.yml schema
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

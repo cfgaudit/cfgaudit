@@ -42,8 +42,14 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 		if accept != nil && !accept(r) {
 			continue
 		}
-		if target.ContentPath && !ContentPathRules[r.ID()] {
-			continue
+		if target.ContentPath {
+			allowed := ContentPathRules[r.ID()]
+			if target.CapabilityPackage {
+				allowed = CapabilityPackageRules[r.ID()]
+			}
+			if !allowed {
+				continue
+			}
 		}
 		if target.SkillHelper != "" && !SkillHelperRules[r.ID()] {
 			continue
@@ -73,7 +79,11 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 				if results[i].Severity == finding.Error {
 					results[i].Severity = finding.Warn
 				}
-				results[i].Message += "; scanned because content-paths lists it: agents read this file when they open it, not as instructions"
+				if target.CapabilityPackage {
+					results[i].Message += "; scanned as setup documentation of a detected agent capability package: an agent may relay these installation steps, but does not load this file as trusted instructions"
+				} else {
+					results[i].Message += "; scanned because content-paths lists it: agents read this file when they open it, not as instructions"
+				}
 			}
 			if skill, ok := shipped[results[i].File]; ok {
 				if results[i].Severity == finding.Error {
@@ -107,6 +117,21 @@ var ContentPathRules = map[string]bool{
 	"CFG032": true,
 	"CFG057": true,
 	"CFG080": true,
+}
+
+// CapabilityPackageRules replace ContentPathRules for setup documents in
+// a structurally identified capability package (#1437). CFG036 covers the
+// AgentBaiting/ClawHub installation shapes (download-and-run, encoded shell
+// payloads and password-protected archives); CFG120 covers prose exfiltration.
+// The target is still a ContentPath, so findings cannot exceed warn. CFG014 and
+// CFG119 keep their command/script semantics and inspect executable surfaces,
+// not inert prose; they are documented as complementary rather than run here.
+var CapabilityPackageRules = map[string]bool{
+	"CFG024": true,
+	"CFG036": true,
+	"CFG057": true,
+	"CFG080": true,
+	"CFG120": true,
 }
 
 // skillScripts maps the file of each script t's skill ships (#987) to that

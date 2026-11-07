@@ -42,8 +42,8 @@ Pin it next to your other linters with `cfgaudit==X.Y.Z` in a requirements file.
 With Node.js (the package runs the prebuilt binary for your platform, no install script):
 
 ```sh
-npx cfgaudit@1.19.0 .                                   # run once without installing
-npm install --save-dev --save-exact cfgaudit@1.19.0     # pin it in a JavaScript project
+npx cfgaudit@1.20.0 .                                   # run once without installing
+npm install --save-dev --save-exact cfgaudit@1.20.0     # pin it in a JavaScript project
 ```
 
 Keep the version pinned: cfgaudit reports an unpinned `npx` package in an MCP server ([CFG010](docs/rules/CFG010.md)) for the same reason.
@@ -78,7 +78,7 @@ cfgaudit list --agent cursor                 # the rules for one agent
 cfgaudit init                                # a hardened .claude/settings.json for a new project
 ```
 
-cfgaudit exits 1 when it reports an `error` finding, 0 when it reports only `warn` or `info` findings or none, and 2 on a usage or tool error. [Usage](docs/usage.md) has every flag, the output formats (with the [schema of the JSON output](schema/findings.schema.json)), the `init` and `policy` subcommands, the exit codes and the configuration file.
+cfgaudit exits 1 when it reports an `error` finding (or a `warn` finding with `--strict`), 0 when it reports only `warn` or `info` findings (without `--strict`) or none, and 2 on a usage or tool error. [Usage](docs/usage.md) has every flag, the output formats (with the [schema of the JSON output](schema/findings.schema.json)), the `init`, `policy`, `baseline`, `lock` and `inventory` subcommands, the exit codes and the configuration file.
 
 <a id="configuration-file-cfgaudityml"></a>**Configuration file.** A `.cfgaudit.yml` in the scanned directory turns rules off or changes their severity, excludes paths and sets an organisation policy: see [Configuration file](docs/usage.md#configuration-file-cfgaudityml), and point your editor at the [JSON Schema](docs/usage.md#schema) to have it checked while you type. When you scan a repository you do not trust, do not let its own file configure the audit ([Scanning a repository you do not trust](docs/usage.md#untrusted-repositories)).
 
@@ -98,7 +98,7 @@ SARIF upload to GitHub Code Scanning and every input and output are in [CI integ
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.19.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.20.0
     inputs:
       path: .
 ```
@@ -139,6 +139,7 @@ The rules are grouped by the configuration they read. [Rules](docs/rules/README.
 - [OpenCode — `opencode.json` and its siblings](docs/rules/README.md#opencode--opencodejson-and-its-siblings)
 - [xAI Grok CLI — `.grok/`](docs/rules/README.md#xai-grok-cli--grok)
 - [qwen-code — `.qwen/` & `QWEN.md`](docs/rules/README.md#qwen-code--qwen--qwenmd)
+- [Cline — `.cline/` & `.clinerules/`](docs/rules/README.md#cline--cline--clinerules)
 - [Kimi Code — `.kimi-code/` & `.agents/agents/`](docs/rules/README.md#kimi-code--kimi-code--agentsagents)
 - [Roo Code — `.roo/`, `.roorules` & `.roomodes`](docs/rules/README.md#roo-code--roo-roorules--roomodes)
 

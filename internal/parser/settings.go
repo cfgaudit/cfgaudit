@@ -348,11 +348,18 @@ type MCPServer struct {
 	// written as ${env:...}.
 	Auth *MCPStaticOAuth `json:"auth,omitempty"`
 
-	Command                 string   `json:"command,omitempty"`
-	Args                    []string `json:"args,omitempty"`
-	AlwaysAllow             []string `json:"alwaysAllow,omitempty"`
-	Env                     EnvMap   `json:"env,omitempty"`
-	DangerouslyAllowBrowser bool     `json:"dangerouslyAllowBrowser,omitempty"`
+	Command     string   `json:"command,omitempty"`
+	Args        []string `json:"args,omitempty"`
+	AlwaysAllow []string `json:"alwaysAllow,omitempty"`
+	// AutoApprove is Cline's spelling of AlwaysAllow, with exact tool names and
+	// no wildcard. Other tools use the key with other shapes, so a value that is
+	// not a list is ignored rather than failing the file (#1529).
+	AutoApprove ToolNames `json:"autoApprove,omitempty"`
+	// DisabledTools is Roo Code's list of tools it hides from the model.
+	DisabledTools ToolNames `json:"disabledTools,omitempty"`
+	// Disabled is Roo Code\'s switch for a whole server.
+	Disabled bool   `json:"disabled,omitempty"`
+	Env      EnvMap `json:"env,omitempty"`
 
 	// Remote-transport fields (HTTP/SSE/WebSocket MCP servers). URL is the
 	// endpoint the agent connects to; Type is the transport ("http"/"sse"/…);
@@ -364,6 +371,9 @@ type MCPServer struct {
 	// folds it into Type so the shared MCP rules only ever read one field.
 	Transport string            `json:"transport,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
+	// ImpliedSSE marks a Type of "sse" that the agent derives from which URL
+	// field is set, with no "sse" in the file (Qwen Code, #1524).
+	ImpliedSSE bool `json:"-"`
 
 	// HeadersHelperKey is the spelling the source file used for HeadersHelper,
 	// so a finding names a key the reader can grep for. Empty means the Claude
@@ -392,6 +402,36 @@ type MCPServer struct {
 	// is a shell command, so a repo-controlled value is an RCE surface scanned by
 	// the command-content rules (CFG008/009/014/015/027/028/037/038/039/045).
 	HeadersHelper string `json:"headersHelper,omitempty"`
+
+	// NonStringEnv lists, sorted, the env keys whose value in the file is a
+	// number, a bool or null rather than a string. Env still holds them as
+	// their JSON text so the server is checked, but Claude Code 2.1.316 skips
+	// such a server: "Skipped — invalid MCP server config for \"x\":
+	// env.MAX_TOKENS: expected string, received number" (#1189).
+	NonStringEnv []string `json:"-"`
+}
+
+// UnmarshalJSON decodes a server and records which env values were not
+// strings (NonStringEnv).
+func (s *MCPServer) UnmarshalJSON(data []byte) error {
+	type plain MCPServer
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	*s = MCPServer(p)
+	var raw struct {
+		Env map[string]json.RawMessage `json:"env"`
+	}
+	if json.Unmarshal(data, &raw) == nil {
+		for k, v := range raw.Env {
+			if t := bytes.TrimSpace(v); len(t) > 0 && t[0] != '"' {
+				s.NonStringEnv = append(s.NonStringEnv, k)
+			}
+		}
+		sort.Strings(s.NonStringEnv)
+	}
+	return nil
 }
 
 // MCPConfig is a bare MCP config object whose mcpServers map carries the same
@@ -404,6 +444,9 @@ type MCPConfig struct {
 	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
 	Servers    map[string]MCPServer `json:"servers,omitempty"`
 }
+
+// utf8BOM is a UTF-8 byte-order mark.
+var utf8BOM = []byte{0xef, 0xbb, 0xbf}
 
 // ParseMCPConfig reads and decodes an MCP config file. The VS Code "servers"
 // variant is folded into MCPServers so callers see a single map; on a name
@@ -475,15 +518,21 @@ func ParseProjectMCPConfig(path string) (*MCPConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	return parseMCPConfigBytes(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf}), path)
+	return parseMCPConfigBytes(bytes.TrimPrefix(data, utf8BOM), path)
 }
 
 func parseMCPConfigBytes(data []byte, path string) (*MCPConfig, error) {
 	// VS Code reads .vscode/mcp.json as JSON with comments, like its other
-	// workspace files (#829). The other MCP files stay strict: with a comment
+	// workspace files (#829). Most other MCP files stay strict: with a comment
 	// in .mcp.json, Claude Code 2.1.310 lists "[Failed to parse] Project config"
 	// and loads no server from it, so there it is a real CFG109.
 	if isVSCodeWorkspaceFile(path) {
+		data = stripJSONC(data)
+	}
+	// Cursor 3.29.9 strips comments and trailing commas before JSON.parse
+	// (parseMcpServersFromFile), so such a file loads. A byte-order mark is not
+	// stripped there, and an empty file is its own "JSON syntax error" (#1189).
+	if isCursorMCPFile(path) && !bytes.HasPrefix(data, utf8BOM) {
 		data = stripJSONC(data)
 	}
 	// Copilot CLI reads .github/mcp.json strictly and only under mcpServers:
@@ -537,6 +586,12 @@ func isCopilotWorkspaceMCP(path string) bool {
 // isVSCodeWorkspaceFile reports whether path is a file in a .vscode directory.
 func isVSCodeWorkspaceFile(path string) bool {
 	return filepath.Base(filepath.Dir(path)) == ".vscode"
+}
+
+// isCursorMCPFile reports whether path is Cursor's mcp.json, in a project or in
+// the home directory.
+func isCursorMCPFile(path string) bool {
+	return filepath.Base(path) == "mcp.json" && filepath.Base(filepath.Dir(path)) == ".cursor"
 }
 
 // ParseSettings reads and decodes a settings.json file.
@@ -704,4 +759,21 @@ func lenientMap[T any](raw json.RawMessage) map[string]T {
 // MCPStaticOAuth is the part of a Cursor MCP server's `auth` block cfgaudit reads.
 type MCPStaticOAuth struct {
 	ClientSecret string `json:"CLIENT_SECRET,omitempty"`
+}
+
+// ToolNames is a list of tool names that reads anything else as empty.
+type ToolNames []string
+
+// UnmarshalJSON decodes a list of strings and skips every other value.
+func (n *ToolNames) UnmarshalJSON(data []byte) error {
+	var list []any
+	if json.Unmarshal(data, &list) != nil {
+		return nil
+	}
+	for _, v := range list {
+		if s, ok := v.(string); ok {
+			*n = append(*n, s)
+		}
+	}
+	return nil
 }

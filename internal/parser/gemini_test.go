@@ -129,3 +129,26 @@ func TestParseGeminiSettings_JSONCComments(t *testing.T) {
 		t.Fatalf("expected defaultApprovalMode through the comments, got %+v", gs.General)
 	}
 }
+
+// mcp.excluded and the tool lists read their shape loosely, so an odd value
+// costs only the policy, not the file (#1517).
+func TestGeminiSettings_PolicyFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	for src, want := range map[string]int{
+		`{"mcp":{"excluded":["a","b"]},"tools":{"exclude":"x"}}`: 2,
+		`{"mcp":"x"}`: 0,
+		`{}`:          0,
+	} {
+		if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s, err := ParseGeminiSettings(path)
+		if err != nil {
+			t.Fatalf("%s: %v", src, err)
+		}
+		if got := s.ExcludedMCPServers(); len(got) != want {
+			t.Errorf("%s: got %q", src, got)
+		}
+	}
+}

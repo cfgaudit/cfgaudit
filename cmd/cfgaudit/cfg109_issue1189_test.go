@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// #1189: a dangling symlink goes to the could-not-read list, an empty VS Code
+// #1189: a dangling symlink reads as absent (#1363), an empty VS Code
 // settings file, an array task command and a numeric MCP env value parse, and
 // real syntax errors stay CFG109.
 func TestCFG109_Issue1189(t *testing.T) {
@@ -29,15 +29,19 @@ func TestCFG109_Issue1189(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, ".vscode", "settings.json"), "  \n")
 	mustWrite(t, filepath.Join(dir, ".vscode", "tasks.json"), `{"version":"2.0.0","tasks":[{"label":"make executable","command":["chmod","+x","scripts/run.sh"]}]}`)
 	mustWrite(t, filepath.Join(dir, ".mcp.json"), `{"mcpServers":{"my-server":{"command":"npx","args":["-y","my-server"],"env":{"MAX_TOKENS":64000,"DEBUG":true}}}}`)
-	code, out, errOut := runCLI(t, "--config", "/dev/null", "--claude-version", "2.1.316", "--format", "json", "--plugins", dir, dir)
-	if strings.Contains(out, `"RuleID": "CFG109"`) {
-		t.Errorf("want no CFG109, got %s", out)
+	code, out, errOut := runCLI(t, "--config", os.DevNull, "--claude-version", "2.1.316", "--format", "json", "--plugins", dir, dir)
+	// No parse error; the one CFG109 is the info that Claude Code skips the
+	// server with numeric and bool env values.
+	if n := strings.Count(out, `"RuleID": "CFG109"`); n != 1 || strings.Count(out, `"Severity": "error"`) != 0 || !strings.Contains(out, "mcpServers.my-server.env sets DEBUG, MAX_TOKENS") {
+		t.Errorf("want one CFG109 info for my-server and no error, got %s", out)
 	}
 	if !strings.Contains(out, `"RuleID": "CFG010"`) || !strings.Contains(out, "my-server") {
 		t.Errorf("want CFG010 on the unpinned my-server, got %s", out)
 	}
-	if code != 2 || !strings.Contains(errOut, "could not read") || !strings.Contains(errOut, "SKILL.md") {
-		t.Errorf("want exit 2 with the dangling SKILL.md on the could-not-read list, got %d, %s", code, errOut)
+	// A dangling link reads as absent and is named on stderr, without exit 2
+	// (#1363).
+	if code == 2 || strings.Contains(errOut, "could not read") || !strings.Contains(errOut, "1 symbolic link points to a missing file and was skipped as absent") || !strings.Contains(errOut, "SKILL.md") {
+		t.Errorf("want the dangling SKILL.md named as skipped, without exit 2, got %d, %s", code, errOut)
 	}
 
 	for name, files := range map[string]map[string]string{
@@ -49,7 +53,7 @@ func TestCFG109_Issue1189(t *testing.T) {
 		for p, c := range files {
 			mustWrite(t, filepath.Join(d, p), c)
 		}
-		_, out, _ := runCLI(t, "--config", "/dev/null", "--claude-version", "2.1.316", "--format", "json", "--only", "CFG109", d)
+		_, out, _ := runCLI(t, "--config", os.DevNull, "--claude-version", "2.1.316", "--format", "json", "--only", "CFG109", d)
 		if !strings.Contains(out, `"RuleID": "CFG109"`) {
 			t.Errorf("%s: want CFG109, got %s", name, out)
 		}

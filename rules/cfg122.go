@@ -60,9 +60,38 @@ func (r *cfg122) Check(t *Target) []finding.Finding {
 				Message: "the archive carries " + e + " at its root — on Windows a program in the current directory runs before the installed one, so an agent or editor that starts " + strings.TrimSuffix(strings.ToLower(e), path.Ext(e)) + " in the unpacked folder runs this file. A source archive has no reason to ship it"})
 		}
 	}
-	if len(t.ArchiveLinks) > 0 {
+	var ordinary []string
+	for _, link := range t.ArchiveLinks {
+		label := link.Name
+		if link.Target != "" {
+			label += " -> " + normalizedLinkTarget(link.Target)
+		}
+		if sensitiveLinkTarget(link.Target) && archiveLinkLeaves(link) {
+			out = append(out, finding.Finding{RuleID: "CFG122", Severity: finding.Error, File: t.ArchiveName + "/" + link.Name,
+				Message: "the archive carries a link to the sensitive location \"" + normalizedLinkTarget(link.Target) + "\". cfgaudit did not extract or follow it; unpacked, an agent working in the folder can read or change that file through the link"})
+			continue
+		}
+		ordinary = append(ordinary, label)
+	}
+	if len(ordinary) > 0 {
 		out = append(out, finding.Finding{RuleID: "CFG122", Severity: finding.Warn, File: t.ArchiveName,
-			Message: "the archive carries links (" + quoteList(capList(t.ArchiveLinks, 5)) + andMore(len(t.ArchiveLinks), 5) + "), which cfgaudit does not extract, so the files they stand for were not scanned. Unpacked, a link can point outside the folder; check where each one leads"})
+			Message: "the archive carries links (" + quoteList(capList(ordinary, 5)) + andMore(len(ordinary), 5) + "), which cfgaudit does not extract or follow, so the files they stand for were not scanned. Unpacked, a link can point outside the folder; check where each one leads"})
 	}
 	return out
+}
+
+// archiveLinkLeaves reports whether a link's target text points outside the
+// archive, by the text alone. A link that stays inside, such as
+// .cursor/rules -> ../.claude/rules, leads to another entry of the archive.
+func archiveLinkLeaves(link ArchiveLink) bool {
+	target := normalizedLinkTarget(link.Target)
+	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "~") || strings.ContainsAny(target, "$%") ||
+		(len(target) > 1 && target[1] == ':') {
+		return true
+	}
+	if !link.Hard {
+		target = path.Join(path.Dir(link.Name), target)
+	}
+	target = path.Clean(target)
+	return target == ".." || strings.HasPrefix(target, "../")
 }
