@@ -11,7 +11,7 @@ import (
 // Taint tracking inside one hook command for CFG009 (#1199). A variable the
 // command assigns itself is untrusted only when its value reads the hook's
 // stdin, the skill's $ARGUMENTS, a positional parameter or another untrusted
-// variable. A variable the command never assigns comes from the environment
+// variable, other than a hook variable Claude Code never sets. A variable the command never assigns comes from the environment
 // and stays untrusted, unless it is in safeShellVars. This is a file-level
 // approximation: assignments are found anywhere in the command, functions and
 // other files are not followed, and one untrusted assignment taints the name.
@@ -121,11 +121,23 @@ func valueUntrusted(v string, st, outer shellTaint) bool {
 		if name == "" {
 			name = m[2]
 		}
-		if st.untrusted(name, outer) {
+		if st.untrusted(name, outer) && !neverSet(name, st, outer) {
 			return true
 		}
 	}
 	return false
+}
+
+// neverSet reports a Claude Code hook variable that does not exist and that
+// the command does not assign either. A copy of it is empty and carries nothing
+// an attacker controls (#1376).
+func neverSet(name string, st, outer shellTaint) bool {
+	if !undefinedClaudeHookVars["$"+name] {
+		return false
+	}
+	_, local := st[name]
+	_, enclosing := outer[name]
+	return !local && !enclosing
 }
 
 // assignedValue returns the word that starts at cmd[i]: up to the first
