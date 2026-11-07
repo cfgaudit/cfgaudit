@@ -46,8 +46,8 @@ func TestParseCodexRules_Truncated(t *testing.T) {
 	for i := range src {
 		ParseCodexRules(src[:i])
 	}
-	if got := ParseCodexRules(`prefix_rule(pattern=["a"], other=(1, [2], {3}), # note
-	decision="forbidden")`); len(got) != 1 || got[0].Decision != "forbidden" {
+	if got := ParseCodexRules(`prefix_rule(pattern=["a"], other=(1, [2], {3}, # note
+	), decision="forbidden")`); len(got) != 1 || got[0].Decision != "forbidden" {
 		t.Fatalf("got %+v", got)
 	}
 }
