@@ -12,7 +12,8 @@
       "qwen-code",
       "grok",
       "opencode",
-      "kilo-code"
+      "kilo-code",
+      "codex"
     ],
     "deny": {
       "commands": [

@@ -422,6 +422,11 @@ type Target struct {
 	PolicyDeny   config.PolicyRules
 	PolicyForbid config.PolicyRules
 
+	// CodexRules are the prefix rules of .codex/rules/*.rules, and CodexRulesFile
+	// the file a finding names (#1516).
+	CodexRules     []parser.CodexRule
+	CodexRulesFile string
+
 	// PolicyBlocks are the permission blocks of an agent that resolves rules by
 	// the last match, in the order it reads them, and PolicyFile the file a
 	// finding names (#1515).
