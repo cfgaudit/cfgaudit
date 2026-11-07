@@ -28,7 +28,14 @@ import (
 // true), so a committed .qwen/settings.json — mcpServers, tools.approvalMode, and
 // hooks — is applied with no trust prompt, the inverse of Cursor/Codex/Grok.
 type QwenSettings struct {
-	Tools      *QwenTools         `json:"tools,omitempty"`
+	Tools *QwenTools `json:"tools,omitempty"`
+
+	// Permissions is the rule list the agent-neutral policy checks. Rules from
+	// every scope are unioned, and deny wins over ask and allow. It stays raw so
+	// that a shape the policy cannot read does not fail the whole file, which
+	// the other rules read too.
+	Permissions json.RawMessage `json:"permissions,omitempty"`
+
 	MCPServers map[string]QwenMCP `json:"mcpServers,omitempty"`
 
 	// Telemetry is the OpenTelemetry export block, inherited from Gemini CLI
@@ -107,6 +114,10 @@ func (s *QwenSettings) HooksDisabled() bool {
 // the settings schema itself. Nothing reads the value.
 type QwenTools struct {
 	ApprovalMode string `json:"approvalMode,omitempty"`
+
+	// Exclude is the legacy deny list. Qwen's settings reference maps it to
+	// permissions.deny and says it is "still honoured at startup".
+	Exclude json.RawMessage `json:"exclude,omitempty"`
 
 	// SandboxImage is the container image the agent's sandbox runs from:
 	// "Sandbox image URI used by Docker/Podman when --sandbox-image and
@@ -226,4 +237,20 @@ func ParseQwenSettings(path string) (*QwenSettings, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &s, nil
+}
+
+// PolicyEntries returns the allow and deny rules the agent-neutral policy
+// checks, with the legacy tools.exclude counted as deny.
+func (s *QwenSettings) PolicyEntries() (allow, deny []string) {
+	var p Permissions
+	if json.Unmarshal(s.Permissions, &p) == nil {
+		allow, deny = p.Allow, p.Deny
+	}
+	if s.Tools != nil {
+		var exclude []string
+		if json.Unmarshal(s.Tools.Exclude, &exclude) == nil {
+			deny = append(deny, exclude...)
+		}
+	}
+	return allow, deny
 }

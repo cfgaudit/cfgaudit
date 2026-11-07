@@ -545,7 +545,9 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	claudePath := filepath.Join(dir, ".claude", "settings.json")
 	devinPath := filepath.Join(dir, ".devin", "config.json")
 	cursorPath := filepath.Join(dir, ".cursor", "cli.json")
-	var claude, devin, cursor *rules.Target
+	qwenPath := filepath.Join(dir, ".qwen", "settings.json")
+	grokPath := filepath.Join(dir, ".grok", "config.toml")
+	var claude, devin, cursor, qwen, grok *rules.Target
 	for _, t := range targets {
 		switch {
 		case t.Scope != finding.ScopeProject:
@@ -555,11 +557,19 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 			devin = t
 		case t.CursorCLIFile == cursorPath && t.CursorCLI != nil:
 			cursor = t
+		case t.QwenFile == qwenPath && t.Qwen != nil:
+			qwen = t
+		case t.GrokFile == grokPath && t.Grok != nil:
+			grok = t
 		}
 	}
+	var claudeAllow, claudeDeny []string
 	if claude != nil {
 		claude.PolicyRequireDeny = p.RequireDeny
 		claude.PolicyForbidAllow = p.ForbidAllow.Claude
+		if claude.Settings != nil && claude.Settings.Permissions != nil {
+			claudeAllow, claudeDeny = claude.Settings.Permissions.Allow, claude.Settings.Permissions.Deny
+		}
 	}
 	if p.Deny.Empty() && p.ForbidAllow.Empty() {
 		return targets
@@ -586,11 +596,22 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				targets = append(targets, cursor)
 			}
 			cursor.PolicyAgent, cursor.PolicyDeny, cursor.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
-			if claude != nil && claude.Settings != nil && claude.Settings.Permissions != nil {
-				cursor.PolicyInheritedDeny = claude.Settings.Permissions.Deny
-			}
+			cursor.PolicyInheritedAllow, cursor.PolicyInheritedDeny = claudeAllow, claudeDeny
 			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Cursor CLI", Path: cursorPath, Categories: []string{"fetch"},
 				Reason: "consults a WebFetch deny only to decide whether to skip approval, so a user or a WebFetch allow can still approve the fetch"})
+		case "qwen-code":
+			if qwen == nil {
+				qwen = &rules.Target{Scope: finding.ScopeProject, Qwen: &parser.QwenSettings{}, QwenFile: qwenPath}
+				targets = append(targets, qwen)
+			}
+			qwen.PolicyAgent, qwen.PolicyDeny, qwen.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "grok":
+			if grok == nil {
+				grok = &rules.Target{Scope: finding.ScopeProject, Grok: &parser.GrokConfig{}, GrokFile: grokPath}
+				targets = append(targets, grok)
+			}
+			grok.PolicyAgent, grok.PolicyDeny, grok.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+			grok.PolicyInheritedAllow, grok.PolicyInheritedDeny = claudeAllow, claudeDeny
 		default:
 			a := noPermissionFileAgents[agent]
 			path, _ := a.marker(dir)
@@ -664,6 +685,11 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 		case "cursor-cli":
 			_, err := scanroot.Stat(filepath.Join(dir, ".cursor", "cli.json"))
 			present = err == nil
+		case "qwen-code":
+			_, err := scanroot.Stat(filepath.Join(dir, "QWEN.md"))
+			present = err == nil || isDir(".qwen")
+		case "grok":
+			present = isDir(".grok")
 		default:
 			_, present = noPermissionFileAgents[agent].marker(dir)
 		}
@@ -3628,7 +3654,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				ProjectMCPFile: grokPath,
 			})
 		}
-		if grokCfg.Plugins != nil {
+		if grokCfg.Plugins != nil || grokCfg.Permission != nil {
 			targets = append(targets, &rules.Target{
 				Scope:    finding.ScopeProject,
 				Grok:     grokCfg,

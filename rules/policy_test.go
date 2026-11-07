@@ -4,6 +4,9 @@
 package rules
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,6 +22,45 @@ func TestPolicySpellings_Covers(t *testing.T) {
 		agent, category, value string
 		covered, notCovered    []string
 	}{
+		{"qwen-code", "commands", "git push",
+			[]string{"Bash(git push)", "Bash(git push *)", "Bash(git push:*)", "Bash(git:*)", "Bash(git *)", "Bash(git)", "Shell(git)", "run_shell_command(git)", "Bash(*)", "Bash", "Bash()"},
+			[]string{"Bash(git push --force)", "Bash(gitk)", "Bash(git pull *)", "Exec(git)", "Read(git)"}},
+		{"qwen-code", "read", "**/.env",
+			[]string{"Read(**/.env)", "Read(./**/.env)", "Read(/**/.env)", "Read(**)", "Read", "read_file"},
+			[]string{"Read(.env)", "Read(*)", "Read(//home/a/.env)", "Edit(**/.env)", "Read(src/**)"}},
+		{"qwen-code", "read", "~/.ssh/**",
+			[]string{"Read(~/.ssh/**)", "Read(~/**)", "Read"},
+			[]string{"Read(.ssh/**)", "Read(**)"}},
+		{"qwen-code", "write", "src/generated/**",
+			[]string{"Edit(/src/generated/**)", "Edit(src/generated/**)", "Edit(./src/generated/**)", "Edit(src/**)", "Edit", "edit"},
+			[]string{"Write(src/generated/**)", "Write", "Read(src/**)"}},
+		{"qwen-code", "fetch", "*.example.com",
+			[]string{"WebFetch(domain:example.com)", "WebFetch(example.com)", "WebFetch(com)", "WebFetch", "web_fetch"},
+			[]string{"WebFetch(*.example.com)", "WebFetch(api.example.com)", "WebFetch(*)", "WebFetch(notexample.com)"}},
+		{"qwen-code", "fetch", "api.example.com",
+			[]string{"WebFetch(domain:api.example.com)", "WebFetch(domain:Example.com)"},
+			[]string{"WebFetch(domain:other.example.com)"}},
+		{"qwen-code", "mcp-tools", "github:delete_*",
+			[]string{"mcp__github__delete_*", "mcp__github", "mcp__github__*", "mcp__*"},
+			[]string{"mcp__github__delete_repo", "mcp__gitlab__*", "Mcp(github:*)"}},
+		{"grok", "commands", "git push",
+			[]string{"Bash(git push)", "Bash(git)", "Bash(git *)", "Bash(git:*)", "Bash(git push:*)", "Bash(*)", "Bash"},
+			[]string{"Bash(git push *)", "Bash(git push --force)", "Bash(gitk)", "Exec(git)"}},
+		{"grok", "read", "**/.env",
+			[]string{"Read(**/.env)", "Read(**)", "Read(*)", "Read"},
+			[]string{"Read(.env)", "Edit(**/.env)", "Grep(**/.env)", "Read(src/**)"}},
+		{"grok", "read", "~/.ssh/**",
+			[]string{"Read(**/.ssh/**)", "Read(**)", "Read"},
+			[]string{"Read(~/.ssh/**)", "Read(.ssh/**)"}},
+		{"grok", "write", "src/generated/**",
+			[]string{"Edit(src/generated/**)", "Write(src/generated/**)", "Edit(./src/**)", "Edit", "Write"},
+			[]string{"Read(src/generated/**)"}},
+		{"grok", "fetch", "*.example.com",
+			[]string{"WebFetch(domain:example.com)", "WebFetch(domain:www.example.com)", "WebFetch", "WebFetch(*)"},
+			[]string{"WebFetch(example.com)", "WebFetch(domain:*.example.com)", "WebFetch(https://*.example.com/*)"}},
+		{"grok", "mcp-tools", "github:delete_*",
+			[]string{"MCPTool(github__delete_*)", "MCPTool(github__*)", "MCPTool", "MCPTool(*)", "mcp__github", "mcp__github__*", "mcp__*"},
+			[]string{"MCPTool(github)", "MCPTool(gitlab__*)", "mcp__github__delete_repo"}},
 		{"cursor-cli", "commands", "git push",
 			[]string{"Shell(git push)", "Shell(git)", "Shell(git:*)", "Shell(git:push*)", "Shell(*)", "Shell(g*)", "Bash(git)", " Shell(git push) "},
 			[]string{"Shell(git push *)", "Shell(git:push)", "Shell(git push:*)", "Shell(gitk)", "Shell(git pull)", "Exec(git push)", "Read(git)"}},
@@ -114,6 +156,20 @@ func TestPolicySpellings_Overlaps(t *testing.T) {
 		{"claude-code", "mcp-tools", "github:delete_repo",
 			[]string{"mcp__github__delete_repo", "mcp__github__delete_*", "mcp__github__*"},
 			[]string{"mcp__github__get_*", "mcp__github__delete_branch"}},
+		{"qwen-code", "commands", "curl",
+			[]string{"Bash(curl)", "Bash(curl:*)", "Bash(curl https://x)", "Bash(curl -s *)", "Bash(cu*)", "Bash", "Shell(*)"},
+			[]string{"Bash(curly)", "Bash(git *)", "Exec(curl)"}},
+		{"qwen-code", "mcp-tools", "github:*",
+			[]string{"mcp__github", "mcp__*", "mcp__github__get_*"},
+			[]string{"mcp__gitlab__x"}},
+		{"qwen-code", "read", "**/.env", nil, []string{"Read(**)"}},
+		{"grok", "commands", "curl",
+			[]string{"Bash(curl)", "Bash(curl:*)", "Bash(curl https://x)", "Bash(curl *)", "Bash(c*)", "Bash", "Bash(*)"},
+			[]string{"Bash(curly)", "Bash(git *)", "Shell(curl)"}},
+		{"grok", "mcp-tools", "github:*",
+			[]string{"MCPTool", "MCPTool(github__*)", "mcp__github", "mcp__*"},
+			[]string{"MCPTool(gitlab__x)", "MCPTool(github)"}},
+		{"grok", "read", "**/.env", nil, []string{"Read(**)"}},
 		{"cursor-cli", "commands", "curl",
 			[]string{"Shell(curl)", "Shell(curl:*)", "Shell(curl https://x)", "Shell(curl:-s*)", "Shell(*)", "Bash(curl)"},
 			[]string{"Shell(curly)", "Shell(git:*)", "Exec(curl)"}},
@@ -231,10 +287,10 @@ func TestCFG025_NeutralPolicy_Cursor(t *testing.T) {
 		PolicyAgent:   "cursor-cli",
 		CursorCLIFile: ".cursor/cli.json",
 		CursorCLI: &parser.CursorCLIConfig{Permissions: &parser.Permissions{
-			Allow: []string{"Shell(curl:*)"},
-			Deny:  []string{"Read(.env*)"},
+			Deny: []string{"Read(.env*)"},
 		}},
-		PolicyInheritedDeny: []string{"Bash(git)"},
+		PolicyInheritedAllow: []string{"Shell(curl:*)"},
+		PolicyInheritedDeny:  []string{"Bash(git)"},
 		PolicyDeny: config.PolicyRules{
 			Commands: []string{"git push"},
 			Read:     []string{"**/.env"},
@@ -262,6 +318,57 @@ func TestCFG025_NeutralPolicy_Cursor(t *testing.T) {
 	tg.PolicyDeny, tg.PolicyForbid = config.PolicyRules{Commands: []string{"git push"}}, config.PolicyRules{}
 	if f := CFG025.Check(tg); len(f) != 0 {
 		t.Fatalf("an inherited deny counts without a permissions block, got:\n%s", messages(f))
+	}
+}
+
+// A category the agent does not spell has no covering entry.
+func TestPolicySpellings_UnknownCategory(t *testing.T) {
+	if qwenCovers("other", "Bash", "x") || grokCovers("other", "Bash", "x") {
+		t.Fatal("an unknown category must not count as covered")
+	}
+}
+
+func grokDenying(t *testing.T, entry string) *parser.GrokConfig {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[permission]\ndeny = [\""+entry+"\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := parser.ParseGrokConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestCFG025_NeutralPolicy_QwenGrok(t *testing.T) {
+	policy := config.PolicyRules{Commands: []string{"git push"}, Read: []string{"**/.env"}}
+	forbid := config.PolicyRules{Commands: []string{"curl"}}
+	qwen := &Target{
+		Scope: finding.ScopeProject, PolicyAgent: "qwen-code", QwenFile: ".qwen/settings.json",
+		Qwen: &parser.QwenSettings{
+			Permissions: json.RawMessage(`{"allow":["Bash(curl *)"],"deny":["Read(**/.env)"]}`),
+			Tools:       &parser.QwenTools{Exclude: json.RawMessage(`["Bash(git:*)"]`)},
+		},
+		PolicyDeny: policy, PolicyForbid: forbid,
+	}
+	f := CFG025.Check(qwen)
+	if len(f) != 1 || f[0].File != ".qwen/settings.json" ||
+		f[0].Message != `policy forbid-allow.commands "curl": permissions.allow grants it via "Bash(curl *)", so Qwen Code runs it without asking` {
+		t.Fatalf("got:\n%s", messages(f))
+	}
+
+	grok := &Target{
+		Scope: finding.ScopeProject, PolicyAgent: "grok", GrokFile: ".grok/config.toml",
+		Grok:                 grokDenying(t, "Bash(git:*)"),
+		PolicyInheritedAllow: []string{"Bash(curl:*)"},
+		PolicyInheritedDeny:  []string{"Read(**/.env)"},
+		PolicyDeny:           policy, PolicyForbid: forbid,
+	}
+	f = CFG025.Check(grok)
+	if len(f) != 1 || f[0].File != ".grok/config.toml" ||
+		f[0].Message != `policy forbid-allow.commands "curl": permissions.allow grants it via "Bash(curl:*)", so Grok runs it without asking` {
+		t.Fatalf("got:\n%s", messages(f))
 	}
 }
 

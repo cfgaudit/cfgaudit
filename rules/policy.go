@@ -55,6 +55,8 @@ var policySpellings = map[string]policySpelling{
 	"claude-code": {name: "Claude Code", covers: claudeCovers, overlaps: claudeOverlaps, spell: claudeSpell},
 	"devin":       {name: "Devin CLI", covers: devinCovers, overlaps: devinOverlaps, spell: devinSpell},
 	"cursor-cli":  {name: "Cursor CLI", covers: cursorCovers, overlaps: cursorOverlaps, spell: cursorSpell, unenforced: "fetch"},
+	"qwen-code":   {name: "Qwen Code", covers: qwenCovers, overlaps: qwenOverlaps, spell: qwenSpell},
+	"grok":        {name: "Grok", covers: grokCovers, overlaps: grokOverlaps, spell: grokSpell},
 }
 
 // claudeCovers follows Claude Code's permission syntax: Bash(prefix *) or
@@ -207,21 +209,21 @@ func devinSpell(category, v string) string {
 	}
 }
 
-// cursorGlobRe compiles a Cursor CLI permission pattern the way the CLI does:
+// starGlobRe compiles a pattern the way Cursor CLI does, and Grok for a command:
 // anchored, every * is .* and crosses path separators, and nothing else is
 // special. A pattern with a * in the value it is matched against treats that *
 // as text, which only a * in the pattern can consume, so a match means the
 // pattern covers every string the value stands for.
-func cursorGlobRe(p string) *regexp.Regexp {
+func starGlobRe(p string) *regexp.Regexp {
 	return regexp.MustCompile("(?s)^" + strings.ReplaceAll(regexp.QuoteMeta(strings.TrimSpace(p)), `\*`, ".*") + "$")
 }
 
-func cursorGlob(p, s string) bool {
-	return cursorGlobRe(p).MatchString(s)
+func starGlob(p, s string) bool {
+	return starGlobRe(p).MatchString(s)
 }
 
 // cursorShellArg returns the argument of a shell entry. The CLI reads Bash(...)
-// as well as Shell(...), which matters for the denies it takes from
+// as well as Shell(...), which matters for the entries it takes from
 // .claude/settings.json.
 func cursorShellArg(e string) (string, bool) {
 	if arg, ok := toolArg(e, "Shell"); ok {
@@ -238,11 +240,11 @@ func cursorShellMatches(pattern, command string) bool {
 	base, args, _ := strings.Cut(command, " ")
 	args = strings.TrimSpace(args)
 	if cmd, argp, ok := strings.Cut(pattern, ":"); ok &&
-		(cursorGlob(cmd, base) || cursorGlob(cmd, command)) && cursorGlob(argp, args) {
+		(starGlob(cmd, base) || starGlob(cmd, command)) && starGlob(argp, args) {
 		return true
 	}
-	return cursorGlob(pattern, command) || strings.HasPrefix(command, pattern+" ") ||
-		cursorGlob(pattern, base) || base == pattern
+	return starGlob(pattern, command) || strings.HasPrefix(command, pattern+" ") ||
+		starGlob(pattern, base) || base == pattern
 }
 
 // cursorPathTarget is what a neutral path entry stands for in the CLI, which
@@ -274,11 +276,11 @@ func cursorCovers(category, e, v string) bool {
 			tool = "Write"
 		}
 		arg, ok := toolArg(e, tool)
-		return ok && arg != "" && cursorGlob(arg, cursorPathTarget(v))
+		return ok && arg != "" && starGlob(arg, cursorPathTarget(v))
 	case "mcp-tools":
 		server, tool, ok := cursorMcpArg(e)
 		vs, vt, _ := strings.Cut(strings.ToLower(v), ":")
-		return ok && cursorGlob(server, vs) && cursorGlob(tool, vt)
+		return ok && starGlob(server, vs) && starGlob(tool, vt)
 	}
 	return false
 }
@@ -310,7 +312,7 @@ func cursorOverlaps(category, e, v string) bool {
 	case "mcp-tools":
 		server, tool, ok := cursorMcpArg(e)
 		vs, vt, _ := strings.Cut(strings.ToLower(v), ":")
-		return ok && cursorGlob(server, vs) && (cursorGlob(tool, vt) || cursorGlob(vt, tool))
+		return ok && starGlob(server, vs) && (starGlob(tool, vt) || starGlob(vt, tool))
 	}
 	return false
 }

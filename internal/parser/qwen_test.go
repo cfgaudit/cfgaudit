@@ -4,8 +4,10 @@
 package parser
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -222,5 +224,34 @@ func TestQwenSettings_AutoSkillsSavedUnconfirmed(t *testing.T) {
 	var nilSettings *QwenSettings
 	if nilSettings.SandboxEnabledInSettings() || nilSettings.AutoSkillsSavedUnconfirmed() {
 		t.Error("a nil settings value enables nothing")
+	}
+}
+
+func TestQwenSettings_PolicyEntries(t *testing.T) {
+	s := &QwenSettings{
+		Permissions: json.RawMessage(`{"allow":["Read"],"deny":["Bash(rm)"]}`),
+		Tools:       &QwenTools{Exclude: json.RawMessage(`["Edit"]`)},
+	}
+	allow, deny := s.PolicyEntries()
+	if !slices.Equal(allow, []string{"Read"}) || !slices.Equal(deny, []string{"Bash(rm)", "Edit"}) {
+		t.Fatalf("allow %q, deny %q", allow, deny)
+	}
+	if allow, deny = (&QwenSettings{}).PolicyEntries(); allow != nil || deny != nil {
+		t.Fatalf("empty: allow %q, deny %q", allow, deny)
+	}
+}
+
+// A permissions block or tools.exclude of another shape must not cost the
+// rules that read the rest of the file.
+func TestQwenSettings_UnexpectedPolicyShape(t *testing.T) {
+	s, err := ParseQwenSettings(writeQwen(t, `{"permissions":"all","tools":{"exclude":"Edit","approvalMode":"yolo"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Tools.ApprovalMode != "yolo" {
+		t.Fatalf("got %+v", s.Tools)
+	}
+	if allow, deny := s.PolicyEntries(); allow != nil || deny != nil {
+		t.Fatalf("allow %q, deny %q", allow, deny)
 	}
 }

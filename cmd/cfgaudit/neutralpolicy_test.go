@@ -190,3 +190,43 @@ func TestPolicy_CursorCLI(t *testing.T) {
 		t.Fatalf("exit %d, other rules fired:\n%s", code, out)
 	}
 }
+
+// Qwen Code and Grok are found through their files, a [permission] table alone
+// gives Grok a target, and Grok takes rules from .claude/settings.json.
+func TestPolicy_QwenGrok(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".cfgaudit.yml":         "policy:\n  deny:\n    commands: [\"git push\"]\n",
+		".claude/settings.json": `{"permissions":{"deny":["Bash(git:*)"]}}`,
+		".grok/config.toml":     "[permission]\nallow = [\"Read\"]\n",
+		".qwen/settings.json":   `{"permissions":{"deny":["Bash(git)"]}}`,
+	})
+	if got := policyFindings(t, root); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml":     "policy:\n  deny:\n    read: [\"~/.ssh/**\"]\n",
+		"QWEN.md":           "notes\n",
+		".grok/config.toml": "[permission]\nrules = [{ action = \"deny\", tool = \"bash\", pattern = \"rm\" }]\n",
+	})
+	got := policyFindings(t, root)
+	want := []string{
+		`.grok/config.toml|CFG025|policy deny.read "~/.ssh/**": no permissions.deny entry covers it, so Grok does not block it; add "Read(**/.ssh/**)"`,
+		`.qwen/settings.json|CFG025|policy deny.read "~/.ssh/**": no permissions.deny entry covers it, so Qwen Code does not block it; add "Read(~/.ssh/**)"`,
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+
+	// Named without a file: the missing deny is reported, and nothing else.
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml": "policy:\n  deny:\n    commands: [\"git push\"]\n  agents: [qwen-code, grok]\n",
+	})
+	if got := policyFindings(t, root); len(got) != 2 {
+		t.Fatalf("got %q", got)
+	}
+	code, out, _ := runCLI(t, "--claude-version", "2.1.316", "--format", "json", root)
+	if code == 2 || strings.Count(out, `"rule_id"`) > 2 {
+		t.Fatalf("exit %d, other rules fired:\n%s", code, out)
+	}
+}
