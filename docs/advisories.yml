@@ -802,9 +802,10 @@
   kind: cve
   agent: "goose"
   summary: "A recipe's stdio extension runs commands without inspection."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1414
+  coverage: full
+  rules:
+    - {rule: CFG019, severity: error}
+    - {rule: CFG130, severity: warn}
 
 - id: "CVE-2026-86063"
   aliases: [GHSA-pq7j-f95f-qfcv]

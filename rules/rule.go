@@ -115,6 +115,14 @@ type Target struct {
 	GitModulesFile string
 	NestedRepos    []NestedRepo
 
+	// GooseRecipeCommands are the retry commands of the goose recipe
+	// GooseRecipeFile, and GooseHooks a parsed .agents/plugins/<name>/hooks/hooks.json
+	// in the shape Grok's hook files have (#1414).
+	GooseRecipeCommands []parser.GooseRecipeCommand
+	GooseRecipeFile     string
+	GooseHooks          *parser.GrokHooks
+	GooseHooksFile      string
+
 	// ProjectGitConfig is the scanned folder's own .git/config, and
 	// ProjectGitConfigFile its path, set for a folder scan only (#1408).
 	ProjectGitConfig     string

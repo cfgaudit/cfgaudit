@@ -417,6 +417,27 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
+	// goose recipe retry commands and project plugin hooks (#1414).
+	for _, c := range t.GooseRecipeCommands {
+		sites = append(sites, commandSite{Label: "goose recipe " + c.Key + " command", File: t.GooseRecipeFile, Command: c.Command})
+	}
+	if gh := t.GooseHooks; gh != nil {
+		events := make([]string, 0, len(gh.Hooks))
+		for e := range gh.Hooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, group := range gh.Hooks[event] {
+				for _, h := range group.Hooks {
+					if gooseRunsHook(h.Type, h.Command) {
+						sites = append(sites, commandSite{Label: "goose plugin hooks." + event + " command", File: t.GooseHooksFile, Command: h.Command})
+					}
+				}
+			}
+		}
+	}
+
 	// Gemini CLI .gemini/settings.json hooks. Same event → matcher groups →
 	// {type, command} nesting as Claude Code's, and the file is project-committed,
 	// so the command handlers are command sites. Only the "command" handler type
