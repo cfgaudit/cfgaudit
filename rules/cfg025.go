@@ -97,6 +97,10 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 		return checkRooPolicy(t, sp)
 	case "gemini-cli":
 		return checkGeminiPolicy(t, sp)
+	case "cursor":
+		return checkCursorIDEPolicy(t, sp)
+	case "vscode":
+		return checkVSCodePolicy(t, sp)
 	}
 	var file, note string
 	var allow, deny []string

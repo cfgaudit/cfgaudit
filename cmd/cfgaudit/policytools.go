@@ -138,3 +138,19 @@ func toolSwitchAgent(agent, name, path string, off map[string]bool, reason strin
 	}
 	return []rules.UnenforceableAgent{{Agent: agent, Name: name, Path: path, Categories: left, Reason: reason}}
 }
+
+// vscodeChatSettings reports whether .vscode/settings.json configures the chat
+// agent. Nearly every repository with a .vscode directory has nothing to do with
+// it, so the directory alone does not put VS Code in the policy's scope.
+func vscodeChatSettings(dir string) bool {
+	settings, _, err := loadVSCodeSettings(dir)
+	if err != nil || settings == nil {
+		return false
+	}
+	for _, key := range []string{"chat.tools.terminal.autoApprove", "chat.tools.urls.autoApprove", "chat.tools.edits.autoApprove"} {
+		if _, ok := settings.RawValue(key); ok {
+			return true
+		}
+	}
+	return false
+}
