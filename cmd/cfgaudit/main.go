@@ -1793,6 +1793,8 @@ var (
 	agentInstructionFiles = []string{
 		".cursorrules",
 		".windsurfrules",
+		// goose (#1414): "goose adds hints to the system prompt for every request".
+		".goosehints",
 		// Zed's project rules file (#617). Zed loads the first of RULES_FILE_NAMES
 		// that exists as a file in the worktree root (crates/prompt_store
 		// prompts.rs, crates/agent agent.rs load_worktree_rules_file), and the
@@ -2061,6 +2063,16 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		return nil, err
 	}
 	for _, m := range cursorSkills {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	gooseSkills, err := agentSkillsFiles(dir, gooseSkillsDirs)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range gooseSkills {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	for _, m := range goosehintsFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	clineRules, err := clineRulesFiles(dir)
@@ -2707,6 +2719,12 @@ var (
 	// Claude Code, is not asserted for Cursor.
 	cursorSkillsDirs = []string{
 		filepath.Join(".cursor", "skills"),
+	}
+
+	// gooseSkillsDirs is the skills root only goose reads (#1414); it reads
+	// .agents/skills and .claude/skills as well, which are walked already.
+	gooseSkillsDirs = []string{
+		filepath.Join(".goose", "skills"),
 	}
 )
 
@@ -3905,6 +3923,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			})
 		}
 	}
+	targets = append(targets, gooseTargets(dir)...)
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
