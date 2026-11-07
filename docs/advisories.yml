@@ -401,25 +401,25 @@
   kind: cve
   agent: "Codex Desktop"
   summary: "Automated git operations trusted a repository-local hooks path."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1408
+  coverage: full
+  rules:
+    - {rule: CFG121, severity: error}
 
 - id: "CVE-2026-19592"
   kind: cve
   agent: "Codex"
   summary: "Metadata collection ran a repository-local core.fsmonitor."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1408
+  coverage: full
+  rules:
+    - {rule: CFG121, severity: error}
 
 - id: "CVE-2026-19593"
   kind: cve
   agent: "Codex Desktop"
   summary: "Git status on a preserved .git/config activated a filter driver."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1408
+  coverage: full
+  rules:
+    - {rule: CFG121, severity: error}
 
 - id: "CVE-2026-19884"
   kind: cve

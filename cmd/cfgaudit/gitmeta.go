@@ -37,6 +37,10 @@ func gitTargets(dir string) []*rules.Target {
 	if data, err := scanroot.ReadFile(path); err == nil && isTextFile(data) {
 		t.GitModules, t.GitModulesFile = string(data), path
 	}
+	cfg := filepath.Join(dir, ".git", "config")
+	if data, err := scanroot.ReadFile(cfg); err == nil && isTextFile(data) {
+		t.ProjectGitConfig, t.ProjectGitConfigFile = string(data), cfg
+	}
 	root := filepath.Clean(dir)
 	tracked, haveIndex := gitindex.Tracked(dir)
 	_ = scanroot.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -71,7 +75,7 @@ func gitTargets(dir string) []*rules.Target {
 		t.NestedRepos = append(t.NestedRepos, rules.NestedRepo{Dir: repo, ConfigFile: cfg, Config: string(data)})
 		return nil
 	})
-	if t.GitModulesFile == "" && len(t.NestedRepos) == 0 {
+	if t.GitModulesFile == "" && t.ProjectGitConfigFile == "" && len(t.NestedRepos) == 0 {
 		return nil
 	}
 	return []*rules.Target{t}
