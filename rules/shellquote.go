@@ -31,8 +31,9 @@ var quotedVarWordRe = regexp.MustCompile(`^[A-Za-z0-9_./:@+=-]*\$(?:\{[A-Za-z_][
 // shellVarUses returns every variable reference in cmd with its quoting. It
 // follows single and double quotes, backslash escapes and command position
 // (start of the line, after ; & | ( or a newline, and after leading NAME=value
-// assignments). It is not a shell parser: nested $(...) inside double quotes
-// is treated as quoted text.
+// assignments), and it reads a $(...) inside double quotes as a command of its
+// own, so "$(dirname "$f")" holds a quoted $f (#1376). It is not a shell parser:
+// backticks inside double quotes are treated as quoted text.
 func shellVarUses(cmd string) []shellVarUse {
 	var (
 		out      []shellVarUse
@@ -75,6 +76,11 @@ func shellVarUses(cmd string) []shellVarUse {
 				}
 				dqStart, dqUses = -1, nil
 			case '$':
+				if end := substEnd(cmd, i); end > 0 {
+					out = append(out, shellVarUses(cmd[i+2:end])...)
+					i = end
+					continue
+				}
 				if name, n := varRefAt(cmd, i); n > 0 {
 					dqUses = append(dqUses, len(out))
 					out = append(out, shellVarUse{name: name})
@@ -111,6 +117,43 @@ func shellVarUses(cmd string) []shellVarUse {
 	}
 	// An unclosed double quote leaves its references unsafe (safe is false).
 	return out
+}
+
+// substEnd returns the index of the ")" that closes the command substitution
+// starting with "$(" at cmd[i], or 0 when there is none or it is arithmetic.
+func substEnd(cmd string, i int) int {
+	if !strings.HasPrefix(cmd[i:], "$(") || strings.HasPrefix(cmd[i:], "$((") {
+		return 0
+	}
+	depth := 1
+	var inSingle, inDouble bool
+	for j := i + 2; j < len(cmd); j++ {
+		c := cmd[j]
+		switch {
+		case inSingle:
+			inSingle = c != '\''
+		case c == '\\':
+			j++
+		case inDouble:
+			if c == '"' {
+				inDouble = false
+			} else if end := substEnd(cmd, j); end > 0 {
+				j = end
+			}
+		case c == '"':
+			inDouble = true
+		case c == '\'':
+			inSingle = true
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth == 0 {
+				return j
+			}
+		}
+	}
+	return 0
 }
 
 var assignmentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
