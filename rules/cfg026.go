@@ -82,6 +82,11 @@ var bypassPatterns = []bypassPattern{
 	// filler an author of the hijack would reach for.
 	{2, mustFiltered(`(?i)\b(you\s+are\s+now\s+` + adversarialPersona + `|your\s+(new\s+)?(name|identity|persona)\s+is\s+(now\s+)?` + adversarialPersona + `|forget\s+(that\s+)?you\s+are|you\s+have\s+no\s+(restrictions?|limitations?|guidelines?|rules?)|you\s+are\s+(DAN\b|an?\s+AI\s+(with\s+no|without)|an?\s+(unrestricted|unfiltered|jailbroken|uncensored))|(act\s+as|pretend\s+(you\s+are|to\s+be))\s+` + adversarialPersona + `)`),
 		finding.Error, "persona / identity hijacking", false},
+	// The present tense alone is not enough: "you are in developer mode" also
+	// describes a real mode. devModeWithoutWarnings keeps it only beside an order
+	// to ignore security warnings, the pairing in malicious skills (#1404).
+	{2, mustFiltered(`(?i)\byou(?:\s+are|'re|’re)\s+in\s+developer\s+mode\b`),
+		finding.Error, "persona / identity hijacking", false},
 	{3, mustFiltered(`(?i)\b(as\s+(your\s+)?(developer|creator|trainer|Anthropic|operator|administrator|sys(tem)?\s*admin)|this\s+(is|message\s+is)\s+(from\s+)?(Anthropic|your\s+developer)|developer\s+mode\s+(enabled|activated|on)\b|jailbreak\s+(mode|enabled|activated)\b)`),
 		finding.Error, "authority impersonation", false},
 	{4, mustFiltered(`(?i)\b(in\s+a\s+(fictional|hypothetical|alternate|imaginary)\s+(world|scenario|universe|context|story)|for\s+a\s+(story|novel|game|roleplay|simulation)\b|for\s+(roleplay|fiction)\b|hypothetically\s+speaking|in\s+this\s+(roleplay|scenario|simulation),?\s+(you\s+(can|may|should|must|are\s+allowed)))`),
@@ -181,6 +186,9 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				if p.num == 2 && (thirdPartyRe.MatchString(line[:loc[0]]) || userRoleRe.MatchString(line[loc[1]:])) {
 					continue
 				}
+				if p.num == 2 && devModeWithoutWarnings(lines, i, line, loc) {
+					continue
+				}
 				if p.num == 1 && reportLineRe.MatchString(line) {
 					// A scanner's sample output: "[CRITICAL] Prompt injection:
 					// ignore previous instructions" (#914). The tag alone could
@@ -246,6 +254,36 @@ var (
 	// "Developer Mode on both iPhone and Watch" names where, not a state.
 	modeStateEndRe = regexp.MustCompile("^[*_`]*\\s*(?:$|[.,;:!?)|])")
 )
+
+var (
+	devModeClaimRe = regexp.MustCompile(`(?i)^you(?:\s+are|'re|’re)\s+in\s+developer\s+mode$`)
+	// devModeConditionRe opens a clause that only describes the state: "when
+	// you are in developer mode, the warnings differ".
+	devModeConditionRe = regexp.MustCompile(`(?i)\b(?:when|if|while|once|unless|whether|whenever)\b[^.!?]*$`)
+	// warningsDismissedRe calls security warnings harmless, or orders them
+	// ignored. A dash may join the two, as in "test artifacts—ignore them".
+	warningsDismissedRe = regexp.MustCompile(`(?i)\bsecurity\s+warnings?\b[^\n]{0,60}?\b(?:test\s+artifacts?|ignore|disregard|false\s+positives?)\b` +
+		`|\b(?:ignore|disregard|dismiss|suppress|skip)\s+(?:(?:all|any|the|every)\s+)*security\s+warnings?\b`)
+	warningsKeptRe = regexp.MustCompile(`(?i)\b(?:do\s+not|don'?t|never|must\s+not|should\s+not)\s+$`)
+)
+
+// devModeWithoutWarnings reports a "you are in developer mode" that is not a
+// hijack: a clause stating a condition, or no order to ignore security warnings
+// on its line or in the two lines of the paragraph after it.
+func devModeWithoutWarnings(lines []string, i int, line string, loc []int) bool {
+	if !devModeClaimRe.MatchString(line[loc[0]:loc[1]]) {
+		return false
+	}
+	if devModeConditionRe.MatchString(line[:loc[0]]) {
+		return true
+	}
+	text := line[loc[1]:]
+	for j := i + 1; j < len(lines) && j <= i+2 && strings.TrimSpace(lines[j]) != ""; j++ {
+		text += "\n" + lines[j]
+	}
+	m := warningsDismissedRe.FindStringIndex(text)
+	return m == nil || warningsKeptRe.MatchString(text[:m[0]])
+}
 
 // deviceDeveloperMode reports a pattern-3 "developer mode ..." match that is a
 // setting: one the text says to enable or requires, one followed by where it
