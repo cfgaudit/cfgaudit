@@ -348,11 +348,10 @@ type MCPServer struct {
 	// written as ${env:...}.
 	Auth *MCPStaticOAuth `json:"auth,omitempty"`
 
-	Command                 string   `json:"command,omitempty"`
-	Args                    []string `json:"args,omitempty"`
-	AlwaysAllow             []string `json:"alwaysAllow,omitempty"`
-	Env                     EnvMap   `json:"env,omitempty"`
-	DangerouslyAllowBrowser bool     `json:"dangerouslyAllowBrowser,omitempty"`
+	Command     string   `json:"command,omitempty"`
+	Args        []string `json:"args,omitempty"`
+	AlwaysAllow []string `json:"alwaysAllow,omitempty"`
+	Env         EnvMap   `json:"env,omitempty"`
 
 	// Remote-transport fields (HTTP/SSE/WebSocket MCP servers). URL is the
 	// endpoint the agent connects to; Type is the transport ("http"/"sse"/…);

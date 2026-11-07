@@ -48,10 +48,11 @@
 - id: "CVE-2025-49596"
   kind: cve
   agent: "MCP Inspector"
-  summary: "An MCP client that accepts browser-originated requests can be driven into running commands from a web page."
-  coverage: full
-  rules:
-    - {rule: CFG017, severity: error}
+  fixed: "0.14.1"
+  summary: "A web page can reach an older MCP Inspector's local proxy and run commands through it."
+  coverage: none
+  reason: no-rule-yet
+  issue: 1528
 
 - id: "CVE-2025-53098"
   aliases: [GHSA-5x8h-m52g-5v54]

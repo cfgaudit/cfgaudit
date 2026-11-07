@@ -29,7 +29,7 @@ var fullCommitSHARe = regexp.MustCompile(`^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$`
 // skill is instruction text loaded into the agent's trusted context; with an
 // unpinned, unverified source, whoever controls the upstream repo can change what
 // every contributor's agent reads on the next sync — the skills-CLI analogue of an
-// unpinned MCP package (CFG017) or auto-loaded plugin source.
+// unpinned MCP package (CFG010) or auto-loaded plugin source.
 //
 // The skills CLI normally records integrity when it installs (a `computedHash`
 // content hash, or a resolved `commit` + `integrity` hash) — any of those pins the
