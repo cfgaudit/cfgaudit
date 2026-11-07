@@ -196,24 +196,30 @@ type QwenMCP struct {
 
 // MCPServerMap converts the qwen mcpServers block to the shared MCPServer shape so
 // the existing MCP rules (CFG010–021, CFG049–059) apply unchanged, attributed to
-// the settings file. httpUrl is folded into URL when url is absent.
+// the settings file. httpUrl wins over url, as in Qwen, and the
+// field that is used sets the transport.
 func (s *QwenSettings) MCPServerMap() map[string]MCPServer {
 	if s == nil || len(s.MCPServers) == 0 {
 		return nil
 	}
 	out := make(map[string]MCPServer, len(s.MCPServers))
 	for name, m := range s.MCPServers {
-		url := m.URL
-		if url == "" {
-			url = m.HTTPURL
-		}
-		out[name] = MCPServer{
+		srv := MCPServer{
 			Command: m.Command,
 			Args:    m.Args,
 			Env:     m.Env,
-			URL:     url,
+			URL:     m.URL,
 			Headers: m.Headers,
 		}
+		// createTransport in mcp-client.ts takes httpUrl first and connects to
+		// a lone url over SSE. Qwen reads no transport type from the file.
+		switch {
+		case m.HTTPURL != "":
+			srv.URL, srv.Type = m.HTTPURL, "http"
+		case m.URL != "":
+			srv.Type, srv.ImpliedSSE = "sse", true
+		}
+		out[name] = srv
 	}
 	return out
 }

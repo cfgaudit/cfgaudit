@@ -53,15 +53,32 @@ func TestParseQwenSettings_MCPServerMap(t *testing.T) {
 	}
 }
 
-// url wins over httpUrl when both are present (url is the explicit SSE endpoint).
-func TestParseQwenSettings_URLWinsOverHTTPURL(t *testing.T) {
-	path := writeQwen(t, `{"mcpServers": {"s": {"url": "https://a", "httpUrl": "https://b"}}}`)
-	qs, err := ParseQwenSettings(path)
+// httpUrl wins when both are present, as in Qwen, and the field in use sets
+// the transport (#1524).
+func TestParseQwenSettings_Transport(t *testing.T) {
+	path := writeQwen(t, `{"mcpServers": {
+		"both": {"url": "https://a", "httpUrl": "https://b"},
+		"sse": {"url": "https://a"},
+		"http": {"httpUrl": "https://b"},
+		"typed": {"url": "https://a", "type": "http"},
+		"local": {"command": "node"}
+	}}`)
+	s, err := ParseQwenSettings(path)
 	if err != nil {
-		t.Fatalf("ParseQwenSettings: %v", err)
+		t.Fatal(err)
 	}
-	if got := qs.MCPServerMap()["s"].URL; got != "https://a" {
-		t.Errorf("expected url to win, got %q", got)
+	m := s.MCPServerMap()
+	for name, want := range map[string]MCPServer{
+		"both":  {URL: "https://b", Type: "http"},
+		"sse":   {URL: "https://a", Type: "sse", ImpliedSSE: true},
+		"http":  {URL: "https://b", Type: "http"},
+		"typed": {URL: "https://a", Type: "sse", ImpliedSSE: true},
+		"local": {Command: "node"},
+	} {
+		got := m[name]
+		if got.URL != want.URL || got.Type != want.Type || got.ImpliedSSE != want.ImpliedSSE || got.Command != want.Command {
+			t.Errorf("%s: got %+v", name, got)
+		}
 	}
 }
 
