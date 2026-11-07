@@ -191,7 +191,9 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 					sev = finding.Warn
 				}
 				if p.num == 1 || p.num == 2 || p.num == 5 {
-					if (quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0])) && !linkTitleAt(line, loc[0]) {
+					if wholeCell(line, loc) && catalogueRow(src.Content, lines, i) {
+						sev = finding.Info
+					} else if (quotedAt(line, loc[0]) || openingQuoteBefore(line, loc[0])) && !linkTitleAt(line, loc[0]) {
 						if defensiveContext(lines, i) || askAgentQuoteRe.MatchString(line[:loc[0]]) {
 							continue
 						}
@@ -199,7 +201,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 						// A quoted override in another language had a defensive
 						// rule around it in every corpus case, written in that
 						// language, which defensiveContext does not read.
-						if defensiveBlock(lines, i) || p.num == 5 {
+						if defensiveBlock(lines, i) || p.num == 5 || catalogueRow(src.Content, lines, i) {
 							sev = finding.Info
 						}
 					}
@@ -898,4 +900,63 @@ func defensiveBlock(lines []string, i int) bool {
 		}
 	}
 	return false
+}
+
+// catalogueTopicRe names a page or section that lists injection phrases.
+var catalogueTopicRe = regexp.MustCompile(`(?i)\b(?:prompt[- ]injections?|injection|jailbreaks?|attack\s+patterns?|detect\w*)\b`)
+
+// headingLineRe is an ATX heading.
+var headingLineRe = regexp.MustCompile(`^ {0,3}#{1,6}\s`)
+
+// wholeCell reports a match that fills a table cell, the name of a row in a
+// catalogue: "| Ignore previous instructions | ... |" (#1373).
+func wholeCell(line string, loc []int) bool {
+	return strings.HasSuffix(strings.TrimRight(line[:loc[0]], " "), "|") &&
+		strings.HasPrefix(strings.TrimLeft(line[loc[1]:], " "), "|")
+}
+
+// catalogueRow reports whether line i is a table row, a list item or a fenced
+// line on a page about injection phrases: the nearest heading above it, the
+// page's first heading or its first paragraph says so (#1373). A file's name
+// proves nothing, since a payload can sit under any name, and this only grades
+// a quoted phrase or a row's name. An unquoted payload keeps its severity.
+func catalogueRow(content string, lines []string, i int) bool {
+	fenced := fencedLines(content)
+	if !fenced[i] && !listItemRe.MatchString(lines[i]) && !strings.HasPrefix(strings.TrimSpace(lines[i]), "|") {
+		return false
+	}
+	for j := i - 1; j >= 0; j-- {
+		if !fenced[j] && headingLineRe.MatchString(lines[j]) {
+			if catalogueTopicRe.MatchString(lines[j]) {
+				return true
+			}
+			break
+		}
+	}
+	return catalogueTopicRe.MatchString(openingText(lines, fenced))
+}
+
+// openingText returns a page's first heading and the paragraph after it,
+// past any YAML frontmatter.
+func openingText(lines []string, fenced map[int]bool) string {
+	start := 0
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for j := 1; j < len(lines); j++ {
+			if strings.TrimSpace(lines[j]) == "---" {
+				start = j + 1
+				break
+			}
+		}
+	}
+	var open []string
+	for j := start; j < len(lines) && !fenced[j]; j++ {
+		blank := strings.TrimSpace(lines[j]) == ""
+		if blank && len(open) > 1 {
+			break
+		}
+		if !blank {
+			open = append(open, lines[j])
+		}
+	}
+	return strings.Join(open, " ")
 }
