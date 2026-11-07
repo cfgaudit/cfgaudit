@@ -100,6 +100,9 @@ var aveByRule = map[string]string{
 	"CFG070": "AVE-2026-00055", // MCP repo-relative command → untrusted launch config command exec
 	"CFG127": "AVE-2026-00055", // hidden-home MCP runtime → untrusted launch config command exec
 
+	// Bytecode poisoning (AVE-2026-00075), read from the .pyc header only.
+	"CFG129": "AVE-2026-00075", // .pyc that runs instead of its source
+
 	// Approval gate bypassed by declarative configuration (AVE-2026-00063).
 	// The record is explicit that it is "distinct from AVE-2026-00048" and
 	// "independent of any instruction text": a config flag that removes a
