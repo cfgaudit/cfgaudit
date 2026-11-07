@@ -16,7 +16,9 @@
       "codex",
       "roo-code",
       "gemini-cli",
-      "pi"
+      "pi",
+      "cursor",
+      "vscode"
     ],
     "deny": {
       "commands": [

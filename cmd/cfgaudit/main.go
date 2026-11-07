@@ -548,7 +548,7 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	qwenPath := filepath.Join(dir, ".qwen", "settings.json")
 	grokPath := filepath.Join(dir, ".grok", "config.toml")
 	codexPath := filepath.Join(dir, ".codex", "config.toml")
-	var claude, devin, cursor, qwen, grok, codex, vscode *rules.Target
+	var claude, devin, cursor, qwen, grok, codex, vscode, cursorIDE *rules.Target
 	var rooServers map[string]parser.MCPServer
 	var geminiSettings *parser.GeminiSettings
 	var geminiFile string
@@ -557,6 +557,8 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 			switch {
 			case t.VSCodeSettings != nil:
 				vscode = t
+			case t.CursorPermissions != nil:
+				cursorIDE = t
 			case t.ProjectMCPFile == filepath.Join(dir, ".roo", "mcp.json"):
 				rooServers = t.ProjectMCP
 			}
@@ -622,6 +624,20 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				targets = append(targets, qwen)
 			}
 			qwen.PolicyAgent, qwen.PolicyDeny, qwen.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "cursor":
+			path := filepath.Join(dir, ".cursor", "permissions.json")
+			if cursorIDE != nil {
+				cursorIDE.PolicyAgent, cursorIDE.PolicyForbid, path = agent, p.ForbidAllow.PolicyRules, cursorIDE.CursorPermissionsFile
+			}
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Cursor", Path: path,
+				Reason: "has allowlists only, and .cursor/sandbox.json limits sandboxed commands rather than tool calls"})
+		case "vscode":
+			path := filepath.Join(dir, ".vscode", "settings.json")
+			if vscode != nil {
+				vscode.PolicyAgent, vscode.PolicyForbid, path = agent, p.ForbidAllow.PolicyRules, vscode.VSCodeSettingsFile
+			}
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "VS Code", Path: path,
+				Reason: "has auto-approve lists only, and a false entry forces a prompt rather than a refusal"})
 		case "roo-code":
 			targets = append(targets, rooPolicyTarget(dir, p, vscode, rooServers))
 			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Roo Code", Path: filepath.Join(dir, ".roo"), Categories: rooUnenforced(p.Deny),
@@ -800,6 +816,10 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 			present = isDir(".grok")
 		case "codex":
 			present = isDir(".codex")
+		case "cursor":
+			present = anyPolicyFile(dir, []string{filepath.Join(".cursor", "permissions.json"), filepath.Join(".cursor", "sandbox.json")})
+		case "vscode":
+			present = vscodeChatSettings(dir)
 		case "roo-code":
 			present = isDir(".roo") || anyPolicyFile(dir, []string{".roomodes", ".roorules", ".rooignore"})
 		case "gemini-cli":

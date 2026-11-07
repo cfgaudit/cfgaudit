@@ -108,9 +108,9 @@ func TestPolicy_AddedTargetsAreQuiet(t *testing.T) {
 
 // An agent the policy cannot check yet is a config error, exit 2.
 func TestPolicy_UnknownAgentExit2(t *testing.T) {
-	root := runFixture(t, map[string]string{".cfgaudit.yml": "policy:\n  agents: [cursor]\n"})
+	root := runFixture(t, map[string]string{".cfgaudit.yml": "policy:\n  agents: [windsurf]\n"})
 	code, _, errOut := runCLI(t, "--claude-version", "2.1.316", root)
-	if code != 2 || !strings.Contains(errOut, `policy.agents: "cursor" is not an agent the policy can check yet`) {
+	if code != 2 || !strings.Contains(errOut, `policy.agents: "windsurf" is not an agent the policy can check yet`) {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
 }

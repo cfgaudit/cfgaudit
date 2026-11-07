@@ -99,3 +99,54 @@ func TestPolicy_RooWrongShape(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// Cursor and VS Code have allowlists only: forbid-allow goes to CFG025 and
+// deny to CFG118, and a bare .vscode or .cursor puts neither in scope (#1518).
+func TestPolicy_AllowOnlyAgents(t *testing.T) {
+	policy := "policy:\n  deny:\n    commands: [\"git push\"]\n  forbid-allow:\n    commands: [\"curl\"]\n"
+	root := runFixture(t, map[string]string{
+		".cfgaudit.yml":            policy,
+		".cursor/permissions.json": `{"terminalAllowlist":["curl"]}`,
+		".vscode/settings.json":    `{"chat.tools.terminal.autoApprove":{"curl":true}}`,
+	})
+	got := policyFindings(t, root)
+	want := []string{
+		`.cursor/permissions.json|CFG025|`, `.cursor/permissions.json|CFG118|`,
+		`.vscode/settings.json|CFG025|`, `.vscode/settings.json|CFG118|`,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %q", got)
+	}
+	for i, p := range want {
+		if !strings.HasPrefix(got[i], p) {
+			t.Errorf("%d: got %q", i, got[i])
+		}
+	}
+
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml":          policy,
+		".cursor/rules/style.md": "rules\n",
+		".vscode/settings.json":  `{"editor.tabSize":2}`,
+	})
+	if got := policyFindings(t, root); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+
+	// Named without a file: CFG118 names the file the agent would use.
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml": policy + "  agents: [cursor, vscode]\n",
+	})
+	got = policyFindings(t, root)
+	if len(got) != 2 || !strings.HasPrefix(got[0], ".cursor/permissions.json|CFG118|") || !strings.HasPrefix(got[1], ".vscode/settings.json|CFG118|") {
+		t.Fatalf("got %q", got)
+	}
+
+	// A broken settings file leaves VS Code out of the default scope.
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml":         policy,
+		".vscode/settings.json": `{`,
+	})
+	if vscodeChatSettings(root) {
+		t.Fatal("broken settings")
+	}
+}

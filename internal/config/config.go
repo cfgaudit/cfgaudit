@@ -180,7 +180,7 @@ func (f *ForbidAllow) UnmarshalYAML(node *yaml.Node) error {
 // PolicyAgents are the agent names policy.agents accepts. Agents that later
 // phases of #1081 will check are rejected rather than skipped, so a policy
 // never claims coverage cfgaudit does not provide.
-var PolicyAgents = []string{"claude-code", "devin", "zed", "continue", "goose", "kimi-cli", "cline", "cursor-cli", "qwen-code", "grok", "opencode", "kilo-code", "codex", "roo-code", "gemini-cli", "pi"}
+var PolicyAgents = []string{"claude-code", "devin", "zed", "continue", "goose", "kimi-cli", "cline", "cursor-cli", "qwen-code", "grok", "opencode", "kilo-code", "codex", "roo-code", "gemini-cli", "pi", "cursor", "vscode"}
 
 // Configured reports whether any policy entries are set.
 func (p Policy) Configured() bool {
