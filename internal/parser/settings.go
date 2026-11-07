@@ -364,6 +364,9 @@ type MCPServer struct {
 	// folds it into Type so the shared MCP rules only ever read one field.
 	Transport string            `json:"transport,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
+	// ImpliedSSE marks a Type of "sse" that the agent derives from which URL
+	// field is set, with no "sse" in the file (Qwen Code, #1524).
+	ImpliedSSE bool `json:"-"`
 
 	// HeadersHelperKey is the spelling the source file used for HeadersHelper,
 	// so a finding names a key the reader can grep for. Empty means the Claude
