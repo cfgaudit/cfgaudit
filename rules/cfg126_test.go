@@ -22,6 +22,8 @@ func TestCFG126_VulnerablePackagesAcrossRunnerForms(t *testing.T) {
 		{"yarn", `["dlx","@modelcontextprotocol/inspector@2.11.0"]`, "GHSA-q978-78c7-phqw"},
 		{"bunx", `["--bun","@modelcontextprotocol/inspector@2.0.0"]`, "GHSA-q978-78c7-phqw"},
 		{"npx", `["-y","--package=@modelcontextprotocol/inspector@2.5.0","inspector"]`, "GHSA-q978-78c7-phqw"},
+		{"npx", `["-y","@modelcontextprotocol/inspector@0.1.1"]`, "CVE-2025-49596"},
+		{"npx", `["-y","@modelcontextprotocol/inspector@0.14.0"]`, "CVE-2025-49596"},
 		{"npx", `["--yes","--registry","https://registry.example.invalid","mcp-remote@0.1.15"]`, "CVE-2025-6514"},
 		{"npm", `["--loglevel","silent","exec","mcp-remote@0.1.15"]`, "CVE-2025-6514"},
 		{"npm", `["--registry","https://registry.example.invalid","exec","mcp-remote@0.1.15"]`, "CVE-2025-6514"},
@@ -43,7 +45,7 @@ func TestCFG126_VulnerablePackagesAcrossRunnerForms(t *testing.T) {
 func TestCFG126_FixedOutsideAndUnknownVersions_NoFinding(t *testing.T) {
 	for _, spec := range []string{
 		"mcp-remote@0.0.4", "mcp-remote@0.1.16", "mcp-remote@1.0.0",
-		"@modelcontextprotocol/inspector@1.99.0", "@modelcontextprotocol/inspector@2.11.1", "@modelcontextprotocol/inspector@2.12.0",
+		"@modelcontextprotocol/inspector@0.14.1", "@modelcontextprotocol/inspector@0.14.2", "@modelcontextprotocol/inspector@1.99.0", "@modelcontextprotocol/inspector@2.11.1", "@modelcontextprotocol/inspector@2.12.0",
 		"mcp-remote@latest", "mcp-remote@^0.1.15", "mcp-remote@~0.1.15", "mcp-remote@0.1",
 		"mcp-remote@npm:something@0.1.15", "mcp-remote@0.1.15-beta.1", "mcp-remote@broken",
 		"unrelated@0.1.15", "mcp-remote@99999999999999999999.0.0",
