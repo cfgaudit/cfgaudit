@@ -101,6 +101,13 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 		if t.Devin != nil && t.Devin.Permissions != nil {
 			allow, deny = t.Devin.Permissions.Allow, t.Devin.Permissions.Deny
 		}
+	case "cursor-cli":
+		file = t.CursorCLIFile
+		deny = t.PolicyInheritedDeny
+		if t.CursorCLI != nil && t.CursorCLI.Permissions != nil {
+			allow = t.CursorCLI.Permissions.Allow
+			deny = append(slices.Clone(t.CursorCLI.Permissions.Deny), deny...)
+		}
 	}
 
 	var findings []finding.Finding
@@ -108,6 +115,9 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 		findings = append(findings, finding.Finding{RuleID: "CFG025", Severity: finding.Error, File: file, Message: msg})
 	}
 	for _, c := range policyCategories {
+		if c.key == sp.unenforced {
+			continue
+		}
 		for _, v := range c.entries(t.PolicyDeny) {
 			if !slices.ContainsFunc(deny, func(e string) bool { return sp.covers(c.key, e, v) }) {
 				add("policy deny." + c.key + " \"" + v + "\": no permissions.deny entry covers it, so " + sp.name +

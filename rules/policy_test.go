@@ -19,6 +19,24 @@ func TestPolicySpellings_Covers(t *testing.T) {
 		agent, category, value string
 		covered, notCovered    []string
 	}{
+		{"cursor-cli", "commands", "git push",
+			[]string{"Shell(git push)", "Shell(git)", "Shell(git:*)", "Shell(git:push*)", "Shell(*)", "Shell(g*)", "Bash(git)", " Shell(git push) "},
+			[]string{"Shell(git push *)", "Shell(git:push)", "Shell(git push:*)", "Shell(gitk)", "Shell(git pull)", "Exec(git push)", "Read(git)"}},
+		{"cursor-cli", "commands", "git",
+			[]string{"Shell(git)", "Shell(git:*)"},
+			[]string{"Shell(git push)", "Shell(git:push*)"}},
+		{"cursor-cli", "read", "**/.env",
+			[]string{"Read(**/.env)", "Read(**)", "Read(**/.env*)", "Read(*)"},
+			[]string{"Read(.env)", "Read(.env*)", "Read()", "Write(**/.env)", "Read(src/**)"}},
+		{"cursor-cli", "read", "~/.ssh/**",
+			[]string{"Read(~/.ssh/**)", "Read(~/**)", "Read(**)"},
+			[]string{"Read(.ssh/**)"}},
+		{"cursor-cli", "write", "src/generated/**",
+			[]string{"Write(**/src/generated/**)", "Write(**/src/**)", "Write(**)"},
+			[]string{"Write(src/generated/**)", "Read(**/src/generated/**)"}},
+		{"cursor-cli", "mcp-tools", "github:delete_*",
+			[]string{"Mcp(github:delete_*)", "Mcp(GitHub:*)", "Mcp(*:*)", "Mcp(*:delete_*)"},
+			[]string{"Mcp(github:delete_repo)", "Mcp(gitlab:*)", "Mcp(github)", "mcp__github__*"}},
 		{"claude-code", "commands", "git push",
 			[]string{"Bash(git push *)", "Bash(git push:*)", "Bash(git:*)", "Bash(git *)", "Bash(*)", "Bash"},
 			[]string{"Bash(git push)", "Bash(git push --force *)", "Bash(gitk:*)", "Exec(git push)", "Read(git push)"}},
@@ -96,6 +114,16 @@ func TestPolicySpellings_Overlaps(t *testing.T) {
 		{"claude-code", "mcp-tools", "github:delete_repo",
 			[]string{"mcp__github__delete_repo", "mcp__github__delete_*", "mcp__github__*"},
 			[]string{"mcp__github__get_*", "mcp__github__delete_branch"}},
+		{"cursor-cli", "commands", "curl",
+			[]string{"Shell(curl)", "Shell(curl:*)", "Shell(curl https://x)", "Shell(curl:-s*)", "Shell(*)", "Bash(curl)"},
+			[]string{"Shell(curly)", "Shell(git:*)", "Exec(curl)"}},
+		{"cursor-cli", "commands", "git push",
+			[]string{"Shell(git)", "Shell(git:push*)", "Shell(git push --force)", "Shell(git:push --force)"},
+			[]string{"Shell(git status)", "Shell(gitk)"}},
+		{"cursor-cli", "mcp-tools", "github:delete_*",
+			[]string{"Mcp(*:*)", "Mcp(github:*)", "Mcp(github:delete_repo)", "Mcp(GitHub:del*)"},
+			[]string{"Mcp(github:get_*)", "Mcp(gitlab:*)", "Mcp(github)", "mcp__github__*"}},
+		{"cursor-cli", "read", "**/.env", nil, []string{"Read(**)"}},
 		{"devin", "commands", "git push",
 			[]string{"Exec(git)", "Exec(git push)", "Exec(git push origin)", "exec"},
 			[]string{"Exec(git status)", "Exec(gitk)"}},
@@ -190,6 +218,53 @@ func TestCFG025_NeutralPolicy_Devin(t *testing.T) {
 
 // Without PolicyAgent the neutral entries are not checked, so a target that
 // is not an agent's permission file never reports them.
+// CFG118 reports fetch for Cursor CLI, so no entry covers it here.
+func TestPolicySpellings_CursorFetch(t *testing.T) {
+	if cursorCovers("fetch", "WebFetch(*)", "example.com") {
+		t.Fatal("a WebFetch deny must not count as covering a fetch entry")
+	}
+}
+
+func TestCFG025_NeutralPolicy_Cursor(t *testing.T) {
+	tg := &Target{
+		Scope:         finding.ScopeProject,
+		PolicyAgent:   "cursor-cli",
+		CursorCLIFile: ".cursor/cli.json",
+		CursorCLI: &parser.CursorCLIConfig{Permissions: &parser.Permissions{
+			Allow: []string{"Shell(curl:*)"},
+			Deny:  []string{"Read(.env*)"},
+		}},
+		PolicyInheritedDeny: []string{"Bash(git)"},
+		PolicyDeny: config.PolicyRules{
+			Commands: []string{"git push"},
+			Read:     []string{"**/.env"},
+			Fetch:    []string{"*.example.com"},
+		},
+		PolicyForbid: config.PolicyRules{Commands: []string{"curl"}},
+	}
+	f := CFG025.Check(tg)
+	got := messages(f)
+	if len(f) != 2 {
+		t.Fatalf("want a read and a forbid finding, got:\n%s", got)
+	}
+	for _, want := range []string{
+		`policy deny.read "**/.env": no permissions.deny entry covers it, so Cursor CLI does not block it; add "Read(**/.env)"`,
+		`policy forbid-allow.commands "curl": permissions.allow grants it via "Shell(curl:*)", so Cursor CLI runs it without asking`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if f[0].File != ".cursor/cli.json" {
+		t.Errorf("file: %q", f[0].File)
+	}
+	tg.CursorCLI = &parser.CursorCLIConfig{}
+	tg.PolicyDeny, tg.PolicyForbid = config.PolicyRules{Commands: []string{"git push"}}, config.PolicyRules{}
+	if f := CFG025.Check(tg); len(f) != 0 {
+		t.Fatalf("an inherited deny counts without a permissions block, got:\n%s", messages(f))
+	}
+}
+
 func TestCFG025_NeutralPolicy_NoAgent(t *testing.T) {
 	tg := &Target{Scope: finding.ScopeProject, PolicyDeny: config.PolicyRules{Commands: []string{"git push"}}}
 	if f := CFG025.Check(tg); len(f) != 0 {
@@ -211,5 +286,23 @@ func TestCFG118(t *testing.T) {
 	tg.PolicyDeny = config.PolicyRules{}
 	if f := CFG118.Check(tg); len(f) != 0 {
 		t.Fatalf("no deny entries: got:\n%s", messages(f))
+	}
+}
+
+// An agent limited to some categories is reported for those alone, and not at
+// all when the policy has none of them.
+func TestCFG118_Categories(t *testing.T) {
+	tg := &Target{
+		Scope:               finding.ScopeProject,
+		PolicyDeny:          config.PolicyRules{Commands: []string{"git push"}, Fetch: []string{"example.com"}},
+		PolicyUnenforceable: []UnenforceableAgent{{Agent: "cursor-cli", Name: "Cursor CLI", Path: ".cursor/cli.json", Reason: "why", Categories: []string{"fetch"}}},
+	}
+	f := CFG118.Check(tg)
+	if len(f) != 1 || !strings.HasPrefix(f[0].Message, "policy deny.fetch cannot be enforced for Cursor CLI") {
+		t.Fatalf("got:\n%s", messages(f))
+	}
+	tg.PolicyDeny.Fetch = nil
+	if f := CFG118.Check(tg); len(f) != 0 {
+		t.Fatalf("no fetch entries: got:\n%s", messages(f))
 	}
 }

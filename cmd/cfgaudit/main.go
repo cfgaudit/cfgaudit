@@ -544,7 +544,8 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	p := cfg.Policy
 	claudePath := filepath.Join(dir, ".claude", "settings.json")
 	devinPath := filepath.Join(dir, ".devin", "config.json")
-	var claude, devin *rules.Target
+	cursorPath := filepath.Join(dir, ".cursor", "cli.json")
+	var claude, devin, cursor *rules.Target
 	for _, t := range targets {
 		switch {
 		case t.Scope != finding.ScopeProject:
@@ -552,6 +553,8 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 			claude = t
 		case t.DevinFile == devinPath && t.Devin != nil:
 			devin = t
+		case t.CursorCLIFile == cursorPath && t.CursorCLI != nil:
+			cursor = t
 		}
 	}
 	if claude != nil {
@@ -577,6 +580,17 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				targets = append(targets, devin)
 			}
 			devin.PolicyAgent, devin.PolicyDeny, devin.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "cursor-cli":
+			if cursor == nil {
+				cursor = &rules.Target{Scope: finding.ScopeProject, CursorCLI: &parser.CursorCLIConfig{}, CursorCLIFile: cursorPath}
+				targets = append(targets, cursor)
+			}
+			cursor.PolicyAgent, cursor.PolicyDeny, cursor.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+			if claude != nil && claude.Settings != nil && claude.Settings.Permissions != nil {
+				cursor.PolicyInheritedDeny = claude.Settings.Permissions.Deny
+			}
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Cursor CLI", Path: cursorPath, Categories: []string{"fetch"},
+				Reason: "consults a WebFetch deny only to decide whether to skip approval, so a user or a WebFetch allow can still approve the fetch"})
 		default:
 			a := noPermissionFileAgents[agent]
 			path, _ := a.marker(dir)
@@ -647,6 +661,9 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 			present = claudeTarget || isDir(".claude")
 		case "devin":
 			present = isDir(".devin")
+		case "cursor-cli":
+			_, err := scanroot.Stat(filepath.Join(dir, ".cursor", "cli.json"))
+			present = err == nil
 		default:
 			_, present = noPermissionFileAgents[agent].marker(dir)
 		}

@@ -153,3 +153,40 @@ func TestPolicy_ListedAgentWithoutMarker(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// Cursor CLI is in scope through .cursor/cli.json alone, takes denies from
+// .claude/settings.json, and has its fetch entries reported by CFG118.
+func TestPolicy_CursorCLI(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".cfgaudit.yml":         "policy:\n  deny:\n    commands: [\"git push\"]\n    read: [\"**/.env\"]\n    fetch: [\"example.com\"]\n",
+		".claude/settings.json": `{"permissions":{"deny":["Bash(git)","Bash(git:*)","Read(**/.env)","WebFetch(domain:example.com)"]}}`,
+		".cursor/cli.json":      `{"permissions":{"deny":[]}}`,
+	})
+	got := policyFindings(t, root)
+	if len(got) != 1 || !strings.HasPrefix(got[0], ".cursor/cli.json|CFG118|policy deny.fetch cannot be enforced for Cursor CLI") {
+		t.Fatalf("got %q", got)
+	}
+
+	// Only the CLI's own file marks it; .cursor/ alone may be the editor.
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml":          "policy:\n  deny:\n    commands: [\"git push\"]\n",
+		".cursor/rules/style.md": "rules\n",
+	})
+	if got := policyFindings(t, root); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+
+	// Named without a file: the missing deny is reported, and nothing else.
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml": "policy:\n  deny:\n    commands: [\"git push\"]\n  agents: [cursor-cli]\n",
+	})
+	got = policyFindings(t, root)
+	want := `.cursor/cli.json|CFG025|policy deny.commands "git push": no permissions.deny entry covers it, so Cursor CLI does not block it; add "Shell(git push)"`
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("got %q", got)
+	}
+	code, out, _ := runCLI(t, "--claude-version", "2.1.316", "--format", "json", root)
+	if code == 2 || strings.Count(out, `"rule_id"`) > 1 || strings.Count(out, `"RuleID"`) > 1 {
+		t.Fatalf("exit %d, other rules fired:\n%s", code, out)
+	}
+}

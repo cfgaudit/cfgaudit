@@ -274,7 +274,7 @@ policy:
     - "Bash(git commit:*)"   # must not be grantable by permissions.allow
 ```
 
-For a team on more than one agent, the policy can be written once and checked against each agent's committed permission file. Claude Code and Devin CLI are checked today; Zed, Continue, goose, Kimi CLI and Cline, which have no committed permission file, get a CFG118 info finding:
+For a team on more than one agent, the policy can be written once and checked against each agent's committed permission file. Claude Code, Devin CLI and Cursor CLI are checked today; Zed, Continue, goose, Kimi CLI and Cline, which have no committed permission file, get a CFG118 info finding:
 
 ```yaml path=.cfgaudit.yml
 policy:
