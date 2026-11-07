@@ -277,7 +277,7 @@ func (r *cfg119) Check(t *Target) []finding.Finding {
 			// credential files and release URLs for good reasons, which gave
 			// 180 findings on 13,559 corpus scripts, nearly all benign (#1409).
 			// A shell script has the line rules instead.
-			if !shellScriptRe.MatchString(s.File) && (m.obfuscated || (m.fetchRun && m.credentials) || m.credRead) {
+			if !s.isShell() && (m.obfuscated || (m.fetchRun && m.credentials) || m.credRead) {
 				findings = append(findings, finding.Finding{RuleID: "CFG119", Severity: finding.Warn, File: s.File,
 					Message: s.Label + " carries the markers of a malicious payload: " + m.describe() + ". Read it before the agent runs it"})
 			}

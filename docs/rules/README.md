@@ -416,6 +416,12 @@ Two further surfaces were scoped and, after source verification, deliberately **
 - **`.qwen/sandbox.Dockerfile`** is inert for normally-installed users. qwen builds it only from a cloned qwen-code source tree with the `BUILD_SANDBOX` env var set (an npm-installed binary hits an explicit `throw`), on top of needing the sandbox enabled and docker/podman present — none of which a committed file can express.
 - **Marketplace/extension install** and **Claude-config MCP import** are user-command-driven (`/extensions`, `/import-config`), never auto-loaded from committed config. There is no `enabledPlugins`/`extraKnownMarketplaces` equivalent in `.qwen/settings.json`. The `<repo>/.claude/settings.json` that `/import-config --scope project` would pull is already covered by cfgaudit's Claude/MCP rules.
 
+### Cline — `.cline/` & `.clinerules/`
+
+Cline's hooks are script files, not commands in a config file. It runs a file in `.clinerules/hooks/` or `.cline/hooks/` on the event the file is named after (`PreToolUse`, `TaskStart`, `UserPromptSubmit`, ...), with no extension or with `.sh`, `.bash`, `.zsh`, `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.py` or `.ps1` (#1523). Other files there, and subdirectories, are not hooks.
+
+Each hook file counts as a script an auto-run command starts: the line rules read a shell script ([CFG008](CFG008.md), [CFG009](CFG009.md) and the others that also read launched scripts), and [CFG119](CFG119.md) reads every language. A file with no extension is a shell script unless its shebang names another interpreter. The VS Code extension runs these hooks only with **Enable Hooks** turned on, a setting in the user's profile that a repository cannot show, so the findings keep their usual severity.
+
 ### Kimi Code — `.kimi-code/` & `.agents/agents/`
 
 [Kimi Code](https://github.com/MoonshotAI/kimi-code) (Moonshot) loads project agent definitions from `.kimi-code/agents/` and `.agents/agents/` (resolved from the repo's `.git` root, recursive). Their bodies ride the instruction-content rules; one Kimi-specific rule covers the frontmatter:

@@ -405,6 +405,10 @@ type Target struct {
 	// several targets is attached to the first one only.
 	LaunchedScripts []LaunchedScript
 
+	// ClineHooks are the project's Cline hook files (#1523). They run on their
+	// event like a hook command, so each becomes a LaunchedScript.
+	ClineHooks []ClineHook
+
 	PolicyRequireDeny []string
 	PolicyForbidAllow []string
 

@@ -228,6 +228,13 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 			}
 		}
 	}
+	hooks := map[string]bool{}
+	for _, t := range targets {
+		for _, h := range t.ClineHooks {
+			hooks[h.Path] = true
+			add(t, h.Path, "Cline as its "+h.Event+" hook", filepath.Join(root, filepath.FromSlash(h.Path)), "")
+		}
+	}
 	for _, rel := range append([]string(nil), order...) {
 		s := byPath[rel]
 		if !runsFileRe.MatchString(s.content) {
@@ -259,7 +266,7 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 		}
 		s.owner.LaunchedScripts = append(s.owner.LaunchedScripts, rules.LaunchedScript{
 			Label: label, File: filepath.Join(dir, filepath.FromSlash(rel)), Content: s.content, Launchers: launchers, Via: s.via,
-			Partial: s.partial, Size: s.size,
+			Partial: s.partial, Size: s.size, Shell: hooks[rel] && shellHook(rel, s.content),
 		})
 	}
 }
