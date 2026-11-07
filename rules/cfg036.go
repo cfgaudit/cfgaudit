@@ -61,7 +61,7 @@ var (
 	// Any length of blob (#993): "echo aGVsbG8K | base64 -d | bash" hides the
 	// command as well as a long one does, and the decoded text need not match
 	// anything. Interpreters and PowerShell's iex count as the shell.
-	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:'%s'\s+)?['"]?([A-Za-z0-9+/]{4,}={0,2})['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
+	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:'%s'\s+)?['"]?([A-Za-z0-9+/]{2,}={0,2})['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
 	// A downloaded password-protected archive whose content the text says to
 	// run (Part F, #908): "Download [x](https://.../x.zip) (extract using
 	// pass: `1234`) and run the executable". The password keeps scanners out
@@ -431,18 +431,24 @@ func remoteSensitiveURL(span string) bool {
 // account names, not password hashes. A substitution whose only sensitive
 // path it is, "for user in $(grep /bin/bash /etc/passwd | cut -d: -f1)", lists
 // accounts and is a warning unless the line also sends data out (#966).
+var passwdRe = regexp.MustCompile(`/etc/passwd\b`)
+
 // base64Literal reports whether the operand of a decodeShellRe match can be
-// encoded text: at least 8 characters, and not a path. Encoded ASCII never starts
-// with "/", and a "/" inside needs a digit, "+" or "=" to be told from a path, so
-// "echo /bin/bash | base64 -d | sh" in a table of encodings is not one (#1370).
+// encoded text, and not a word or a path. Padding marks a short literal as
+// encoded, so "bHM=", which decodes to "ls", counts; without padding it takes
+// eight characters. Encoded ASCII never starts with "/", and a "/" inside needs a
+// digit, "+" or "=" to be told from a path, so "echo /bin/bash | base64 -d | sh"
+// in a table of encodings is not one (#1370).
 func base64Literal(s string) bool {
-	if len(s) < 8 || strings.HasPrefix(s, "/") {
+	if strings.HasPrefix(s, "/") {
+		return false
+	}
+	padded := strings.HasSuffix(s, "=") && len(s)%4 == 0
+	if len(s) < 8 && !padded {
 		return false
 	}
 	return !strings.Contains(s, "/") || strings.ContainsAny(s, "+=0123456789")
 }
-
-var passwdRe = regexp.MustCompile(`/etc/passwd\b`)
 
 // ruleExpressionRe matches a code span that is a rule-language comparison,
 // a dotted field name and an operator: `open.file.path in ["/etc/shadow"]`
