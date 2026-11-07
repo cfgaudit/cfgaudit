@@ -46,13 +46,14 @@
   issue: 1411
 
 - id: "CVE-2025-49596"
+  aliases: [GHSA-7f8r-222p-6f5g]
   kind: cve
   agent: "MCP Inspector"
   fixed: "0.14.1"
   summary: "A web page can reach an older MCP Inspector's local proxy and run commands through it."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1528
+  coverage: full
+  rules:
+    - {rule: CFG126, severity: error}
 
 - id: "CVE-2025-53098"
   aliases: [GHSA-5x8h-m52g-5v54]

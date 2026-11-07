@@ -53,6 +53,10 @@ var reviewedMCPPackageAdvisories = []mcpPackageAdvisory{
 		affected: ">=0.0.5 <0.1.16", fixedText: "0.1.16", advisoryID: "CVE-2025-6514 / GHSA-6xpm-ggf7-wc3p",
 	},
 	{
+		packageName: "@modelcontextprotocol/inspector", introduced: npmVersion{0, 0, 0}, lastAffected: npmVersion{0, 14, 0},
+		affected: "<0.14.1", fixedText: "0.14.1", advisoryID: "CVE-2025-49596 / GHSA-7f8r-222p-6f5g",
+	},
+	{
 		packageName: "@modelcontextprotocol/inspector", introduced: npmVersion{2, 0, 0}, lastAffected: npmVersion{2, 11, 0},
 		affected: ">=2.0.0 <=2.11.0", fixedText: "2.12.0", advisoryID: "GHSA-q978-78c7-phqw",
 		note: " The published impact is limited to Windows and WSL hosts.",
