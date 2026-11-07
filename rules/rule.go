@@ -577,6 +577,8 @@ type Rule interface {
 	Check(t *Target) []finding.Finding
 }
 
+// CFG017 is retired and its ID is not reused: it reported a key no agent reads
+// in an MCP configuration (#1525).
 // All is the ordered list of rules run on every target.
 var All []Rule
 
