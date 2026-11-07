@@ -98,6 +98,8 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 		return checkCodexPolicy(t, sp)
 	case "roo-code":
 		return checkRooPolicy(t, sp)
+	case "antigravity":
+		return checkMCPOnlyPolicy(t, sp)
 	case "gemini-cli":
 		return checkGeminiPolicy(t, sp)
 	case "cursor":

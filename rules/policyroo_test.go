@@ -123,3 +123,14 @@ func TestCFG025_Gemini(t *testing.T) {
 		t.Fatalf("got:\n%s", messages(f))
 	}
 }
+
+func TestCFG025_Antigravity(t *testing.T) {
+	tg := &Target{PolicyAgent: "antigravity", PolicyFile: "m",
+		PolicyMCP:  map[string]parser.MCPServer{"gh": {DisabledTools: []string{"delete_repo"}}},
+		PolicyDeny: config.PolicyRules{MCPTools: []string{"gh:delete_repo", "gh:create", "absent:x"}},
+	}
+	f := CFG025.Check(tg)
+	if len(f) != 1 || f[0].File != "m" || !strings.Contains(f[0].Message, `add "create" to disabledTools of gh`) {
+		t.Fatalf("got:\n%s", messages(f))
+	}
+}

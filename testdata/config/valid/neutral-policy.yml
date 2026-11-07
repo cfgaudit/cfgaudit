@@ -8,4 +8,4 @@ policy:
   forbid-allow:
     commands: [curl]
     mcp-tools: ["github:create_issue"]
-  agents: [claude-code, devin, zed, continue, goose, kimi-cli, cline, cursor-cli, qwen-code, grok, opencode, kilo-code, codex, roo-code, gemini-cli, pi, cursor, vscode]
+  agents: [claude-code, devin, zed, continue, goose, kimi-cli, cline, cursor-cli, qwen-code, grok, opencode, kilo-code, codex, roo-code, gemini-cli, pi, cursor, vscode, kimi-code, junie, copilot, antigravity]

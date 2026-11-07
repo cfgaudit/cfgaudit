@@ -181,3 +181,19 @@ func checkGeminiPolicy(t *Target, sp policySpelling) []finding.Finding {
 	}
 	return findings
 }
+
+// checkMCPOnlyPolicy checks an agent whose committed file can only carry an MCP
+// tool rule: Antigravity reads disabledTools from .agents/mcp_config.json (#1520).
+func checkMCPOnlyPolicy(t *Target, sp policySpelling) []finding.Finding {
+	var findings []finding.Finding
+	add := func(msg string) {
+		findings = append(findings, finding.Finding{RuleID: "CFG025", Severity: finding.Error, File: t.PolicyFile, Message: msg})
+	}
+	for _, v := range t.PolicyDeny.MCPTools {
+		if !rooMCPDenied(t.PolicyMCP, v) {
+			server, tool, _ := strings.Cut(v, ":")
+			add("policy deny.mcp-tools \"" + v + "\": nothing covers it, so " + sp.name + " does not block it; add " + strconv.Quote(tool) + " to disabledTools of " + server)
+		}
+	}
+	return findings
+}

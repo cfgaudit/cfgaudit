@@ -59,6 +59,7 @@ var policySpellings = map[string]policySpelling{
 	"grok":        {name: "Grok", covers: grokCovers, overlaps: grokOverlaps, spell: grokSpell},
 	"codex":       {name: "Codex"},
 	"roo-code":    {name: "Roo Code"},
+	"antigravity": {name: "Antigravity"},
 	"cursor":      {name: "Cursor"},
 	"vscode":      {name: "VS Code"},
 	"gemini-cli":  {name: "Gemini CLI"},

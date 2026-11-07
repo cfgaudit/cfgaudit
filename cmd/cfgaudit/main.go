@@ -636,6 +636,15 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				targets = append(targets, qwen)
 			}
 			qwen.PolicyAgent, qwen.PolicyDeny, qwen.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "antigravity":
+			path := filepath.Join(dir, ".agents", "mcp_config.json")
+			t := &rules.Target{Scope: finding.ScopeProject, PolicyAgent: agent, PolicyDeny: p.Deny, PolicyFile: path}
+			if m, err := parser.ParseMCPConfig(path); err == nil && m != nil {
+				t.PolicyMCP = m.MCPServers
+			}
+			targets = append(targets, t)
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Antigravity", Path: path, Categories: []string{"commands", "read", "write", "fetch"},
+				Reason: "keeps its rules in the user's settings.json, and a workspace file can only withhold MCP tools"})
 		case "cursor":
 			path := filepath.Join(dir, ".cursor", "permissions.json")
 			if cursorIDE != nil {
@@ -790,10 +799,15 @@ func (a noPermissionFile) marker(dir string) (string, bool) {
 // .clineignore is documented as no security boundary, but it runs a PreToolUse
 // hook from the workspace.
 var noPermissionFileAgents = map[string]noPermissionFile{
-	"zed":      {"Zed", userSettingsOnly, []string{".zed"}},
-	"continue": {"Continue", userSettingsOnly, []string{".continue"}},
-	"goose":    {"goose", userSettingsOnly, []string{".goose", ".goosehints"}},
-	"kimi-cli": {"Kimi CLI", userSettingsOnly, []string{".kimi"}},
+	"zed":       {"Zed", userSettingsOnly, []string{".zed"}},
+	"continue":  {"Continue", userSettingsOnly, []string{".continue"}},
+	"goose":     {"goose", userSettingsOnly, []string{".goose", ".goosehints"}},
+	"kimi-cli":  {"Kimi CLI", userSettingsOnly, []string{".kimi"}},
+	"kimi-code": {"Kimi Code", userSettingsOnly, []string{".kimi-code"}},
+	"junie": {"Junie", "keeps its allowlist in the user's ~/.junie/allowlist.json, and its rules allow or ask but never deny",
+		[]string{".junie"}},
+	"copilot": {"Copilot CLI", "takes --deny-tool per session, and .github/copilot/settings.json has no tool rules",
+		[]string{filepath.Join(".github", "copilot"), filepath.Join(".github", "copilot-instructions.md")}},
 	"cline": {"Cline", "has no allow or deny list; only a PreToolUse hook committed under .cline/hooks can block these calls",
 		[]string{".cline", ".clinerules"}},
 }
@@ -828,6 +842,8 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 			present = isDir(".grok")
 		case "codex":
 			present = isDir(".codex")
+		case "antigravity":
+			present = anyPolicyFile(dir, []string{filepath.Join(".agents", "mcp_config.json"), filepath.Join(".agents", "hooks.json")})
 		case "cursor":
 			present = anyPolicyFile(dir, []string{filepath.Join(".cursor", "permissions.json"), filepath.Join(".cursor", "sandbox.json")})
 		case "vscode":
