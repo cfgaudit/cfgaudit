@@ -9,13 +9,14 @@ import (
 	"github.com/cfgaudit/cfgaudit/internal/config"
 )
 
-// UnenforceableAgent is an agent in the policy's scope whose permission rules
-// live in user-level settings only, so no committed file can carry a deny.
-// Dir is the agent's directory in the repository.
+// UnenforceableAgent is an agent in the policy's scope that no committed
+// permission file can carry a deny for. Path is what marks the agent's use in
+// the repository, and Reason completes "<Name> ..." with why that is so.
 type UnenforceableAgent struct {
-	Agent string
-	Name  string
-	Dir   string
+	Agent  string
+	Name   string
+	Path   string
+	Reason string
 }
 
 // policyCategory is one category of the agent-neutral policy.

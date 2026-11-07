@@ -535,8 +535,8 @@ func parseInterleaved(fset *flag.FlagSet, args []string) ([]string, error) {
 // and CFG118 check. The Claude Code lists (require-deny and the list form of
 // forbid-allow) go on the project .claude/settings.json target only. The
 // agent-neutral entries go on the permission file of each agent in scope,
-// with a target created for an agent that has none yet, and the agents that
-// cannot carry a committed deny get one CFG118 target (#1081).
+// with a target created for an agent that has none yet, and the agents with
+// no committed permission file get one CFG118 target (#1081).
 func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*rules.Target {
 	if cfg == nil || !cfg.Policy.Configured() {
 		return targets
@@ -578,8 +578,9 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 			}
 			devin.PolicyAgent, devin.PolicyDeny, devin.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
 		default:
-			a := userOnlyPolicyAgents[agent]
-			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: a.name, Dir: filepath.Join(dir, a.dir)})
+			a := noPermissionFileAgents[agent]
+			path, _ := a.marker(dir)
+			unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: a.name, Path: path, Reason: a.reason})
 		}
 	}
 	if len(unenforceable) > 0 && !p.Deny.Empty() {
@@ -588,11 +589,42 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	return targets
 }
 
-// userOnlyPolicyAgents are the agents whose permission rules live in user
-// settings only, with the directory that marks their use in a repository.
-var userOnlyPolicyAgents = map[string]struct{ name, dir string }{
-	"zed":      {"Zed", ".zed"},
-	"continue": {"Continue", ".continue"},
+// userSettingsOnly is the CFG118 reason for an agent whose permission rules
+// live in user settings.
+const userSettingsOnly = "reads its permission rules from user settings only, so each contributor has to add the rules to their own settings"
+
+// noPermissionFile is an agent no committed permission file can carry a deny
+// for, with the paths that mark its use in a repository.
+type noPermissionFile struct {
+	name, reason string
+	markers      []string
+}
+
+// marker returns the first marker present in dir, or the first one with false
+// when none is, which is where a finding for a listed agent points.
+func (a noPermissionFile) marker(dir string) (string, bool) {
+	for _, m := range a.markers {
+		path := filepath.Join(dir, m)
+		if _, err := scanroot.Stat(path); err == nil {
+			return path, true
+		}
+	}
+	return filepath.Join(dir, a.markers[0]), false
+}
+
+// noPermissionFileAgents are checked against each agent's source and docs:
+// goose keeps per-tool permissions in the user's permission.yaml, and Kimi CLI
+// has no deny list and reads hooks from the user's config.toml. Cline's CLI
+// reference says it "has no allow or deny list for shell commands", and
+// .clineignore is documented as no security boundary, but it runs a PreToolUse
+// hook from the workspace.
+var noPermissionFileAgents = map[string]noPermissionFile{
+	"zed":      {"Zed", userSettingsOnly, []string{".zed"}},
+	"continue": {"Continue", userSettingsOnly, []string{".continue"}},
+	"goose":    {"goose", userSettingsOnly, []string{".goose", ".goosehints"}},
+	"kimi-cli": {"Kimi CLI", userSettingsOnly, []string{".kimi"}},
+	"cline": {"Cline", "has no allow or deny list; only a PreToolUse hook committed under .cline/hooks can block these calls",
+		[]string{".cline", ".clinerules"}},
 }
 
 // policyAgents returns the agents the neutral policy applies to: the ones
@@ -616,7 +648,7 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 		case "devin":
 			present = isDir(".devin")
 		default:
-			present = isDir(userOnlyPolicyAgents[agent].dir)
+			_, present = noPermissionFileAgents[agent].marker(dir)
 		}
 		if present {
 			out = append(out, agent)

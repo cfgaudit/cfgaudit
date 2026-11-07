@@ -4,7 +4,10 @@
       "claude-code",
       "devin",
       "zed",
-      "continue"
+      "continue",
+      "goose",
+      "kimi-cli",
+      "cline"
     ],
     "deny": {
       "commands": [

@@ -201,11 +201,11 @@ func TestCFG118(t *testing.T) {
 	tg := &Target{
 		Scope:               finding.ScopeProject,
 		PolicyDeny:          config.PolicyRules{Commands: []string{"git push"}, Read: []string{"**/.env"}},
-		PolicyUnenforceable: []UnenforceableAgent{{Agent: "zed", Name: "Zed", Dir: ".zed"}, {Agent: "continue", Name: "Continue", Dir: ".continue"}},
+		PolicyUnenforceable: []UnenforceableAgent{{Agent: "zed", Name: "Zed", Path: ".zed", Reason: "reasons zed"}, {Agent: "continue", Name: "Continue", Path: ".continue", Reason: "reasons continue"}},
 	}
 	f := CFG118.Check(tg)
 	if len(f) != 2 || f[0].Severity != finding.Info || f[0].File != ".zed" ||
-		f[0].Message != "policy deny.commands, deny.read cannot be enforced for Zed from the repository: Zed reads its permission rules from user settings only, so each contributor has to add the rules to their own settings" {
+		f[0].Message != "policy deny.commands, deny.read cannot be enforced for Zed from a permission file in the repository: Zed reasons zed" {
 		t.Fatalf("got:\n%s", messages(f))
 	}
 	tg.PolicyDeny = config.PolicyRules{}
