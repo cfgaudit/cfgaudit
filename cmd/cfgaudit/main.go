@@ -541,7 +541,11 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	if cfg == nil || !cfg.Policy.Configured() {
 		return targets
 	}
-	p := cfg.Policy
+	var rulesync *rulesyncSource
+	if cfg.Policy.Rulesync {
+		rulesync = loadRulesync(dir)
+	}
+	p := withRulesync(cfg.Policy, rulesync, "")
 	claudePath := filepath.Join(dir, ".claude", "settings.json")
 	devinPath := filepath.Join(dir, ".devin", "config.json")
 	cursorPath := filepath.Join(dir, ".cursor", "cli.json")
@@ -595,7 +599,15 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	}
 
 	var unenforceable []rules.UnenforceableAgent
+	if rulesync != nil {
+		_, _, skipped := rulesyncEntries(rulesync.rulesFor(""))
+		if conflicts := rulesyncConflicts(cfg.Policy, rulesync); len(conflicts) > 0 || len(skipped) > 0 {
+			targets = append(targets, &rules.Target{Scope: finding.ScopeProject, PolicyFile: rulesync.path,
+				PolicyRulesyncConflicts: conflicts, PolicyRulesyncSkipped: skipped})
+		}
+	}
 	for _, agent := range policyAgents(dir, p.Agents, claude != nil) {
+		p := withRulesync(cfg.Policy, rulesync, agent)
 		switch agent {
 		case "claude-code":
 			if claude == nil {

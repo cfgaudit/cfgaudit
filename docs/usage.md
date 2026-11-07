@@ -289,6 +289,6 @@ policy:
   agents: [claude-code, devin]   # optional; default: every agent with config in the repo
 ```
 
-[CFG025](rules/CFG025.md) lists the entry each agent needs for each category.
+[CFG025](rules/CFG025.md) lists the entry each agent needs for each category. A project that generates its agent files with Rulesync can set `rulesync: true` under `policy` to check them against `.rulesync/permissions.jsonc`.
 
 cfgaudit rejects a `.cfgaudit.yml` with a key it does not know or a severity other than `error`, `warn` or `info`, and exits 2 with the file and the line: `cfgaudit: .cfgaudit.yml:1: unknown key "stirct"`. A typo in the file that sets your exit code must not turn a check off without a word. A key added in a newer cfgaudit therefore fails on an older one; pin the cfgaudit version your CI runs together with the config. A rule ID under `rules` that no rule reports is only a warning, so a config that names a rule from a newer release still loads.

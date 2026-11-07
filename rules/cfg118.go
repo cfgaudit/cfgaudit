@@ -25,10 +25,14 @@ func (r *cfg118) ID() string { return "CFG118" }
 // policy reads as covering an agent it cannot reach, and a reviewer should
 // know what it takes to enforce the rule there.
 func (r *cfg118) Check(t *Target) []finding.Finding {
-	if t == nil || len(t.PolicyUnenforceable) == 0 {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
+	if len(t.PolicyRulesyncSkipped) > 0 {
+		findings = append(findings, finding.Finding{RuleID: "CFG118", Severity: finding.Info, File: t.PolicyFile,
+			Message: "these Rulesync rules have no agent-neutral form and are not checked: " + strings.Join(t.PolicyRulesyncSkipped, ", ")})
+	}
 	for _, a := range t.PolicyUnenforceable {
 		var categories []string
 		for _, c := range policyCategories {
