@@ -272,3 +272,26 @@ func TestPolicy_OpenCodeKilo(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// Codex keeps each category in another file (#1516).
+func TestPolicy_Codex(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".cfgaudit.yml":           "policy:\n  deny:\n    commands: [\"git push\"]\n    read: [\"**/.env\"]\n",
+		".codex/rules/team.rules": `prefix_rule(pattern=["git", "push"], decision="forbidden")`,
+		".codex/rules/notes.txt":  "text\n",
+		".codex/config.toml":      "default_permissions = \"p\"\n[permissions.p.filesystem.\":workspace_roots\"]\n\"**/.env\" = \"deny\"\n",
+	})
+	if got := policyFindings(t, root); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+
+	// Named without a file: the commands entry names the rules file a rule
+	// would go in, and nothing else runs on the empty target.
+	root = runFixture(t, map[string]string{
+		".cfgaudit.yml": "policy:\n  deny:\n    commands: [\"git push\"]\n  agents: [codex]\n",
+	})
+	got := policyFindings(t, root)
+	if len(got) != 1 || !strings.HasPrefix(got[0], ".codex/rules/default.rules|CFG025|") {
+		t.Fatalf("got %q", got)
+	}
+}

@@ -547,7 +547,8 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 	cursorPath := filepath.Join(dir, ".cursor", "cli.json")
 	qwenPath := filepath.Join(dir, ".qwen", "settings.json")
 	grokPath := filepath.Join(dir, ".grok", "config.toml")
-	var claude, devin, cursor, qwen, grok *rules.Target
+	codexPath := filepath.Join(dir, ".codex", "config.toml")
+	var claude, devin, cursor, qwen, grok, codex *rules.Target
 	for _, t := range targets {
 		switch {
 		case t.Scope != finding.ScopeProject:
@@ -559,6 +560,8 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 			cursor = t
 		case t.QwenFile == qwenPath && t.Qwen != nil:
 			qwen = t
+		case t.CodexFile == codexPath && t.Codex != nil:
+			codex = t
 		case t.GrokFile == grokPath && t.Grok != nil:
 			grok = t
 		}
@@ -605,6 +608,13 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				targets = append(targets, qwen)
 			}
 			qwen.PolicyAgent, qwen.PolicyDeny, qwen.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "codex":
+			if codex == nil {
+				codex = &rules.Target{Scope: finding.ScopeProject, Codex: &parser.CodexConfig{}, CodexFile: codexPath}
+				targets = append(targets, codex)
+			}
+			codex.PolicyAgent, codex.PolicyDeny, codex.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+			codex.CodexRules, codex.CodexRulesFile = codexRules(dir)
 		case "opencode", "kilo-code":
 			files := orderedPolicyFiles[agent]
 			t := &rules.Target{Scope: finding.ScopeProject, PolicyAgent: agent, PolicyDeny: p.Deny, PolicyForbid: p.ForbidAllow.PolicyRules,
@@ -651,6 +661,32 @@ var orderedPolicyFiles = map[string][]string{
 		filepath.Join(".kilocode", "kilo.json"), filepath.Join(".kilocode", "kilo.jsonc"),
 		filepath.Join(".kilo", "kilo.json"), filepath.Join(".kilo", "kilo.jsonc"),
 	},
+}
+
+// codexRules reads the prefix rules of .codex/rules, the *.rules files directly
+// in it, as load_exec_policy does, and names the file a finding should point at:
+// the first one, or the default a new rule would go in.
+func codexRules(dir string) ([]parser.CodexRule, string) {
+	rulesDir := filepath.Join(dir, ".codex", "rules")
+	out, file := []parser.CodexRule(nil), filepath.Join(rulesDir, "default.rules")
+	entries, err := scanroot.ReadDir(rulesDir)
+	if err != nil {
+		return nil, file
+	}
+	first := true
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".rules") || e.IsDir() {
+			continue
+		}
+		path := filepath.Join(rulesDir, e.Name())
+		if data, err := scanroot.ReadFile(path); err == nil {
+			out = append(out, parser.ParseCodexRules(string(data))...)
+			if first {
+				file, first = path, false
+			}
+		}
+	}
+	return out, file
 }
 
 func anyPolicyFile(dir string, files []string) bool {
@@ -728,6 +764,8 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 			present = err == nil || isDir(".qwen")
 		case "grok":
 			present = isDir(".grok")
+		case "codex":
+			present = isDir(".codex")
 		case "opencode":
 			present = isDir(".opencode") || anyPolicyFile(dir, orderedPolicyFiles[agent])
 		case "kilo-code":
