@@ -24,9 +24,9 @@ import (
 // positive (the trap .devin/config.json's user-only sandbox.excluded was avoided
 // for), so cfgaudit models the two project-contributable tables that carry a
 // supply chain: [mcp_servers], whose servers ride ProjectMCP so the shared MCP
-// rules apply, and [plugins] (CFG100). [permission] is deliberately declined
+// rules apply, and [plugins] (CFG100). No rule reports a [permission] grant
 // (#385): its rules merge deny > ask > allow so a user's deny always wins, and
-// matching is segmented.
+// matching is segmented. It is read for the agent-neutral policy only (#1514).
 type GrokConfig struct {
 	MCPServers map[string]GrokMCP `toml:"mcp_servers"`
 
@@ -36,6 +36,110 @@ type GrokConfig struct {
 	// default off)". Project plugins default to off, so a committed `enabled`
 	// turns them on for everyone who opens the repository.
 	Plugins *GrokPlugins `toml:"plugins"`
+
+	// Permission is the [permission] table, checked by the agent-neutral policy.
+	Permission *GrokPermission `toml:"permission"`
+}
+
+// GrokPermission is the [permission] table: the compact allow, deny and ask
+// arrays, or the structured rules, which Grok ignores when any array is set.
+type GrokPermission struct {
+	Allow []string
+	Deny  []string
+	Ask   []string
+	Rules []GrokPermissionRule
+	// compact is whether an allow, deny or ask key is set.
+	compact bool
+}
+
+// UnmarshalTOML reads the table by hand: Grok warns about an entry of the wrong
+// type and goes on, and a strict decode would fail the file for every rule that
+// reads the rest of it.
+func (p *GrokPermission) UnmarshalTOML(v any) error {
+	table, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	strs := func(key string) []string {
+		list, ok := table[key].([]any)
+		if !ok {
+			return nil
+		}
+		p.compact = true
+		var out []string
+		for _, item := range list {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	p.Allow, p.Deny, p.Ask = strs("allow"), strs("deny"), strs("ask")
+	rules, _ := table["rules"].([]map[string]any)
+	if list, ok := table["rules"].([]any); ok {
+		for _, item := range list {
+			if m, ok := item.(map[string]any); ok {
+				rules = append(rules, m)
+			}
+		}
+	}
+	for _, m := range rules {
+		field := func(key string) string {
+			s, _ := m[key].(string)
+			return s
+		}
+		p.Rules = append(p.Rules, GrokPermissionRule{Action: field("action"), Tool: field("tool"), Pattern: field("pattern"), PatternMode: field("pattern_mode")})
+	}
+	return nil
+}
+
+// GrokPermissionRule is one structured rule.
+type GrokPermissionRule struct {
+	Action, Tool, Pattern, PatternMode string
+}
+
+// grokToolNames maps the structured tool names onto the rule string spelling.
+var grokToolNames = map[string]string{
+	"bash": "Bash", "read": "Read", "edit": "Edit", "grep": "Grep",
+	"mcp": "MCPTool", "webfetch": "WebFetch", "websearch": "WebSearch",
+}
+
+// entry spells a structured rule as a rule string, or "" for a tool Grok's
+// string form has no name for.
+func (r GrokPermissionRule) entry() string {
+	name := grokToolNames[r.Tool]
+	switch {
+	case name == "":
+		return ""
+	case r.Pattern == "":
+		return name
+	case r.PatternMode == "domain":
+		return name + "(domain:" + r.Pattern + ")"
+	}
+	return name + "(" + r.Pattern + ")"
+}
+
+// PolicyEntries returns the allow and deny rules the agent-neutral policy
+// checks, in rule string spelling.
+func (c *GrokConfig) PolicyEntries() (allow, deny []string) {
+	p := c.Permission
+	if p == nil {
+		return nil, nil
+	}
+	if p.compact {
+		return p.Allow, p.Deny
+	}
+	for _, r := range p.Rules {
+		e := r.entry()
+		switch {
+		case e == "":
+		case r.Action == "allow":
+			allow = append(allow, e)
+		case r.Action == "deny":
+			deny = append(deny, e)
+		}
+	}
+	return allow, deny
 }
 
 // GrokPlugins is the [plugins] table.

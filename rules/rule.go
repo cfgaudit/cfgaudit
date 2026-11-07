@@ -411,7 +411,8 @@ type Target struct {
 	// PolicyAgent names the agent this target's permission file is checked as
 	// against the agent-neutral policy (#1081): "claude-code" for the project
 	// .claude/settings.json target, "devin" for .devin/config.json, "cursor-cli"
-	// for .cursor/cli.json. PolicyDeny
+	// for .cursor/cli.json, "qwen-code" for .qwen/settings.json, "grok" for
+	// .grok/config.toml. PolicyDeny
 	// and PolicyForbid are the neutral entries; empty unless PolicyAgent is set.
 	PolicyAgent  string
 	PolicyDeny   config.PolicyRules
@@ -420,9 +421,11 @@ type Target struct {
 	// PolicyUnenforceable lists the agents in the policy's scope that have no
 	// file in the repository a deny rule could be written to (CFG118).
 	PolicyUnenforceable []UnenforceableAgent
-	// PolicyInheritedDeny holds deny entries the agent takes from another
-	// agent's committed file: Cursor CLI adds .claude/settings.json to its own.
-	PolicyInheritedDeny []string
+	// PolicyInheritedAllow and PolicyInheritedDeny hold entries the agent takes
+	// from another agent's committed file: Cursor CLI and Grok add
+	// .claude/settings.json to their own.
+	PolicyInheritedAllow []string
+	PolicyInheritedDeny  []string
 
 	// ShellCheck enables CFG045 (running the shellcheck binary over command
 	// sites). Set by the CLI when --shellcheck / config requests it and the

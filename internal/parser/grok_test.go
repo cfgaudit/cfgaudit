@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -99,4 +100,53 @@ func TestGrokPlugins_PluginPathsInsideRepo(t *testing.T) {
 	if in, out := nilP.PluginPathsInsideRepo(); in != nil || out != nil {
 		t.Error("nil plugins table has no paths")
 	}
+}
+
+// The compact arrays win over the structured rules, as Grok reads them.
+func TestGrokPermission_PolicyEntries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	write := func(s string) *GrokConfig {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := ParseGrokConfig(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	allow, deny := write(`[permission]
+rules = [
+  { action = "allow", tool = "bash", pattern = "git *" },
+  { action = "deny", tool = "read" },
+  { action = "deny", tool = "webfetch", pattern = "example.com", pattern_mode = "domain" },
+  { action = "ask", tool = "edit" },
+  { action = "deny", tool = "agentmessage" },
+]
+`).PolicyEntries()
+	if !slices.Equal(allow, []string{"Bash(git *)"}) || !slices.Equal(deny, []string{"Read", "WebFetch(domain:example.com)"}) {
+		t.Fatalf("structured: allow %q, deny %q", allow, deny)
+	}
+	allow, deny = write(`[permission]
+ask = ["Edit"]
+rules = [{ action = "deny", tool = "read" }]
+`).PolicyEntries()
+	if len(allow) != 0 || len(deny) != 0 {
+		t.Fatalf("compact key present: allow %q, deny %q", allow, deny)
+	}
+	if allow, deny = (&GrokConfig{}).PolicyEntries(); allow != nil || deny != nil {
+		t.Fatalf("no table: allow %q, deny %q", allow, deny)
+	}
+	// Grok warns about these and goes on, so the file has to keep parsing.
+	allow, deny = write(`[permission]
+allow = "Read"
+deny = ["Bash(rm)", 3]
+rules = "x"
+`).PolicyEntries()
+	if len(allow) != 0 || !slices.Equal(deny, []string{"Bash(rm)"}) {
+		t.Fatalf("wrong types: allow %q, deny %q", allow, deny)
+	}
+	write("permission = 3\n")
 }

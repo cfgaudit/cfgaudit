@@ -103,12 +103,22 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 		}
 	case "cursor-cli":
 		file = t.CursorCLIFile
-		deny = t.PolicyInheritedDeny
 		if t.CursorCLI != nil && t.CursorCLI.Permissions != nil {
-			allow = t.CursorCLI.Permissions.Allow
-			deny = append(slices.Clone(t.CursorCLI.Permissions.Deny), deny...)
+			allow, deny = t.CursorCLI.Permissions.Allow, t.CursorCLI.Permissions.Deny
+		}
+	case "qwen-code":
+		file = t.QwenFile
+		if t.Qwen != nil {
+			allow, deny = t.Qwen.PolicyEntries()
+		}
+	case "grok":
+		file = t.GrokFile
+		if t.Grok != nil {
+			allow, deny = t.Grok.PolicyEntries()
 		}
 	}
+	allow = append(slices.Clone(allow), t.PolicyInheritedAllow...)
+	deny = append(slices.Clone(deny), t.PolicyInheritedDeny...)
 
 	var findings []finding.Finding
 	add := func(msg string) {
