@@ -14,15 +14,20 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
    - **False positives and precision.** For each rule that reports, judge a sample of its findings as in step 3, across different repositories, and look for systematic errors: the same wrong shape in many repositories.
    - **Issues.** Group each systematic error into one issue with neutral examples. A fix that is small and fully specified gets the `good first issue` label and no assignee; one that needs a maintainer decision is assigned to a maintainer. Issues never name or link a scanned repository. Once an error is confirmed, its shape also goes into the regression corpus ([how](CONTRIBUTING.md#promoting-a-finding-into-the-corpus)).
    - **Findings in other projects.** A critical finding in a scanned repository, such as a live credential or a malicious skill, is not filed publicly. Note it privately, so the repository's maintainers can be told through their private security reporting.
-5. **AVE mapping.** For each rule added since the last release, decide whether it has a clean AVE behavioral class. If it does, add it to `aveByRule` in `cmd/cfgaudit/avemap.go` and to [docs/cfgaudit-to-ave.md](docs/cfgaudit-to-ave.md); if not, record why it stays unmapped. Check whether AVE published new records that change an existing mapping.
-6. **Rule descriptions.** Re-read the rule tables in `docs/rules/README.md` and the `docs/rules/` pages of new and changed rules against what the rules now report.
-7. **Project documentation.** Check the README, the pages in `docs/` and the project documents against the code, the workflows and the repository settings. The project documents are CONTRIBUTING, SECURITY, TESTING, GOVERNANCE, RELEASING, ROADMAP and `docs/design.md`.
+5. **Rule coverage across agents.** The `**Agents:**` line of a rule doc claims which agents it reaches. Check that claim with [Rulesync](https://github.com/dyoshikawa/rulesync): pin a version, install it with `--ignore-scripts` in a directory of its own, import each Claude Code trigger example from `docs/rules/`, generate the files for other agents, and scan them.
+   - **Differences.** Compare the rules that fire with the `**Agents:**` line. A difference is a gap in cfgaudit, a field Rulesync dropped, or a feature the agent does not have, so it needs a person to read it. A rule that uses different IDs per agent, as permission rules do, needs a mapping first.
+   - **Generated files.** Rulesync can be wrong. Before calling something a gap, check the file against the agent: load it with the real agent where that is possible, and otherwise compare it with the agent's source or documentation.
+   - **Policy.** Generate from one `.rulesync/permissions.jsonc` and scan with `rulesync: true` under `policy`, so the source and the generated files are compared end to end.
+   - **Result.** File an issue for each real gap or wrong `**Agents:**` line. Rulesync's behaviour is a hint and not a source: step 3's rule for premises applies.
+6. **AVE mapping.** For each rule added since the last release, decide whether it has a clean AVE behavioral class. If it does, add it to `aveByRule` in `cmd/cfgaudit/avemap.go` and to [docs/cfgaudit-to-ave.md](docs/cfgaudit-to-ave.md); if not, record why it stays unmapped. Check whether AVE published new records that change an existing mapping.
+7. **Rule descriptions.** Re-read the rule tables in `docs/rules/README.md` and the `docs/rules/` pages of new and changed rules against what the rules now report.
+8. **Project documentation.** Check the README, the pages in `docs/` and the project documents against the code, the workflows and the repository settings. The project documents are CONTRIBUTING, SECURITY, TESTING, GOVERNANCE, RELEASING, ROADMAP and `docs/design.md`.
    - **Code:** flags, exit codes, output formats, defaults and the scanned files.
    - **Workflows:** the jobs and their triggers, required checks and gates.
    - **Repository settings:** branch protection, rulesets, environments, who may do what.
    - **AI assistance:** it may find candidate mismatches. A maintainer verifies every reported mismatch against the source before changing anything, and a claim the assistant could not point to in the source is not acted on.
    - **Result:** fix the mismatches in a pull request before the pin pull request, or file an issue for one that needs more work and decide whether the release waits for it.
-8. **Version pins.** Open a pull request `chore: pin the distribution at X.Y.Z` that moves every pinned version to the new one:
+9. **Version pins.** Open a pull request `chore: pin the distribution at X.Y.Z` that moves every pinned version to the new one:
    - `VERSION` in `bin/cfgaudit`
    - `version` in `.claude-plugin/plugin.json`
    - the default `image` in `action.yml`
@@ -33,7 +38,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
 
 ## Cutting the release
 
-9. **Tag.** Create a signed tag on the pin commit on `main` and push it:
+10. **Tag.** Create a signed tag on the pin commit on `main` and push it:
 
    ```sh
    git tag -s vX.Y.Z -m "cfgaudit X.Y.Z" <commit>
@@ -43,7 +48,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
    The tag must be signed with a key listed in `.github/allowed_signers` on `main`. For an SSH key, set it up once in the clone with `git config gpg.format ssh` and `git config user.signingkey ~/.ssh/<key>.pub`; a key used only for cfgaudit releases keeps a key of another project out of this list. Check the tag locally with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`. A new maintainer's key goes into `.github/allowed_signers` through a pull request before their first release.
 
    The Release and Docker workflows refuse a commit that is not on `main` or whose CI did not pass, and a tag that is not signed by a listed key; the gate reads its script and the key list from `main`, never from the tagged commit. Before anything is published, the Release workflow runs every archive on its platform and the Docker workflow runs the image, both checking the version and a fixture scan. They then build the archives, checksums, SBOMs and the container image, sign them with build provenance, create the GitHub release and update the Homebrew cask in `cfgaudit/homebrew-tap`. Check that exactly one run of each workflow ran for the tag and that both succeeded.
-10. **Release notes.** Above the generated changelog, write the hand-written part:
+11. **Release notes.** Above the generated changelog, write the hand-written part:
     - **Can turn a passing pipeline red**: new rules at `error`, stricter checks, new exit-code cases.
     - **Output changes**: changed messages, paths, fingerprints or report fields that make existing findings show up as new.
     - **False positives fixed**, if any are worth naming.
@@ -54,17 +59,17 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
 
 ## After the release
 
-11. **Check what was published.** The release has all assets and `checksums.txt` matches them; `ghcr.io/cfgaudit/cfgaudit` carries `X.Y.Z`, `X.Y` and `latest` on the same digest; the downloaded binary prints `cfgaudit X.Y.Z`; the Homebrew cask is at `X.Y.Z`. The verification commands are in [Verifying a release](docs/verifying-releases.md).
-12. **Move the Action tag.** Point the floating `v1` tag at the release commit and force-push it, so `uses: cfgaudit/cfgaudit@v1` picks up the release:
+12. **Check what was published.** The release has all assets and `checksums.txt` matches them; `ghcr.io/cfgaudit/cfgaudit` carries `X.Y.Z`, `X.Y` and `latest` on the same digest; the downloaded binary prints `cfgaudit X.Y.Z`; the Homebrew cask is at `X.Y.Z`. The verification commands are in [Verifying a release](docs/verifying-releases.md).
+13. **Move the Action tag.** Point the floating `v1` tag at the release commit and force-push it, so `uses: cfgaudit/cfgaudit@v1` picks up the release:
 
     ```sh
     git tag -f v1 vX.Y.Z^{commit}
     git push -f origin v1
     ```
 
-13. **PyPI.** After the Release workflow, the PyPI workflow builds the wheels from the release archives, smoke-tests them on each platform and waits for approval in the `pypi` environment. Approve it, then check that `pipx install cfgaudit==X.Y.Z` installs the release.
-14. **npm.** After the Release workflow, the npm workflow packs the release archives into one package per platform and the `cfgaudit` package, smoke-tests them on each platform and waits for approval in the `npm` environment. Approve it, then check that `npx cfgaudit@X.Y.Z --version` prints the release.
-15. **GitLab.** Push `main`, the new tag and `v1` to [gitlab.com/cfgaudit/cfgaudit](https://gitlab.com/cfgaudit/cfgaudit). Check `main` there, not only the tag list: the mirror is not updated automatically and has lagged behind before. When its pipelines for `main`, `vX.Y.Z` and `v1` are green, create the GitLab release on `vX.Y.Z`; the release is what publishes the component version to the CI/CD Catalog.
-16. **Website.** [cfgaudit.github.io](https://cfgaudit.github.io) is generated from the latest release by a daily build. Check the next day that it shows the new version and rules.
-17. **Advisories.** Publish any security advisory the release fixes, if it is not public yet.
-18. **AVE crosswalk.** If step 5 changed mappings, or AVE itself changed, send the updated crosswalk upstream.
+14. **PyPI.** After the Release workflow, the PyPI workflow builds the wheels from the release archives, smoke-tests them on each platform and waits for approval in the `pypi` environment. Approve it, then check that `pipx install cfgaudit==X.Y.Z` installs the release.
+15. **npm.** After the Release workflow, the npm workflow packs the release archives into one package per platform and the `cfgaudit` package, smoke-tests them on each platform and waits for approval in the `npm` environment. Approve it, then check that `npx cfgaudit@X.Y.Z --version` prints the release.
+16. **GitLab.** Push `main`, the new tag and `v1` to [gitlab.com/cfgaudit/cfgaudit](https://gitlab.com/cfgaudit/cfgaudit). Check `main` there, not only the tag list: the mirror is not updated automatically and has lagged behind before. When its pipelines for `main`, `vX.Y.Z` and `v1` are green, create the GitLab release on `vX.Y.Z`; the release is what publishes the component version to the CI/CD Catalog.
+17. **Website.** [cfgaudit.github.io](https://cfgaudit.github.io) is generated from the latest release by a daily build. Check the next day that it shows the new version and rules.
+18. **Advisories.** Publish any security advisory the release fixes, if it is not public yet.
+19. **AVE crosswalk.** If step 6 changed mappings, or AVE itself changed, send the updated crosswalk upstream.
