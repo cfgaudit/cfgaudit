@@ -41,9 +41,9 @@
   kind: cve
   agent: "Kilo Code"
   summary: "A prompt injection tells the agent to widen its own permission settings."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1411
+  coverage: full
+  rules:
+    - {rule: CFG028, severity: error}
 
 - id: "CVE-2025-49596"
   aliases: [GHSA-7f8r-222p-6f5g]
