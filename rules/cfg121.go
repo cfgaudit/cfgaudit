@@ -57,6 +57,7 @@ func (r *cfg121) Check(t *Target) []finding.Finding {
 		out = append(out, finding.Finding{RuleID: "CFG121", Severity: finding.Warn, File: repo.ConfigFile,
 			Message: "a committed directory is a bare git repository (HEAD, config, objects/, refs/) — git reads its config when it runs inside the directory, so a later change to that config runs on an agent's next git call. Remove it, or keep a fixture as an archive the tests unpack"})
 	}
+	out = append(out, projectGitConfigFindings(t)...)
 	for _, sub := range gitModuleURLs(t.GitModules) {
 		if why := submoduleURLRisk(sub.url); why != "" {
 			out = append(out, finding.Finding{RuleID: "CFG121", Severity: finding.Warn, File: t.GitModulesFile, Line: sub.line, Col: 1,
@@ -66,10 +67,32 @@ func (r *cfg121) Check(t *Target) []finding.Finding {
 	return out
 }
 
+// gitConfigEntry is one key of a git config, as section.key.
+type gitConfigEntry struct {
+	name, value string
+}
+
 // gitCommandKeys returns the command-running keys a git config sets, as
 // section.key, in file order.
 func gitCommandKeys(cfg string) []string {
 	var out []string
+	for _, e := range gitConfigEntries(cfg) {
+		if !gitCommandKeyRe.MatchString(e.name) {
+			continue
+		}
+		// core.fsmonitor = true / false selects the built-in daemon.
+		val := strings.ToLower(e.value)
+		if strings.EqualFold(e.name, "core.fsmonitor") && (val == "true" || val == "false" || val == "") {
+			continue
+		}
+		out = append(out, e.name)
+	}
+	return out
+}
+
+// gitConfigEntries reads the keys of a git config in file order.
+func gitConfigEntries(cfg string) []gitConfigEntry {
+	var out []gitConfigEntry
 	section := ""
 	for _, line := range strings.Split(cfg, "\n") {
 		l := strings.TrimSpace(line)
@@ -90,16 +113,72 @@ func gitCommandKeys(cfg string) []string {
 			continue
 		}
 		key, val, _ := strings.Cut(l, "=")
-		key, val = strings.TrimSpace(key), strings.ToLower(strings.TrimSpace(val))
-		name := section + "." + key
-		if !gitCommandKeyRe.MatchString(name) {
+		out = append(out, gitConfigEntry{section + "." + strings.TrimSpace(key), strings.Trim(strings.TrimSpace(val), `"`)})
+	}
+	return out
+}
+
+// projectExecKeyRe are the keys of a scanned folder's own .git/config that CVE
+// records show running: core.fsmonitor (CVE-2026-19592),
+// core.hooksPath (CVE-2026-19590) and a filter driver (CVE-2026-19593). The other
+// command keys stay out here: core.sshCommand, core.editor or credential.helper
+// in a working copy are what a developer set for themselves.
+var projectExecKeyRe = regexp.MustCompile(`(?i)^(?:core\.(?:fsmonitor|hookspath)|filter\..*\.(?:clean|smudge|process))$`)
+
+// husky and Git LFS write these into a clone's .git/config themselves.
+var (
+	huskyHooksRe = regexp.MustCompile(`^\.?/?\.husky(?:/_)?/?$`)
+	gitLFSFilter = regexp.MustCompile(`^git-lfs\s`)
+)
+
+// projectGitConfigKeys sorts the keys of a scanned folder's .git/config. run are
+// the keys git acts on, and tool the same keys set to what husky or Git LFS
+// write. attr.tree runs nothing itself: it makes git read .gitattributes from the
+// named tree, which starts a filter, so it counts only beside a filter.
+func projectGitConfigKeys(cfg string) (run, tool []string) {
+	attrTree, filter := false, false
+	for _, e := range gitConfigEntries(cfg) {
+		lower := strings.ToLower(e.name)
+		if lower == "attr.tree" && e.value != "" {
+			attrTree = true
+		}
+		if !projectExecKeyRe.MatchString(e.name) {
 			continue
 		}
-		// core.fsmonitor = true / false selects the built-in daemon.
-		if strings.EqualFold(name, "core.fsmonitor") && (val == "true" || val == "false" || val == "") {
-			continue
+		val := strings.ToLower(e.value)
+		switch {
+		case lower == "core.fsmonitor" && (val == "true" || val == "false" || val == ""):
+		case lower == "core.hookspath" && huskyHooksRe.MatchString(e.value):
+			tool = append(tool, e.name)
+		case strings.HasPrefix(lower, "filter.") && gitLFSFilter.MatchString(e.value):
+		default:
+			run = append(run, e.name)
+			filter = filter || strings.HasPrefix(lower, "filter.")
 		}
-		out = append(out, name)
+	}
+	if attrTree && filter {
+		run = append(run, "attr.tree")
+	}
+	return run, tool
+}
+
+// projectGitConfigFindings reports a scanned folder's own .git/config (#1408).
+// git clone writes this file itself, so a repository cannot set these keys
+// through a clone. A downloaded or unpacked folder keeps whatever it carries, and
+// the agent's next git call runs it. Key names only: a value can hold anything.
+func projectGitConfigFindings(t *Target) []finding.Finding {
+	if t.ProjectGitConfigFile == "" {
+		return nil
+	}
+	var out []finding.Finding
+	run, tool := projectGitConfigKeys(t.ProjectGitConfig)
+	if len(run) > 0 {
+		out = append(out, finding.Finding{RuleID: "CFG121", Severity: finding.Error, File: t.ProjectGitConfigFile,
+			Message: "this folder's .git/config sets " + quoteList(run) + ", which git acts on — an agent's next git call here runs it. A clone cannot carry these keys, so in a downloaded or unpacked folder treat them as the folder's own; if you set them yourself in this working copy, ignore this finding"})
+	}
+	if len(tool) > 0 {
+		out = append(out, finding.Finding{RuleID: "CFG121", Severity: finding.Info, File: t.ProjectGitConfigFile,
+			Message: "this folder's .git/config sets " + quoteList(tool) + " to the path husky writes, so git runs the hooks in that directory — expected in a working copy that ran husky, worth a look in a downloaded folder"})
 	}
 	return out
 }

@@ -115,6 +115,11 @@ type Target struct {
 	GitModulesFile string
 	NestedRepos    []NestedRepo
 
+	// ProjectGitConfig is the scanned folder's own .git/config, and
+	// ProjectGitConfigFile its path, set for a folder scan only (#1408).
+	ProjectGitConfig     string
+	ProjectGitConfigFile string
+
 	// ContentPath marks a target for a file that content-paths lists (#795): a
 	// README or doc page, not an instruction file. Run applies only
 	// ContentPathRules to it and reports at most warn.

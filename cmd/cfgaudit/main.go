@@ -208,6 +208,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	targets = attachPolicy(dir, targets, cfg)
 	if archive != "" {
+		// CFG122 reports the archive's .git, so CFG121 stays out of it (#1408).
+		for _, t := range targets {
+			t.ProjectGitConfig, t.ProjectGitConfigFile = "", ""
+		}
 		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, ArchiveName: archive, ArchiveEntries: archived.Entries, ArchiveLinks: archived.Links})
 	}
 
