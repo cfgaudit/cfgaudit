@@ -4,6 +4,7 @@
 package parser
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -293,6 +294,24 @@ func TestParseMCPConfig_GithubMCP(t *testing.T) {
 		}
 		if err == nil && len(c.MCPServers) != tc.servers {
 			t.Errorf("%q: got %d servers, want %d", tc.body, len(c.MCPServers), tc.servers)
+		}
+	}
+}
+
+// autoApprove has other shapes in other tools, which must not fail the file.
+func TestToolNames_OtherShapes(t *testing.T) {
+	for in, want := range map[string]int{
+		`{"autoApprove":["a","b"]}`:  2,
+		`{"autoApprove":["a",3]}`:    1,
+		`{"autoApprove":true}`:       0,
+		`{"autoApprove":{"a":true}}`: 0,
+	} {
+		var s MCPServer
+		if err := json.Unmarshal([]byte(in), &s); err != nil {
+			t.Fatalf("%s: %v", in, err)
+		}
+		if len(s.AutoApprove) != want {
+			t.Errorf("%s: got %q", in, s.AutoApprove)
 		}
 	}
 }

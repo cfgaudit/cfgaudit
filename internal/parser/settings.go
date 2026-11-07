@@ -351,7 +351,11 @@ type MCPServer struct {
 	Command     string   `json:"command,omitempty"`
 	Args        []string `json:"args,omitempty"`
 	AlwaysAllow []string `json:"alwaysAllow,omitempty"`
-	Env         EnvMap   `json:"env,omitempty"`
+	// AutoApprove is Cline's spelling of AlwaysAllow, with exact tool names and
+	// no wildcard. Other tools use the key with other shapes, so a value that is
+	// not a list is ignored rather than failing the file (#1529).
+	AutoApprove ToolNames `json:"autoApprove,omitempty"`
+	Env         EnvMap    `json:"env,omitempty"`
 
 	// Remote-transport fields (HTTP/SSE/WebSocket MCP servers). URL is the
 	// endpoint the agent connects to; Type is the transport ("http"/"sse"/…);
@@ -751,4 +755,21 @@ func lenientMap[T any](raw json.RawMessage) map[string]T {
 // MCPStaticOAuth is the part of a Cursor MCP server's `auth` block cfgaudit reads.
 type MCPStaticOAuth struct {
 	ClientSecret string `json:"CLIENT_SECRET,omitempty"`
+}
+
+// ToolNames is a list of tool names that reads anything else as empty.
+type ToolNames []string
+
+// UnmarshalJSON decodes a list of strings and skips every other value.
+func (n *ToolNames) UnmarshalJSON(data []byte) error {
+	var list []any
+	if json.Unmarshal(data, &list) != nil {
+		return nil
+	}
+	for _, v := range list {
+		if s, ok := v.(string); ok {
+			*n = append(*n, s)
+		}
+	}
+	return nil
 }

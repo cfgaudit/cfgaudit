@@ -5,6 +5,7 @@ package rules
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -53,6 +54,16 @@ func (r *cfg011) Check(t *Target) []finding.Finding {
 				File:     ref.File,
 				Message:  "mcpServers." + ref.Name + " sets approval_mode \"approve\" " + msg,
 			})
+		}
+		if filepath.Base(ref.File) == "cline_mcp_settings.json" {
+			if msg := analyzeToolList(ref.Server.AutoApprove); msg != "" {
+				findings = append(findings, finding.Finding{
+					RuleID:   "CFG011",
+					Severity: finding.Warn,
+					File:     ref.File,
+					Message:  "mcpServers." + ref.Name + ".autoApprove " + msg,
+				})
+			}
 		}
 		if len(ref.Server.AlwaysAllow) == 0 {
 			continue
@@ -149,6 +160,12 @@ func analyzeAlwaysAllow(list []string) string {
 			return "contains wildcard \"*\" — auto-approves every tool the server exposes, with no per-call prompt"
 		}
 	}
+	return analyzeToolList(list)
+}
+
+// analyzeToolList reports a list of exact tool names that is too broad. Cline
+// compares names exactly, so its autoApprove has no wildcard to report.
+func analyzeToolList(list []string) string {
 	dangerous := dangerousToolNames(list)
 	if len(dangerous) > 0 {
 		return "includes state-mutating tools " + strings.Join(dangerous, ", ") + " — auto-approval should be limited to read-only tools"
