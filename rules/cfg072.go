@@ -44,7 +44,10 @@ var (
 	// a URL — `http://data$(env).evil.com` — between `://` and the first path,
 	// query, or fragment delimiter. Host-label characters (no `/?#` or space) may
 	// prefix the substitution; the substitution itself may contain spaces/slashes.
-	substURLHostRe = regexp.MustCompile(`(?i)[a-z][a-z0-9+.-]*://[A-Za-z0-9._~%-]*` + cmdSubstPat)
+	// A dotted label must follow the substitution (same as substDomainRe) so a
+	// substitution that *is* the whole host — `http://$(curl ifconfig.me):13000`
+	// or `http://$(hostname)/` — is not treated as DNS-label exfil.
+	substURLHostRe = regexp.MustCompile(`(?i)[a-z][a-z0-9+.-]*://[A-Za-z0-9._~%-]*` + cmdSubstPat + `\.[A-Za-z0-9.-]*[A-Za-z]`)
 )
 
 // Check flags a command site that smuggles data out through a DNS query name. A
