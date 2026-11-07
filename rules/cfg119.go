@@ -28,6 +28,9 @@ func init() { All = append(All, CFG119) }
 
 func (r *cfg119) ID() string { return "CFG119" }
 
+// payloadCredFiles are the files that hold developer credentials.
+const payloadCredFiles = `\.npmrc\b|\.aws/credentials|\.docker/config\.json|\.git-credentials|\.ssh/id_|\.config/gh/hosts` // #nosec G101 -- file names, no credential
+
 var (
 	// payloadObfIdentRe matches the hex identifiers an obfuscator gives
 	// every variable (_0x4d2cd2). A hand-written or minified file has few.
@@ -54,8 +57,13 @@ var (
 	payloadRunRe = regexp.MustCompile(`\b(?:execFileSync|execSync|spawnSync|spawn|execFile|subprocess|os\.system|Start-Process|chmodSync|chmod)\b|\|\s*(?:ba|z)?sh\b`)
 	// payloadTokenRe matches the prefixes of access tokens a stealer looks for.
 	payloadTokenRe = regexp.MustCompile(`\b(?:ghp_|ghs_|gho_|ghu_|github_pat_|npm_[A-Za-z0-9]|AKIA[0-9A-Z]|xox[abprs]-)`)
-	// payloadCredFileRe matches the files that hold developer credentials.
-	payloadCredFileRe = regexp.MustCompile(`\.npmrc\b|\.aws/credentials|\.docker/config\.json|\.git-credentials|\.ssh/id_|\.config/gh/hosts`)
+	// payloadCredFileRe matches a name of such a file.
+	payloadCredFileRe = regexp.MustCompile(payloadCredFiles)
+	// payloadCredReadRe matches a line that opens a credential file. A skill's
+	// scripts need it because payloadCredFileRe alone is mostly a name in a
+	// list: on 13,559 corpus scripts, 2 of the 27 findings on such a name came
+	// from a file that opens it (#1409).
+	payloadCredReadRe = regexp.MustCompile(`(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()[^\n]*(?:` + payloadCredFiles + `)|(?:` + payloadCredFiles + `)[^\n]*(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()`)
 	// payloadEnvDumpRe matches code that reads the whole environment at once.
 	payloadEnvDumpRe = regexp.MustCompile(`JSON\.stringify\(\s*process\.env\s*\)|Object\.(?:keys|entries|values)\(\s*process\.env\s*\)|dict\(\s*os\.environ\s*\)|os\.environ\.items\(\)`)
 	payloadEnvReadRe = regexp.MustCompile(`\bprocess\.env\b`)
@@ -135,8 +143,8 @@ func disguisedRuns(t *Target) []finding.Finding {
 
 // payloadMarkers are what CFG119 found in one script.
 type payloadMarkers struct {
-	obfuscated, fetchRun, credentials, envDump bool
-	idents, envReads                           int
+	obfuscated, fetchRun, credentials, credRead, envDump bool
+	idents, envReads                                     int
 	// obfShape names the obfuscation that was found, for the message.
 	obfShape string
 }
@@ -213,6 +221,7 @@ func scanPayload(content string) payloadMarkers {
 	m.fetchRun = payloadDownloadRe.MatchString(content) && payloadRunRe.MatchString(content)
 	network := payloadNetworkRe.MatchString(content)
 	m.credentials = network && (payloadTokenRe.MatchString(content) || payloadCredFileRe.MatchString(content))
+	m.credRead = network && payloadCredReadRe.MatchString(content)
 	m.envReads = len(payloadEnvReadRe.FindAllStringIndex(content, -1))
 	m.envDump = network && (payloadEnvDumpRe.MatchString(content) || m.envReads >= 50)
 	return m
@@ -261,11 +270,19 @@ func (r *cfg119) Check(t *Target) []finding.Finding {
 	}
 	findings := disguisedRuns(t)
 	for _, s := range t.LaunchedScripts {
-		if s.Skill != "" {
-			continue // its markers are about a script that runs on its own
-		}
 		m := scanPayload(s.Content)
 		other := m.fetchRun || m.credentials || m.envDump
+		if s.Skill != "" {
+			// One marker is not enough here: a skill's scripts name tokens,
+			// credential files and release URLs for good reasons, which gave
+			// 180 findings on 13,559 corpus scripts, nearly all benign (#1409).
+			// A shell script has the line rules instead.
+			if !shellScriptRe.MatchString(s.File) && (m.obfuscated || (m.fetchRun && m.credentials) || m.credRead) {
+				findings = append(findings, finding.Finding{RuleID: "CFG119", Severity: finding.Warn, File: s.File,
+					Message: s.Label + " carries the markers of a malicious payload: " + m.describe() + ". Read it before the agent runs it"})
+			}
+			continue
+		}
 		var sev finding.Severity
 		switch {
 		case m.obfuscated && other, m.fetchRun && m.credentials:

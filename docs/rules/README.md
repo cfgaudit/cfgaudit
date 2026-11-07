@@ -158,6 +158,7 @@ Installing an agent plugin is a supply-chain trust decision. With `--plugins <di
 | `SKILL.md` | instruction-content rules, as for `CLAUDE.md`: CFG024, CFG026, CFG029–CFG036, CFG057, CFG080, CFG081, CFG090, CFG113, CFG120; frontmatter rules CFG051 and CFG056 |
 | Other `*.md` files in a skill directory (`references/`, `assets/`, ...) | CFG024, CFG026, CFG031, CFG036, CFG057, CFG080, CFG081, CFG120, at most at `warn` |
 | `*.sh`, `*.bash`, `*.zsh` in a skill directory (`scripts/`, ...) | the line rules for launched scripts — CFG008, CFG014, CFG027, CFG037, CFG038, CFG050, CFG072, CFG077, CFG078 — at most at `warn` |
+| `*.py`, `*.js`, `*.mjs`, `*.cjs`, `*.ts` in a skill directory | CFG119, at most at `warn`; its markers are text and these scripts are not shell, so the line rules do not read them (#1409) |
 | `hooks/hooks.json` | command-content rules — CFG008, CFG009, CFG014, CFG015, CFG027, CFG028; instruction-content rules over `type: "prompt"` / `type: "agent"` hook prompts — CFG024, CFG026, CFG029–CFG036, CFG057 |
 | `plugin.json` `mcpServers` | MCP rules — CFG010, CFG011, CFG017–CFG021 |
 | `commands/**/*.md`, or the paths `plugin.json` names under `commands` | instruction-content rules, as for `.claude/commands`. A manifest `commands` entry replaces the `commands/` directory rather than adding to it, and a command's frontmatter `hooks:` are not read, since 2.1.310 did not run them ([#937](https://github.com/cfgaudit/cfgaudit/issues/937)) |
