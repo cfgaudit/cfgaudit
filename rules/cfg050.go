@@ -85,6 +85,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkMarketplaceHeaders(t)...)
 	findings = append(findings, r.checkContinueRequestOptions(t)...)
 	findings = append(findings, r.checkZedEnv(t)...)
+	findings = append(findings, r.checkAgentHostTokens(t)...)
 	for _, site := range commandSitesWithScripts(t) {
 		for _, what := range commandSecrets(site.raw()) {
 			f := secretFinding(site.Label, what, site.File, t)
@@ -382,4 +383,22 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// checkAgentHostTokens reports a literal connectionToken in
+// chat.workspaceRemoteAgentHosts (#1394): a committed token is a committed
+// secret, whichever host it is for.
+func (r *cfg050) checkAgentHostTokens(t *Target) []finding.Finding {
+	if t == nil || t.VSCodeSettings == nil {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, h := range workspaceAgentHosts(t.VSCodeSettings) {
+		token := strings.TrimSpace(h.ConnectionToken)
+		if token == "" || isSecretReference(token) {
+			continue
+		}
+		findings = append(findings, secretFinding(workspaceAgentHostsKey+" connectionToken of "+h.Address, "a literal connection token", t.VSCodeSettingsFile, t))
+	}
+	return findings
 }

@@ -336,8 +336,9 @@ func TestCFG048_HookFilesLocations(t *testing.T) {
 	}
 }
 
-// (b) The terminal keys are restricted, chat.permissions.default is not, and the
-// messages must differ accordingly.
+// (b) The terminal keys are restricted, chat.defaultConfiguration is not, and the
+// messages must differ accordingly. chat.permissions.default is restricted from
+// 1.145, and its message names both versions (#1394).
 func TestCFG048_TrustNoteOnlyOnRestrictedKeys(t *testing.T) {
 	term := CFG048.Check(vscodeSettingsTarget(t, `{"chat.tools.terminal.autoApprove": {"/.*/": true}}`))
 	if len(term) != 1 || !strings.Contains(term[0].Message, "restricted") {
@@ -346,12 +347,12 @@ func TestCFG048_TrustNoteOnlyOnRestrictedKeys(t *testing.T) {
 	if strings.Contains(term[0].Message, "for anyone who opens this repo") {
 		t.Errorf("the overstated wording must be gone: %q", term[0].Message)
 	}
-	perm := CFG048.Check(vscodeSettingsTarget(t, `{"chat.permissions.default": "autoApprove"}`))
-	if len(perm) != 1 {
-		t.Fatalf("expected the permission finding, got %+v", perm)
+	conf := CFG048.Check(vscodeSettingsTarget(t, `{"chat.defaultConfiguration": {"approvals": "allowAll"}}`))
+	if len(conf) != 1 {
+		t.Fatalf("expected the configuration finding, got %+v", conf)
 	}
-	if strings.Contains(perm[0].Message, "restricted") {
-		t.Errorf("chat.permissions.default is not restricted; its message must not claim a trust gate: %q", perm[0].Message)
+	if strings.Contains(conf[0].Message, "restricted") {
+		t.Errorf("chat.defaultConfiguration is not restricted; its message must not claim a trust gate: %q", conf[0].Message)
 	}
 }
 
