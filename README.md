@@ -139,6 +139,7 @@ The rules are grouped by the configuration they read. [Rules](docs/rules/README.
 - [OpenCode — `opencode.json` and its siblings](docs/rules/README.md#opencode--opencodejson-and-its-siblings)
 - [xAI Grok CLI — `.grok/`](docs/rules/README.md#xai-grok-cli--grok)
 - [qwen-code — `.qwen/` & `QWEN.md`](docs/rules/README.md#qwen-code--qwen--qwenmd)
+- [Cline — `.cline/` & `.clinerules/`](docs/rules/README.md#cline--cline--clinerules)
 - [Kimi Code — `.kimi-code/` & `.agents/agents/`](docs/rules/README.md#kimi-code--kimi-code--agentsagents)
 - [Roo Code — `.roo/`, `.roorules` & `.roomodes`](docs/rules/README.md#roo-code--roo-roorules--roomodes)
 

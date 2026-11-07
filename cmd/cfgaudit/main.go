@@ -1137,6 +1137,11 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// Python bytecode that runs instead of its source (#1398).
 	targets = append(targets, bytecodeTargets(dir)...)
 
+	// Cline's hook files, which run like the commands below (#1523).
+	if t := clineHookTarget(dir); t != nil {
+		targets = append(targets, t)
+	}
+
 	// The scripts the auto-run commands of every target start (#1217), once
 	// all targets exist.
 	attachLaunchedScripts(dir, targets)

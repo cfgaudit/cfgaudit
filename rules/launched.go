@@ -42,6 +42,20 @@ type LaunchedScript struct {
 	// skill directory that no auto-run command starts (#987): the agent runs
 	// it when the skill tells it to.
 	Skill string
+	// Shell marks a shell script that its name does not show: a Cline hook
+	// is named after its event, with no extension (#1523).
+	Shell bool
+}
+
+// isShell reports whether the script is a shell script.
+func (s LaunchedScript) isShell() bool {
+	return s.Shell || shellScriptRe.MatchString(s.File)
+}
+
+// ClineHook is one Cline hook file: its path relative to the project, in
+// forward slashes, and the event it runs on.
+type ClineHook struct {
+	Path, Event string
 }
 
 // LaunchCommand is one auto-run command that may start a repository script.
@@ -104,7 +118,7 @@ func commandSitesWithScripts(t *Target) []commandSite {
 		return sites
 	}
 	for _, s := range t.LaunchedScripts {
-		if s.Via != "" || s.Partial || !shellScriptRe.MatchString(s.File) {
+		if s.Via != "" || s.Partial || !s.isShell() {
 			continue
 		}
 		for _, l := range scriptCommandLines(s.Content) {

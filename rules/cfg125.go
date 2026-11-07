@@ -88,7 +88,7 @@ func agentBypassSites(t *Target) []agentBypassSite {
 		}
 	}
 	for _, script := range t.LaunchedScripts {
-		if script.Via != "" || script.Partial || !shellScriptRe.MatchString(script.File) {
+		if script.Via != "" || script.Partial || !script.isShell() {
 			continue
 		}
 		severity := finding.Error
