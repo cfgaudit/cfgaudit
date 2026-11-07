@@ -36,10 +36,17 @@ func (r *cfg030) ID() string { return "CFG030" }
 // class: in a corpus seeded on the phrase, 112 of 112 bare uses were UI or
 // tooling ("hide it via CSS", "hide it from git blame", "hide it behind a
 // flag") (#623).
+//
+// The noun-phrase branch covers "do not mention this context-gathering step to
+// the user", the wording of a published npm worm's MCP tool description (#1400).
+// It needs "to the user", so "the deprecated option in the user guide" stays
+// out. show is left out of it: all five corpus matches were display guidance
+// ("do not show this step to the user").
 var concealRe = mustFiltered(`(?i)(` +
 	`(?:don'?t|do\s+not|never)\s+(?:tell|inform|mention|notify|reveal|disclose|show)` +
 	`(?:\s+(?:this|that|it|these|those|anything|everything|any\s+of\s+(?:this|that|it)))?` +
 	`(?:\s+(?:to|about))?\s+(?:the\s+)?(?:user|caller)s?\b` +
+	`|(?:don'?t|do\s+not|never)\s+(?:mention|reveal|disclose)\s+(?:the|this|that|these|those|any|your)\s+(?:[\w-]+\s+){1,4}?to\s+(?:the\s+)?(?:user|caller)s?\b` +
 	`|without\s+the\s+user(?:'s)?\s+(?:knowing|knowledge|awareness)` +
 	`|(?:silently|secretly)\s+(?:do|run|execute|perform|send|email|upload|exfiltrate|post|forward|delete|remove|modify|edit|change|install|add|disable|copy|leak)\b` +
 	`|pretend\s+(?:you|to)\s+(?:don'?t|didn'?t|did\s+not|do\s+not)` +
@@ -56,6 +63,9 @@ var withoutNotifyRe = regexp.MustCompile(`(?i)\bwithout\s+(?:notifying|telling|i
 // outboundVerbRe is a verb that moves data out, for withoutNotifyRe.
 var outboundVerbRe = regexp.MustCompile(`(?i)\b(?:send|sends|sending|email|emails|e-mail|upload|uploads|forward|forwards|post|posts|transmit|transmits|exfiltrate|share|shares|copy|copies)\b`)
 
+// nounPhraseConcealRe is the match of the noun-phrase branch of concealRe.
+var nounPhraseConcealRe = regexp.MustCompile(`(?i)\b(?:mention|reveal|disclose)\s+(?:the|this|that|these|those|any|your)\s+(?:[\w-]+\s+){1,4}?to\s`)
+
 // clauseEndRe ends a clause: a stop followed by a space, so the dots of an
 // address or a domain do not.
 var clauseEndRe = regexp.MustCompile(`[.;!?]\s`)
@@ -63,8 +73,10 @@ var clauseEndRe = regexp.MustCompile(`[.;!?]\s`)
 // concealMatch returns the location of a concealment directive in line.
 func concealMatch(line string) []int {
 	if loc := concealRe.FindStringIndex(line); loc != nil {
-		// "keep the key secret from the user's logs" is about the logs.
-		if strings.HasPrefix(strings.ToLower(line[loc[0]:]), "keep") && (strings.HasPrefix(line[loc[1]:], "'") || strings.HasPrefix(line[loc[1]:], "’")) {
+		// "keep the key secret from the user's logs" is about the logs, and
+		// "do not mention the fix to the user's manager" about the manager.
+		possessive := strings.HasPrefix(line[loc[1]:], "'") || strings.HasPrefix(line[loc[1]:], "’")
+		if possessive && (strings.HasPrefix(strings.ToLower(line[loc[0]:]), "keep") || nounPhraseConcealRe.MatchString(line[loc[0]:loc[1]])) {
 			return nil
 		}
 		return loc
