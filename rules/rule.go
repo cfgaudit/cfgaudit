@@ -422,6 +422,12 @@ type Target struct {
 	PolicyDeny   config.PolicyRules
 	PolicyForbid config.PolicyRules
 
+	// PolicyBlocks are the permission blocks of an agent that resolves rules by
+	// the last match, in the order it reads them, and PolicyFile the file a
+	// finding names (#1515).
+	PolicyBlocks []parser.OpenCodePermissionBlock
+	PolicyFile   string
+
 	// PolicyUnenforceable lists the agents in the policy's scope that have no
 	// file in the repository a deny rule could be written to (CFG118).
 	PolicyUnenforceable []UnenforceableAgent

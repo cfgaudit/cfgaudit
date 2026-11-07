@@ -10,7 +10,9 @@
       "cline",
       "cursor-cli",
       "qwen-code",
-      "grok"
+      "grok",
+      "opencode",
+      "kilo-code"
     ],
     "deny": {
       "commands": [

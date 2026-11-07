@@ -121,7 +121,7 @@
         "agents": {
           "description": "The agents the agent-neutral policy applies to. Without it, every agent with configuration in the repository.",
           "type": ["array", "null"],
-          "items": { "enum": ["claude-code", "devin", "zed", "continue", "goose", "kimi-cli", "cline", "cursor-cli", "qwen-code", "grok"] }
+          "items": { "enum": ["claude-code", "devin", "zed", "continue", "goose", "kimi-cli", "cline", "cursor-cli", "qwen-code", "grok", "opencode", "kilo-code"] }
         }
       }
     },

@@ -605,6 +605,22 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				targets = append(targets, qwen)
 			}
 			qwen.PolicyAgent, qwen.PolicyDeny, qwen.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
+		case "opencode", "kilo-code":
+			files := orderedPolicyFiles[agent]
+			t := &rules.Target{Scope: finding.ScopeProject, PolicyAgent: agent, PolicyDeny: p.Deny, PolicyForbid: p.ForbidAllow.PolicyRules,
+				PolicyFile: filepath.Join(dir, files[0])}
+			for _, rel := range files {
+				path := filepath.Join(dir, rel)
+				if cfg, err := loadOpenCodeConfigOptional(path); err == nil && cfg != nil {
+					t.PolicyBlocks = append(t.PolicyBlocks, cfg.PermissionBlocks()...)
+					t.PolicyFile = path
+				}
+			}
+			targets = append(targets, t)
+			if agent == "opencode" && !rules.OrderedDeniesFetch(t.PolicyBlocks) {
+				unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "OpenCode", Path: t.PolicyFile, Categories: []string{"fetch"},
+					Reason: "applies webfetch to every URL, so the only way to deny a domain is to turn the tool off"})
+			}
 		case "grok":
 			if grok == nil {
 				grok = &rules.Target{Scope: finding.ScopeProject, Grok: &parser.GrokConfig{}, GrokFile: grokPath}
@@ -622,6 +638,28 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, PolicyDeny: p.Deny, PolicyUnenforceable: unenforceable})
 	}
 	return targets
+}
+
+// orderedPolicyFiles are the project files of the agents that resolve rules by
+// the last match, in the order they read them. OpenCode's come from
+// openCodeConfigFiles; Kilo Code discovers kilo before opencode files, then the
+// .kilocode and .kilo directories (packages/opencode/src/config/config.ts).
+var orderedPolicyFiles = map[string][]string{
+	"opencode": openCodeConfigFiles,
+	"kilo-code": {
+		"kilo.json", "kilo.jsonc", "opencode.json", "opencode.jsonc",
+		filepath.Join(".kilocode", "kilo.json"), filepath.Join(".kilocode", "kilo.jsonc"),
+		filepath.Join(".kilo", "kilo.json"), filepath.Join(".kilo", "kilo.jsonc"),
+	},
+}
+
+func anyPolicyFile(dir string, files []string) bool {
+	for _, rel := range files {
+		if _, err := scanroot.Stat(filepath.Join(dir, rel)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // userSettingsOnly is the CFG118 reason for an agent whose permission rules
@@ -690,6 +728,10 @@ func policyAgents(dir string, listed []string, claudeTarget bool) []string {
 			present = err == nil || isDir(".qwen")
 		case "grok":
 			present = isDir(".grok")
+		case "opencode":
+			present = isDir(".opencode") || anyPolicyFile(dir, orderedPolicyFiles[agent])
+		case "kilo-code":
+			present = isDir(".kilo") || isDir(".kilocode") || anyPolicyFile(dir, []string{"kilo.json", "kilo.jsonc"})
 		default:
 			_, present = noPermissionFileAgents[agent].marker(dir)
 		}

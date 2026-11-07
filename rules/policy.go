@@ -57,6 +57,8 @@ var policySpellings = map[string]policySpelling{
 	"cursor-cli":  {name: "Cursor CLI", covers: cursorCovers, overlaps: cursorOverlaps, spell: cursorSpell, unenforced: "fetch"},
 	"qwen-code":   {name: "Qwen Code", covers: qwenCovers, overlaps: qwenOverlaps, spell: qwenSpell},
 	"grok":        {name: "Grok", covers: grokCovers, overlaps: grokOverlaps, spell: grokSpell},
+	"opencode":    {name: "OpenCode", unenforced: "fetch"},
+	"kilo-code":   {name: "Kilo Code"},
 }
 
 // claudeCovers follows Claude Code's permission syntax: Bash(prefix *) or
