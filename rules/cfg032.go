@@ -122,7 +122,8 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 				lineEnd = len(c) - m[1]
 			}
 			line := c[lineStart : m[1]+lineEnd]
-			if insideCodeSpan(line, []int{m[0] - lineStart, m[1] - lineStart}) || placeholderJoinedRe.MatchString(c[max(0, m[0]-40):min(len(c), m[1]+40)]) {
+			inTableCell := strings.HasPrefix(strings.TrimSpace(line), "|")
+			if (inTableCell && insideCodeSpan(line, []int{m[0] - lineStart, m[1] - lineStart})) || placeholderJoined(c, m[0], m[1]) {
 				continue
 			}
 			switch {
@@ -189,7 +190,17 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 	return findings
 }
 
-var placeholderJoinedRe = regexp.MustCompile(`<[^>]+>[-_]<[^>]+>`)
+var (
+	placeholderJoinedBeforeRe = regexp.MustCompile(`<[^<>]+>[-_]$`)
+	placeholderJoinedAfterRe  = regexp.MustCompile(`^[-_]<[^<>]+>`)
+)
+
+// placeholderJoined reports whether this tag is directly joined to another
+// placeholder by '-' or '_'. Keep the check adjacent to the tag: a nearby
+// joined pair elsewhere in the line must not suppress an authority tag.
+func placeholderJoined(content string, start, end int) bool {
+	return placeholderJoinedBeforeRe.MatchString(content[:start]) || placeholderJoinedAfterRe.MatchString(content[end:])
+}
 
 // forgedBoundaryRe matches a forged prompt boundary in capitals: "--- END OF
 // SYSTEM PROMPT ---", "=== BEGIN NEW SYSTEM INSTRUCTIONS ===", "[USER INPUT
