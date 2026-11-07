@@ -19,6 +19,9 @@ type GeminiSettings struct {
 	Security   *GeminiSecurity      `json:"security,omitempty"`
 	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
 
+	// MCP is the mcp block, kept raw for its excluded list (#1517).
+	MCP json.RawMessage `json:"mcp,omitempty"`
+
 	// Telemetry is the OpenTelemetry export block (#646); see AgentTelemetry.
 	Telemetry *AgentTelemetry `json:"telemetry,omitempty"`
 
@@ -81,6 +84,12 @@ type GeminiGeneral struct {
 type GeminiTools struct {
 	SandboxAllowedPaths  []string `json:"sandboxAllowedPaths,omitempty"`
 	SandboxNetworkAccess bool     `json:"sandboxNetworkAccess,omitempty"`
+
+	// Exclude, Allowed and Core are the tool lists the agent-neutral policy
+	// reads (#1517). A wrong shape must not fail the file for the other rules.
+	Exclude ToolNames `json:"exclude,omitempty"`
+	Allowed ToolNames `json:"allowed,omitempty"`
+	Core    ToolNames `json:"core,omitempty"`
 }
 
 // GeminiSecurity carries Gemini's security section. BlockGitExtensions is a
@@ -132,4 +141,15 @@ func ParseGeminiSettings(path string) (*GeminiSettings, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &s, nil
+}
+
+// ExcludedMCPServers returns mcp.excluded, which turns servers off by name.
+func (s *GeminiSettings) ExcludedMCPServers() []string {
+	var m struct {
+		Excluded ToolNames `json:"excluded"`
+	}
+	if json.Unmarshal(s.MCP, &m) != nil {
+		return nil
+	}
+	return m.Excluded
 }

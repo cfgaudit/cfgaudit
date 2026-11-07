@@ -58,6 +58,8 @@ var policySpellings = map[string]policySpelling{
 	"qwen-code":   {name: "Qwen Code", covers: qwenCovers, overlaps: qwenOverlaps, spell: qwenSpell},
 	"grok":        {name: "Grok", covers: grokCovers, overlaps: grokOverlaps, spell: grokSpell},
 	"codex":       {name: "Codex"},
+	"roo-code":    {name: "Roo Code"},
+	"gemini-cli":  {name: "Gemini CLI"},
 	"opencode":    {name: "OpenCode", unenforced: "fetch"},
 	"kilo-code":   {name: "Kilo Code"},
 }

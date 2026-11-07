@@ -90,8 +90,13 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 	if t.PolicyAgent == "opencode" || t.PolicyAgent == "kilo-code" {
 		return checkOrderedPolicy(t, sp)
 	}
-	if t.PolicyAgent == "codex" {
+	switch t.PolicyAgent {
+	case "codex":
 		return checkCodexPolicy(t, sp)
+	case "roo-code":
+		return checkRooPolicy(t, sp)
+	case "gemini-cli":
+		return checkGeminiPolicy(t, sp)
 	}
 	var file, note string
 	var allow, deny []string

@@ -355,7 +355,11 @@ type MCPServer struct {
 	// no wildcard. Other tools use the key with other shapes, so a value that is
 	// not a list is ignored rather than failing the file (#1529).
 	AutoApprove ToolNames `json:"autoApprove,omitempty"`
-	Env         EnvMap    `json:"env,omitempty"`
+	// DisabledTools is Roo Code's list of tools it hides from the model.
+	DisabledTools ToolNames `json:"disabledTools,omitempty"`
+	// Disabled is Roo Code\'s switch for a whole server.
+	Disabled bool   `json:"disabled,omitempty"`
+	Env      EnvMap `json:"env,omitempty"`
 
 	// Remote-transport fields (HTTP/SSE/WebSocket MCP servers). URL is the
 	// endpoint the agent connects to; Type is the transport ("http"/"sse"/…);
