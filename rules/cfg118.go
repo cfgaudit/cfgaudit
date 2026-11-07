@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -27,17 +28,17 @@ func (r *cfg118) Check(t *Target) []finding.Finding {
 	if t == nil || len(t.PolicyUnenforceable) == 0 {
 		return nil
 	}
-	var categories []string
-	for _, c := range policyCategories {
-		if len(c.entries(t.PolicyDeny)) > 0 {
-			categories = append(categories, "deny."+c.key)
-		}
-	}
-	if len(categories) == 0 {
-		return nil
-	}
 	var findings []finding.Finding
 	for _, a := range t.PolicyUnenforceable {
+		var categories []string
+		for _, c := range policyCategories {
+			if len(c.entries(t.PolicyDeny)) > 0 && (len(a.Categories) == 0 || slices.Contains(a.Categories, c.key)) {
+				categories = append(categories, "deny."+c.key)
+			}
+		}
+		if len(categories) == 0 {
+			continue
+		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG118",
 			Severity: finding.Info,
