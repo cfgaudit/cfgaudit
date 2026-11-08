@@ -54,6 +54,9 @@ type QwenSettings struct {
 	// Memory carries the auto-skill confirmation pair.
 	Memory *QwenMemory `json:"memory,omitempty"`
 
+	// Skills carries skills.directories (#973).
+	Skills *QwenSkills `json:"skills,omitempty"`
+
 	// Hooks is qwen's hooks block: an event name → matcher groups (the shared
 	// Claude/Gemini shape). It is decoded lazily via HookGroups() rather than as
 	// map[string][]HookGroup, because qwen skips the reserved keys enabled/disabled/
@@ -147,6 +150,35 @@ type QwenTools struct {
 type QwenMemory struct {
 	EnableAutoSkill  *bool `json:"enableAutoSkill,omitempty"`
 	AutoSkillConfirm *bool `json:"autoSkillConfirm,omitempty"`
+}
+
+// QwenSkills is the skills block. Only directories is decoded. It stays raw so
+// that one entry of the wrong type does not fail the whole file: Qwen itself
+// keeps only the non-empty strings.
+type QwenSkills struct {
+	Directories json.RawMessage `json:"directories,omitempty"`
+}
+
+// SkillDirectories returns skills.directories as Qwen reads it: the string
+// entries, trimmed, without the empty ones. Qwen loads each as a folder of
+// personal skills, <directory>/<skill-name>/SKILL.md, and the key is not on its
+// workspace-restricted list, so a project settings file can set it.
+func (s *QwenSettings) SkillDirectories() []string {
+	if s == nil || s.Skills == nil {
+		return nil
+	}
+	var raw []json.RawMessage
+	if json.Unmarshal(s.Skills.Directories, &raw) != nil {
+		return nil
+	}
+	var out []string
+	for _, r := range raw {
+		var d string
+		if json.Unmarshal(r, &d) == nil && strings.TrimSpace(d) != "" {
+			out = append(out, strings.TrimSpace(d))
+		}
+	}
+	return out
 }
 
 // SandboxEnabledInSettings reports whether tools.sandbox turns a sandbox on from

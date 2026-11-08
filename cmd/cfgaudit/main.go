@@ -1639,13 +1639,19 @@ func qwenTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if qs == nil {
 			return nil
 		}
-		targets = append(targets, &rules.Target{
+		t := &rules.Target{
 			Scope:          scope,
 			Qwen:           qs,
 			QwenFile:       path,
 			ProjectMCP:     qs.MCPServerMap(),
 			ProjectMCPFile: path,
-		})
+		}
+		// An entry outside the repository is only a finding for the project
+		// file: in the user's own settings it is the user's choice (#973).
+		if scope == finding.ScopeProject {
+			t.QwenSkillDirsOutside = qwenOutsideSkillDirs(dir, qs.SkillDirectories())
+		}
+		targets = append(targets, t)
 		return nil
 	}
 	if err := add(filepath.Join(dir, ".qwen", "settings.json"), finding.ScopeProject); err != nil {
@@ -2098,6 +2104,18 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	for _, m := range projGemini {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	// Qwen's skills.directories (#973) may name a folder read above already,
+	// such as .claude/skills; such a skill is read once.
+	listed := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		listed[p.path] = true
+	}
+	for _, m := range qwenSkillFiles(dir) {
+		if !listed[m] {
+			listed[m] = true
+			paths = append(paths, scopedPath{m, finding.ScopeProject})
+		}
 	}
 	if includeUser {
 		home, err := os.UserHomeDir()
