@@ -113,3 +113,12 @@ func TestCFG110_MeasuredShapes(t *testing.T) {
 		}
 	}
 }
+
+func TestCFG110_GeminiCLIHome(t *testing.T) {
+	for v, sev := range map[string]finding.Severity{"fixture-home": finding.Error, "/opt/h": finding.Info} {
+		f := CFG110.Check(&Target{GeminiDotEnv: map[string]string{"GEMINI_CLI_HOME": v}, GeminiDotEnvFile: ".gemini/.env"})
+		if len(f) != 1 || f[0].Severity != sev || !strings.Contains(f[0].Message, "GEMINI_CLI_HOME") {
+			t.Errorf("%s: %+v", v, f)
+		}
+	}
+}

@@ -397,6 +397,18 @@
   rules:
     - {rule: CFG115, severity: error}
 
+- id: "CVE-2026-13745"
+  aliases: [GHSA-2255-3477-vp73]
+  kind: cve
+  agent: "Gemini CLI"
+  fixed: "0.39.1"
+  summary: "A project .env overrides GEMINI_CLI_HOME, so Gemini CLI reads user configuration from a folder the repository supplies."
+  coverage: partial
+  rules:
+    - {rule: CFG110, severity: error}
+  reason: by-design
+  note: "cfgaudit reports the variable in .gemini/.env but does not read a root .env, which is an ordinary project file far more often than agent config."
+
 - id: "CVE-2026-19590"
   kind: cve
   agent: "Codex Desktop"
