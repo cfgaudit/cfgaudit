@@ -28,9 +28,7 @@ import (
 // keys were agent, command, mcp, mode, plugin and username.
 //
 // Beyond `mcp` this reads the keys that carry a command, instruction text, or a
-// permission decision (#525), and the `skills` sources (#748). `plugin` is
-// still unmodelled: it needs its own false-positive measurement before a rule,
-// and parsing it ahead of one would be dead config.
+// permission decision (#525), and the `skills` and `plugin(s)` sources (#748).
 type OpenCodeConfig struct {
 	MCP map[string]OpenCodeMCP `json:"mcp,omitempty"`
 
@@ -63,6 +61,12 @@ type OpenCodeConfig struct {
 	// applied after the rules lowered from `permission` (normalize.ts:
 	// [...toolRules, ...permissionRules, ...nativePermissions]).
 	Permissions json.RawMessage `json:"permissions,omitempty"`
+
+	// Plugin (v1) and Plugins (OpenCode 2) list plugins: a package name, a
+	// local path, or a "-name" removal; v1 also takes [name, options] and v2
+	// {package, options} (normalize.ts lowers plugin onto plugins).
+	Plugin  json.RawMessage `json:"plugin,omitempty"`
+	Plugins json.RawMessage `json:"plugins,omitempty"`
 
 	// Skills lists more skill sources: paths and http(s) URLs, as an array or,
 	// in the older spelling, {paths, urls} (normalizeSkills in normalize.ts).
@@ -465,4 +469,37 @@ func (c *OpenCodeConfig) SkillSources() []string {
 		return nil
 	}
 	return append(strs(obj.Paths), strs(obj.URLs)...)
+}
+
+// PluginSources returns the plugin targets of `plugin` then `plugins`, in the
+// order OpenCode 2 applies them, without the "-name" removals.
+func (c *OpenCodeConfig) PluginSources() []string {
+	if c == nil {
+		return nil
+	}
+	var out []string
+	for _, raw := range []json.RawMessage{c.Plugin, c.Plugins} {
+		var items []json.RawMessage
+		if len(raw) == 0 || json.Unmarshal(raw, &items) != nil {
+			continue
+		}
+		for _, it := range items {
+			var s string
+			var tuple []json.RawMessage
+			var obj struct {
+				Package string `json:"package"`
+			}
+			switch {
+			case json.Unmarshal(it, &s) == nil:
+			case json.Unmarshal(it, &tuple) == nil && len(tuple) > 0:
+				_ = json.Unmarshal(tuple[0], &s)
+			case json.Unmarshal(it, &obj) == nil:
+				s = obj.Package
+			}
+			if s != "" && !strings.HasPrefix(s, "-") {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
 }

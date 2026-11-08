@@ -493,3 +493,20 @@ func TestOpenCodeConfig_SkillSources(t *testing.T) {
 		}
 	}
 }
+
+// plugin and plugins list strings, v1 [name, options] tuples and v2
+// {package, options}; a "-name" removal is not a source (#748).
+func TestOpenCodeConfig_PluginSources(t *testing.T) {
+	var nilCfg *OpenCodeConfig
+	if nilCfg.PluginSources() != nil {
+		t.Fatal("nil")
+	}
+	c := &OpenCodeConfig{Plugin: []byte(`["a", ["b", {}], "-c", [], 3]`), Plugins: []byte(`[{"package": "d"}, "e"]`)}
+	if got := strings.Join(c.PluginSources(), ","); got != "a,b,d,e" {
+		t.Errorf("got %q", got)
+	}
+	c = &OpenCodeConfig{Plugin: []byte(`"a"`)}
+	if c.PluginSources() != nil {
+		t.Error("not a list")
+	}
+}
