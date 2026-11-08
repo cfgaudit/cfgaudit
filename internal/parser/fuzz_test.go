@@ -195,7 +195,7 @@ func FuzzMarkdownInstructions(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, content string) {
 		_ = SkillShellCommands(content)
-		_ = OpenCodeAgentPermission(content)
+		_, _ = OpenCodeAgentPermission(content)
 		_ = DevinSkillPermissions(content)
 		fm, ok := InstructionFrontmatter(content)
 		if !ok {

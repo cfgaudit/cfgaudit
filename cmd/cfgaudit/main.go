@@ -696,7 +696,9 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 				PolicyFile: filepath.Join(dir, files[0])}
 			for _, rel := range files {
 				path := filepath.Join(dir, rel)
-				if cfg, err := loadOpenCodeConfigOptional(path); err == nil && cfg != nil {
+				// Kilo Code's loader is OpenCode 1's: it rejects a file with a
+				// v2 permissions block, so nothing in it applies there (#748).
+				if cfg, err := loadOpenCodeConfigOptional(path); err == nil && cfg != nil && (agent == "opencode" || !cfg.V2) {
 					t.PolicyBlocks = append(t.PolicyBlocks, cfg.PermissionBlocks()...)
 					t.PolicyFile = path
 				}
@@ -3312,9 +3314,13 @@ func openCodeAgentPermissionTargets(dir string) ([]*rules.Target, error) {
 			if err != nil {
 				return nil, err
 			}
-			perm := parser.OpenCodeAgentPermission(string(data))
+			perm, native := parser.OpenCodeAgentPermission(string(data))
 			if perm == nil {
 				continue
+			}
+			agent := parser.OpenCodeAgent{Permission: perm}
+			if native {
+				agent = parser.OpenCodeAgent{Permissions: perm}
 			}
 			name, err := filepath.Rel(filepath.Join(dir, ad.dir), path)
 			if err != nil {
@@ -3323,7 +3329,7 @@ func openCodeAgentPermissionTargets(dir string) ([]*rules.Target, error) {
 			name = strings.TrimSuffix(filepath.ToSlash(name), filepath.Ext(name))
 			targets = append(targets, &rules.Target{
 				Scope:        finding.ScopeProject,
-				OpenCode:     &parser.OpenCodeConfig{Agent: map[string]parser.OpenCodeAgent{name: {Permission: perm}}},
+				OpenCode:     &parser.OpenCodeConfig{Agent: map[string]parser.OpenCodeAgent{name: agent}, V2: native},
 				OpenCodeFile: path,
 			})
 		}
