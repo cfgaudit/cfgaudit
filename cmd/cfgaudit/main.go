@@ -2010,12 +2010,12 @@ var (
 		// (agent-frontmatter-schema.ts), so CFG085 reads its approvalMode /
 		// permissionMode, and attachSubagentBlocks routes its hooks, mcpServers and
 		// qwen-only executor block (#579); the instruction-content rules apply to
-		// the body. .qwen/commands/*.md and one-deep .qwen/skills/<name>/SKILL.md
-		// follow. .qwen/rules did not exist when this list was written; it does now,
-		// and because qwen discovers it recursively it is collected by
-		// agentRulesFiles rather than by a glob here (#565).
+		// the body. One-deep .qwen/skills/<name>/SKILL.md follows; .qwen/commands
+		// is walked by customCommandFiles (#750). .qwen/rules did not exist when
+		// this list was written; it does now, and because qwen discovers it
+		// recursively it is collected by agentRulesFiles rather than by a glob
+		// here (#565).
 		filepath.Join(".qwen", "agents", "*.md"),
-		filepath.Join(".qwen", "commands", "*.md"),
 		filepath.Join(".qwen", "skills", "*", "SKILL.md"),
 		// Gemini CLI workspace skills (#1015). Gemini CLI v0.65.0 loads
 		// workspace skills from `.gemini/skills`, matching `SKILL.md` and
@@ -2183,6 +2183,10 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			paths = append(paths, scopedPath{m, finding.ScopeProject})
 		}
 	}
+	// Gemini CLI and Qwen Code custom commands (#750).
+	for _, m := range customCommandFiles(dir) {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -2190,6 +2194,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		}
 		if err := addGlobs(home, userInstructionGlobs, finding.ScopeUser); err != nil {
 			return nil, err
+		}
+		for _, m := range customCommandFiles(home) {
+			paths = append(paths, scopedPath{m, finding.ScopeUser})
 		}
 		userRules, err := agentRulesFiles(home, recursiveInstructionDirs)
 		if err != nil {
@@ -2229,6 +2236,14 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 
 	shellOff := skillShellDisabled(dir)
 	for _, p := range paths {
+		agent := customCommandAgent(p.path)
+		if agent != "" && filepath.Ext(p.path) == ".toml" {
+			if target, ok := customCommandTarget(p.path, agent); ok {
+				target.Scope = p.scope
+				targets = append(targets, target)
+			}
+			continue
+		}
 		content, err := loadClaudeMD(p.path)
 		if err != nil {
 			return nil, err
@@ -2245,6 +2260,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		attachSkillHooks(target)
 		if !shellOff && isClaudeSkillOrCommandFile(p.path) {
 			target.SkillShellCommands = parser.SkillShellCommands(content)
+		}
+		if agent == "qwen" {
+			target.SkillShellCommands = parser.CustomCommandShellCommands(parser.CustomCommandMarkdownPrompt(content))
 		}
 		targets = append(targets, target)
 	}

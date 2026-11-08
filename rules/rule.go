@@ -368,7 +368,8 @@ type Target struct {
 	// slash command file (InstructionFile), which Claude Code runs when the skill
 	// is invoked, by the user or by the model, before the text reaches the model
 	// (#643). They are command sites. Nil when the file is not a skill or command,
-	// or when the project's settings set disableSkillShellExecution.
+	// or when the project's settings set disableSkillShellExecution. A Gemini
+	// CLI or Qwen Code custom command carries its `!{...}` commands here (#750).
 	SkillShellCommands []string
 
 	// QwenExecutor holds the qwen-code `executor:` block from a .qwen/agents/*.md
