@@ -2107,13 +2107,22 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range projGemini {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
-	// Qwen's skills.directories (#973) may name a folder read above already,
-	// such as .claude/skills; such a skill is read once.
+	// Qwen's skills.directories (#973) and OpenCode's skill sources (#748) may
+	// name a folder read above already, such as .claude/skills; such a skill
+	// is read once.
 	listed := make(map[string]bool, len(paths))
 	for _, p := range paths {
 		listed[p.path] = true
 	}
 	for _, m := range qwenSkillFiles(dir) {
+		if !listed[m] {
+			listed[m] = true
+			paths = append(paths, scopedPath{m, finding.ScopeProject})
+		}
+	}
+	// OpenCode 2's skill scan (#748) adds loose *.md files in a skills root,
+	// deeper .claude/skills skills, and the `skills` paths of opencode.json.
+	for _, m := range openCodeSkillFiles(dir) {
 		if !listed[m] {
 			listed[m] = true
 			paths = append(paths, scopedPath{m, finding.ScopeProject})

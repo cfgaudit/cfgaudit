@@ -28,9 +28,9 @@ import (
 // keys were agent, command, mcp, mode, plugin and username.
 //
 // Beyond `mcp` this reads the keys that carry a command, instruction text, or a
-// permission decision (#525). `plugin` and `skills` are still unmodelled: both
-// need their own false-positive measurement before a rule, and parsing them
-// ahead of one would be dead config.
+// permission decision (#525), and the `skills` sources (#748). `plugin` is
+// still unmodelled: it needs its own false-positive measurement before a rule,
+// and parsing it ahead of one would be dead config.
 type OpenCodeConfig struct {
 	MCP map[string]OpenCodeMCP `json:"mcp,omitempty"`
 
@@ -63,6 +63,10 @@ type OpenCodeConfig struct {
 	// applied after the rules lowered from `permission` (normalize.ts:
 	// [...toolRules, ...permissionRules, ...nativePermissions]).
 	Permissions json.RawMessage `json:"permissions,omitempty"`
+
+	// Skills lists more skill sources: paths and http(s) URLs, as an array or,
+	// in the older spelling, {paths, urls} (normalizeSkills in normalize.ts).
+	Skills json.RawMessage `json:"skills,omitempty"`
 
 	// V2 reports a file only OpenCode 2 loads: it carries a v2 `permissions`
 	// block, top-level or in an agent, which OpenCode 1.x and Kilo Code reject
@@ -323,8 +327,7 @@ func openCodeHasV2Permissions(top map[string]json.RawMessage) bool {
 // conflict the v1 entry wins, as upstream does. `disabled: true` is read by
 // OpenCodeMCP.Disabled directly, so no separate fold is needed for it.
 //
-// v2 `skills` (a string array split into skills.paths/urls) is deliberately not
-// folded: cfgaudit models no skills surface in either spelling yet. The `oauth`
+// `skills` is read by SkillSources in both spellings. The `oauth`
 // snake-case keys (client_secret) are a possible CFG050 position but are read in
 // neither spelling today.
 func lowerOpenCodeV2(top map[string]json.RawMessage, c *OpenCodeConfig) {
@@ -429,4 +432,37 @@ func openCodeIsDirectServer(raw json.RawMessage) bool {
 		}
 	}
 	return false
+}
+
+// SkillSources returns the `skills` entries: the array form, or the paths then
+// the urls of the object form, keeping only strings, as normalizeSkills does.
+func (c *OpenCodeConfig) SkillSources() []string {
+	if c == nil || len(c.Skills) == 0 {
+		return nil
+	}
+	strs := func(raw json.RawMessage) []string {
+		var items []json.RawMessage
+		if json.Unmarshal(raw, &items) != nil {
+			return nil
+		}
+		var out []string
+		for _, it := range items {
+			var s string
+			if json.Unmarshal(it, &s) == nil {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	if list := strs(c.Skills); list != nil {
+		return list
+	}
+	var obj struct {
+		Paths json.RawMessage `json:"paths"`
+		URLs  json.RawMessage `json:"urls"`
+	}
+	if json.Unmarshal(c.Skills, &obj) != nil {
+		return nil
+	}
+	return append(strs(obj.Paths), strs(obj.URLs)...)
 }
