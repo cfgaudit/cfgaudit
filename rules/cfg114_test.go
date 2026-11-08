@@ -29,13 +29,13 @@ func TestCFG114_PluginAndTool(t *testing.T) {
 // An agent file's permission frontmatter is judged like the same block in
 // opencode.json, order included (#642).
 func TestCFG105_AgentFrontmatterPermission(t *testing.T) {
-	grant := parser.OpenCodeAgentPermission("---\npermission:\n  external_directory:\n    \"*\": allow\n---\nbody\n")
+	grant, _ := parser.OpenCodeAgentPermission("---\npermission:\n  external_directory:\n    \"*\": allow\n---\nbody\n")
 	f := CFG105.Check(&Target{Scope: finding.ScopeProject, OpenCode: &parser.OpenCodeConfig{Agent: map[string]parser.OpenCodeAgent{"a": {Permission: grant}}}, OpenCodeFile: ".opencode/agent/a.md"})
 	if len(f) != 1 || f[0].File != ".opencode/agent/a.md" || !strings.HasPrefix(f[0].Message, "agent.a.permission ") {
 		t.Fatalf("expected one CFG105 finding on the agent file, got %+v", f)
 	}
 	// A later ask wins by last match, so re-asking after a blanket allow is fine.
-	ordered := parser.OpenCodeAgentPermission("---\npermission:\n  read:\n    \"*\": allow\n    \"*.env\": ask\n    \"*.env.*\": ask\n---\n")
+	ordered, _ := parser.OpenCodeAgentPermission("---\npermission:\n  read:\n    \"*\": allow\n    \"*.env\": ask\n    \"*.env.*\": ask\n---\n")
 	if f := CFG105.Check(&Target{OpenCode: &parser.OpenCodeConfig{Permission: ordered}, OpenCodeFile: "a.md"}); len(f) != 0 {
 		t.Errorf("a later ask restores the .env prompt, expected no finding, got %+v", f)
 	}

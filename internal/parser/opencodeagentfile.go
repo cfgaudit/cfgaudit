@@ -11,9 +11,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// OpenCodeAgentPermission returns the `permission` value of an OpenCode agent
-// or mode Markdown file's frontmatter as JSON, in the order the file wrote it,
-// or nil when there is none (#642).
+// openCodeAgentNativeKeys are the frontmatter keys only OpenCode 2 knows. From
+// v2.1.4 (config/plugin/agent.ts nativeKeys): "A file that uses any of them is
+// read as V2, whatever else it contains", and V1 fields in it, `permission`
+// among them, are ignored with a warning.
+var openCodeAgentNativeKeys = map[string]bool{"permissions": true, "request": true, "system": true, "disabled": true}
+
+// OpenCodeAgentPermission returns the permission rules of an OpenCode agent or
+// mode Markdown file's frontmatter as JSON, in the order the file wrote them,
+// or nil when there are none (#642). native reports a file read as V2 (#748):
+// its rules are the `permissions` list and a `permission` block in it is not
+// read. Otherwise they are the v1 `permission` block.
 //
 // Order matters because OpenCode resolves a permission by the last matching
 // rule, and Frontmatter.Raw is a map that loses it, so the block is decoded
@@ -21,29 +29,38 @@ import (
 // .opencode/agent/<name>.md with `permission: {bash: allow}` resolves the
 // agent's bash rule to allow, the same as agent.<name>.permission in
 // opencode.json.
-func OpenCodeAgentPermission(content string) json.RawMessage {
+func OpenCodeAgentPermission(content string) (rules json.RawMessage, native bool) {
 	block, ok := frontmatterBlock(content)
 	if !ok {
-		return nil
+		return nil, false
 	}
 	var doc yaml.Node
 	if safeyaml.Unmarshal([]byte(block), &doc) != nil || len(doc.Content) == 0 {
-		return nil
+		return nil, false
 	}
 	root := doc.Content[0]
 	if root.Kind != yaml.MappingNode {
-		return nil
+		return nil, false
 	}
 	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == "permission" {
-			var b strings.Builder
-			if !writeOrderedJSON(&b, root.Content[i+1]) {
-				return nil
-			}
-			return json.RawMessage(b.String())
+		if openCodeAgentNativeKeys[root.Content[i].Value] {
+			native = true
 		}
 	}
-	return nil
+	want := "permission"
+	if native {
+		want = "permissions"
+	}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == want {
+			var b strings.Builder
+			if !writeOrderedJSON(&b, root.Content[i+1]) {
+				return nil, native
+			}
+			return json.RawMessage(b.String()), native
+		}
+	}
+	return nil, native
 }
 
 // frontmatterBlock returns the YAML between the leading `---` fences. It is the

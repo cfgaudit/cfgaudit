@@ -115,3 +115,23 @@ func TestCFG105_NarrowingAndAbsent(t *testing.T) {
 		t.Errorf("non-OpenCode target, got %+v", f)
 	}
 }
+
+// The remediation for an OpenCode 2 rule list silences the finding (#748).
+func TestCFG105_NativeRulesFix(t *testing.T) {
+	native := func(action, res, eff string) parser.OpenCodePermissionRule {
+		return parser.OpenCodePermissionRule{Action: action, Resource: res, Effect: eff, Native: action}
+	}
+	c := &parser.OpenCodeConfig{V2: true}
+	tg := &Target{OpenCode: c, OpenCodeFile: "opencode.json"}
+	c.Permissions = []byte(`[{"action": "read", "resource": "*", "effect": "allow"}]`)
+	if f := CFG105.Check(tg); len(f) != 1 {
+		t.Fatalf("got %+v", f)
+	}
+	c.Permissions = []byte(`[{"action": "read", "resource": "*", "effect": "allow"}, {"action": "read", "resource": "*.env", "effect": "ask"}, {"action": "read", "resource": "*.env.*", "effect": "ask"}]`)
+	if f := CFG105.Check(tg); len(f) != 0 {
+		t.Fatalf("fix did not silence: %+v", f)
+	}
+	if got := describeRule(native("read", "*", "allow")); got != `from {"action": "read", "resource": "*", "effect": "allow"}` {
+		t.Errorf("got %s", got)
+	}
+}

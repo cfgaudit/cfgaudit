@@ -194,13 +194,13 @@ type orderedRuleset struct {
 func orderedRulesets(blocks []parser.OpenCodePermissionBlock) []orderedRuleset {
 	var base []orderedRule
 	for _, b := range blocks {
-		if b.Where == "permission" {
+		if b.Top() {
 			base = append(base, b.Rules...)
 		}
 	}
 	out := []orderedRuleset{{where: "", rules: base}}
 	for _, b := range blocks {
-		if b.Where != "permission" {
+		if !b.Top() {
 			out = append(out, orderedRuleset{where: b.Where, rules: append(base[:len(base):len(base)], b.Rules...)})
 		}
 	}
@@ -235,7 +235,7 @@ func checkOrderedPolicy(t *Target, sp policySpelling) []finding.Finding {
 			}
 			for _, v := range c.entries(t.PolicyForbid) {
 				if r, ok := orderedGrant(set.rules, c.key, v, urls); ok {
-					add("policy forbid-allow." + c.key + " \"" + v + "\": \"" + r.Action + "\" rule \"" + r.Resource + "\" allows it" + in(set.where) + ", so " + sp.name + " runs it without asking")
+					add("policy forbid-allow." + c.key + " \"" + v + "\": \"" + r.Spelled() + "\" rule \"" + r.Resource + "\" allows it" + in(set.where) + ", so " + sp.name + " runs it without asking")
 				}
 			}
 		}

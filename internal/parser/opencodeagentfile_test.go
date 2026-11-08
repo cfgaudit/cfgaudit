@@ -39,9 +39,24 @@ func TestOpenCodeAgentPermission(t *testing.T) {
 		{"fence only", "---", ""},
 		{"unterminated", "---\npermission: allow\n", ""},
 	} {
-		got := string(OpenCodeAgentPermission(tc.content))
-		if got != tc.want {
-			t.Errorf("%s: got %s, want %s", tc.name, got, tc.want)
+		got, native := OpenCodeAgentPermission(tc.content)
+		if string(got) != tc.want || native {
+			t.Errorf("%s: got %s native=%v, want %s", tc.name, got, native, tc.want)
+		}
+	}
+}
+
+// A file with one of the four V2 keys is read as V2 (#748): its permissions
+// list counts and a v1 permission block in it does not.
+func TestOpenCodeAgentPermission_V2(t *testing.T) {
+	for _, tc := range []struct{ name, content, want string }{
+		{"list", "---\npermissions:\n  - action: read\n    resource: \"*.env\"\n    effect: allow\n---\n", `[{"action":"read","resource":"*.env","effect":"allow"}]`},
+		{"v1 block ignored", "---\nsystem: x\npermission:\n  read: allow\n---\n", ""},
+		{"disabled", "---\ndisabled: false\npermissions: [!!int nope]\n---\n", ""},
+	} {
+		got, native := OpenCodeAgentPermission(tc.content)
+		if string(got) != tc.want || !native {
+			t.Errorf("%s: got %s native=%v, want %s", tc.name, got, native, tc.want)
 		}
 	}
 }

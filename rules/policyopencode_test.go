@@ -137,6 +137,11 @@ func TestCFG025_OrderedPolicy(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
+	// An OpenCode 2 rule is named as the file spells it (#748).
+	tg.PolicyBlocks = append(tg.PolicyBlocks, parser.OpenCodePermissionBlock{Where: "permissions", Rules: []orderedRule{{Action: "bash", Resource: "curl *", Effect: "allow", Native: "shell"}}})
+	if got := messages(CFG025.Check(tg)); !strings.Contains(got, `"shell" rule "curl *" allows it`) {
+		t.Errorf("native spelling missing:\n%s", got)
+	}
 	tg.PolicyAgent = "opencode"
 	tg.PolicyDeny = config.PolicyRules{Fetch: []string{"example.com"}}
 	tg.PolicyForbid = config.PolicyRules{}

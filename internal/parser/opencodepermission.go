@@ -21,37 +21,126 @@ import (
 // order on purpose: "Runtime config parsing uses Effect's `propertyOrder:
 // "original"` parse option so user key order is preserved for permission
 // precedence."
+//
+// Action uses the OpenCode 1 names the checks probe with. OpenCode 2 renamed
+// some tools (normalizeAction in v1/config/migrate.ts: bash is shell, task is
+// subagent), so a native rule is mapped back, and Native keeps how the file
+// spelled it.
 type OpenCodePermissionRule struct {
 	Action   string
 	Resource string
 	Effect   string
+
+	// Native is set on a rule from an OpenCode 2 `permissions` list and holds
+	// its action as written.
+	Native string
+}
+
+// Spelled is the action as the file wrote it.
+func (r OpenCodePermissionRule) Spelled() string {
+	if r.Native != "" {
+		return r.Native
+	}
+	return r.Action
 }
 
 // OpenCodePermissionBlock is one permission declaration and where it came from.
 type OpenCodePermissionBlock struct {
-	// Where is "permission" or "agent.<name>.permission".
+	// Where is "permission", "permissions", "agent.<name>.permission" or
+	// "agents.<name>.permissions".
 	Where string
 	Rules []OpenCodePermissionRule
 }
 
+// Top reports whether the block is the top-level one, which every agent runs
+// with before its own.
+func (b OpenCodePermissionBlock) Top() bool {
+	return b.Where == "permission" || b.Where == "permissions"
+}
+
 // PermissionBlocks returns the top-level permission block and each agent's, in
-// declaration order, with the rules flattened.
+// declaration order, with the rules flattened. In each, the v1 `permission`
+// rules come before the OpenCode 2 `permissions` list, as OpenCode 2 joins
+// them.
 func (c *OpenCodeConfig) PermissionBlocks() []OpenCodePermissionBlock {
 	if c == nil {
 		return nil
 	}
 	var out []OpenCodePermissionBlock
-	if rules := decodeOpenCodePermission(c.Permission); len(rules) > 0 {
-		out = append(out, OpenCodePermissionBlock{Where: "permission", Rules: rules})
+	add := func(v1, native json.RawMessage, where, nativeWhere string) {
+		rules := decodeOpenCodePermission(v1)
+		if c.V2 {
+			for i := range rules {
+				rules[i].Action = openCodeV1InV2Action(rules[i].Action)
+			}
+		}
+		nr := decodeOpenCodeRuleset(native)
+		if len(nr) > 0 {
+			where = nativeWhere
+		}
+		if rules = append(rules, nr...); len(rules) > 0 {
+			out = append(out, OpenCodePermissionBlock{Where: where, Rules: rules})
+		}
 	}
+	add(c.Permission, c.Permissions, "permission", "permissions")
 	names := make([]string, 0, len(c.Agent))
 	for name := range c.Agent {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if rules := decodeOpenCodePermission(c.Agent[name].Permission); len(rules) > 0 {
-			out = append(out, OpenCodePermissionBlock{Where: "agent." + name + ".permission", Rules: rules})
+		a := c.Agent[name]
+		add(a.Permission, a.Permissions, "agent."+name+".permission", "agents."+name+".permissions")
+	}
+	return out
+}
+
+// openCodeV1InV2Action is what OpenCode 2 makes of a v1 `permission` key
+// (normalizeAction): write, patch and apply_patch become edit. bash and task
+// become shell and subagent, which the checks spell bash and task anyway.
+func openCodeV1InV2Action(action string) string {
+	switch action {
+	case "write", "patch", "apply_patch":
+		return "edit"
+	}
+	return action
+}
+
+// openCodeNativeAction maps a native OpenCode 2 action onto the name the
+// checks probe with. A native rule is not renamed by OpenCode, so only the two
+// renamed tools are mapped.
+func openCodeNativeAction(action string) string {
+	switch action {
+	case "shell":
+		return "bash"
+	case "subagent":
+		return "task"
+	}
+	return action
+}
+
+// decodeOpenCodeRuleset decodes an OpenCode 2 `permissions` list. OpenCode
+// decodes it entry by entry (decodeList), so an entry that is not a rule is
+// dropped and the others still apply. The effect is one of allow, deny and
+// ask, as written.
+func decodeOpenCodeRuleset(raw json.RawMessage) []OpenCodePermissionRule {
+	var entries []json.RawMessage
+	if len(bytes.TrimSpace(raw)) == 0 || json.Unmarshal(raw, &entries) != nil {
+		return nil
+	}
+	var out []OpenCodePermissionRule
+	for _, e := range entries {
+		var r struct {
+			Action   *string `json:"action"`
+			Resource *string `json:"resource"`
+			Effect   string  `json:"effect"`
+		}
+		if json.Unmarshal(e, &r) != nil || r.Action == nil || r.Resource == nil {
+			continue
+		}
+		switch r.Effect {
+		case "allow", "deny", "ask":
+			out = append(out, OpenCodePermissionRule{Action: openCodeNativeAction(*r.Action), Resource: *r.Resource, Effect: r.Effect, Native: *r.Action})
 		}
 	}
 	return out

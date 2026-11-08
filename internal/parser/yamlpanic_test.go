@@ -32,5 +32,5 @@ func TestParseContinueConfig_DecoderPanic(t *testing.T) {
 }
 
 func TestOpenCodeAgentPermission_DecoderPanic(t *testing.T) {
-	_ = OpenCodeAgentPermission("---\n" + yamlPanicDoc + "---\n")
+	_, _ = OpenCodeAgentPermission("---\n" + yamlPanicDoc + "---\n")
 }
