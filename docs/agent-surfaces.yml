@@ -47,11 +47,14 @@ surfaces:
   - {agent: gemini-cli, kind: instructions, path: GEMINI.md}
   - {agent: gemini-cli, kind: agents, path: .gemini/agents/a.md, content: "---\nname: a\n---\nx"}
   - {agent: gemini-cli, kind: skills, path: .gemini/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: gemini-cli, kind: commands, path: .gemini/commands/a/b.toml, content: "prompt = \"x\""}
   # qwen-code
   - {agent: qwen-code, kind: settings, path: .qwen/settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: qwen-code, kind: instructions, path: QWEN.md}
   - {agent: qwen-code, kind: agents, path: .qwen/agents/a.md}
   - {agent: qwen-code, kind: skills, path: .qwen/skills/a/SKILL.md}
+  - {agent: qwen-code, kind: commands, path: .qwen/commands/a/b.toml, content: "prompt = \"x\""}
+  - {agent: qwen-code, kind: commands, path: .qwen/commands/a/b.md}
   # codex
   - {agent: codex, kind: settings, path: .codex/config.toml, content: "model=\"x\""}
   - {agent: codex, kind: hooks, path: .codex/hooks.json, content: "{\"hooks\":{\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]}}"}
@@ -166,10 +169,13 @@ surfaces:
   - {agent: gemini-cli, scope: user, kind: instructions, path: .gemini/GEMINI.md}
   - {agent: gemini-cli, scope: user, kind: skills, path: .gemini/skills/SKILL.md}
   - {agent: gemini-cli, scope: user, kind: skills, path: .gemini/skills/a/SKILL.md}
+  - {agent: gemini-cli, scope: user, kind: commands, path: .gemini/commands/a.toml, content: "prompt = \"x\""}
   - {agent: qwen-code, scope: user, kind: settings, path: .qwen/settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/QWEN.md}
   - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/output-styles/a.md}
   - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/rules/a.md}
+  - {agent: qwen-code, scope: user, kind: commands, path: .qwen/commands/a.toml, content: "prompt = \"x\""}
+  - {agent: qwen-code, scope: user, kind: commands, path: .qwen/commands/a/b.md}
   - {agent: codex, scope: user, kind: settings, path: .codex/config.toml, content: "model=\"x\""}
   - {agent: continue, scope: user, kind: settings, path: .continue/config.yaml, content: "name: a"}
   - {agent: continue, scope: user, kind: mcp, path: .continue/config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}

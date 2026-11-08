@@ -371,7 +371,10 @@ func commandSites(t *Target) []commandSite {
 		}
 	}
 
-	// Claude Code skill and slash command `!` blocks (#643). Measured with
+	// Claude Code skill and slash command `!` blocks (#643), and the `!{...}`
+	// commands of Gemini CLI and Qwen Code custom commands (#750), which run
+	// when the command is invoked, after a confirmation unless the policy or
+	// allow list covers them (or, in Qwen, YOLO mode is on). Measured with
 	// 2.1.296: the command runs when the skill is invoked, by a user typing the
 	// slash command or by the model through the Skill tool, before any model
 	// turn; it runs without a prompt when the file's allowed-tools or the
@@ -579,6 +582,10 @@ func credentialHelpers(s *parser.Settings) []credentialHelper {
 
 // skillShellLabel names a `!` command by the kind of file it sits in.
 func skillShellLabel(file string) string {
+	slash := "/" + filepath.ToSlash(file)
+	if strings.Contains(slash, "/.gemini/commands/") || strings.Contains(slash, "/.qwen/commands/") {
+		return "custom command `!{...}` command"
+	}
 	if strings.EqualFold(filepath.Base(file), "SKILL.md") {
 		return "skill `!` command"
 	}
