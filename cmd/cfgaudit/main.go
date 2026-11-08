@@ -2121,8 +2121,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		}
 	}
 	// OpenCode 2's skill scan (#748) adds loose *.md files in a skills root,
-	// deeper .claude/skills skills, and the `skills` paths of opencode.json.
-	for _, m := range openCodeSkillFiles(dir) {
+	// deeper .claude/skills skills, and the `skills` paths of opencode.json;
+	// its relative `instructions` entries add the files they name.
+	for _, m := range append(openCodeSkillFiles(dir), openCodeInstructionFiles(dir)...) {
 		if !listed[m] {
 			listed[m] = true
 			paths = append(paths, scopedPath{m, finding.ScopeProject})

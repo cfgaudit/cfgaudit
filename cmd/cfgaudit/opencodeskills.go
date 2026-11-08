@@ -9,8 +9,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cfgaudit/cfgaudit/internal/config"
 	"github.com/cfgaudit/cfgaudit/internal/parser"
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
+	"github.com/cfgaudit/cfgaudit/rules"
 )
 
 // openCodeSkillRoots are the project folders OpenCode 2 scans for skills: the
@@ -136,6 +138,66 @@ func openCodeSkillFiles(dir string) []string {
 	var out []string
 	for _, r := range roots {
 		out = append(out, openCodeSkillScan(r)...)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// openCodeInstructionFiles returns the files a relative `instructions` entry
+// of a project config names inside the repository (#748). OpenCode matches a
+// relative pattern upward from the working directory to the project root
+// (globUp); cfgaudit matches it against the repository root. A pattern with a
+// wildcard is matched under the part before its first wildcard segment, with
+// the ** and * of exclude-paths; .git and node_modules are not walked.
+func openCodeInstructionFiles(dir string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	for _, rel := range openCodeConfigFiles {
+		cfg, err := parser.ParseOpenCodeConfig(filepath.Join(dir, rel))
+		if err != nil {
+			continue
+		}
+		for _, e := range cfg.Instructions {
+			pattern := strings.TrimPrefix(strings.ReplaceAll(strings.TrimSpace(e), `\`, "/"), "./")
+			if pattern == "" || rules.OpenCodeOutside(pattern) != "" {
+				continue
+			}
+			if !strings.ContainsAny(pattern, "*?") {
+				p := filepath.Join(dir, filepath.FromSlash(pattern))
+				if info, err := scanroot.Stat(p); err == nil && info.Mode().IsRegular() {
+					add(p)
+				}
+				continue
+			}
+			var base []string
+			for _, seg := range strings.Split(pattern, "/") {
+				if strings.ContainsAny(seg, "*?") {
+					break
+				}
+				base = append(base, seg)
+			}
+			_ = scanroot.WalkDir(filepath.Join(dir, filepath.FromSlash(strings.Join(base, "/"))), func(p string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return nil
+				}
+				if d.IsDir() {
+					if n := d.Name(); n == ".git" || n == "node_modules" {
+						return fs.SkipDir
+					}
+					return nil
+				}
+				if r, err := filepath.Rel(dir, p); err == nil && config.MatchGlob(pattern, filepath.ToSlash(r)) {
+					add(p)
+				}
+				return nil
+			})
+		}
 	}
 	sort.Strings(out)
 	return out
