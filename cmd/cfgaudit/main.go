@@ -3399,7 +3399,7 @@ func agentCodeFile(path, kind string) *rules.AgentCodeFile {
 }
 
 // openCodeCodeTargets gives CFG114 one target per committed OpenCode plugin or
-// tool file.
+// tool file, and per OpenCode 2 plugin directory (#748).
 func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
 	var targets []*rules.Target
 	for _, cd := range openCodeCodeDirs {
@@ -3419,7 +3419,7 @@ func openCodeCodeTargets(dir string) ([]*rules.Target, error) {
 			}
 		}
 	}
-	return targets, nil
+	return append(targets, openCodePluginDirTargets(dir)...), nil
 }
 
 // copilotExtensionTargets gives CFG114 one target per Copilot CLI project

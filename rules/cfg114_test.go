@@ -40,3 +40,14 @@ func TestCFG105_AgentFrontmatterPermission(t *testing.T) {
 		t.Errorf("a later ask restores the .env prompt, expected no finding, got %+v", f)
 	}
 }
+
+func TestCFG114_PluginDirKinds(t *testing.T) {
+	f := CFG114.Check(&Target{AgentCode: &AgentCodeFile{Path: ".opencode/plugin/p/index.ts", Kind: "plugin-dir"}})
+	if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "plugin directory p (index.ts)") {
+		t.Fatalf("got %+v", f)
+	}
+	f = CFG114.Check(&Target{AgentCode: &AgentCodeFile{Path: ".opencode/plugin/g/gui-experimental.cjs", Kind: "plugin-gui"}})
+	if len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, "desktop plugin directory g") {
+		t.Fatalf("got %+v", f)
+	}
+}
