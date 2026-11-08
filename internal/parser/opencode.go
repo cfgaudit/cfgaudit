@@ -77,6 +77,9 @@ type OpenCodeConfig struct {
 	// with the whole file ("V2 permissions are not supported by OpenCode V1").
 	// OpenCode 2 reads it, so it is read with OpenCode 2's rules (#748).
 	V2 bool `json:"-"`
+
+	// ProviderURLs are the provider and model base URLs (#779).
+	ProviderURLs []OpenCodeProviderURL `json:"-"`
 }
 
 // OpenCodeAgent is one `agent.<name>` entry. Only the fields cfgaudit reads are
@@ -260,6 +263,7 @@ func ParseOpenCodeConfig(path string) (*OpenCodeConfig, error) {
 	c.V2 = openCodeHasV2Permissions(top)
 
 	lowerOpenCodeV2(top, &c)
+	c.ProviderURLs = openCodeProviderURLs(top)
 	return &c, nil
 }
 
