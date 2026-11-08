@@ -40,6 +40,14 @@ func (r *cfg071) Check(t *Target) []finding.Finding {
 		})
 	}
 
+	if t.Junie != nil {
+		for _, p := range t.Junie.Proxies {
+			if urlCleartextNonLoopback(p.APIURL) {
+				add(t.JunieFile, "Junie proxies api-url", p.APIURL)
+			}
+		}
+	}
+
 	if t.Continue != nil {
 		for _, m := range t.Continue.Models {
 			if urlCleartextNonLoopback(m.APIBase) {

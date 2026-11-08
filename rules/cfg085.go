@@ -236,6 +236,9 @@ func agentFileKind(path string) string {
 		return "Grok"
 	case ".qwen":
 		return "qwen"
+	case ".junie":
+		// Junie subagents take the same permissionMode values (#1413).
+		return "Junie"
 	}
 	return ""
 }

@@ -115,6 +115,12 @@ type Target struct {
 	GitModulesFile string
 	NestedRepos    []NestedRepo
 
+	// Junie is a parsed .junie/config.json, JunieFile its path, and JunieOutside
+	// its location entries that leave the repository (#1413).
+	Junie        *parser.JunieConfig
+	JunieFile    string
+	JunieOutside []JunieLocation
+
 	// GooseRecipeCommands are the retry commands of the goose recipe
 	// GooseRecipeFile, and GooseHooks a parsed .agents/plugins/<name>/hooks/hooks.json
 	// in the shape Grok's hook files have (#1414).

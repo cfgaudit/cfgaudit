@@ -86,6 +86,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkContinueRequestOptions(t)...)
 	findings = append(findings, r.checkZedEnv(t)...)
 	findings = append(findings, r.checkAgentHostTokens(t)...)
+	findings = append(findings, r.checkJunie(t)...)
 	for _, site := range commandSitesWithScripts(t) {
 		for _, what := range commandSecrets(site.raw()) {
 			f := secretFinding(site.Label, what, site.File, t)
@@ -331,6 +332,31 @@ func headerSecrets(base string, headers map[string]string, file string, t *Targe
 
 // headerSecretsAt is headerSecrets for a header block whose key path is not
 // <base>.headers, such as Gemini's telemetry.otlpHeaders.
+// checkJunie reports the literal API keys and proxy headers of a Junie project
+// config (#1413). A byok value is an API key by definition, so any literal one
+// counts.
+func (r *cfg050) checkJunie(t *Target) []finding.Finding {
+	if t == nil || t.Junie == nil {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, k := range sortedKeys(t.Junie.BYOK) {
+		if v := strings.TrimSpace(t.Junie.BYOK[k]); v != "" && !isSecretReference(v) && !literalPlaceholder(v) {
+			findings = append(findings, secretFinding("Junie byok."+k, "a literal API key", t.JunieFile, t))
+		}
+	}
+	for i, p := range t.Junie.Proxies {
+		headers := map[string]string{}
+		for _, h := range p.Headers {
+			if k, v, ok := strings.Cut(h, ":"); ok {
+				headers[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			}
+		}
+		findings = append(findings, headerSecretsAt("Junie proxies["+strconv.Itoa(i)+"].headers", headers, t.JunieFile, t)...)
+	}
+	return findings
+}
+
 func headerSecretsAt(prefix string, headers map[string]string, file string, t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, k := range sortedKeys(headers) {
