@@ -184,6 +184,13 @@ type Target struct {
 	GeminiDotEnv     map[string]string
 	GeminiDotEnvFile string
 
+	// GeminiEnvTelemetry is the telemetry Gemini CLI runs with when
+	// .gemini/.env sets the export endpoint (#749), with telemetry.enabled and
+	// logPrompts from the .env or the settings; GeminiEnvTelemetryKey is the
+	// variable that set the endpoint. CFG046 reports it on GeminiDotEnvFile.
+	GeminiEnvTelemetry    *parser.AgentTelemetry
+	GeminiEnvTelemetryKey string
+
 	// Qwen holds a parsed qwen-code settings.json (.qwen/settings.json or
 	// ~/.qwen/settings.json). Its tools.approvalMode / tools.autoAccept drive
 	// CFG091, and its mcpServers ride ProjectMCP so the MCP rules apply. Nil when

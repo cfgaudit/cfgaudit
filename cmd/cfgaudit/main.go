@@ -1564,13 +1564,37 @@ func parseCodexOptional(path string) (*parser.CodexConfig, error) {
 // to the settings file.
 func geminiTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	var targets []*rules.Target
+	// .gemini/.env (#646). packages/cli/src/config/settings.ts loadEnvironment:
+	// in a trusted folder findEnvFile prefers <dir>/.gemini/.env, and the
+	// DEFAULT_EXCLUDED_ENV_VARS filter applies only when the path does not
+	// contain .gemini (isProjectEnvFile), so every variable in it is loaded. An
+	// untrusted folder loads only the auth whitelist. The root .env is not read
+	// here: it is an ordinary project file far more often than agent config.
+	dotEnv := filepath.Join(dir, ".gemini", ".env")
+	env, envErr := parser.ParseDotEnv(dotEnv)
+	if envErr != nil {
+		env = nil
+	}
+	var envTarget *rules.Target
+	if len(env) > 0 {
+		envTarget = &rules.Target{Scope: finding.ScopeProject, GeminiDotEnv: env, GeminiDotEnvFile: dotEnv}
+	}
 	add := func(path string, scope finding.Scope) error {
-		gs, err := parseGeminiOptional(path)
+		// Since 0.66.0 the project settings are resolved again with the .env
+		// variables (#749), so a placeholder takes its .env value.
+		var placeholders map[string]string
+		if scope == finding.ScopeProject {
+			placeholders = env
+		}
+		gs, err := parseGeminiOptional(path, placeholders)
 		if err != nil {
 			return err
 		}
 		if gs == nil {
 			return nil
+		}
+		if scope == finding.ScopeProject && envTarget != nil {
+			applyGeminiEnvTelemetry(gs, envTarget)
 		}
 		targets = append(targets, &rules.Target{
 			Scope:          scope,
@@ -1584,21 +1608,13 @@ func geminiTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err := add(filepath.Join(dir, ".gemini", "settings.json"), finding.ScopeProject); err != nil {
 		return nil, err
 	}
-	// .gemini/.env (#646). packages/cli/src/config/settings.ts loadEnvironment:
-	// in a trusted folder findEnvFile prefers <dir>/.gemini/.env, and the
-	// DEFAULT_EXCLUDED_ENV_VARS filter applies only when the path does not
-	// contain .gemini (isProjectEnvFile), so every variable in it is loaded. An
-	// untrusted folder loads only the auth whitelist. The root .env is not read
-	// here: it is an ordinary project file far more often than agent config.
-	dotEnv := filepath.Join(dir, ".gemini", ".env")
-	if env, err := parser.ParseDotEnv(dotEnv); err == nil && len(env) > 0 {
-		targets = append(targets, &rules.Target{
-			Scope:            finding.ScopeProject,
-			GeminiDotEnv:     env,
-			GeminiDotEnvFile: dotEnv,
-		})
-	} else if err != nil && !scanroot.IsAbsent(err) {
-		skipUnreadable(dotEnv, err)
+	if envTarget != nil {
+		if envTarget.GeminiEnvTelemetry == nil {
+			applyGeminiEnvTelemetry(nil, envTarget)
+		}
+		targets = append(targets, envTarget)
+	} else if envErr != nil && !scanroot.IsAbsent(envErr) {
+		skipUnreadable(dotEnv, envErr)
 	}
 	if includeUser {
 		home, err := os.UserHomeDir()
@@ -1612,10 +1628,48 @@ func geminiTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	return targets, nil
 }
 
-// parseGeminiOptional parses a Gemini settings.json, returning (nil, nil) when
+// applyGeminiEnvTelemetry folds the telemetry variables of .gemini/.env into
+// what CFG046 judges (#749). Gemini CLI reads them ahead of the settings, so a
+// .env endpoint replaces the settings one and is reported on the .env file,
+// with telemetry.enabled and logPrompts from either source; a .env that only
+// switches telemetry on or prompt logging off changes how the settings
+// endpoint is judged. gs is nil when there is no project settings file.
+func applyGeminiEnvTelemetry(gs *parser.GeminiSettings, envTarget *rules.Target) {
+	envTel, key := parser.GeminiEnvTelemetry(envTarget.GeminiDotEnv)
+	if envTel == nil {
+		return
+	}
+	var st parser.AgentTelemetry
+	if gs != nil && gs.Telemetry != nil {
+		st = *gs.Telemetry
+	}
+	eff := st
+	if envTel.Enabled != nil {
+		eff.Enabled = envTel.Enabled
+	}
+	if envTel.LogPrompts != nil {
+		eff.LogPrompts = envTel.LogPrompts
+	}
+	if envTel.OtlpEndpoint != "" {
+		eff.OtlpEndpoint = envTel.OtlpEndpoint
+		envTarget.GeminiEnvTelemetry, envTarget.GeminiEnvTelemetryKey = &eff, key
+		if gs != nil && gs.Telemetry != nil {
+			overridden := st
+			overridden.OtlpEndpoint = ""
+			gs.Telemetry = &overridden
+		}
+		return
+	}
+	if gs != nil && st.OtlpEndpoint != "" {
+		gs.Telemetry = &eff
+	}
+}
+
+// parseGeminiOptional parses a Gemini settings.json, with its placeholders
+// expanded from env, returning (nil, nil) when
 // the file does not exist so callers can treat absence as "no target".
-func parseGeminiOptional(path string) (*parser.GeminiSettings, error) {
-	gs, err := parser.ParseGeminiSettings(path)
+func parseGeminiOptional(path string, env map[string]string) (*parser.GeminiSettings, error) {
+	gs, err := parser.ParseGeminiSettingsEnv(path, env)
 	if err != nil {
 		if scanroot.IsAbsent(err) {
 			return nil, nil

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 	"github.com/cfgaudit/cfgaudit/internal/version"
 )
 
@@ -122,5 +123,17 @@ func TestCFG046_UserScope_UnchangedOnNewerClaude(t *testing.T) {
 	}
 	if !strings.Contains(f[0].Message, "sends OpenTelemetry telemetry") {
 		t.Errorf("expected the live wording at user scope, got %q", f[0].Message)
+	}
+}
+
+func TestCFG046_GeminiDotEnv(t *testing.T) {
+	on := true
+	f := CFG046.Check(&Target{GeminiEnvTelemetry: &parser.AgentTelemetry{Enabled: &on, OtlpEndpoint: "https://c.example"}, GeminiEnvTelemetryKey: "GEMINI_TELEMETRY_OTLP_ENDPOINT", GeminiDotEnvFile: ".gemini/.env"})
+	if len(f) != 1 || f[0].File != ".gemini/.env" || !strings.HasPrefix(f[0].Message, "GEMINI_TELEMETRY_OTLP_ENDPOINT in .gemini/.env sends") || !strings.Contains(f[0].Message, "ahead of telemetry.otlpEndpoint") {
+		t.Fatalf("got %+v", f)
+	}
+	f = CFG046.Check(&Target{GeminiEnvTelemetry: &parser.AgentTelemetry{OtlpEndpoint: "https://c.example"}, GeminiEnvTelemetryKey: "OTEL_EXPORTER_OTLP_ENDPOINT", GeminiDotEnvFile: ".gemini/.env"})
+	if len(f) != 1 || f[0].Severity != finding.Info || !strings.Contains(f[0].Message, "neither .gemini/.env") {
+		t.Fatalf("info: %+v", f)
 	}
 }

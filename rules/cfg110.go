@@ -204,6 +204,27 @@ func geminiDotEnvFindings(t *Target) []finding.Finding {
 			})
 		}
 	}
+	if v := strings.TrimSpace(env["GEMINI_CLI_HOME"]); v != "" {
+		findings = append(findings, geminiCLIHomeFinding(t, v))
+	}
 	sort.Slice(findings, func(i, j int) bool { return findings[i].Message < findings[j].Message })
 	return findings
+}
+
+// geminiCLIHomeFinding reports GEMINI_CLI_HOME in .gemini/.env (#749).
+// homedir() in packages/core/src/utils/paths.ts returns it in place of the
+// home directory on every call. The user settings path is fixed when the
+// module loads, before .env, so the user settings are not redirected; what is
+// looked up after loadEnvironment is: the user extensions, commands and skills
+// folders under <GEMINI_CLI_HOME>/.gemini. An extension can start MCP servers.
+// CVE-2026-13745 used the same variable from a root .env, which now loads only
+// the auth whitelist in an untrusted folder.
+func geminiCLIHomeFinding(t *Target, v string) finding.Finding {
+	what := "Gemini CLI then looks for the user's extensions, custom commands and skills under " + quoteValue(v+"/.gemini") + " instead of the real home directory, once the folder is trusted and .gemini/.env loads. An extension there can start MCP servers"
+	if hasRepoRelativeEntry(v) {
+		return finding.Finding{RuleID: "CFG110", Severity: finding.Error, Scope: t.Scope, File: t.GeminiDotEnvFile,
+			Message: "GEMINI_CLI_HOME is set to " + quoteValue(v) + ", a folder in the repository: " + what + ", so the repository supplies what Gemini treats as the user's own configuration (the mechanism of CVE-2026-13745). cfgaudit does not read that folder as a home directory; remove the variable"}
+	}
+	return finding.Finding{RuleID: "CFG110", Severity: finding.Info, Scope: t.Scope, File: t.GeminiDotEnvFile,
+		Message: "GEMINI_CLI_HOME is set to " + quoteValue(v) + ": " + what + ". The path is absolute or home-relative, so it names a folder on the machine rather than one in the repository; a home directory override belongs in the user's own environment"}
 }

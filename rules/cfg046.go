@@ -55,10 +55,18 @@ func (r *cfg046) Check(t *Target) []finding.Finding {
 	}
 	var out []finding.Finding
 	if t.Gemini != nil {
-		out = append(out, agentTelemetryFindings(t, t.Gemini.Telemetry, t.GeminiFile, "Gemini CLI", geminiTelemetryGate)...)
+		out = append(out, agentTelemetryFindings(t, t.Gemini.Telemetry, t.GeminiFile, "Gemini CLI", geminiTelemetryGate, settingsTelemetryLabels)...)
+	}
+	if t.GeminiEnvTelemetry != nil {
+		labels := telemetryLabels{
+			endpoint: t.GeminiEnvTelemetryKey + " in .gemini/.env",
+			unset:    "neither .gemini/.env (GEMINI_TELEMETRY_ENABLED) nor the settings switch telemetry on",
+			override: " Gemini CLI reads it ahead of telemetry.otlpEndpoint in the settings.",
+		}
+		out = append(out, agentTelemetryFindings(t, t.GeminiEnvTelemetry, t.GeminiDotEnvFile, "Gemini CLI", geminiTelemetryGate, labels)...)
 	}
 	if t.Qwen != nil {
-		out = append(out, agentTelemetryFindings(t, t.Qwen.Telemetry, t.QwenFile, "qwen-code", qwenTelemetryGate)...)
+		out = append(out, agentTelemetryFindings(t, t.Qwen.Telemetry, t.QwenFile, "qwen-code", qwenTelemetryGate, settingsTelemetryLabels)...)
 	}
 	return append(out, r.checkClaudeEnv(t)...)
 }
@@ -81,7 +89,16 @@ const (
 // for a raw IP. A block that does not itself enable telemetry is info, because
 // the endpoint then waits for a user's own `enabled: true`, which project
 // settings override but do not need to supply.
-func agentTelemetryFindings(t *Target, tel *parser.AgentTelemetry, file, agent, gate string) []finding.Finding {
+// telemetryLabels name where the endpoint and the switch come from.
+type telemetryLabels struct {
+	endpoint string // the key that sets the endpoint
+	unset    string // why the export waits for the user
+	override string // how this source ranks, or ""
+}
+
+var settingsTelemetryLabels = telemetryLabels{endpoint: "telemetry.otlpEndpoint", unset: "this file does not set telemetry.enabled"}
+
+func agentTelemetryFindings(t *Target, tel *parser.AgentTelemetry, file, agent, gate string, labels telemetryLabels) []finding.Finding {
 	if tel == nil {
 		return nil
 	}
@@ -90,8 +107,9 @@ func agentTelemetryFindings(t *Target, tel *parser.AgentTelemetry, file, agent, 
 		return nil
 	}
 	// Gemini resolves $VAR and ${VAR} in settings.json from the user's
-	// environment (resolveEnvVarsInObject), so a host written as a reference is
-	// the user's own value, not one the repository chose.
+	// environment (resolveEnvVarsInObject), so a host still written as a
+	// reference is the user's own value, not one the repository chose. A
+	// reference .gemini/.env answers was expanded before this rule (#749).
 	if strings.Contains(endpointHost(v), "$") {
 		return nil
 	}
@@ -109,10 +127,10 @@ func agentTelemetryFindings(t *Target, tel *parser.AgentTelemetry, file, agent, 
 	if host := endpointHost(v); host != "" && net.ParseIP(host) != nil {
 		sev, detail = finding.Error, "a raw IP, a hardcoded external collector"
 	}
-	msg := "telemetry.otlpEndpoint sends " + agent + " OpenTelemetry logs, metrics and traces (" + carries + ") to \"" + v + "\", " + detail + "." + gate
+	msg := labels.endpoint + " sends " + agent + " OpenTelemetry logs, metrics and traces (" + carries + ") to \"" + v + "\", " + detail + "." + labels.override + gate
 	if tel.Enabled == nil {
 		sev = finding.Info
-		msg = "telemetry.otlpEndpoint names " + detail + " (\"" + v + "\") for " + agent + " telemetry, but this file does not set telemetry.enabled, so the export starts only for a user who enables telemetry themselves; for them this file decides where " + carries + " go." + gate
+		msg = labels.endpoint + " names " + detail + " (\"" + v + "\") for " + agent + " telemetry, but " + labels.unset + ", so the export starts only for a user who enables telemetry themselves; for them this file decides where " + carries + " go." + labels.override + gate
 	}
 	return []finding.Finding{{
 		RuleID:   "CFG046",
