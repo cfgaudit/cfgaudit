@@ -272,3 +272,18 @@ func TestQwenSettings_UnexpectedPolicyShape(t *testing.T) {
 		t.Fatalf("allow %q, deny %q", allow, deny)
 	}
 }
+
+func TestQwenSettings_SkillDirectories(t *testing.T) {
+	var nilSettings *QwenSettings
+	if nilSettings.SkillDirectories() != nil || (&QwenSettings{}).SkillDirectories() != nil {
+		t.Fatal("empty settings")
+	}
+	s := &QwenSettings{Skills: &QwenSkills{Directories: []byte(`"one"`)}}
+	if s.SkillDirectories() != nil {
+		t.Fatal("not an array")
+	}
+	s.Skills.Directories = []byte(`[" a ", 1, "", "  ", "b"]`)
+	if got := s.SkillDirectories(); len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("got %q", got)
+	}
+}

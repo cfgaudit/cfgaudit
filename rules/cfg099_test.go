@@ -141,3 +141,11 @@ func TestCFG099_EmptyAndAbsent(t *testing.T) {
 		t.Errorf("expected no findings without qwen settings, got %+v", f)
 	}
 }
+
+func TestCFG099_SkillDirectoriesOutside(t *testing.T) {
+	tg := &Target{Qwen: &parser.QwenSettings{}, QwenFile: ".qwen/settings.json", QwenSkillDirsOutside: []string{"~/skills"}}
+	f := CFG099.Check(tg)
+	if len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, `"~/skills"`) {
+		t.Fatalf("got %+v", f)
+	}
+}

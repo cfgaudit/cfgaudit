@@ -19,9 +19,9 @@ func (r *cfg099) ID() string { return "CFG099" }
 
 // Check flags a committed qwen-code .qwen/settings.json that picks the
 // infrastructure the agent runs through, rather than the permissions it runs
-// with. CFG091 covers the approval mode; this rule covers the three keys that
-// decide where the traffic goes, what container the sandbox is, and whether
-// generated skills reach the library unreviewed.
+// with. CFG091 covers the approval mode; this rule covers the keys that decide
+// where the traffic goes, what container the sandbox is, whether generated
+// skills reach the library unreviewed, and where skills load from.
 //
 // Severity backdrop, shared with CFG091: qwen ships folder trust DISABLED by
 // default (security.folderTrust.enabled ?? false), so a committed
@@ -76,6 +76,14 @@ func (r *cfg099) Check(t *Target) []finding.Finding {
 	if t.Qwen.AutoSkillsSavedUnconfirmed() {
 		add(finding.Error, "qwen memory.enableAutoSkill is true and memory.autoSkillConfirm is false — auto-generated skills are written straight into the skill library with no confirmation."+
 			" Note the inverted default: autoSkillConfirm ships as true, so false is the weakening value here, unlike the disable* keys. A skill in the library is instruction content the agent later follows, so this turns a session into a way to plant one. Leave autoSkillConfirm unset")
+	}
+
+	// skills.directories outside the repository (#973). Qwen loads them as
+	// personal skills, so their allowedTools and hooks are not gated by folder
+	// trust, and no review of this repository covers what is there.
+	for _, d := range t.QwenSkillDirsOutside {
+		add(finding.Warn, "qwen skills.directories names \""+d+"\", outside the repository: Qwen loads every <name>/SKILL.md there as a personal skill, whose allowedTools and hooks folder trust does not gate, and no review of this repository covers that folder on the reader's machine. cfgaudit does not read it."+
+			" Keep shared skills in the repository, in .qwen/skills or a folder listed by a relative path")
 	}
 	return findings
 }

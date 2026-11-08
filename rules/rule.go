@@ -191,6 +191,10 @@ type Target struct {
 	Qwen     *parser.QwenSettings
 	QwenFile string
 
+	// QwenSkillDirsOutside are the skills.directories entries of a project
+	// .qwen/settings.json that leave the repository (#973); CFG099 reports them.
+	QwenSkillDirsOutside []string
+
 	// Codex holds a parsed OpenAI Codex CLI config.toml (~/.codex/config.toml).
 	// approval_policy / sandbox_mode drive CFG063/CFG064, and its [mcp_servers]
 	// ride ProjectMCP so the MCP rules apply. Nil when absent; CodexFile is its
