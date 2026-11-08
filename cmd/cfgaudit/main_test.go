@@ -3184,8 +3184,10 @@ func TestBuildTargets_OpenCodeTree(t *testing.T) {
 		".opencode/mode/m1.md", ".opencode/modes/m2.md",
 		".opencode/command/c1.md", ".opencode/commands/sub/c2.md",
 		".opencode/skill/s1/SKILL.md", ".opencode/skills/s2/deep/SKILL.md",
+		// 1.18.18 does not load a loose .md here; OpenCode 2.1+ does (#748).
+		".opencode/skills/flat.md",
 	}
-	notInstr := []string{".opencode/skills/flat.md", ".opencode/mode/sub/m3.md"}
+	notInstr := []string{".opencode/mode/sub/m3.md"}
 	code := []string{".opencode/plugin/p.ts", ".opencode/plugins/p.js", ".opencode/tool/t.ts", ".opencode/tools/t.js"}
 	notCode := []string{".opencode/plugin/readme.md", ".opencode/plugin/sub/deep.ts", "notopencode/plugin/x.ts"}
 	for _, rel := range append(append(append(append([]string{}, instr...), notInstr...), code...), notCode...) {

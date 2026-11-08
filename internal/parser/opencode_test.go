@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -471,5 +472,24 @@ func TestOpenCodeConfig_PermissionBlocks(t *testing.T) {
 	}
 	if blocks[0].Rules[0].Effect != "allow" || blocks[1].Rules[0].Effect != "deny" {
 		t.Errorf("rules = %+v", blocks)
+	}
+}
+
+// skills is an array, or the older {paths, urls}; only strings count (#748).
+func TestOpenCodeConfig_SkillSources(t *testing.T) {
+	var nilCfg *OpenCodeConfig
+	if nilCfg.SkillSources() != nil || (&OpenCodeConfig{}).SkillSources() != nil {
+		t.Fatal("empty")
+	}
+	for body, want := range map[string]string{
+		`["a", 1, "b"]`:                      "a,b",
+		`{"paths": ["p"], "urls": ["u", 2]}`: "p,u",
+		`{"paths": "p"}`:                     "",
+		`"x"`:                                "",
+	} {
+		c := &OpenCodeConfig{Skills: []byte(body)}
+		if got := strings.Join(c.SkillSources(), ","); got != want {
+			t.Errorf("%s: got %q, want %q", body, got, want)
+		}
 	}
 }
