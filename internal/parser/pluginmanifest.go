@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -99,6 +100,46 @@ func ManifestPaths(raw json.RawMessage) []string {
 	return out
 }
 
+// ManifestPathEscapes reports whether a manifest component path leaves the
+// plugin root: an absolute path (also a Windows drive or UNC path), one that
+// starts with ~, or a relative one that resolves above the root once cleaned
+// (#1410). "sub/../skills" stays inside.
+func ManifestPathEscapes(rel string) bool {
+	p := strings.ReplaceAll(strings.TrimSpace(rel), `\`, "/")
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") || filepath.IsAbs(rel) {
+		return true
+	}
+	if len(p) >= 2 && p[1] == ':' && (p[0]|0x20) >= 'a' && (p[0]|0x20) <= 'z' {
+		return true // C:/... or C:relative, both off the plugin root
+	}
+	c := path.Clean(p)
+	return c == ".." || strings.HasPrefix(c, "../")
+}
+
+// ManifestComponentPaths returns every path-valued component entry of the
+// manifest by field, in a fixed field order: skills, agents, commands, hooks,
+// and the string form of mcpServers.
+func (m *PluginManifest) ManifestComponentPaths() []ManifestComponentPath {
+	if m == nil {
+		return nil
+	}
+	var out []ManifestComponentPath
+	for _, f := range []struct {
+		name string
+		raw  json.RawMessage
+	}{{"skills", m.Skills}, {"agents", m.Agents}, {"commands", m.Commands}, {"hooks", m.Hooks}, {"mcpServers", m.MCPServers}} {
+		for _, p := range ManifestPaths(f.raw) {
+			out = append(out, ManifestComponentPath{Field: f.name, Path: p})
+		}
+	}
+	return out
+}
+
+// ManifestComponentPath is one path a manifest component field names.
+type ManifestComponentPath struct {
+	Field, Path string
+}
+
 // MCPServerRef returns the manifest's MCP servers. Inline entries come back
 // directly; a string path comes back as the file it names, resolved against the
 // plugin root, so callers get servers either way and can attribute findings to
@@ -120,8 +161,8 @@ func (m *PluginManifest) MCPServerRef(manifestPath string) (servers map[string]M
 		return nil, "", nil // a shape this version does not model
 	}
 	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return nil, "", nil
+	if ref == "" || ManifestPathEscapes(ref) {
+		return nil, "", nil // CFG135 reports a path that leaves the plugin root
 	}
 	target := filepath.Join(PluginRootOf(manifestPath), filepath.FromSlash(ref))
 	cfg, err := ParseMCPConfig(target)

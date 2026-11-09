@@ -213,6 +213,11 @@ type Target struct {
 	PiMCPFile     string
 	PiSystemFile  string
 
+	// PluginManifest is a Claude Code plugin's plugin.json, on a target of its
+	// own, for the component paths it names (#1410).
+	PluginManifest     *parser.PluginManifest
+	PluginManifestFile string
+
 	// GeminiExtensionLink is the source of a Gemini extension installed with
 	// type "link" from outside the repository (#1556), and
 	// GeminiExtensionLinkFile its .gemini-extension-install.json.
