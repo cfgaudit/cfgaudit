@@ -78,9 +78,17 @@ func agentOfPath(rel string) string {
 			best, agent = len(p.prefix), p.agent
 		}
 	}
-	// A CLAUDE.md in a subfolder is Claude Code's nested file (#975).
+	// A CLAUDE.md in a subfolder is Claude Code's nested file, and a nested
+	// rule folder belongs to the agent of the same folder at the root (#975).
 	if best == 0 && path.Base(rel) == "CLAUDE.md" {
 		return "claude-code"
+	}
+	if best == 0 {
+		for _, rd := range nestedRuleDirs {
+			if i := strings.Index(rel, "/"+rd.dir+"/"); i > 0 {
+				return agentOfPath(rel[i+1:])
+			}
+		}
 	}
 	return agent
 }

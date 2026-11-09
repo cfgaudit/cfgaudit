@@ -63,6 +63,8 @@ surfaces:
   - {agent: shared, kind: instructions, path: AGENTS.md}
   - {agent: shared, kind: instructions, path: packages/a/AGENTS.md}
   - {agent: claude-code, kind: instructions, path: packages/a/CLAUDE.md}
+  - {agent: cursor, kind: instructions, path: packages/a/.cursor/rules/r.mdc}
+  - {agent: devin, kind: instructions, path: packages/a/.devin/rules/r.md}
   - {agent: shared, kind: instructions, path: agents.md}
   - {agent: shared, kind: skills, path: skills/a/SKILL.md}
   # cursor
