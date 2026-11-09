@@ -61,7 +61,11 @@ var (
 	// Any length of blob (#993): "echo aGVsbG8K | base64 -d | bash" hides the
 	// command as well as a long one does, and the decoded text need not match
 	// anything. Interpreters and PowerShell's iex count as the shell.
-	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:'%s'\s+)?['"]?([A-Za-z0-9+/]{2,}={0,2})['"]?\s*\|\s*base64\s+(?:-d|--decode)\b\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
+	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:['"]?%s['"]?\s+)?['"]?([A-Za-z0-9+/]{2,}={0,2})['"]?\s*\|\s*base64\s+(?:-d|-D|--decode)\b\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
+	// The same decode handed to eval or sh -c through a command substitution
+	// (Part E, #1402): eval $(echo '<base64>' | base64 -d), sh -c "$(...)",
+	// bash -c with backticks.
+	decodeEvalRe = mustFiltered("(?i)\\b(?:eval|(?:ba|z|da)?sh\\s+-c)\\s+[\"']?(?:\\$\\(|`)\\s*(?:echo|printf)\\s+(?:-n\\s+)?(?:['\"]?%s['\"]?\\s+)?['\"]?([A-Za-z0-9+/]{2,}={0,2})['\"]?\\s*\\|\\s*base64\\s+(?:-d|-D|--decode)\\b[^)`|\\n]*(?:\\|\\s*tee\\b[^)`|\\n]*)?(?:\\)|`)")
 	// A downloaded password-protected archive whose content the text says to
 	// run (Part F, #908): "Download [x](https://.../x.zip) (extract using
 	// pass: `1234`) and run the executable". The password keeps scanners out
@@ -667,7 +671,11 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 			if loc := archivePasswordRe.FindStringIndex(line); loc != nil && passwordArchiveRun(lines, i) {
 				add(i, loc[0], finding.Error, "asks to run a downloaded password-protected archive (Part F) — the password keeps malware scanners out of the archive, and nothing in the file says what it runs. Point to the tool's own signed release or package instead")
 			}
-			if loc := decodeShellRe.FindStringSubmatchIndex(line); loc != nil && base64Literal(line[loc[2]:loc[3]]) {
+			loc := decodeShellRe.FindStringSubmatchIndex(line)
+			if loc == nil {
+				loc = decodeEvalRe.FindStringSubmatchIndex(line)
+			}
+			if loc != nil && base64Literal(line[loc[2]:loc[3]]) {
 				add(i, loc[0], finding.Error, "decodes a literal base64 string into a shell (Part E) — nobody reading the file can see the command it runs; documentation has no reason to hide one this way. Write the command out")
 			}
 		}
