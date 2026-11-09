@@ -47,13 +47,18 @@ var (
 	// such lines in 1,727 instruction files none had a network command nearby.
 	conditionalRe    = mustFiltered(`(?i)\b(?:whenever|each\s+time|every\s+time)\s+you\b|\bwhen\s+you\s+(?:start|open|begin|review|clone|enter|first|check\s+out|work\s+on)\b|\bafter\s+(?:every|each)\s+\w+`)
 	conditionalRunRe = regexp.MustCompile(`(?i)\b(?:run|execute)\b`)
+	// pipeTransforms are the stages Part D looks through between the download
+	// and the shell (#1403): "curl … | base64 -d | sh", "wget -qO- … | gunzip
+	// | sh". Only these decoders and filters count; any other stage in between
+	// ends the match, and so does a redirect into a file.
+	pipeTransforms = `(?:\|\s*(?:base64\s+(?:-d|-D|--decode)\b|xxd\s+-r\b|gunzip\b|tr\s)[^|>\n]*)*`
 	// A download piped into a shell or run through one (Part D, #791):
 	// curl … https://… | sh, bash <(curl …), sh -c "$(curl …)", and the same
 	// into python reading its script from stdin (no arguments, or "-"; not
 	// python3 -m json.tool). The URL is required in every form, so prose like
 	// "no curl|bash installers" and a table naming bash <(curl ...) are not one
 	// (#1370).
-	pipeShellRe = mustFiltered(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b[^)\n]*\bhttps?://|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b[^)\n]*\bhttps?://`)
+	pipeShellRe = mustFiltered(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*` + pipeTransforms + `\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b[^)\n]*\bhttps?://|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b[^)\n]*\bhttps?://`)
 	// A literal base64 string decoded straight into a shell (Part E, #906):
 	// "echo '<base64>' | base64 -D | bash". A reader cannot see what it runs.
 	// A variable or placeholder ($b64, <BASE64>) is not a literal and does
