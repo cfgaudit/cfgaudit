@@ -62,7 +62,7 @@ func kiloTargets(dir string) []*rules.Target {
 			for _, ext := range []string{"*.ts", "*.js"} {
 				matches, _ := scanroot.Glob(filepath.Join(dir, d, cd.sub, ext))
 				for _, m := range matches {
-					if kiloRegularFile(m) {
+					if isRegularFile(m) {
 						targets = append(targets, &rules.Target{Scope: finding.ScopeProject, AgentCode: agentCodeFile(m, cd.kind)})
 					}
 				}
@@ -88,7 +88,7 @@ func kiloInstructionFiles(dir string) []string {
 	glob := func(pattern string) {
 		matches, _ := scanroot.Glob(filepath.Join(dir, pattern))
 		for _, m := range matches {
-			if kiloRegularFile(m) {
+			if isRegularFile(m) {
 				out = append(out, m)
 			}
 		}
@@ -119,9 +119,4 @@ func kiloInstructionFiles(dir string) []string {
 	glob(".kilocodemodes")
 	sort.Strings(out)
 	return out
-}
-
-func kiloRegularFile(path string) bool {
-	info, err := scanroot.Stat(path)
-	return err == nil && info.Mode().IsRegular()
 }
