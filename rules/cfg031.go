@@ -191,7 +191,9 @@ func publicPEMName(full string) bool {
 		return r == '-' || r == '_' || r == '.'
 	}) {
 		switch component {
-		case "public", "pub", "cert", "certificate", "chain", "rootca", "cacert":
+		// crt (ApplePay.crt.pem) and wwdr, Apple's intermediate (WWDR.pem), are
+		// certificates too (#1374).
+		case "public", "pub", "cert", "certificate", "chain", "rootca", "cacert", "crt", "wwdr":
 			return true
 		}
 	}
@@ -221,6 +223,10 @@ func notASecretFile(line string, loc []int, full string) bool {
 // "{BASE_URL}/api/assets/download/../../../etc/passwd" is a path traversal
 // probe sent to a web server, not a local file (#887).
 var baseURLPathRe = regexp.MustCompile(`^(?:\{\{?\s*[A-Za-z_]\w*\s*\}?\}|\$\{?[A-Za-z_]\w*\}?)/`)
+
+// noBeforeRe matches a bare "no" right before the path: "has no
+// `.credentials.json`", which says the file is not there.
+var noBeforeRe = regexp.MustCompile("(?i)\\bno\\s+[`'\"]?$")
 
 // blockedAfterRe matches a clause that says the read is refused: "Attempts to
 // read `/proc/self/environ`, `~/.docker/config.json` ... will be denied".
@@ -314,6 +320,10 @@ func notARead(lines []string, i int, loc []int, full string) bool {
 	}
 	// "etc." inside the list does not end the sentence.
 	if blockedAfterRe.MatchString(clauseRest(strings.ReplaceAll(line[loc[1]:], "etc.", "etc"))) {
+		return true
+	}
+	// "a sandbox that has no `.credentials.json` yet" negates the path (#1374).
+	if noBeforeRe.MatchString(line[:start]) {
 		return true
 	}
 	if writeOrTestBeforeRe.MatchString(line[:start]) || copyDestination(line, start, loc[1]) ||
