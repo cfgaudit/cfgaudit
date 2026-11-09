@@ -850,9 +850,10 @@
   coverage: partial
   rules:
     - {rule: CFG019, severity: error}
-  reason: no-rule-yet
-  issue: 1407
-  note: "The MCP step is reported. The planted tool names are not on the list yet."
+    - {rule: CFG123, severity: error}
+  related: [CFG122]
+  reason: by-design
+  note: "The MCP step and a Windows program named fd or stty at the root are reported; a script without a Windows suffix is not, since it only runs when the working directory is on PATH."
 
 - id: "GHSA-mhg7-666j-cqg4"
   kind: cve
