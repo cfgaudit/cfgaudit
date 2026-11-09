@@ -63,7 +63,7 @@ func (r *cfg051) Check(t *Target) []finding.Finding {
 	switch {
 	case root == rootUnmeasured:
 		sev = finding.Info
-		what += " (Claude Code does not read this skill root, and Copilot CLI 1.0.95 and OpenCode 1.18.18 do not treat allowed-tools as a grant; whether Codex or Cursor do is not measured)"
+		what += " (Claude Code does not read this skill root; Copilot CLI 1.0.95, OpenCode 1.18.18 and Codex 0.166.0 do not treat allowed-tools as a grant; whether Cursor does is not measured)"
 	case sev == finding.Warn && !grantsClaudeShell(allowed):
 		// Claude Code matches tool names case-sensitively: measured on 2.1.316,
 		// allowed-tools: bash let no Bash call through, Bash did (#1196).
@@ -132,7 +132,10 @@ func isDevinAgentProfile(path string) bool {
 // Claude Code 2.1.316 runs it; Copilot CLI 1.0.95 (.github/skills,
 // .agents/skills, .claude/skills, also with "shell" and "shell(touch)") and
 // OpenCode 1.18.18 (.agents/skills, .opencode/skills, .claude/skills, with
-// bash set to ask) still ask. Codex and Cursor could not be measured.
+// bash set to ask) still ask. Codex 0.166.0 does not read the field at all:
+// its SKILL.md frontmatter has name, description and metadata only
+// (codex-rs/skills/src/parser.rs), and it has no per-tool approval a skill
+// could grant (#1354). Cursor could not be measured.
 const (
 	rootClaude = iota
 	rootIgnoresField
@@ -147,9 +150,10 @@ func skillRootKind(path string) int {
 	switch {
 	// Junie documents name and description for a skill, and tools for a
 	// subagent; allowed-tools is not one of its fields (#1413).
-	case strings.Contains(p, ".github/skills/"), strings.Contains(p, ".opencode/skill/"), strings.Contains(p, ".opencode/skills/"), strings.Contains(p, ".junie/"):
+	// Only Codex reads .codex/skills (#1354).
+	case strings.Contains(p, ".github/skills/"), strings.Contains(p, ".opencode/skill/"), strings.Contains(p, ".opencode/skills/"), strings.Contains(p, ".junie/"), strings.Contains(p, ".codex/"):
 		return rootIgnoresField
-	case strings.Contains(p, ".agents/skills/"), strings.Contains(p, ".codex/"), strings.Contains(p, ".cursor/skills/"):
+	case strings.Contains(p, ".agents/skills/"), strings.Contains(p, ".cursor/skills/"):
 		return rootUnmeasured
 	}
 	return rootClaude

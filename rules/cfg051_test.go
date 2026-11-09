@@ -140,7 +140,7 @@ func TestCFG051_SkillRoots1196(t *testing.T) {
 		".opencode/skills/release/SKILL.md": "",
 		".opencode/skill/release/SKILL.md":  "",
 		".agents/skills/release/SKILL.md":   "info",
-		".codex/skills/release/SKILL.md":    "info",
+		".codex/skills/release/SKILL.md":    "", // Codex 0.166.0 does not read the field (#1354)
 		".cursor/skills/release/SKILL.md":   "info",
 		"my-plugin/skills/release/SKILL.md": "warn",
 	} {
