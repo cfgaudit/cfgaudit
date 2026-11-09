@@ -590,13 +590,14 @@
   issue: 1408
 
 - id: "CVE-2026-44641"
+  aliases: [GHSA-xhrw-5qxx-jpwr]
   kind: cve
   agent: "Microsoft APM"
   fixed: "0.8.12"
   summary: "Plugin component paths leave the plugin root."
-  coverage: none
-  reason: no-rule-yet
-  issue: 1410
+  coverage: full
+  rules:
+    - {rule: CFG135, severity: warn}
 
 - id: "CVE-2026-44995"
   kind: cve

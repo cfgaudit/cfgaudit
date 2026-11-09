@@ -142,6 +142,7 @@ func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unr
 	} else if t != nil {
 		targets = append(targets, t)
 	}
+	targets = append(targets, &rules.Target{PluginManifest: m, PluginManifestFile: manifest})
 
 	for _, path := range pluginInstructionFiles(root, m) {
 		content, err := scanroot.ReadFile(path)
@@ -231,6 +232,10 @@ func rootSkillTargets(dir string, have []*rules.Target) []*rules.Target {
 // insideRoot resolves a manifest component path against the plugin root and
 // reports whether it stays inside it.
 func insideRoot(root, rel string) (string, bool) {
+	// filepath.Join would put an absolute or ~ path under root and read it there.
+	if parser.ManifestPathEscapes(rel) {
+		return "", false
+	}
 	p := filepath.Join(root, filepath.FromSlash(rel))
 	r, err := filepath.Rel(root, p)
 	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
@@ -482,6 +487,7 @@ func scanPluginRoot(root string, unreadable func(path string, err error)) ([]*ru
 			if filepath.Base(filepath.Dir(path)) == claudePluginDir {
 				// pluginMCPTarget parsed the manifest already, so it parses here.
 				m, _ := parser.ParsePluginManifest(path)
+				targets = append(targets, &rules.Target{PluginManifest: m, PluginManifestFile: path})
 				for _, f := range pluginInstructionFiles(filepath.Dir(filepath.Dir(path)), m) {
 					content, err := scanroot.ReadFile(f)
 					if err != nil {
