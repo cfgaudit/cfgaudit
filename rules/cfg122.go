@@ -22,8 +22,11 @@ func (r *cfg122) ID() string { return "CFG122" }
 // toolBinaryRe matches a Windows program named like a tool an agent or an
 // editor starts by name: git.exe, node.cmd, python.bat. Windows looks in the
 // current directory before PATH, so a copy at the root of an unpacked
-// archive runs instead of the installed one.
-var toolBinaryRe = regexp.MustCompile(`(?i)^(?:git|node|npm|npx|python3?|pip|uv|uvx|code|claude|gh|curl|bash|sh|pwsh|powershell|cmd|where)\.(?:exe|bat|cmd|com|ps1)$`)
+// archive runs instead of the installed one. fd and stty are the tools
+// CVE-2026-95660 (Kimi Code) names as planted in the working directory; rg,
+// ripgrep, find, grep, sed and awk are the other search and text tools
+// agents start themselves (#1407).
+var toolBinaryRe = regexp.MustCompile(`(?i)^(?:git|node|npm|npx|python3?|pip|uv|uvx|code|claude|gh|curl|bash|sh|pwsh|powershell|cmd|where|fd|rg|ripgrep|stty|find|grep|sed|awk)\.(?:exe|bat|cmd|com|ps1)$`)
 
 // ToolBinaryName reports whether a file name is a Windows program named like
 // a tool an agent or editor starts by name (CFG122, CFG123).
