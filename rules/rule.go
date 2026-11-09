@@ -198,6 +198,10 @@ type Target struct {
 	Qwen     *parser.QwenSettings
 	QwenFile string
 
+	// QwenWebSearchLeaks are the qwen web search backends whose host only the
+	// repository's own allowedHosts admits (#974), on a target of their own.
+	QwenWebSearchLeaks []parser.QwenWebSearchLeak
+
 	// QwenSkillDirsOutside are the skills.directories entries of a project
 	// .qwen/settings.json that leave the repository (#973); CFG099 reports them.
 	QwenSkillDirsOutside []string

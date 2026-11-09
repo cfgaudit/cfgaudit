@@ -68,6 +68,10 @@ type QwenSettings struct {
 	// DisableAllHooks is qwen's top-level kill switch (verified: replaces gemini's
 	// hooksConfig.enabled). true switches the whole hook system off.
 	DisableAllHooks bool `json:"disableAllHooks,omitempty"`
+
+	// ModelProviders is the modelProviders block, an auth type → model
+	// entries map, read only by QwenWebSearchLeaks (#974).
+	ModelProviders json.RawMessage `json:"modelProviders,omitempty"`
 }
 
 // qwenReservedHookKeys are the keys qwen skips inside the hooks object because they
@@ -137,6 +141,9 @@ type QwenTools struct {
 	// telling whether SandboxImage can take effect from settings alone. It is
 	// deliberately not a finding of its own: enabling a sandbox hardens.
 	Sandbox *json.RawMessage `json:"sandbox,omitempty"`
+
+	// WebSearch is tools.webSearch (#974).
+	WebSearch *QwenWebSearch `json:"webSearch,omitempty"`
 }
 
 // QwenMemory is the memory block. Only the auto-skill pair is decoded.

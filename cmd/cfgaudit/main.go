@@ -1713,6 +1713,9 @@ func qwenTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err := add(filepath.Join(dir, ".qwen", "settings.json"), finding.ScopeProject); err != nil {
 		return nil, err
 	}
+	if t := qwenWebSearchTarget(dir, targets); t != nil {
+		targets = append(targets, t)
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
