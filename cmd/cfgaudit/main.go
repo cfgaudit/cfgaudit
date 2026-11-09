@@ -2186,6 +2186,17 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			paths = append(paths, scopedPath{m, finding.ScopeProject})
 		}
 	}
+	// AGENTS.md files in subfolders (#975). A path read above already, such
+	// as .claude/AGENTS.md, is read once, under its own role.
+	nestedDir := map[string]string{}
+	for _, rel := range nestedAgentsFiles(dir) {
+		m := filepath.Join(dir, filepath.FromSlash(rel))
+		if !listed[m] {
+			listed[m] = true
+			nestedDir[m] = filepath.ToSlash(filepath.Dir(filepath.FromSlash(rel)))
+			paths = append(paths, scopedPath{m, finding.ScopeProject})
+		}
+	}
 	// Gemini CLI and Qwen Code custom commands (#750).
 	for _, m := range customCommandFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
@@ -2258,6 +2269,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			Scope:              p.scope,
 			InstructionFile:    p.path,
 			InstructionContent: content,
+			NestedAgentsDir:    nestedDir[p.path],
 		}
 		attachSubagentBlocks(target)
 		attachSkillHooks(target)
@@ -2628,9 +2640,9 @@ type filteredInstructionDir struct {
 //
 // Devin also reads these directories from any subdirectory of the workspace, and
 // its workflows the same way. That is the nested-location question cfgaudit
-// answers root-only for every agent (AGENTS.md and CLAUDE.md included), so it is
-// not taken up here; nothing documents recursion inside .devin/workflows, which
-// therefore stays a single-level glob.
+// answers root-only for these folders and for CLAUDE.md; AGENTS.md below the
+// root is read since #975 (nestedAgentsFiles). Nothing documents recursion
+// inside .devin/workflows, which therefore stays a single-level glob.
 //
 // Project scope only: the user-level equivalents are other paths
 // (~/.copilot/instructions, ~/.devin/rules) that cfgaudit does not read today.

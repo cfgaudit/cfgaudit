@@ -76,6 +76,11 @@ type Target struct {
 	// file, since the file itself does not look like agent configuration.
 	ImportChain []string
 
+	// NestedAgentsDir is set on the target of an AGENTS.md below the root:
+	// the folder, relative to the scanned directory, whose files it applies to
+	// (#975). Run names it in every finding on the file.
+	NestedAgentsDir string
+
 	// ExternalImports are the `@path` imports in InstructionFile that resolve
 	// outside the scanned directory, as written (CFG116). cfgaudit does not
 	// read them.
