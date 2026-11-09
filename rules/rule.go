@@ -213,6 +213,11 @@ type Target struct {
 	PiMCPFile     string
 	PiSystemFile  string
 
+	// PluginHookModules are the "modules" a plugin hooks.json names, relative
+	// to that file (#1601).
+	PluginHookModules     []string
+	PluginHookModulesFile string
+
 	// PluginManifest is a Claude Code plugin's plugin.json, on a target of its
 	// own, for the component paths it names (#1410).
 	PluginManifest     *parser.PluginManifest

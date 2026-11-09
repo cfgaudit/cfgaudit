@@ -704,10 +704,20 @@ func pluginHooksTarget(path string) (*rules.Target, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if len(s.Hooks) == 0 {
+	// "modules" names hooks modules: code the engine loads into a worker at
+	// session start (#1601). A file may hold modules and no matchers.
+	var m struct {
+		Modules []string `json:"modules"`
+	}
+	_ = json.Unmarshal(data, &m)
+	if len(s.Hooks) == 0 && len(m.Modules) == 0 {
 		return nil, nil
 	}
-	return &rules.Target{SettingsFile: path, Settings: &s}, nil
+	t := &rules.Target{PluginHookModules: m.Modules, PluginHookModulesFile: path}
+	if len(s.Hooks) > 0 {
+		t.SettingsFile, t.Settings = path, &s
+	}
+	return t, nil
 }
 
 // pluginMCPTarget returns a target with the MCP servers a plugin loads, so the
