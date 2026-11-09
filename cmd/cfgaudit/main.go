@@ -2186,8 +2186,8 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			paths = append(paths, scopedPath{m, finding.ScopeProject})
 		}
 	}
-	// AGENTS.md files in subfolders (#975). A path read above already, such
-	// as .claude/AGENTS.md, is read once, under its own role.
+	// AGENTS.md and CLAUDE.md files in subfolders (#975). A path read above
+	// already, such as .claude/AGENTS.md, is read once, under its own role.
 	nestedDir := map[string]string{}
 	for _, rel := range nestedAgentsFiles(dir) {
 		m := filepath.Join(dir, filepath.FromSlash(rel))
@@ -2269,7 +2269,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			Scope:              p.scope,
 			InstructionFile:    p.path,
 			InstructionContent: content,
-			NestedAgentsDir:    nestedDir[p.path],
+			NestedDir:          nestedDir[p.path],
 		}
 		attachSubagentBlocks(target)
 		attachSkillHooks(target)
@@ -2640,8 +2640,8 @@ type filteredInstructionDir struct {
 //
 // Devin also reads these directories from any subdirectory of the workspace, and
 // its workflows the same way. That is the nested-location question cfgaudit
-// answers root-only for these folders and for CLAUDE.md; AGENTS.md below the
-// root is read since #975 (nestedAgentsFiles). Nothing documents recursion
+// answers root-only for these folders; AGENTS.md and CLAUDE.md below the
+// root are read since #975 (nestedAgentsFiles). Nothing documents recursion
 // inside .devin/workflows, which therefore stays a single-level glob.
 //
 // Project scope only: the user-level equivalents are other paths
