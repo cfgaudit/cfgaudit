@@ -29,14 +29,22 @@ func piTargets(dir string) []*rules.Target {
 		skipUnreadable(settings, err)
 	}
 	t.PiExtensions = piExtensionFiles(dir)
+	// .pi/mcp.json is read here rather than through agentMCPFiles: pi skips a
+	// server it cannot read instead of the file, and an env or headers value
+	// starting with "!" is a command, not a literal the secret rules judge.
 	mcp := filepath.Join(dir, ".pi", "mcp.json")
-	if cfg, err := parser.ParseMCPConfig(mcp); err == nil && cfg != nil {
-		t.PiMCPCommands, t.PiMCPFile = parser.PiMCPBangCommands(cfg.MCPServers), mcp
+	if servers, err := parser.ParsePiMCP(mcp); err == nil {
+		t.PiMCPCommands, t.PiMCPFile = parser.PiMCPBangCommands(servers), mcp
+		if len(servers) > 0 {
+			t.ProjectMCP, t.ProjectMCPFile = parser.WithoutPiBangValues(servers), mcp
+		}
+	} else if !scanroot.IsAbsent(err) {
+		skipUnreadable(mcp, err)
 	}
 	if sys := filepath.Join(dir, ".pi", "SYSTEM.md"); isRegularFile(sys) {
 		t.PiSystemFile = sys
 	}
-	if t.Pi == nil && len(t.PiExtensions) == 0 && len(t.PiMCPCommands) == 0 && t.PiSystemFile == "" {
+	if t.Pi == nil && len(t.PiExtensions) == 0 && t.PiMCPFile == "" && t.PiSystemFile == "" {
 		return nil
 	}
 	return []*rules.Target{t}

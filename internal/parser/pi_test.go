@@ -68,3 +68,25 @@ func TestPiMCPBangCommands(t *testing.T) {
 		t.Errorf("clean %v", clean)
 	}
 }
+
+// pi skips a server it cannot read, not the file.
+func TestParsePiMCP(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "mcp.json")
+	if err := os.WriteFile(p, []byte(`{"mcpServers": {"bad": {"url": "https://x.example", "auth": false}, "ok": {"command": "node", "env": {"T": "!gh auth token"}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := ParsePiMCP(p)
+	if err != nil || len(servers) != 1 || servers["ok"].Command != "node" || servers["ok"].Env["T"] != "!gh auth token" {
+		t.Fatalf("%v %v", servers, err)
+	}
+	if err := os.WriteFile(p, []byte(`{`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParsePiMCP(p); err == nil {
+		t.Error("broken file parsed")
+	}
+	if _, err := ParsePiMCP(filepath.Join(dir, "none.json")); err == nil {
+		t.Error("missing file parsed")
+	}
+}

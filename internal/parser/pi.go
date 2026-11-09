@@ -192,3 +192,35 @@ func withoutBang[M ~map[string]string](m M) M {
 	}
 	return out
 }
+
+// ParsePiMCP reads a pi mcp.json. pi checks each server on its own: "Invalid
+// entries are reported and skipped without preventing other servers from
+// connecting" (docs/mcp.md, v1.5.0), so a server cfgaudit cannot decode, such
+// as one with "auth": false where pi wants {"provider": ...}, is left out
+// rather than failing the file. The "!" values are kept; WithoutPiBangValues
+// removes them for the shared MCP rules.
+func ParsePiMCP(path string) (map[string]MCPServer, error) {
+	data, err := scanroot.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var top struct {
+		MCPServers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(string(data), "\ufeff")), &top); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	out := map[string]MCPServer{}
+	for name, raw := range top.MCPServers {
+		// raw came out of a valid document, so it marshals again.
+		one, _ := json.Marshal(map[string]map[string]json.RawMessage{"mcpServers": {name: raw}})
+		cfg, err := parseMCPConfigBytes(one, path)
+		if err != nil {
+			continue
+		}
+		if s, ok := cfg.MCPServers[name]; ok {
+			out[name] = s
+		}
+	}
+	return out, nil
+}

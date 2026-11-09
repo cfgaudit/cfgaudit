@@ -3707,7 +3707,6 @@ var (
 		filepath.Join(".github", "mcp.json"),    // Copilot CLI workspace MCP, auto-loaded since 1.0.61 (#747)
 		"cline_mcp_settings.json",               // Cline
 		filepath.Join(".roo", "mcp.json"),       // Roo Code project MCP, loaded automatically and taking precedence over the global file (#989)
-		filepath.Join(".pi", "mcp.json"),        // pi project MCP, read once the project is trusted (#1055)
 		filepath.Join(".kimi-code", "mcp.json"), // Kimi Code project MCP — same {mcpServers} shape as .mcp.json; it OVERRIDES the repo-root .mcp.json (Kimi spreads it last) and its stdio entries execute at session start, so it is scanned as its own attributed target rather than merged (which would hide the override)
 	}
 	userAgentMCPFiles = []string{
@@ -3747,14 +3746,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			return nil, err
 		}
 	}
-	// A pi env or headers value starting with "!" is a command, read as one by
-	// piTargets, not a literal the secret rules should judge (#1055).
-	piMCP := filepath.Join(dir, ".pi", "mcp.json")
-	for _, t := range targets {
-		if t.ProjectMCPFile == piMCP {
-			t.ProjectMCP = parser.WithoutPiBangValues(t.ProjectMCP)
-		}
-	}
+
 	for _, p := range junieMCPFiles(dir) {
 		if err := add(p, finding.ScopeProject); err != nil {
 			return nil, err
