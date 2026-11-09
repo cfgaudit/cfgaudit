@@ -45,7 +45,7 @@ const trustName = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settin
 	`\.goosehints|\.cursorrules|\.windsurfrules|\.clinerules|\.roorules|\.roomodes|\.continuerules|\.rules|` +
 	`opencode\.jsonc?|kilo\.jsonc?|cline_mcp_settings\.json|mcp_config\.json|claude_desktop_config\.json)`
 
-const trustDir = `(?i:\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/|\.agents/|\.windsurf/|\.opencode/|\.qwen/|\.kimi/|\.kimi-code/|` +
+const trustDir = `(?i:\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/|\.agents/|\.agent/|\.windsurf/|\.opencode/|\.qwen/|\.kimi/|\.kimi-code/|` +
 	`\.devin/|\.junie/|\.continue/|\.zed/|\.grok/|\.kilo/|\.kilocode/|\.cline/|\.pi/|\.goose/|` +
 	`\.github/hooks/|\.github/agents/|\.github/instructions/|\.github/prompts/|\.github/extensions/|\.github/skills/)`
 

@@ -1254,6 +1254,10 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// "!" commands of mcp.json and SYSTEM.md (#1055).
 	targets = append(targets, piTargets(dir)...)
 
+	// Antigravity CLI: .agents/mcp_config.json, .agents/hooks.json and the
+	// workspace plugins in .agents/plugins (#1057).
+	targets = append(targets, antigravityTargets(dir)...)
+
 	// Continue config.yaml (.continue/, and ~/.continue/ with --user). Its
 	// mcpServers list rides ProjectMCP so the MCP rules apply; inline apiKey
 	// literals drive CFG065.
@@ -2138,6 +2142,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		}
 	}
 	for _, m := range rooInstructionFiles(dir) {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	for _, m := range antigravityInstructionFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	for _, m := range devinAgentDirFiles(dir) {

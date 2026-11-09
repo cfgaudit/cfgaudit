@@ -60,6 +60,8 @@ var pathAgents = []struct{ prefix, agent string }{
 	{".kimi-code/", "kimi-code"}, {".kimi/", "kimi-cli"}, {".grok/", "grok"}, {".cline/", "cline"}, {".clinerules", "cline"}, {"cline_mcp_settings.json", "cline"},
 	{"AGENT.md", "amp"}, {".gitmodules", "git"}, {".pi/", "pi"}, {"AGENTS.override.md", "pi"},
 	{".goose/", "goose"}, {".junie/", "junie"}, {".goosehints", "goose"}, {".agents/recipes/", "goose"}, {".agents/plugins/", "goose"},
+	{".agents/mcp_config.json", "antigravity"}, {".agents/hooks.json", "antigravity"}, {".agents/AGENTS.md", "antigravity"},
+	{".agents/GEMINI.md", "antigravity"}, {".agents/rules/", "antigravity"}, {".agent/", "antigravity"},
 	// Only read with --user, from the home directory.
 	{".codeium/windsurf/", "devin-desktop"}, {".config/Claude/", "claude-desktop"},
 	{"Library/Application Support/Claude/", "claude-desktop"}, {"AppData/Roaming/Claude/", "claude-desktop"},
@@ -80,6 +82,14 @@ func agentOfPath(rel string) string {
 	}
 	// A CLAUDE.md in a subfolder is Claude Code's nested file, and a nested
 	// rule folder belongs to the agent of the same folder at the root (#975).
+	// An Antigravity workspace plugin shares .agents/plugins/ with goose's
+	// plugins; its MCP and hook files are Antigravity's (#1057).
+	if strings.HasPrefix(rel, ".agents/plugins/") && strings.Count(rel, "/") == 3 {
+		switch path.Base(rel) {
+		case "mcp_config.json", "hooks.json":
+			return "antigravity"
+		}
+	}
 	if best == 0 && path.Base(rel) == "CLAUDE.md" {
 		return "claude-code"
 	}
