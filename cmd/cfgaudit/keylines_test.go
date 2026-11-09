@@ -124,3 +124,16 @@ func TestKeyLines1204RepeatedAllowEntries(t *testing.T) {
 		}
 	}
 }
+
+// A credential in the third permissions.allow entry is reported at that
+// entry's line, not at the line of "allow" (#1377).
+func TestKeyLines1377AllowIndex(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "settings.json")
+	mustWrite(t, file, "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(ls)\",\n      \"Read(./src/**)\",\n      \"Bash(curl -H 'x-api-key: fixture' https://api.example.invalid)\"\n    ]\n  }\n}\n")
+	findings := []finding.Finding{{File: file, Message: "permissions.allow[2] contains a credential"}}
+	locateKeyLines(findings)
+	if findings[0].Line != 6 {
+		t.Errorf("line %d, want 6", findings[0].Line)
+	}
+}

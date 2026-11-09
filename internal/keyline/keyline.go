@@ -25,6 +25,10 @@ type node struct {
 	isStr     bool
 	line, col int // of the key, or of the array element
 	end       int // nodes[i+1:end] lie inside this member's value
+	// elems is where each element of the member's value starts, when the
+	// value is an array, so "permissions.allow[2]" resolves to the third
+	// entry (#1377).
+	elems [][2]int
 }
 
 // Doc is a parsed JSON or JSONC document.
@@ -50,6 +54,10 @@ func Parse(src []byte) *Doc {
 }
 
 type parser struct {
+	// lastElems is the element positions of the array parsed last; object
+	// reads it right after an array value.
+	lastElems [][2]int
+
 	src       []byte
 	pos       int
 	line      int
@@ -187,8 +195,14 @@ func (p *parser) object(path []string) bool {
 				return false
 			}
 			p.doc.nodes[i].str, p.doc.nodes[i].isStr = s, true
-		} else if !p.value(child) {
-			return false
+		} else {
+			isArray := p.pos < len(p.src) && p.src[p.pos] == '['
+			if !p.value(child) {
+				return false
+			}
+			if isArray {
+				p.doc.nodes[i].elems = p.lastElems
+			}
 		}
 		p.doc.nodes[i].end = len(p.doc.nodes)
 		if !p.sep('}') {
@@ -203,6 +217,7 @@ func (p *parser) array(path []string) bool {
 	}
 	defer func() { p.depth-- }()
 	p.pos++
+	var elems [][2]int
 	for {
 		p.skip()
 		if p.pos >= len(p.src) {
@@ -210,8 +225,10 @@ func (p *parser) array(path []string) bool {
 		}
 		if p.src[p.pos] == ']' {
 			p.pos++
+			p.lastElems = elems
 			return true
 		}
+		elems = append(elems, [2]int{p.line, p.col()})
 		if p.src[p.pos] == '"' {
 			line, col := p.line, p.col()
 			s, ok := p.str()
@@ -245,6 +262,9 @@ func (p *parser) sep(closer byte) bool {
 	}
 	return false
 }
+
+// indexRe matches an array index right after the key path: "[2]".
+var indexRe = regexp.MustCompile(`^\[(\d+)\]`)
 
 // quotedRe matches a Go-quoted string, as rules write values with %q.
 var quotedRe = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
@@ -336,6 +356,12 @@ func (d *Doc) locate(msg string, used map[[2]int]bool) (line, col int) {
 		}
 	}
 	i := best[len(best)-1]
+	if m := indexRe.FindStringSubmatch(rest); m != nil {
+		// "permissions.allow[2] holds ..." names the element, not the array.
+		if n, err := strconv.Atoi(m[1]); err == nil && n < len(d.nodes[i].elems) {
+			return d.nodes[i].elems[n][0], d.nodes[i].elems[n][1]
+		}
+	}
 	if want != "" {
 		if j, ok := d.find(i, want, used); ok {
 			return d.nodes[j].line, d.nodes[j].col
