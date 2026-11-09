@@ -98,7 +98,7 @@ func TestCFG009_Issue1198_MissingClaudeVars(t *testing.T) {
 			t.Errorf("undefined Claude variable %s must be Info with stdin guidance: %+v", name, f)
 		}
 	}
-	f := CFG009.Check(hookTarget(t, "printf %s $CLAUDE_FILE_PATHS $USER_INPUT"))
+	f := CFG009.Check(hookTarget(t, "notify-send $CLAUDE_FILE_PATHS $USER_INPUT"))
 	if len(f) != 2 || f[0].Severity != finding.Info ||
 		f[1].Severity != finding.Warn || !strings.Contains(f[1].Message, "$USER_INPUT") ||
 		strings.Contains(f[1].Message, "$CLAUDE_FILE_PATHS") {
@@ -144,7 +144,7 @@ func TestCFG009_PositionalParam_NoFinding(t *testing.T) {
 
 func TestCFG009_OneFindingPerCommand(t *testing.T) {
 	// Two separate hook commands → two findings.
-	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"echo $A"},{"type":"command","command":"echo $B"}]}]}}`
+	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"cat $A"},{"type":"command","command":"cat $B"}]}]}}`
 	f := CFG009.Check(settingsTarget(t, json))
 	if len(f) != 2 {
 		t.Fatalf("expected 2 findings, got %d", len(f))
@@ -223,7 +223,8 @@ func TestCFG009_Quoting(t *testing.T) {
 		{`python3 -c "print('$f')"`, "$f"},
 		{`eval "$CMD"`, "$CMD"},
 		{`sh -c "echo $f"`, "$f"},
-		{`bash -lc 'echo $f'`, "$f"},
+		{`bash -lc 'rm $f'`, "$f"},
+		{`bash -lc 'echo $f'`, ""},
 		{`printf '%s' "$f" | xargs sh -c 'rm $0'`, "$f"},
 		{`"$CMD" --version`, "$CMD"},
 		{`X=1 "$CMD"`, "$CMD"},

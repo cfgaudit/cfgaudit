@@ -28,12 +28,12 @@ func TestExtractShellVars1376(t *testing.T) {
 		`f=$(jq -r .p); echo "$(echo \" "$f")"`:    nil,
 		`f=$(jq -r .p); echo "$(b (c) "$f")"`:      nil,
 		// A reference next to a substitution stays reported.
-		`f=$(jq -r .p); echo "$(date) $f"`: {"$f"},
+		`f=$(jq -r .p); run "$(date) $f"`: {"$f"},
 		// Text parsed again undoes the quoting.
 		`f=$(jq -r .p); echo "$(eval "$f")"`: {"$f"},
 		// Arithmetic and an unclosed substitution are not commands.
-		`f=$(jq -r .p); echo "$((1+2)) $f"`: {"$f"},
-		`f=$(jq -r .p); echo "$(date $f`:    {"$f"},
+		`f=$(jq -r .p); run "$((1+2)) $f"`: {"$f"},
+		`f=$(jq -r .p); echo "$(date $f`:   {"$f"},
 	} {
 		if got := extractShellVars(cmd, true); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: got %v, want %v", cmd, got, want)
