@@ -6,6 +6,7 @@ package rules
 import (
 	"encoding/json"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -74,6 +75,7 @@ func (r *cfg048) checkEditorSurfaces(t *Target) []finding.Finding {
 			}
 		}
 	}
+	out = append(out, terminalEnvFindings(t)...)
 	if replies, ok := s.ObjectField("terminal.integrated.autoReplies"); ok && len(replies) > 0 {
 		add(finding.Warn, "terminal.integrated.autoReplies", "terminal.integrated.autoReplies types text into the terminal when a pattern appears ("+quoteList(sortedRawKeys(replies))+") — committed, it answers prompts in the user's terminal on the repository's behalf (CVE-2026-21523). Remove it")
 	}
@@ -222,6 +224,80 @@ func checkExtensionRecommendations(t *Target) []finding.Finding {
 		if p := extensionLookalike(id); p != "" {
 			out = append(out, finding.Finding{RuleID: "CFG048", Severity: finding.Warn, Scope: t.Scope, File: t.VSCodeExtensionsFile, Key: "recommendations",
 				Message: "recommendations lists the extension \"" + id + "\", a near miss of \"" + p + "\" — VS Code offers to install a recommendation when the folder is opened, and a lookalike ID is how squatted extensions get installed (CVE-2026-69370). Check the publisher on the marketplace, or recommend \"" + p + "\""})
+		}
+	}
+	return out
+}
+
+// vscodeHomeRe matches the VS Code variables that expand to the user's home
+// directory, so a path under them counts as home-relative, not as a path in
+// the repository; ${workspaceFolder} stays repository-relative.
+var vscodeHomeRe = regexp.MustCompile(`\$\{(?:userHome|env:HOME|env:USERPROFILE)\}`)
+
+// terminalEnvKeys set the environment of every integrated-terminal shell
+// (#1399). VS Code 1.145.2 marks all three `restricted: true`
+// (terminalConfiguration.ts), so it reads them only in a trusted workspace.
+var terminalEnvKeys = []string{"terminal.integrated.env.linux", "terminal.integrated.env.osx", "terminal.integrated.env.windows"}
+
+// interactiveShellEnvVars run code in an interactive shell only, which is what
+// an integrated terminal is and a hook or MCP server is not, so they extend
+// the shared code-execution list for this surface alone. ENV names a file in
+// the same way as BASH_ENV, and the shell expands it first, so it gets the
+// startup-file treatment.
+var interactiveShellEnvVars = map[string]string{
+	"PROMPT_COMMAND": "bash runs this command before every prompt",
+	"ENV":            "an interactive sh, dash or ksh sources this file at startup",
+}
+
+// terminalEnvFindings reports a terminal.integrated.env.* variable that loads
+// or runs code in each terminal, with CFG110's classification and severities:
+// the shared code-execution list, and a startup file that names a path
+// outside the repository at info. The value is not quoted. A user's own
+// settings are not reported: a terminal environment there is their choice.
+func terminalEnvFindings(t *Target) []finding.Finding {
+	if t.Scope == finding.ScopeUser {
+		return nil
+	}
+	var out []finding.Finding
+	for _, key := range terminalEnvKeys {
+		raw, ok := t.VSCodeSettings.ObjectField(key)
+		if !ok {
+			continue
+		}
+		env := map[string]string{}
+		for k, v := range raw {
+			var s string
+			if json.Unmarshal(v, &s) == nil {
+				env[k] = s
+			}
+		}
+		type hit struct{ name, mechanism string }
+		var hits []hit
+		for _, h := range codeExecEnvHits(env, true) {
+			hits = append(hits, hit{h.Key, h.Mechanism})
+		}
+		for _, name := range sortedKeys(env) {
+			if m, ok := interactiveShellEnvVars[strings.ToUpper(name)]; ok && strings.TrimSpace(env[name]) != "" {
+				hits = append(hits, hit{name, m})
+			}
+		}
+		for _, h := range hits {
+			upper := strings.ToUpper(h.name)
+			sev := finding.Error
+			tail := ", so the repository chooses code that runs in every integrated terminal, including the ones the agent runs its commands in"
+			if (startupFileVars[upper] || upper == "ENV") && !hasRepoRelativeEntry(vscodeHomeRe.ReplaceAllString(env[h.name], "$$HOME")) {
+				sev = finding.Info
+				tail = ". The path is absolute or home-relative, so it names a file on the machine rather than one in the repository; on any other machine it is that machine's file or nothing"
+			}
+			out = append(out, finding.Finding{
+				RuleID:   "CFG048",
+				Severity: sev,
+				Scope:    t.Scope,
+				File:     t.VSCodeSettingsFile,
+				Key:      key,
+				Message: key + " sets " + h.name + ": " + h.mechanism + tail +
+					". VS Code reads the key only after the workspace is trusted, forks without workspace trust apply it on open. Remove it" + nestedNote(t, key),
+			})
 		}
 	}
 	return out
