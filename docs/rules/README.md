@@ -475,6 +475,18 @@ Roo Code (#989) is covered by the existing rules on the files it loads:
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG134](CFG134.md) | warn/info | a committed `.pi/` loads code or changes the commands pi runs once the project is trusted: `packages` (warn without a fixed version, info when pinned), `extensions` and `.pi/extensions/` files, `shellPath`, `shellCommandPrefix`, `npmCommand`, an MCP `env`/`headers` value starting with `!`, and `SYSTEM.md` (info) | LLM03 |
+### Kilo Code — `kilo.jsonc`, `.kilo/` & `.kilocode/`
+
+[Kilo Code](https://github.com/Kilo-Org/kilocode) is an OpenCode fork whose CLI and VS Code extension share OpenCode's backend and config format under Kilo's own names ([#1056](https://github.com/cfgaudit/cfgaudit/issues/1056), read from the v7.8.27 source, `packages/opencode/src`). cfgaudit reads:
+
+- **Config.** `kilo.json` and `kilo.jsonc` at the root, and `kilo.jsonc`, `kilo.json`, `opencode.jsonc`, `opencode.json` in `.kilocode/` and in `.kilo/`, which wins. They are read with the OpenCode config rules (MCP, permissions, providers, instructions, `shell`). Kilo reads `.kilocode/` and `.kilo/` where OpenCode reads `.opencode/`. A root `opencode.json` is read once, as OpenCode's file.
+- **Legacy MCP.** `.kilocode/mcp.json` and `.kilo/mcp.json` (`mcpServers` shape) go to the shared MCP rules. Their `alwaysAllow` is not read: Kilo's migrator says it "cannot be migrated" and only warns, so [CFG011](CFG011.md) would report an approval Kilo does not grant.
+- **Instruction content.**
+  - In each folder: `rules/*.md` and `rules-<mode>/*.md` (top level only), `workflows/*.md`, `{agent,agents}/**/*.md`, `{mode,modes}/*.md`, `{command,commands}/**/*.md` and `{skill,skills}/**/SKILL.md`.
+  - At the root: `.kilocoderules`, `.kilocoderules-<mode>` and `.kilocodemodes`, whose `roleDefinition` and `customInstructions` become the mode's prompt. Like `.roomodes`, the whole file is read.
+- **Code.** `{plugin,plugins}/*.{ts,js}` and `{tool,tools}/*.{js,ts}` in either folder are [CFG114](CFG114.md) errors: Kilo imports and runs them with no trust step.
+
+Rule messages on Kilo's config files say "OpenCode", the format they share.
 
 ### Antigravity CLI — `.agents/`
 
