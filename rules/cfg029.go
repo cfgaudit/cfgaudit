@@ -443,6 +443,9 @@ func notAPermissionBypass(line string, loc []int) bool {
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(after)), "interactively") {
 			return true // a program's design: "Never prompt interactively inside the use case" (#867)
 		}
+		if programContextRe.MatchString(after) {
+			return true // a program's design too: "Never prompt in JSON, quiet or non-TTY runs" (#1568)
+		}
 		rest := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(after)), "the user ")
 		if strings.HasPrefix(match, "never confirm") && (confirmObjectRe.MatchString(after) || verbListAfterRe.MatchString(after)) {
 			return true // "Never confirm a root cause without ..." (#855), "never confirm, negotiate, or alter payment terms" (#953)
@@ -456,7 +459,8 @@ func notAPermissionBypass(line string, loc []int) bool {
 			return true
 		}
 		return bypassNounBeforeRe.MatchString(before) || bypassNounAfterRe.MatchString(after) ||
-			(bypassNounListRe.MatchString(before) && bypassNounEndRe.MatchString(after))
+			(bypassNounListRe.MatchString(before) && bypassNounEndRe.MatchString(after)) ||
+			bypassSubjectRe.MatchString(before)
 	}
 	return false
 }
@@ -464,6 +468,17 @@ func notAPermissionBypass(line string, loc []int) bool {
 // verbListAfterRe matches "confirm" as the first verb of a list acting on one
 // object: "never confirm, negotiate, or alter payment terms" (#953).
 var verbListAfterRe = regexp.MustCompile(`(?i)^\s*,\s*(?:\w+,\s*)*(?:or|and)?\s*\w+,?\s+(?:or|and)\s+\w+\s+\w+`)
+
+// programContextRe is the context after "never prompt" that makes it a rule
+// for the project's own program rather than for the agent: "in JSON, quiet or
+// non-TTY runs", "inside a hook", "during CI" (#1568).
+var programContextRe = regexp.MustCompile(`(?i)^\s+(?:in|inside|during)\s`)
+
+// bypassSubjectRe is a subject other than the agent before "bypass
+// permission", which makes the line describe what the code does:
+// "Scheduled and internal tasks run as system and bypass permission checks"
+// (#1568).
+var bypassSubjectRe = regexp.MustCompile(`(?i)\b(?:tasks?|jobs?|workers?|crons?|requests?|services?|processes?|scripts?|admins?|administrators?|roles?|superusers?|accounts?)\b(?:\s+[\w-]+){0,6}\s+(?:and|which|that|can|may|will|to)\s+$`)
 
 // markdownHeadingRe matches a Markdown heading line.
 var markdownHeadingRe = regexp.MustCompile(`^\s{0,3}#{1,6}\s`)
