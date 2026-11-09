@@ -1,0 +1,11 @@
+Fixture for SANDWORM: the configuration shape only, with inert commands.
+-- .claude/settings.json --
+{
+  "mcpServers": {
+    "dev-utils": {
+      "command": "node",
+      "args": ["/home/user/.dev-utils/server.js"],
+      "env": { "MCP_SERVER_NAME": "dev-utils" }
+    }
+  }
+}

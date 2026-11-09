@@ -76,19 +76,88 @@ type Target struct {
 	// file, since the file itself does not look like agent configuration.
 	ImportChain []string
 
+	// NestedDir is set on the target of an AGENTS.md or CLAUDE.md below the
+	// root: the folder, relative to the scanned directory, whose files it
+	// applies to (#975). Run names it in every finding on the file.
+	NestedDir string
+
 	// ExternalImports are the `@path` imports in InstructionFile that resolve
 	// outside the scanned directory, as written (CFG116). cfgaudit does not
 	// read them.
 	ExternalImports []string
+
+	// RootFiles are the names of the files at the root of the scanned
+	// directory, Venvs the committed Python virtual environments (a
+	// directory with a pyvenv.cfg), and YarnPath the yarnPath of the
+	// .yarnrc.yml in YarnrcFile (#997). Set on one target per scan.
+	RootFiles  []string
+	Venvs      []string
+	YarnPath   string
+	YarnrcFile string
+
+	// Bytecode are the committed .pyc files that can run instead of the
+	// source a reader reviews (#1398). Set on one target per scan.
+	Bytecode []BytecodeFile
+
+	// Gitignore is the project's .gitignore, read during discovery so a
+	// symlink that leaves the tree is reported by CFG115 like any other
+	// (#1023); HasGitignore is whether it could be read. Set on the project
+	// targets only.
+	Gitignore    []byte
+	HasGitignore bool
+
+	// ArchiveName is the archive a scan target was unpacked from (#1002);
+	// ArchiveEntries are its entry names and ArchiveLinks the link entries and
+	// their targets, recorded as metadata but never extracted or followed.
+	ArchiveName    string
+	ArchiveEntries []string
+	ArchiveLinks   []ArchiveLink
+
+	// GitModules is the scanned directory's .gitmodules, as text (#994);
+	// GitModulesFile is its path. NestedRepos are the committed directories
+	// that look like a bare git repository.
+	GitModules     string
+	GitModulesFile string
+	NestedRepos    []NestedRepo
+
+	// Junie is a parsed .junie/config.json, JunieFile its path, and JunieOutside
+	// its location entries that leave the repository (#1413).
+	Junie        *parser.JunieConfig
+	JunieFile    string
+	JunieOutside []JunieLocation
+
+	// GooseRecipeCommands are the retry commands of the goose recipe
+	// GooseRecipeFile, and GooseHooks a parsed .agents/plugins/<name>/hooks/hooks.json
+	// in the shape Grok's hook files have (#1414).
+	GooseRecipeCommands []parser.GooseRecipeCommand
+	GooseRecipeFile     string
+	GooseHooks          *parser.GrokHooks
+	GooseHooksFile      string
+
+	// ProjectGitConfig is the scanned folder's own .git/config, and
+	// ProjectGitConfigFile its path, set for a folder scan only (#1408).
+	ProjectGitConfig     string
+	ProjectGitConfigFile string
 
 	// ContentPath marks a target for a file that content-paths lists (#795): a
 	// README or doc page, not an instruction file. Run applies only
 	// ContentPathRules to it and reports at most warn.
 	ContentPath bool
 
+	// CapabilityPackage marks an automatically discovered setup document from
+	// an MCP server, agent skill or plugin package (#1437). It remains a
+	// ContentPath target (documentation is not trusted agent context), but Run
+	// applies the narrower CapabilityPackageRules instead of the general set.
+	CapabilityPackage bool
+
+	// SkillHelper is the SKILL.md a Markdown file sits beside (#987): a file
+	// such as references/policy.md that the skill tells the agent to read. Run
+	// applies only SkillHelperRules to it and reports at most warn.
+	SkillHelper string
+
 	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
-	// workspace tasks). A task set to run on folder-open is a zero-click code
-	// execution vector when committed to a repo (CFG047). Nil when absent;
+	// workspace tasks). A task set to run on folder-open is a code execution
+	// vector when committed to a repo (CFG047). Nil when absent;
 	// VSCodeTasksFile is its path, used to attribute findings.
 	VSCodeTasks     *parser.VSCodeTasks
 	VSCodeTasksFile string
@@ -99,6 +168,12 @@ type Target struct {
 	// VSCodeSettingsFile is its path, used to attribute findings.
 	VSCodeSettings     *parser.VSCodeSettings
 	VSCodeSettingsFile string
+
+	// VSCodeExtensions are the recommended extension IDs of a
+	// .vscode/extensions.json or a workspace file's "extensions" block (#995);
+	// VSCodeExtensionsFile is the file.
+	VSCodeExtensions     []string
+	VSCodeExtensionsFile string
 
 	// Gemini holds a parsed Gemini CLI settings.json (.gemini/settings.json or
 	// ~/.gemini/settings.json). Its security surface mirrors Claude Code's
@@ -114,12 +189,52 @@ type Target struct {
 	GeminiDotEnv     map[string]string
 	GeminiDotEnvFile string
 
+	// GeminiEnvTelemetry is the telemetry Gemini CLI runs with when
+	// .gemini/.env sets the export endpoint (#749), with telemetry.enabled and
+	// logPrompts from the .env or the settings; GeminiEnvTelemetryKey is the
+	// variable that set the endpoint. CFG046 reports it on GeminiDotEnvFile.
+	GeminiEnvTelemetry    *parser.AgentTelemetry
+	GeminiEnvTelemetryKey string
+
 	// Qwen holds a parsed qwen-code settings.json (.qwen/settings.json or
 	// ~/.qwen/settings.json). Its tools.approvalMode / tools.autoAccept drive
 	// CFG091, and its mcpServers ride ProjectMCP so the MCP rules apply. Nil when
 	// absent; QwenFile is its path, used to attribute the qwen-specific findings.
 	Qwen     *parser.QwenSettings
 	QwenFile string
+
+	// Pi* carry a project .pi/ folder of the pi coding agent (#1055): its
+	// settings.json, the extensions in .pi/extensions, the "!" commands of
+	// .pi/mcp.json and .pi/SYSTEM.md, on a target of their own.
+	Pi            *parser.PiSettings
+	PiFile        string
+	PiExtensions  []string
+	PiMCPCommands []parser.PiBangCommand
+	PiMCPFile     string
+	PiSystemFile  string
+
+	// PluginManifest is a Claude Code plugin's plugin.json, on a target of its
+	// own, for the component paths it names (#1410).
+	PluginManifest     *parser.PluginManifest
+	PluginManifestFile string
+
+	// GeminiExtensionLink is the source of a Gemini extension installed with
+	// type "link" from outside the repository (#1556), and
+	// GeminiExtensionLinkFile its .gemini-extension-install.json.
+	GeminiExtensionLink     string
+	GeminiExtensionLinkFile string
+
+	// GeminiExtensionPublished marks the hooks target of an extension the
+	// repository publishes rather than one Gemini loads from it (#1556).
+	GeminiExtensionPublished bool
+
+	// QwenWebSearchLeaks are the qwen web search backends whose host only the
+	// repository's own allowedHosts admits (#974), on a target of their own.
+	QwenWebSearchLeaks []parser.QwenWebSearchLeak
+
+	// QwenSkillDirsOutside are the skills.directories entries of a project
+	// .qwen/settings.json that leave the repository (#973); CFG099 reports them.
+	QwenSkillDirsOutside []string
 
 	// Codex holds a parsed OpenAI Codex CLI config.toml (~/.codex/config.toml).
 	// approval_policy / sandbox_mode drive CFG063/CFG064, and its [mcp_servers]
@@ -287,7 +402,8 @@ type Target struct {
 	// slash command file (InstructionFile), which Claude Code runs when the skill
 	// is invoked, by the user or by the model, before the text reaches the model
 	// (#643). They are command sites. Nil when the file is not a skill or command,
-	// or when the project's settings set disableSkillShellExecution.
+	// or when the project's settings set disableSkillShellExecution. A Gemini
+	// CLI or Qwen Code custom command carries its `!{...}` commands here (#750).
 	SkillShellCommands []string
 
 	// QwenExecutor holds the qwen-code `executor:` block from a .qwen/agents/*.md
@@ -354,20 +470,57 @@ type Target struct {
 	// several targets is attached to the first one only.
 	LaunchedScripts []LaunchedScript
 
+	// ClineHooks are the project's Cline hook files (#1523). They run on their
+	// event like a hook command, so each becomes a LaunchedScript.
+	ClineHooks []ClineHook
+
 	PolicyRequireDeny []string
 	PolicyForbidAllow []string
 
 	// PolicyAgent names the agent this target's permission file is checked as
 	// against the agent-neutral policy (#1081): "claude-code" for the project
-	// .claude/settings.json target, "devin" for .devin/config.json. PolicyDeny
+	// .claude/settings.json target, "devin" for .devin/config.json, "cursor-cli"
+	// for .cursor/cli.json, "qwen-code" for .qwen/settings.json, "grok" for
+	// .grok/config.toml. PolicyDeny
 	// and PolicyForbid are the neutral entries; empty unless PolicyAgent is set.
 	PolicyAgent  string
 	PolicyDeny   config.PolicyRules
 	PolicyForbid config.PolicyRules
 
+	// CodexRules are the prefix rules of .codex/rules/*.rules, and CodexRulesFile
+	// the file a finding names (#1516).
+	CodexRules     []parser.CodexRule
+	CodexRulesFile string
+
+	// PolicyMCP holds the servers of .agents/mcp_config.json for Antigravity, which
+	// cfgaudit reads for the policy only until #1057 (#1520).
+	PolicyMCP map[string]parser.MCPServer
+
+	// PolicyRoo is Roo Code's side of the neutral policy, and
+	// PolicyGeminiAllowed the tools.allowed list of .gemini/settings.json (#1517).
+	PolicyRoo           *RooPolicy
+	PolicyGeminiAllowed []string
+
+	// PolicyRulesyncConflicts are contradictions between .cfgaudit.yml and the
+	// Rulesync file (CFG025), and PolicyRulesyncSkipped its rules with no neutral
+	// form (CFG118). PolicyFile is the Rulesync file on that target (#1519).
+	PolicyRulesyncConflicts []string
+	PolicyRulesyncSkipped   []string
+
+	// PolicyBlocks are the permission blocks of an agent that resolves rules by
+	// the last match, in the order it reads them, and PolicyFile the file a
+	// finding names (#1515).
+	PolicyBlocks []parser.OpenCodePermissionBlock
+	PolicyFile   string
+
 	// PolicyUnenforceable lists the agents in the policy's scope that have no
 	// file in the repository a deny rule could be written to (CFG118).
 	PolicyUnenforceable []UnenforceableAgent
+	// PolicyInheritedAllow and PolicyInheritedDeny hold entries the agent takes
+	// from another agent's committed file: Cursor CLI and Grok add
+	// .claude/settings.json to their own.
+	PolicyInheritedAllow []string
+	PolicyInheritedDeny  []string
 
 	// ShellCheck enables CFG045 (running the shellcheck binary over command
 	// sites). Set by the CLI when --shellcheck / config requests it and the
@@ -391,8 +544,11 @@ type Target struct {
 	// committed link text. cfgaudit does not read such a file (it would be a file
 	// on the scanning machine, not in the repository); CFG115 reports the link
 	// and every other rule ignores the target.
+	// EscapedWalked says the link was found by the repository walk (#1417), not
+	// by a read of a config path.
 	EscapedLink   string
 	EscapedTarget string
+	EscapedWalked bool
 
 	// ScheduledTasks holds a parsed .claude/scheduled_tasks.json — Claude Code's
 	// cron-scheduler store. A committed file with a non-empty tasks array is
@@ -425,6 +581,16 @@ type Target struct {
 	// Claude Code merges the two at runtime, so a deny-absence finding on the
 	// local file would be a false positive (CFG006).
 	SiblingDeny bool
+}
+
+// ArchiveLink is a symbolic or hard link carried by an archive. Name and
+// Target are the archive header's text; neither path has been resolved. A hard
+// link's Target names an entry from the archive root, a symbolic link's Target
+// is relative to the link's own directory.
+type ArchiveLink struct {
+	Name   string
+	Target string
+	Hard   bool
 }
 
 // mcpServerRef is a single MCP server definition paired with the file it was
@@ -502,6 +668,8 @@ type Rule interface {
 	Check(t *Target) []finding.Finding
 }
 
+// CFG017 is retired and its ID is not reused: it reported a key no agent reads
+// in an MCP configuration (#1525).
 // All is the ordered list of rules run on every target.
 var All []Rule
 
@@ -511,4 +679,7 @@ var All []Rule
 type AgentCodeFile struct {
 	Path string
 	Kind string
+	// SHA256 is the content hash for the lock, empty when the file could not
+	// be read. CFG114 needs only its presence.
+	SHA256 string
 }

@@ -47,18 +47,47 @@ var safeShellVars = map[string]bool{
 	"CLAUDE_PLUGIN_ROOT": true,
 	"CLAUDE_PROJECT_DIR": true,
 	"CLAUDE_SKILL_DIR":   true,
+	"CLAUDE_CODE_REMOTE": true,
+	"CLAUDE_ENV_FILE":    true,
+	"CLAUDE_PLUGIN_DATA": true,
+	// Other agent-provided install and project paths (#1198).
+	"CURSOR_PROJECT_DIR":  true,
+	"GEMINI_PROJECT_DIR":  true,
+	"DROID_PLUGIN_ROOT":   true,
+	"ZCODE_PLUGIN_ROOT":   true,
+	"GROK_WORKSPACE_ROOT": true,
 	// Zed task variables (crates/task/src/task_template.rs VariableName)
 	"ZED_WORKTREE_ROOT":     true,
 	"ZED_MAIN_GIT_WORKTREE": true,
+	// Gemini CLI substitutes these in an extension's manifest and hooks
+	// before anything runs (recursivelyHydrateStrings in
+	// extension-manager.ts, v0.67.0), so they never reach a shell (#1556).
+	"extensionPath": true,
+	"workspacePath": true,
 	// the shell's own cwd, and the user's home directory, which the login sets
 	// (#935)
 	"PWD":  true,
 	"HOME": true,
 }
 
+// formatArgRe matches a format argument whose conversions read as cmd.exe
+// variables: git's --format and --pretty ("%h%n%b" holds "%n%"), stat -c and
+// --printf, find -printf, and the first argument of printf (#1559).
+var formatArgRe = regexp.MustCompile(`(?:--(?:format|pretty)(?:=|\s+)|\bstat\s+(?:-[A-Za-z]+\s+)*-c\s*|--printf(?:=|\s+)|\s-printf\s+|\bprintf\s+(?:-v\s+\S+\s+)?)(?:'[^']*'|"[^"]*"|\S+)`)
+
 // dateFormatRe matches a date(1) +FORMAT argument, whose strftime conversions
 // read as cmd.exe variables: +%Y-%m-%dT%H:%M:%SZ holds "%dT%" (#935).
 var dateFormatRe = regexp.MustCompile(`(?:^|\s)['"]?\+%\S*`)
+
+// These names are commonly guessed by hook authors, but Claude Code
+// exposes hook input on stdin rather than setting these variables (#1198).
+var undefinedClaudeHookVars = map[string]bool{
+	"$CLAUDE_TOOL_INPUT":         true,
+	"$CLAUDE_FILE_PATH":          true,
+	"$CLAUDE_FILE_PATHS":         true,
+	"$TOOL_INPUT_FILE_PATH":      true,
+	"$CLAUDE_TOOL_ARG_file_path": true,
+}
 
 func (r *cfg009) Check(t *Target) []finding.Finding {
 	if t == nil {
@@ -67,8 +96,38 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 
 	var findings []finding.Finding
 	for _, site := range commandSites(t) {
-		vars := extractShellVars(site.Command)
+		// A custom command's !{...} gets no hook JSON on stdin (#1560).
+		vars := extractShellVars(site.Command, !strings.Contains(site.Label, "`!{...}`"))
 		if len(vars) == 0 {
+			continue
+		}
+		var nonExistent, injectionVars []string
+		for _, name := range vars {
+			// PowerShell sets $LASTEXITCODE itself; in bash it is an ordinary
+			// variable from the environment (#1198).
+			if site.PowerShell && strings.EqualFold(strings.Trim(name, "${}"), "LASTEXITCODE") {
+				continue
+			}
+			// PowerShell does not expand %NAME% either; only cmd.exe does (#1559).
+			if site.PowerShell && strings.HasPrefix(name, "%") {
+				continue
+			}
+			if undefinedClaudeHookVars[name] {
+				nonExistent = append(nonExistent, name)
+			} else {
+				injectionVars = append(injectionVars, name)
+			}
+		}
+		if len(nonExistent) > 0 {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG009",
+				Severity: finding.Info,
+				File:     site.File,
+				Message: site.Label + " references " + strings.Join(nonExistent, ", ") +
+					" — Claude Code does not provide these hook variables; read the hook JSON from stdin instead" + userScopeNote(t),
+			})
+		}
+		if len(injectionVars) == 0 {
 			continue
 		}
 		sev := finding.Warn
@@ -79,13 +138,13 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG009",
 			Severity: sev,
 			File:     site.File,
-			Message:  site.Label + " interpolates " + strings.Join(vars, ", ") + " — agent-controlled or external data inside a command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
+			Message:  site.Label + " interpolates " + strings.Join(injectionVars, ", ") + " — agent-controlled or external data inside a command can be abused for injection; use fixed arguments or pass data via stdin" + userScopeNote(t),
 		})
 	}
 	return findings
 }
 
-func extractShellVars(cmd string) []string {
+func extractShellVars(cmd string, hookStdin bool) []string {
 	seen := map[string]bool{}
 	var out []string
 	addKey := func(key string) {
@@ -97,15 +156,30 @@ func extractShellVars(cmd string) []string {
 	// A reference the shell expands as one argument and never parses again
 	// cannot break out of it: "$f" given to a program, without eval, sh -c or
 	// the like anywhere in the command (#792). Inside single quotes the shell
-	// does not expand it at all, unless the text is parsed again.
-	reparse := shellReparseRe.MatchString(cmd)
-	for _, u := range shellVarUses(cmd) {
-		if safeShellVars[u.name] || (!reparse && (u.safe || u.literal)) {
-			continue
+	// does not expand it at all, unless the text is parsed again. A variable
+	// the command assigns from something other than its input is not reported
+	// at all (#1199), and a single-quoted `sh -c` body is checked as a script
+	// of its own.
+	outerCmd, bodies := splitSingleQuotedSh(cmd)
+	outerTaint := commandTaint(outerCmd, nil, hookStdin)
+	check := func(text string, st, outer shellTaint) {
+		reparse := shellReparseRe.MatchString(text)
+		printed := printSafe(text)
+		for _, u := range shellVarUses(text) {
+			// A variable Claude Code never sets keeps its info finding even when
+			// it is only printed (#1558).
+			printedOnly := u.printed && printed && !undefinedClaudeHookVars["$"+u.name]
+			if !st.untrusted(u.name, outer) || (!reparse && (u.safe || u.literal || printedOnly)) {
+				continue
+			}
+			addKey("$" + u.name)
 		}
-		addKey("$" + u.name)
 	}
-	for _, m := range cmdVarRe.FindAllStringSubmatch(dateFormatRe.ReplaceAllString(cmd, " "), -1) {
+	check(outerCmd, outerTaint, nil)
+	for _, body := range bodies {
+		check(body, commandTaint(body, outerTaint, hookStdin), outerTaint)
+	}
+	for _, m := range cmdVarRe.FindAllStringSubmatch(formatArgRe.ReplaceAllString(dateFormatRe.ReplaceAllString(cmd, " "), " "), -1) {
 		addKey("%" + m[1] + "%")
 	}
 	return out

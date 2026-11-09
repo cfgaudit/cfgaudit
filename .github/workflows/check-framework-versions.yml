@@ -28,6 +28,7 @@ jobs:
   check:
     name: Check mapped framework versions
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write

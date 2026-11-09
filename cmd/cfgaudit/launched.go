@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +17,11 @@ import (
 
 // maxLaunchedScript caps how much of a launched script is read (#1217).
 const maxLaunchedScript = 4 << 20
+
+// launchedEdge is how much of each end of a script over maxLaunchedScript is
+// read for CFG119 (#1270). A payload padded past the limit used to go unread;
+// its decoder and the start of its data sit at the two ends.
+const launchedEdge = 64 << 10
 
 // scriptInterpreters start the file named by their first operand. A value of
 // true means the interpreter takes a subcommand first (`bun run x.js`,
@@ -53,7 +59,7 @@ func launchedPaths(command string) []string {
 		if i >= len(f) {
 			continue
 		}
-		head := strings.Trim(f[i], `"'`)
+		head := strings.Trim(trimGrouping(f[i]), `"'`)
 		if f[i] == "npx" || f[i] == "bunx" {
 			i++
 			for i < len(f) && strings.HasPrefix(f[i], "-") {
@@ -71,7 +77,7 @@ func launchedPaths(command string) []string {
 				j++
 			}
 			for j < len(f) {
-				a := strings.Trim(f[j], `"'`)
+				a := strings.Trim(trimGrouping(f[j]), `"'`)
 				if a == "-File" || a == "-file" {
 					j++
 					continue
@@ -96,6 +102,45 @@ func launchedPaths(command string) []string {
 		}
 	}
 	return out
+}
+
+// readEdges returns the first and last launchedEdge bytes of a large file,
+// joined by a newline, or false when they are not text. A multi-byte
+// character cut at an edge is dropped rather than failing the check.
+func readEdges(path string, size int64) (string, bool) {
+	f, err := scanroot.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer func() { _ = f.Close() }()
+	head := make([]byte, launchedEdge)
+	tail := make([]byte, launchedEdge)
+	if _, err := f.ReadAt(head, 0); err != nil {
+		return "", false
+	}
+	if _, err := f.ReadAt(tail, size-launchedEdge); err != nil {
+		return "", false
+	}
+	if bytes.IndexByte(head, 0) >= 0 || bytes.IndexByte(tail, 0) >= 0 {
+		return "", false
+	}
+	return strings.ToValidUTF8(string(head), "") + "\n" + strings.ToValidUTF8(string(tail), ""), true
+}
+
+// trimGrouping drops the shell grouping around a word that is not part of
+// it: the "(" or "{" that opens a subshell or group before an interpreter,
+// and a ")" that closes one after a path, as in `(command -v node && node
+// ./x.js) || ...` (#1265). A balanced pair inside a path, such as Next.js's
+// `app/(site)/page.js`, stays.
+func trimGrouping(w string) string {
+	w = strings.TrimLeft(w, "{")
+	for strings.HasPrefix(w, "(") && strings.Count(w, "(") > strings.Count(w, ")") {
+		w = w[1:]
+	}
+	for strings.HasSuffix(w, ")") && strings.Count(w, ")") > strings.Count(w, "(") {
+		w = w[:len(w)-1]
+	}
+	return strings.TrimRight(w, "}")
 }
 
 // repoPath turns a command operand into a repository-relative slash path, or
@@ -135,27 +180,34 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 		owner     *rules.Target
 		rel       string
 		content   string
+		partial   bool
+		size      int64
 		labels    []string
 		launchers map[string]bool
 		via       string
 	}
 	byPath := map[string]*script{}
 	var order []string
-	read := func(rel string) (string, bool) {
-		data, err := scanroot.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if err != nil || len(data) > maxLaunchedScript || !isTextFile(data) {
-			return "", false
+	read := func(rel string) (content string, partial bool, size int64, ok bool) {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if fi, err := scanroot.Stat(path); err == nil && fi.Mode().IsRegular() && fi.Size() > maxLaunchedScript {
+			edges, ok := readEdges(path, fi.Size())
+			return edges, true, fi.Size(), ok
 		}
-		return string(data), true
+		data, err := scanroot.ReadFile(path)
+		if err != nil || len(data) > maxLaunchedScript || !isTextFile(data) {
+			return "", false, 0, false
+		}
+		return string(data), false, int64(len(data)), true
 	}
 	add := func(owner *rules.Target, rel, label, launcher, via string) {
 		s, ok := byPath[rel]
 		if !ok {
-			content, ok := read(rel)
+			content, partial, size, ok := read(rel)
 			if !ok {
 				return
 			}
-			s = &script{owner: owner, rel: rel, content: content, launchers: map[string]bool{}, via: via}
+			s = &script{owner: owner, rel: rel, content: content, partial: partial, size: size, launchers: map[string]bool{}, via: via}
 			byPath[rel] = s
 			order = append(order, rel)
 		}
@@ -174,6 +226,13 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 			for _, rel := range launchedPaths(lc.Command) {
 				add(t, rel, "the "+lc.Label, lc.File, "")
 			}
+		}
+	}
+	hooks := map[string]bool{}
+	for _, t := range targets {
+		for _, h := range t.ClineHooks {
+			hooks[h.Path] = true
+			add(t, h.Path, "Cline as its "+h.Event+" hook", filepath.Join(root, filepath.FromSlash(h.Path)), "")
 		}
 	}
 	for _, rel := range append([]string(nil), order...) {
@@ -207,6 +266,7 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 		}
 		s.owner.LaunchedScripts = append(s.owner.LaunchedScripts, rules.LaunchedScript{
 			Label: label, File: filepath.Join(dir, filepath.FromSlash(rel)), Content: s.content, Launchers: launchers, Via: s.via,
+			Partial: s.partial, Size: s.size, Shell: hooks[rel] && shellHook(rel, s.content),
 		})
 	}
 }

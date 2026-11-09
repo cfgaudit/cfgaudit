@@ -4,11 +4,14 @@
 package rules
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 )
 
 type cfg010 struct{}
@@ -23,9 +26,119 @@ func (r *cfg010) ID() string { return "CFG010" }
 // package spec, version-pinned with an `@<version>` suffix.
 var npmPackageRunners = map[string]bool{
 	"npx":  true,
+	"npm":  true,
 	"pnpm": true,
 	"yarn": true,
 	"bunx": true,
+	"pnpx": true,
+}
+
+var npmValueFlags = map[string]bool{
+	"--prefix": true, "--workspace": true, "-w": true, "--userconfig": true,
+	"--registry": true, "--cache": true, "--loglevel": true,
+}
+
+// npmExecArgs returns the arguments after npm exec. A bare npm command does
+// not fetch and execute the first positional as a package.
+func npmExecArgs(args []string) ([]string, bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if npmValueFlags[a] {
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "exec" || a == "x" {
+			return args[i+1:], true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// npmNoInstall reports a `--no` or `--no-install` before the package, which
+// runs the installed copy and never fetches, so there is nothing to pin.
+func npmNoInstall(args []string) bool {
+	for _, a := range args {
+		if a == "--no" || a == "--no-install" {
+			return true
+		}
+		if !strings.HasPrefix(a, "-") || a == "--" {
+			return false
+		}
+	}
+	return false
+}
+
+// packageRunnerCall reports whether a runner call fetches a package: npm only
+// through exec, so `npm run start` has no pin to report.
+func packageRunnerCall(runner string, args []string) bool {
+	if runner == "npm" {
+		_, ok := npmExecArgs(args)
+		return ok
+	}
+	return npmPackageRunners[runner] || pyPackageRunners[runner]
+}
+
+// workspaceValueFlags are pnpm and yarn options that take a value, which is
+// a directory or a workspace filter rather than a command (#1203).
+var workspaceValueFlags = map[string]bool{
+	"-C": true, "--dir": true, "--filter": true, "-F": true, "--cwd": true,
+}
+
+// uvValueFlags are uv options whose value is not the package to run: a
+// Python version, an index, a constraints file, a directory (#1203).
+var uvValueFlags = map[string]bool{
+	"--python": true, "-p": true, "--python-preference": true, "--refresh-package": true,
+	"--index": true, "--index-url": true, "--extra-index-url": true, "--constraint": true,
+	"--overrides": true, "--directory": true, "--project": true,
+}
+
+// dlxArgs returns the arguments after `dlx` when a pnpm or yarn invocation
+// downloads a package, and false for anything else: `pnpm dev mcp` runs a
+// package.json script and `pnpm exec node dist/mcp.js` a local binary, which
+// the lockfile pins (#1203).
+func dlxArgs(args []string) ([]string, bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if workspaceValueFlags[a] {
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "dlx" {
+			return args[i+1:], true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// isLocalSource reports whether a uvx --from value names local code: a path
+// or a variable such as ${CLAUDE_PLUGIN_ROOT}.
+func isLocalSource(s string) bool {
+	return strings.HasPrefix(s, "$") || isPathLikeArg(s)
+}
+
+// gitSourcePinned reports whether a git+ source names a revision: an `@` in
+// the last path segment, so git+ssh://git@host/... does not count as pinned
+// by its user name. A `#subdirectory=` fragment is not part of the path.
+func gitSourcePinned(s string) bool {
+	s, _, _ = strings.Cut(s, "#")
+	return strings.Contains(s[strings.LastIndexByte(s, '/')+1:], "@")
+}
+
+// gitPinSuggestion puts the revision before a `#` fragment:
+// git+https://host/repo.git@<commit-sha>#subdirectory=tools/mcp.
+func gitPinSuggestion(s string) string {
+	if base, frag, ok := strings.Cut(s, "#"); ok {
+		return base + "@<commit-sha>#" + frag
+	}
+	return s + "@<commit-sha>"
 }
 
 // pyPackageRunners are Python package runners whose first positional arg is a
@@ -44,12 +157,22 @@ var pep508PinRe = regexp.MustCompile(`(===|==|~=|!=|>=|<=|>|<)\s*\d`)
 func (r *cfg010) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
-		for _, msg := range analyzeMCPVersionPins(ref.Server.Command, ref.Server.Args) {
+		msgs := analyzeMCPVersionPins(ref.Server.Command, ref.Server.Args)
+		local := len(msgs) == 1 && localDevDependency(t, ref.Server.Command, ref.Server.Args)
+		for _, msg := range msgs {
+			sev := finding.Warn
+			if local {
+				sev = finding.Info
+				msg += " (the package is a dependency in package.json and the call has no -y, so npx runs the installed copy, which the lockfile pins)"
+			}
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG010",
-				Severity: finding.Warn,
+				Severity: sev,
 				File:     ref.File,
-				Message:  "mcpServers." + ref.Name + ": " + msg,
+				// The key points the line lookup at args, so a server named
+				// like its package is not located at its own key (#1203).
+				Key:     "mcpServers." + ref.Name + ".args",
+				Message: "mcpServers." + ref.Name + ": " + msg,
 			})
 		}
 	}
@@ -71,9 +194,34 @@ func analyzeMCPVersionPins(command string, args []string) []string {
 	if !npm && !py {
 		return nil
 	}
+	specRunner := runner
+	if runner == "npm" {
+		rest, ok := npmExecArgs(args)
+		if !ok {
+			return nil
+		}
+		specRunner, args = "npx", rest
+	}
+	if (runner == "npm" || runner == "npx") && npmNoInstall(args) {
+		return nil
+	}
+	if runner == "pnpm" || runner == "yarn" {
+		rest, ok := dlxArgs(args)
+		if !ok {
+			return nil
+		}
+		specRunner, args = "pnpx", rest
+	}
 	var msgs []string
-	for _, pkg := range collectPackageSpecs(runner, args) {
+	for _, pkg := range collectPackageSpecs(specRunner, args) {
 		if isPathLikeArg(pkg) {
+			continue
+		}
+		if py && strings.HasPrefix(pkg, "git+") {
+			if gitSourcePinned(pkg) {
+				continue
+			}
+			msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" names no revision (e.g. \""+gitPinSuggestion(pkg)+"\") — supply-chain compromise propagates silently to every agent that loads this server")
 			continue
 		}
 		if py {
@@ -90,6 +238,57 @@ func analyzeMCPVersionPins(command string, args []string) []string {
 		msgs = append(msgs, "package \""+pkg+"\" passed to "+runner+" has no @version pin — supply-chain compromise propagates silently to every agent that loads this server")
 	}
 	return msgs
+}
+
+// npmPackageSpecs returns every npm package fetched by an MCP runner. It is
+// shared by rules that reason about package identity or version so runner flags,
+// scoped names and pnpm/yarn dlx forms cannot drift apart (#1433).
+func npmPackageSpecs(command string, args []string) []string {
+	runner, args := windowsRunner(command, args)
+	if !npmPackageRunners[runner] {
+		return nil
+	}
+	if runner == "npm" {
+		rest, ok := npmExecArgs(args)
+		if !ok {
+			return nil
+		}
+		return collectPackageSpecs("npx", rest)
+	}
+	if runner == "pnpm" || runner == "yarn" {
+		rest, ok := dlxArgs(args)
+		if !ok {
+			return nil
+		}
+		return collectPackageSpecs("pnpx", rest)
+	}
+	return collectPackageSpecs(runner, args)
+}
+
+// windowsRunner returns the program a command starts, without a Windows
+// .exe, .cmd or .bat suffix, and looks through `cmd /c`, the way Windows starts
+// npx. The program is "" when cmd runs nothing.
+func windowsRunner(command string, args []string) (string, []string) {
+	base := strings.ToLower(filepath.Base(strings.ReplaceAll(strings.TrimSpace(command), `\`, "/")))
+	for _, suffix := range []string{".exe", ".cmd", ".bat"} {
+		base = strings.TrimSuffix(base, suffix)
+	}
+	if base != "cmd" {
+		return base, args
+	}
+	for i, a := range args {
+		if !strings.EqualFold(a, "/c") && !strings.EqualFold(a, "/k") {
+			continue
+		}
+		rest := args[i+1:]
+		if len(rest) == 1 {
+			rest = strings.Fields(rest[0])
+		}
+		if len(rest) > 0 {
+			return windowsRunner(rest[0], rest[1:])
+		}
+	}
+	return "", nil
 }
 
 // packageFlagValue returns the package spec carried by an inline package flag
@@ -155,7 +354,7 @@ func collectPackageSpecs(runner string, args []string) []string {
 				npmRunAsCommand = true
 				break
 			}
-			if valueNext[a] {
+			if valueNext[a] || npmValueFlags[a] {
 				i++ // skip the flag's value so it is not mistaken for a positional
 				continue
 			}
@@ -174,10 +373,39 @@ func collectPackageSpecs(runner string, args []string) []string {
 		}
 	}
 
+	// uvx --from names the package; the positional is then the command it
+	// provides. A local source (a path or a variable) installs nothing from
+	// the index.
+	fromSet := false
+	if runner == "uvx" {
+		for i := 0; i < len(args); i++ {
+			from, ok := "", false
+			switch a := args[i]; {
+			case a == "--from" && i+1 < len(args):
+				from, ok = args[i+1], true
+				i++
+			case strings.HasPrefix(a, "--from="):
+				from, ok = strings.TrimPrefix(a, "--from="), true
+			case uvValueFlags[a]:
+				i++
+			}
+			if ok {
+				fromSet = true
+				if !isLocalSource(from) {
+					add(from)
+				}
+			}
+		}
+	}
+
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if spec := packageFlagValue(runner, a); spec != "" {
 			add(spec)
+			continue
+		}
+		if runner == "uvx" && (uvValueFlags[a] || a == "--from") {
+			i++ // the value is a version, an index, a path or the --from source
 			continue
 		}
 		if valueNext[a] {
@@ -185,6 +413,10 @@ func collectPackageSpecs(runner string, args []string) []string {
 				add(args[i+1])
 			}
 			i++ // consumed the flag value so it is not mistaken for the run package
+			continue
+		}
+		if npmPackageRunners[runner] && npmValueFlags[a] {
+			i++ // a registry, a directory or a log level, not the run package
 			continue
 		}
 		if strings.HasPrefix(a, "-") {
@@ -198,7 +430,7 @@ func collectPackageSpecs(runner string, args []string) []string {
 		if runner == "pipx" && a == "run" {
 			continue
 		}
-		if npmRunAsCommand {
+		if npmRunAsCommand || fromSet {
 			// positional is the bin to execute, not a package — stop here
 			break
 		}
@@ -250,4 +482,59 @@ func hasNpmVersionPin(pkg string) bool {
 
 func isPathLikeArg(s string) bool {
 	return strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") || strings.HasPrefix(s, "/")
+}
+
+// localDevDependency reports whether an npx or bunx call without -y names a
+// package that the project's package.json lists as a dependency (#1203). Then
+// npx runs the installed copy, which the lockfile pins, and reaches the
+// registry only when the package is not installed. Measured with npm 11.12 and
+// Node 24: without a TTY, which is how an MCP client starts a server, npx
+// installs a missing package from the registry and runs it without asking.
+// So the finding drops to info only when package.json shows the dependency.
+func localDevDependency(t *Target, command string, args []string) bool {
+	runner := filepath.Base(strings.TrimSpace(command))
+	if runner != "npx" && runner != "bunx" {
+		return false
+	}
+	for _, a := range args {
+		if a == "-y" || a == "--yes" {
+			return false
+		}
+	}
+	pkg := mcpPackageArg(runner, args)
+	if pkg == "" || hasNpmVersionPin(pkg) {
+		return false
+	}
+	return projectDependencies(t.ProjectDir)[pkg]
+}
+
+var projectDepsCache sync.Map // dir -> map[string]bool
+
+// projectDependencies returns the package names in the dependencies,
+// devDependencies, optionalDependencies and peerDependencies of
+// <dir>/package.json, or nil when there is none.
+func projectDependencies(dir string) map[string]bool {
+	if dir == "" {
+		return nil
+	}
+	if v, ok := projectDepsCache.Load(dir); ok {
+		return v.(map[string]bool)
+	}
+	var deps map[string]bool
+	if data, err := scanroot.ReadFile(filepath.Join(dir, "package.json")); err == nil {
+		var pj map[string]json.RawMessage
+		if json.Unmarshal(data, &pj) == nil {
+			deps = map[string]bool{}
+			for _, k := range []string{"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"} {
+				var m map[string]any
+				if json.Unmarshal(pj[k], &m) == nil {
+					for name := range m {
+						deps[name] = true
+					}
+				}
+			}
+		}
+	}
+	projectDepsCache.Store(dir, deps)
+	return deps
 }

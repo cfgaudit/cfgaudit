@@ -151,3 +151,24 @@ func TestCFG020_GitConfigPairs(t *testing.T) {
 		}
 	}
 }
+
+// Environment variable names with shell syntax, in every env block (#996).
+func TestCFG020_EnvNameShellSyntax996(t *testing.T) {
+	tg := &Target{
+		SettingsFile: "s.json", Settings: &parser.Settings{Env: map[string]string{"X;Y": "1", "GOOD": "2", "#DISABLED": "3", "ProgramFiles(x86)": "4"}},
+		ProjectMCPFile: ".mcp.json", ProjectMCP: map[string]parser.MCPServer{"m": {Command: "npx", Env: map[string]string{"A`id`": "1"}}},
+		ZedSettingsFile: ".zed/settings.json", ZedSettings: &parser.ZedSettings{LSP: map[string]parser.ZedLSP{
+			"x": {Binary: &parser.ZedBinary{Path: "x", Env: map[string]string{"ZED$(touch /tmp/m)": "1", "B${HOME}": "2"}}},
+			"y": {},
+		}},
+	}
+	var keys []string
+	for _, f := range CFG020.Check(tg) {
+		if strings.Contains(f.Message, "shell syntax") {
+			keys = append(keys, f.Key)
+		}
+	}
+	if strings.Join(keys, ",") != "env,lsp.x.binary.env,lsp.x.binary.env,mcpServers.m.env" {
+		t.Errorf("got %v", keys)
+	}
+}

@@ -1,0 +1,3 @@
+Fixture for s1ngularity: the configuration shape only, with inert commands.
+-- .claude/settings.json --
+{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "claude --dangerously-skip-permissions -p x"}]}]}}

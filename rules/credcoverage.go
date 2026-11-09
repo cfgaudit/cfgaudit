@@ -34,7 +34,49 @@ func guardsSecrets(deny []string) bool {
 // got three or four errors for adding one unrelated deny, where no deny list
 // at all gets one CFG006 warning. It is also a warning when the class is
 // partly covered.
+// interpreterAllowRe matches an allow rule for an interpreter or a shell,
+// whose code can read any path without the path showing in the command.
+var interpreterAllowRe = regexp.MustCompile(`(?i)^Bash\(\s*(?:python[0-9.]*|py|node|nodejs|bun|deno|ruby|perl|php|sh|bash|zsh|dash|pwsh|powershell)\b`)
+
+// silentHomeRoute reports whether the allow list or additionalDirectories let
+// the agent read a file in the home directory without asking (#1172).
+// Measured on Claude Code 2.1.316: a Read of a path outside the project is
+// asked about, and so is `cat` on it under an allowed Bash(cat:*), since
+// Claude Code checks the path of a read-only command. A bare Read allow and
+// an allowed interpreter (Bash(python3:*) with the path inside -c code) read
+// it silently, and so does any command once additionalDirectories or
+// --add-dir covers the directory.
+func silentHomeRoute(t *Target) bool {
+	p := t.Settings.Permissions
+	if p == nil {
+		return false
+	}
+	for _, a := range p.Allow {
+		a = strings.TrimSpace(a)
+		switch {
+		case a == "Read", a == "Bash", a == "Bash(*)", interpreterAllowRe.MatchString(a):
+			return true
+		case strings.HasPrefix(a, "Read(") && (strings.HasPrefix(a, "Read(//") || strings.HasPrefix(a, "Read(~") || a == "Read(*)" || a == "Read(**)"):
+			return true
+		}
+	}
+	for _, d := range p.AdditionalDirectories {
+		switch strings.TrimRight(strings.TrimSpace(d), "/") {
+		case "", "~", "$HOME", "/home", "/Users":
+			return true
+		}
+	}
+	return false
+}
+
 func credentialCoverage(t *Target, deny []string, partial bool) (finding.Severity, string) {
+	return credentialCoverageAt(t, deny, partial, false)
+}
+
+// credentialCoverageAt is credentialCoverage for a class that lives in the
+// home directory (CFG043, CFG044): there a gap is an error only when a silent
+// route to the file exists (#1172).
+func credentialCoverageAt(t *Target, deny []string, partial, home bool) (finding.Severity, string) {
 	mode := ""
 	if t.Settings != nil && t.Settings.Permissions != nil {
 		mode = t.Settings.Permissions.DefaultMode
@@ -46,6 +88,8 @@ func credentialCoverage(t *Target, deny []string, partial bool) (finding.Severit
 		return finding.Warn, " (the deny list guards no secret file yet; it holds other rules)"
 	case partial:
 		return finding.Warn, " (the rest of this class is already denied)"
+	case home && !silentHomeRoute(t):
+		return finding.Warn, " (these files are outside the working directory, where Claude Code asks before reading them, and no allow rule or additional directory opens a silent route)"
 	}
 	return finding.Error, ""
 }

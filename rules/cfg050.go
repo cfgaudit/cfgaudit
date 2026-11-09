@@ -60,6 +60,15 @@ const minCredentialLen = 8
 // flagged (e.g. "<your-token>", "changeme", "xxxxx", "TODO").
 var placeholderRe = regexp.MustCompile(`(?i)^(<.*>|x{3,}|changeme|your[-_ ].*|todo|placeholder|example|\.\.\.)$`)
 
+// AZURE_TOKEN_CREDENTIALS names an Azure SDK credential chain, not a secret.
+// Exempt only documented selector strings, not arbitrary values (#1191).
+var azureCredentialClass = regexp.MustCompile(`^[A-Za-z]+Credential$`)
+
+func azureCredentialSelector(key, value string) bool {
+	return strings.EqualFold(key, "AZURE_TOKEN_CREDENTIALS") &&
+		(value == "dev" || value == "prod" || azureCredentialClass.MatchString(value))
+}
+
 // Check flags hardcoded secrets in an MCP server's env or headers block — the
 // MCP analogue of CFG007 (which only covers settings.json env). Covers every MCP
 // source in scope, plus the headers of a Copilot `type: "http"` hook, which are
@@ -76,9 +85,13 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 	findings = append(findings, r.checkMarketplaceHeaders(t)...)
 	findings = append(findings, r.checkContinueRequestOptions(t)...)
 	findings = append(findings, r.checkZedEnv(t)...)
+	findings = append(findings, r.checkAgentHostTokens(t)...)
+	findings = append(findings, r.checkJunie(t)...)
 	for _, site := range commandSitesWithScripts(t) {
-		for _, what := range commandSecrets(site.Command) {
-			findings = append(findings, secretFinding(site.Label, what, site.File, t))
+		for _, what := range commandSecrets(site.raw()) {
+			f := secretFinding(site.Label, what, site.File, t)
+			f.Line = site.Line
+			findings = append(findings, f)
 		}
 	}
 	for _, ref := range t.mcpServerRefs() {
@@ -86,7 +99,7 @@ func (r *cfg050) Check(t *Target) []finding.Finding {
 
 		for _, k := range sortedKeys(ref.Server.Env) {
 			v := strings.TrimSpace(ref.Server.Env[k])
-			if v == "" || isSecretReference(v) {
+			if v == "" || isSecretReference(v) || azureCredentialSelector(k, v) {
 				continue
 			}
 			if label, ok := matchSecretPattern(v); ok {
@@ -319,6 +332,31 @@ func headerSecrets(base string, headers map[string]string, file string, t *Targe
 
 // headerSecretsAt is headerSecrets for a header block whose key path is not
 // <base>.headers, such as Gemini's telemetry.otlpHeaders.
+// checkJunie reports the literal API keys and proxy headers of a Junie project
+// config (#1413). A byok value is an API key by definition, so any literal one
+// counts.
+func (r *cfg050) checkJunie(t *Target) []finding.Finding {
+	if t == nil || t.Junie == nil {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, k := range sortedKeys(t.Junie.BYOK) {
+		if v := strings.TrimSpace(t.Junie.BYOK[k]); v != "" && !isSecretReference(v) && !literalPlaceholder(v) {
+			findings = append(findings, secretFinding("Junie byok."+k, "a literal API key", t.JunieFile, t))
+		}
+	}
+	for i, p := range t.Junie.Proxies {
+		headers := map[string]string{}
+		for _, h := range p.Headers {
+			if k, v, ok := strings.Cut(h, ":"); ok {
+				headers[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			}
+		}
+		findings = append(findings, headerSecretsAt("Junie proxies["+strconv.Itoa(i)+"].headers", headers, t.JunieFile, t)...)
+	}
+	return findings
+}
+
 func headerSecretsAt(prefix string, headers map[string]string, file string, t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, k := range sortedKeys(headers) {
@@ -371,4 +409,22 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// checkAgentHostTokens reports a literal connectionToken in
+// chat.workspaceRemoteAgentHosts (#1394): a committed token is a committed
+// secret, whichever host it is for.
+func (r *cfg050) checkAgentHostTokens(t *Target) []finding.Finding {
+	if t == nil || t.VSCodeSettings == nil {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, h := range workspaceAgentHosts(t.VSCodeSettings) {
+		token := strings.TrimSpace(h.ConnectionToken)
+		if token == "" || isSecretReference(token) {
+			continue
+		}
+		findings = append(findings, secretFinding(workspaceAgentHostsKey+" connectionToken of "+h.Address, "a literal connection token", t.VSCodeSettingsFile, t))
+	}
+	return findings
 }

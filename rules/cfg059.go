@@ -32,21 +32,15 @@ func (r *cfg059) ID() string { return "CFG059" }
 func (r *cfg059) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	for _, ref := range t.mcpServerRefs() {
-		runner := filepath.Base(ref.Server.Command)
-		if npmPackageRunners[runner] {
-			spec := mcpPackageArg(runner, ref.Server.Args)
-			if spec != "" && !isPathLikeArg(spec) {
-				if m := bestPackageSquat(spec); m != nil {
-					findings = append(findings, finding.Finding{
-						RuleID:   "CFG059",
-						Severity: m.severity,
-						File:     ref.File,
-						Message: "mcpServers." + ref.Name + " package \"" + npmPackageName(spec) + "\" is suspiciously similar to the official \"" + m.official +
-							"\" (" + m.reason + ") — a typosquatted MCP package runs arbitrary code on server start. Verify the exact package name; if it is intentional, exclude the file with exclude-paths in .cfgaudit.yml",
-					})
-					continue // one finding per server
-				}
-			}
+		if spec, m := mcpPackageSquat(ref.Server.Command, ref.Server.Args); m != nil {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG059",
+				Severity: m.severity,
+				File:     ref.File,
+				Message: "mcpServers." + ref.Name + " package \"" + npmPackageName(spec) + "\" is suspiciously similar to the official \"" + m.official +
+					"\" (" + m.reason + ") — a typosquatted MCP package runs arbitrary code on server start. Verify the exact package name; if it is intentional, exclude the file with exclude-paths in .cfgaudit.yml",
+			})
+			continue // one finding per server
 		}
 
 		host := strings.TrimSpace(endpointHost(ref.Server.URL))
@@ -93,6 +87,20 @@ func (r *cfg059) Check(t *Target) []finding.Finding {
 // in a chain like `eslint . && npx some-pkg` is examined on its own.
 var shellSegmentRe = regexp.MustCompile(`&&|\|\||[|;&\n]`)
 
+// mcpPackageSquat returns the first package an MCP server fetches that looks
+// like a typosquat, and the match; the match is nil when there is none.
+func mcpPackageSquat(command string, args []string) (string, *squatMatch) {
+	for _, spec := range npmPackageSpecs(command, args) {
+		if isPathLikeArg(spec) {
+			continue
+		}
+		if m := bestPackageSquat(spec); m != nil {
+			return spec, m
+		}
+	}
+	return "", nil
+}
+
 // hookNpmPackageSpecs extracts the package spec of every npm-runner invocation
 // (npx/bunx/pnpm dlx/yarn dlx) found in a hook command string. Path-like args
 // (./x, ../x, /x) are dropped — those run a local script, not a fetched package.
@@ -119,6 +127,13 @@ func hookNpmPackageSpecs(command string) []string {
 // runs a remote package, so bare `pnpm install` / `yarn build` (whose first token
 // is a subcommand, not a package) yields "" and is never treated as a package.
 func hookRunnerPackage(runner string, args []string) string {
+	if runner == "npm" {
+		rest, ok := npmExecArgs(args)
+		if !ok {
+			return ""
+		}
+		return firstPositional(rest)
+	}
 	if runner == "pnpm" || runner == "yarn" {
 		for i, a := range args {
 			if a != "dlx" && a != "exec" {

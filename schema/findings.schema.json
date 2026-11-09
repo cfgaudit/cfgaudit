@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/cfgaudit/cfgaudit/main/schema/findings.schema.json",
+  "title": "cfgaudit findings (--format json)",
+  "description": "The output of `cfgaudit --format json`: an array of findings. The field names and the shape are stable from v1.20.0 on (#1078); a field may be added in a minor release, and a rename or removal happens only in a major release, announced in the release notes. See https://github.com/cfgaudit/cfgaudit/blob/main/docs/usage.md#json-output",
+  "type": "array",
+  "items": { "$ref": "#/definitions/finding" },
+  "definitions": {
+    "finding": {
+      "type": "object",
+      "required": ["RuleID", "Severity", "File", "Line", "Col", "Message"],
+      "additionalProperties": true,
+      "properties": {
+        "RuleID": {
+          "description": "The rule that reported the finding.",
+          "type": "string",
+          "pattern": "^CFG[0-9]{3}$"
+        },
+        "Severity": {
+          "description": "The severity after .cfgaudit.yml overrides.",
+          "enum": ["error", "warn", "info"]
+        },
+        "Scope": {
+          "description": "Which settings file the finding comes from, when that matters for its reach: the project's committed file, the project's local override, or the user's global file. Omitted for findings that are not about a settings scope.",
+          "enum": ["project", "project-local", "user"]
+        },
+        "File": {
+          "description": "The file the finding is in, as cfgaudit reached it: the scanned directory as given on the command line joined with the path inside it, or the path of a --user, --config or --plugins input. It is not made relative to the scanned directory.",
+          "type": "string"
+        },
+        "Line": {
+          "description": "1-based line of the finding, or 0 when the finding is about the file as a whole or the line is not known.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "Col": {
+          "description": "1-based column, or 0 when not known.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "Message": {
+          "description": "What was found and how to fix it. Secrets in it are redacted. The wording is not stable: match on RuleID, not on the message.",
+          "type": "string"
+        },
+        "OWASP": {
+          "description": "The OWASP Top 10 for LLM Applications id of the rule (LLM01 to LLM10). Every rule has one; it is omitted only if a rule's documentation lacks it.",
+          "type": "string",
+          "pattern": "^LLM[0-9]{2}$"
+        },
+        "AVEID": {
+          "description": "The Agentic Vulnerability Enumeration id the rule maps to. Omitted for rules without one.",
+          "type": "string",
+          "pattern": "^AVE-[0-9]{4}-[0-9]{5}$"
+        }
+      }
+    }
+  }
+}

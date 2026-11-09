@@ -21,11 +21,15 @@ Whether cfgaudit reports the right findings, and only those.
 | Layer | Protects against | Runs |
 |---|---|---|
 | Rule unit tests (`rules/cfgNNN_test.go`) | wrong findings, severities or messages; missed edge cases; findings where the rule must stay silent | every pull request |
+| CFG045 against a real ShellCheck (`rules/cfg045_test.go`): `go test` skips these tests when ShellCheck is missing. To require them, name the version: `CFGAUDIT_REQUIRE_SHELLCHECK=0.11.0 go test -count=1 -v -run '^TestCFG045' ./rules`. The tests then fail if ShellCheck is absent, cannot start, is another version, times out or reports something unexpected. The tests with a fake binary need no ShellCheck | a ShellCheck release that changes the JSON report or the codes CFG045 relies on; a green result that only means ShellCheck was missing. The version is pinned in `ci.yml`, and the Docker job fails when the image ships another one | every pull request, in the Test job |
 | CLI tests through `run()` (`cmd/cfgaudit/run_test.go` and neighbors) | wrong exit codes, flags that are ignored or conflict, discovery and output format mistakes | every pull request |
 | Consistency tests (`rules/consistency_test.go`) | a rule without a docs page, a row in the rule index (`docs/rules/README.md`) or OWASP mapping; severities or OWASP categories that differ between code, docs page and rule index; a rule index section the README overview does not link; mapping tables that name rules that do not exist | every pull request |
+| Surface list (`docs/agent-surfaces.yml`, `cmd/cfgaudit/surfaces_test.go`): each project file cfgaudit claims to read for an agent, written alone into an empty directory, must appear in `cfgaudit inventory` under that agent, and every agent prefix of the inventory needs a line or a stated reason. User-global files do the same in an empty home with `--user`. Managed files are not listed, because cfgaudit reads none | a discovery change that silently stops reading a claimed file, a surface added without an entry, a file attributed to the wrong agent, a user-global file read without `--user` | every pull request |
+| Behaviour list (`docs/agent-behaviour.yml`, `cmd/cfgaudit/behaviour_test.go`): what an agent does with a file (precedence, ignored content, malformed files), each entry with the version and how it was checked, and the findings its fixture must and must not get. It starts with Claude Code. To add an agent, cover all three topics, and add only what a measured run, a changelog line, the docs or the source shows. It runs cfgaudit, not the agent, so it cannot notice the agent changing; `version` says when a line was last true | a scan change that stops matching what an agent was measured to do, such as a deny that no longer cancels an allow or a file that parses here but not in the agent | every pull request |
 | Doc trigger examples (`cmd/cfgaudit/triggerexamples_test.go`) | a rule change that leaves the example in its docs page behind, so the docs show a case the rule no longer reports | every pull request |
 | Fixtures (`testdata/settings/valid`, `testdata/settings/invalid`) | a rule that fires on a clean, realistic settings file; an invalid fixture that no longer triggers the rule it is named for | every pull request |
 | SchemaStore validation of the fixtures (`schema-validation.yml`) | fixtures that Claude Code's published settings schema rejects, so tests pass on input no user can write; nightly, it opens an issue when the upstream schema drifts | pull requests touching the fixtures, `main`, nightly |
+| Regression corpus (`testdata/corpus/`, `cmd/cfgaudit/corpus_test.go`): multi-file projects scanned as one run through the CLI, from discovery to the JSON report. A `clean-*` case must report nothing; any other case must match its golden, which pins the exit code and each finding's rule, severity, file and line. No case is a live repository, and the run needs no network | a false positive or missed finding that came back, also through the interplay of discovery, parsers and several rules, which a test of one rule does not see | every pull request |
 | Metamorphic test (`cmd/cfgaudit/metamorphic_test.go`) | a rule that matches on how a file is written instead of what it says: every doc trigger example and invalid fixture is rewritten (CRLF line endings, minified, tab-indented, keys in reverse order, letters as `\u` escapes, a BOM on Claude Code settings) and must give the same findings | every pull request |
 
 ### Reports
@@ -41,8 +45,8 @@ Whether the output stays readable for the tools that consume it, and existing fi
 
 | Layer | Protects against | Runs |
 |---|---|---|
-| Fuzzing (`fuzz.yml`): whole scan, path parsers, JSONC stripping, Markdown instructions, key location, prefilters | crashes and hangs on broken or hostile input | short runs on pull requests and `main`, 10 minutes per target weekly |
-| Race detector, Linux, macOS and Windows; the tests also run on Windows on ARM, where Go has no race detector | data races between rules running in parallel, platform-specific path and permission bugs | every pull request |
+| Fuzzing (`fuzz.yml`): whole scan, path parsers, JSONC stripping, Markdown instructions, terminal-name parsing, zip and tar extraction, key location, prefilters, the git index reader (#1387) | crashes and hangs on broken or hostile input | short runs on pull requests and `main`, 10 minutes per target weekly |
+| Race detector, Linux, macOS and Windows; the tests also run on Windows on ARM, where Go has no race detector. All are required for a merge: `Test` for Linux, `Cross-platform` for the other three | data races between rules running in parallel, platform-specific path and permission bugs | every pull request |
 | Linear scaling (`rules/scaling_test.go`): every rule on generated inputs of n and 8·n instruction lines, permission entries, MCP servers and hook commands (`internal/benchcorpus`) | a rule whose allocations or run time grow faster than its input, such as a nested loop over the servers of one file, which a fixed-size benchmark corpus does not show | every pull request |
 | Benchmarks (`bench.yml`), pull request against its base | allocation regressions beyond the limit (a gate); time is reported, history is recorded on `main` ([benchmarks page](https://cfgaudit.github.io/benchmarks/)) | pull requests; `main` |
 
@@ -50,9 +54,10 @@ Whether the output stays readable for the tools that consume it, and existing fi
 
 | Layer | Protects against | Runs |
 |---|---|---|
-| Coverage: statement coverage floor (90%) and branch coverage floor (80%) | code that no test exercises | every pull request |
+| Coverage: statement floor (95%), coverage of the lines a pull request changes (`cmd/coveragecheck`), branch floor (88%) with floors of its own for `cmd/cfgaudit`, `internal/parser`, `internal/scanroot` and `rules` | code that no test exercises, a change hidden behind a high total, a drop in a critical package hidden by the others | every pull request |
 | Unreachable code: `deadcode` from `cmd/cfgaudit`, against the allowlist `.github/deadcode-allow.txt` (golangci-lint's `unused` covers unexported code) | exported functions nothing calls any more, such as a helper only tests still use after a refactor, so the tests check a path production does not take; allowlist entries that went stale | every pull request |
 | Static analysis: golangci-lint (with gosec), CodeQL | bugs and insecure patterns in cfgaudit's own code | every pull request; CodeQL also weekly |
+| Shell and workflow lint: ShellCheck on every tracked shell script and workflow `run` block, actionlint on the workflows (`.github/scripts/lint-shell.sh`, in the Lint job) | quoting mistakes and non-portable shell, also in scripts only a release or a schedule runs; a bad expression, matrix reference or job dependency that would otherwise surface when a rarely triggered workflow runs | every pull request and push to `main` |
 
 ### Supply chain and repository security
 
@@ -60,7 +65,7 @@ Whether cfgaudit's own dependencies, workflows and releases can be trusted.
 
 | Layer | Protects against | Runs |
 |---|---|---|
-| Dependency checks: govulncheck, dependency review; Dependabot security alerts | a known vulnerability in a Go module or a CI tool | every pull request and push; alerts when an advisory is published |
+| Dependency checks: govulncheck, dependency review; Dependabot security alerts | a known vulnerability in a Go module or a CI tool | govulncheck on every pull request and push, dependency review on pull requests; alerts when an advisory is published |
 | Workflow security: zizmor, pinact, and the released cfgaudit on the repository's own agent configuration and plugin | injection, excessive permissions and unpinned actions in the workflows; a version comment that does not match its pinned SHA; a weakened rule passing its own check | every pull request |
 | Sensitive paths gate | an unreviewed change to files that reach plugin and Action users, the release build or a maintainer's agent setup; the check fails until a maintainer sets the `sensitive-paths-reviewed` label, and a push that changes the pull request's diff on those paths removes it (`sensitivepaths_test.go` covers the comparison) | every pull request |
 | Version pins (`pins_test.go`): `bin/cfgaudit`, `.claude-plugin/plugin.json`, the image in `action.yml`, both GitLab component templates and the component examples in the README and docs name the same version | a release pull request that misses a pin, so the Action, the plugin or a GitLab component runs an older release than the one tagged | every pull request |
@@ -86,7 +91,7 @@ Whether cfgaudit's own dependencies, workflows and releases can be trusted.
 
 ### Before each release
 
-Manual checks a maintainer runs before tagging, see [RELEASING.md](RELEASING.md#before-the-release).
+Manual checks a maintainer runs before tagging, see [RELEASING.md](RELEASING.md#before-the-release). They cover what the regression corpus cannot: it holds only shapes someone has already found, while these runs look for new ones on real repositories. What they confirm moves into the corpus, see [CONTRIBUTING.md](CONTRIBUTING.md#promoting-a-finding-into-the-corpus).
 
 | Layer | Protects against | Runs |
 |---|---|---|
@@ -96,7 +101,9 @@ Manual checks a maintainer runs before tagging, see [RELEASING.md](RELEASING.md#
 
 ### Scheduled watches
 
-Scheduled jobs watch what cfgaudit depends on from outside and open an issue when something drifts: new versions of the OWASP frameworks the rules map to (`check-framework-versions.yml`), AVE records that the mapping cites (`check-ave-ids.yml`), the MCP reference servers behind CFG059's allowlist (`check-typosquat-allowlist.yml`), and Claude Code's published settings schema (the nightly SchemaStore validation above).
+Scheduled jobs watch what cfgaudit depends on from outside and open an issue when something drifts: new versions of the OWASP frameworks the rules map to (`check-framework-versions.yml`), AVE records that the mapping cites (`check-ave-ids.yml`), the MCP reference servers behind CFG059's allowlist (`check-typosquat-allowlist.yml`), Claude Code's published settings schema (the nightly SchemaStore validation above), and the loader files of open-source agents (`check-agent-loaders.yml`).
+
+The loader check compares files listed in `.github/agent-loaders.json` between the release last reviewed and the latest one, reading source only. It covers `gemini-cli`, `codex`, `opencode`, `qwen-code`, `goose` and `kilo-code`; for the last two the discovery does not exist yet (#1414, #1056), so a change there feeds those issues. A changed file opens or updates an issue and leaves one diff per file as an artifact; it says something moved, not that cfgaudit is wrong. Review the diff against the discovery and `docs/agent-surfaces.yml`, then bump `reviewed_tag`. To add an agent, add its loader files to that list. If its latest release can be another product of the same repository, as with `qwen-code`, set `tag_pattern`. It cannot cover closed-source agents, a loader that moved to a file not on the list, or behaviour that only a running agent shows. Running a real agent is a separate decision, see [the threat model](docs/agent-run-threat-model.md).
 
 ## Adding a rule
 

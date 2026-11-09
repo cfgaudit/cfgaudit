@@ -39,7 +39,7 @@ For pull requests, take the config from the base branch so the change cannot rew
     config: ${{ runner.temp }}/cfgaudit.yml
 ```
 
-**Inputs:** `path` (default `.`), `format` (`text`/`json`/`sarif`), `strict`, `user`, `config` (replaces the scanned directory's `.cfgaudit.yml`; relative to the workspace, or an absolute path outside it), `plugins`, `output`, `fail-on` (`error`/`never`), `image`.
+**Inputs:** `path` (default `.`), `format` (`text`/`json`/`sarif`), `strict`, `user`, `config` (replaces the scanned directory's `.cfgaudit.yml`; relative to the workspace, or an absolute path outside it), `plugins`, `output`, `fail-on` (`error`/`never`), `baseline` (a file written by `cfgaudit baseline`; only findings not in it fail the step, #998), `image`.
 **Outputs:** `exit-code`, `output-file`. By default the step fails on findings at or above the configured threshold; set `fail-on: never` for advisory mode. A tool error (exit code 2: a missing path or config, a file that does not parse) fails the step in both modes, because the report is then incomplete.
 
 ## GitLab CI/CD component
@@ -48,19 +48,19 @@ For GitLab pipelines, include the component (published to the [CI/CD Catalog](ht
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.19.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.20.0
     inputs:
       path: .
       format: text
 ```
 
-Inputs: `stage`, `path`, `format`, `config`, `version` (pinned ghcr.io image tag, optionally with `@sha256:<digest>`), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`. `path` and `config` take path characters and `$VAR` / `${VAR}` references only; quotes, backticks and `$( )` are rejected when the pipeline is created. The output artifact expires after 30 days.
+Inputs: `stage`, `path`, `format`, `config`, `baseline` (a file written by `cfgaudit baseline`, #998), `version` (pinned ghcr.io image tag, optionally with `@sha256:<digest>`), `allow_failure`. The job fails the pipeline on `error`-severity findings unless `allow_failure: true`. `path` and `config` take path characters and `$VAR` / `${VAR}` references only; quotes, backticks and `$( )` are rejected when the pipeline is created. The output artifact expires after 30 days.
 
 `config` replaces the scanned directory's `.cfgaudit.yml`. For merge requests, keep the config out of the repository, for example in a File-type CI/CD variable, so the merge request cannot change it ([why](usage.md#untrusted-repositories)):
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.19.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.20.0
     inputs:
       config: $CFGAUDIT_CONFIG     # File-type CI/CD variable holding the .cfgaudit.yml
 ```
@@ -69,7 +69,7 @@ To surface findings **inline in merge requests** via the Code Quality widget, us
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.19.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit-code-quality@v1.20.0
     inputs:
       path: .
 ```
@@ -83,7 +83,7 @@ For projects that use the [pre-commit framework](https://pre-commit.com/), add t
 ```yaml
 repos:
   - repo: https://github.com/cfgaudit/cfgaudit
-    rev: vX.Y.Z  # a release that includes .pre-commit-hooks.yaml (the release after v1.19.0 or later)
+    rev: v1.20.0  # v1.20.0 is the first release with .pre-commit-hooks.yaml
     hooks:
       - id: cfgaudit
 ```

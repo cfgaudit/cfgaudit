@@ -4,6 +4,8 @@
 package rules
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -72,6 +74,63 @@ func TestCFG010_PnpmDlxUnpinned(t *testing.T) {
 	f := CFG010.Check(settingsTarget(t, json))
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding for unpinned pnpm dlx package, got %d", len(f))
+	}
+}
+
+// pnpm and yarn download a package only with dlx; uv option values are not
+// the package; a git source needs a revision (#1203).
+func TestCFG010_RunnerShapes1203(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		args    string
+		want    string // "" for no finding, else a substring of the one message
+	}{
+		{"pnpm", `["-C","packages/server","exec","node","dist/mcp.js"]`, ""},
+		{"npm", `["install","my-server"]`, ""},
+		{"npm", `["exec","--no","--","my-server"]`, ""},
+		{"npx", `["--no-install","my-server"]`, ""},
+		{"npx", `["--yes","--","my-server"]`, `package "my-server" passed to npx`},
+		{"npx", `["my-server","--no"]`, `package "my-server" passed to npx`},
+		{"npx", `["--registry","https://registry.example.invalid","my-server@1.2.3"]`, ""},
+		{"npm", `["--prefix","packages/server","exec","my-server@1.2.3"]`, ""},
+		{"npm", `["--prefix","packages/server","exec","my-server"]`, `package "my-server" passed to npm`},
+		{"pnpm", `["dev","mcp"]`, ""},
+		{"pnpm", `["--filter","server","start"]`, ""},
+		{"yarn", `["mcp"]`, ""},
+		{"uvx", `["--python-preference","system","my-server==1.2.0"]`, ""},
+		{"uvx", `["--refresh-package","my-server","--from","${CLAUDE_PLUGIN_ROOT}","my-server"]`, ""},
+		{"uvx", `["--from","./tools/server","my-server"]`, ""},
+		{"uvx", `["--from","git+https://github.com/my-org/my-server@0a1b2c3d","my-server"]`, ""},
+		{"pnpm", `["dlx","my-server"]`, `package "my-server" passed to pnpm`},
+		{"pnpm", `["-C","packages/server","dlx","my-server"]`, `package "my-server" passed to pnpm`},
+		{"yarn", `["dlx","my-server"]`, `package "my-server" passed to yarn`},
+		{"pnpx", `["my-server"]`, `package "my-server" passed to pnpx`},
+		{"uvx", `["--python","3.12","my-server"]`, `package "my-server" passed to uvx`},
+		{"uvx", `["-p","3.12","my-server"]`, `package "my-server" passed to uvx`},
+		{"uvx", `["--from","git+https://github.com/my-org/my-server","my-server"]`, `"git+https://github.com/my-org/my-server@<commit-sha>"`},
+		{"uvx", `["--from","git+ssh://git@github.com/my-org/my-server","my-server"]`, `@<commit-sha>`},
+		{"uvx", `["--from","git+https://github.com/my-org/tools.git#subdirectory=mcp","my-server"]`, `"git+https://github.com/my-org/tools.git@<commit-sha>#subdirectory=mcp"`},
+		{"uvx", `["--from","git+https://github.com/my-org/tools.git@v1.2.0#subdirectory=mcp","my-server"]`, ""},
+		{"uvx", `["--from","my-server","my-server-cli"]`, `package "my-server" passed to uvx`},
+		{"npx", `["-y","my-server@latest"]`, `@latest`},
+	} {
+		json := `{"mcpServers":{"s":{"command":"` + tc.command + `","args":` + tc.args + `}}}`
+		f := CFG010.Check(settingsTarget(t, json))
+		switch {
+		case tc.want == "" && len(f) != 0:
+			t.Errorf("%s %s: expected no finding, got %+v", tc.command, tc.args, f)
+		case tc.want != "" && (len(f) != 1 || !strings.Contains(f[0].Message, tc.want)):
+			t.Errorf("%s %s: expected one finding with %q, got %+v", tc.command, tc.args, tc.want, f)
+		}
+	}
+}
+
+// The line lookup is pointed at args, so a server named like its package is
+// not located at its own key (#1203).
+func TestCFG010_KeyPointsAtArgs(t *testing.T) {
+	f := CFG010.Check(settingsTarget(t, `{"mcpServers":{"my-server":{"command":"npx","args":["-y","my-server"]}}}`))
+	if len(f) != 1 || f[0].Key != "mcpServers.my-server.args" {
+		t.Fatalf("expected one finding keyed at args, got %+v", f)
 	}
 }
 
@@ -264,5 +323,33 @@ func TestCFG010_UvxWithEquals_UnpinnedSpecReported(t *testing.T) {
 	}
 	if !strings.Contains(f[0].Message, "\"ruff\"") {
 		t.Errorf("expected finding to name the unpinned spec ruff, got: %s", f[0].Message)
+	}
+}
+
+// npx without -y of a package that package.json lists runs the installed,
+// lockfile-pinned copy, so it is info; without the dependency, or with -y,
+// npx installs from the registry without asking when no TTY is attached, so
+// it stays warn (#1203).
+func TestCFG010_LocalDevDependency1203(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"devDependencies":{"nx":"^19.0.0","@playwright/test":"1.48.0"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, mcp, dir string
+		want           finding.Severity
+	}{
+		{"declared, no -y", `{"command":"npx","args":["nx","mcp"]}`, dir, finding.Info},
+		{"declared scoped, bunx", `{"command":"bunx","args":["@playwright/test"]}`, dir, finding.Info},
+		{"declared, with -y", `{"command":"npx","args":["-y","nx","mcp"]}`, dir, finding.Warn},
+		{"not declared", `{"command":"npx","args":["some-mcp-server"]}`, dir, finding.Warn},
+		{"no package.json", `{"command":"npx","args":["nx","mcp"]}`, t.TempDir(), finding.Warn},
+	} {
+		tg := settingsTarget(t, `{"mcpServers":{"s":`+tc.mcp+`}}`)
+		tg.ProjectDir = tc.dir
+		f := CFG010.Check(tg)
+		if len(f) != 1 || f[0].Severity != tc.want {
+			t.Errorf("%s: got %+v, want one %s", tc.name, f, tc.want)
+		}
 	}
 }

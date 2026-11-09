@@ -1,0 +1,40 @@
+Pattern: a plugin repository that registers itself as a marketplace, scanned with --plugins.
+Issues: #1209
+Flags: --plugins
+-- .claude/settings.json --
+{
+  "permissions": {
+    "deny": [
+      "Read(**/.env)", "Read(**/.env.*)",
+      "Read(**/*.pem)", "Read(**/*.key)", "Read(**/*.p12)", "Read(**/*.pfx)", "Read(**/*.jks)",
+      "Read(~/.aws/**)", "Read(~/.config/gcloud/**)", "Read(~/.azure/**)", "Read(~/.ssh/**)"
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "notes-marketplace": { "source": { "source": "directory", "path": "." } }
+  },
+  "enabledPlugins": { "notes@notes-marketplace": true }
+}
+-- .claude-plugin/plugin.json --
+{
+  "name": "notes",
+  "version": "1.2.0",
+  "description": "Notes for the project."
+}
+-- .claude-plugin/marketplace.json --
+{
+  "name": "notes-marketplace",
+  "owner": { "name": "Example" },
+  "plugins": [
+    { "name": "notes", "source": "./" }
+  ]
+}
+-- skills/take-note/SKILL.md --
+---
+name: take-note
+description: Saves a note to docs/notes.md.
+---
+
+# Take a note
+
+Append the note to `docs/notes.md`.

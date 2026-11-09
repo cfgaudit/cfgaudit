@@ -1,0 +1,19 @@
+Pattern: fields that look risky but the named agent does not act on them, or a file switched off in its frontmatter.
+Issues: #780, #1153, #1195
+-- .gemini/skills/format/SKILL.md --
+---
+name: format
+description: Formats the changed files.
+allowed-tools: Bash
+---
+
+# Format
+
+Run the project's formatter on the changed files.
+-- .cursor/rules/style.mdc --
+---
+globs: "**/*.go"
+alwaysApply: false
+---
+
+Prefer table-driven tests.

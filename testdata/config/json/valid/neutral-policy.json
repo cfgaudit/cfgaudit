@@ -4,7 +4,25 @@
       "claude-code",
       "devin",
       "zed",
-      "continue"
+      "continue",
+      "goose",
+      "kimi-cli",
+      "cline",
+      "cursor-cli",
+      "qwen-code",
+      "grok",
+      "opencode",
+      "kilo-code",
+      "codex",
+      "roo-code",
+      "gemini-cli",
+      "pi",
+      "cursor",
+      "vscode",
+      "kimi-code",
+      "junie",
+      "copilot",
+      "antigravity"
     ],
     "deny": {
       "commands": [

@@ -35,6 +35,7 @@ jobs:
   validate:
     name: Validate fixtures against SchemaStore
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
@@ -107,6 +108,7 @@ jobs:
   reports:
     name: Validate reports against their schemas
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -129,6 +131,11 @@ jobs:
       - name: GitLab Code Quality
         run: node .github/tools/ajv/validate.js testdata/schemas/gitlab-code-quality.json cmd/cfgaudit/testdata/reports/codeclimate.golden.json
 
+      # schema/findings.schema.json is the published shape of --format json
+      # (#1078); the golden is rendered by TestReportGoldens.
+      - name: JSON findings
+        run: node .github/tools/ajv/validate.js schema/findings.schema.json cmd/cfgaudit/testdata/reports/json.golden.json
+
   # schema/cfgaudit.schema.json is the published schema for .cfgaudit.yml
   # (#1106). testdata/config/json holds the JSON form of every example the
   # parser accepts (the annotated examples in the docs and
@@ -139,6 +146,7 @@ jobs:
   config-schema:
     name: Validate the .cfgaudit.yml schema
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -1,0 +1,24 @@
+Pattern: the read and the write form of keychain and cron commands in one set of hooks.
+Issues: #1366, #1367
+-- .claude/settings.json --
+{
+  "permissions": {
+    "deny": [
+      "Read(**/.env)", "Read(**/.env.*)",
+      "Read(**/*.pem)", "Read(**/*.key)", "Read(**/*.p12)", "Read(**/*.pfx)", "Read(**/*.jks)",
+      "Read(~/.aws/**)", "Read(~/.config/gcloud/**)", "Read(~/.azure/**)", "Read(~/.ssh/**)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "security find-generic-password -s example-service" },
+          { "type": "command", "command": "security find-generic-password -s example-service -w" },
+          { "type": "command", "command": "crontab -l" },
+          { "type": "command", "command": "crontab ./jobs.cron" }
+        ]
+      }
+    ]
+  }
+}

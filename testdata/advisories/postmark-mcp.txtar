@@ -1,0 +1,12 @@
+Configuration shape only: the exact package version, launched from a committed
+MCP config.
+
+-- .mcp.json --
+{
+  "mcpServers": {
+    "mail": {
+      "command": "npx",
+      "args": ["-y", "postmark-mcp@1.0.16"]
+    }
+  }
+}

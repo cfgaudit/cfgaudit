@@ -275,3 +275,27 @@ approval_mode = "writes"
 		t.Errorf("expected no findings for values that do not remove the prompt, got %+v", f)
 	}
 }
+
+// Cline's autoApprove holds exact names, so "*" is not a wildcard, and only its
+// own file counts (#1529).
+func TestCFG011_ClineAutoApprove(t *testing.T) {
+	check := func(file string, list ...string) []finding.Finding {
+		return CFG011.Check(&Target{
+			ProjectMCPFile: file,
+			ProjectMCP:     map[string]parser.MCPServer{"fs": {Command: "x", AutoApprove: list}},
+		})
+	}
+	f := check("cline_mcp_settings.json", "read_file", "delete_file")
+	if len(f) != 1 || !strings.Contains(f[0].Message, "mcpServers.fs.autoApprove includes state-mutating tools \"delete_file\"") {
+		t.Fatalf("got %+v", f)
+	}
+	if f := check("cline_mcp_settings.json", "read_file", "list_directory"); len(f) != 0 {
+		t.Fatalf("read-only list: %+v", f)
+	}
+	if f := check("cline_mcp_settings.json", "*"); len(f) != 0 {
+		t.Fatalf("no wildcard in Cline: %+v", f)
+	}
+	if f := check(".mcp.json", "delete_file"); len(f) != 0 {
+		t.Fatalf("another file: %+v", f)
+	}
+}

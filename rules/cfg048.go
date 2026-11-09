@@ -61,6 +61,9 @@ const (
 	// it (#434).
 	permissionLevelKey = "chat.permissions.default"
 
+	// workspaceAgentHostsKey is an array of {name, address, connectionToken}.
+	workspaceAgentHostsKey = "chat.workspaceRemoteAgentHosts"
+
 	// defaultConfigurationKey is the object-valued spelling of the same two
 	// decisions permissionLevelKey carries, registered alongside it rather than
 	// replacing it: `approvals` picks how tool calls are confirmed and `mode`
@@ -157,9 +160,11 @@ var defaultHookFilePaths = map[string]bool{
 // rule says so rather than dropping the finding: trust is granted once, usually
 // on the first prompt, and thereafter every clone is covered. The keys that are
 // NOT restricted keep the stronger wording, verified in the same registration
-// file: chat.permissions.default and chat.defaultConfiguration declare neither a
-// scope nor `restricted`, so they take WINDOW and apply from a committed file
-// with no trust gate at all.
+// file: chat.defaultConfiguration declares neither a scope nor `restricted`, so
+// it takes WINDOW and applies from a committed file with no trust gate at all.
+// chat.permissions.default was the same until VS Code 1.145, which marks it
+// restricted (9a65f80f36, "harden DefaultPermissionLevel setting"), so its
+// message names both versions (#1394).
 const vscodeRestrictedNote = " The key is `restricted`, so the value is ignored until the workspace is trusted; trust is a single prompt, granted once, after which every clone is covered."
 
 // hookHarnessNote and terminalHarnessNote scope the hook and integrated
@@ -215,8 +220,11 @@ var broadURLRe = regexp.MustCompile(`^(?:\*{1,2}|(?:https?|\*)://\*{1,2}(?:/.*)?
 // loop for anyone who opens it in agent mode — the cross-agent analogue of
 // CFG001 (defaultMode: bypassPermissions).
 func (r *cfg048) Check(t *Target) []finding.Finding {
-	if t == nil || t.VSCodeSettings == nil {
+	if t == nil {
 		return nil
+	}
+	if t.VSCodeSettings == nil {
+		return checkExtensionRecommendations(t)
 	}
 	var findings []finding.Finding
 	for _, key := range blanketAutoApproveKeys {
@@ -236,12 +244,16 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 	}
 
 	findings = append(findings, r.checkPermissionLevel(t)...)
+	findings = append(findings, r.checkWorkspaceAgentHosts(t)...)
 	findings = append(findings, r.checkDefaultConfiguration(t)...)
 	findings = append(findings, r.checkEdits(t)...)
 	findings = append(findings, r.checkURLs(t)...)
 	findings = append(findings, r.checkTerminal(t)...)
 	findings = append(findings, r.checkPromptOverride(t)...)
 	findings = append(findings, r.checkFixedKeys(t)...)
+	findings = append(findings, r.checkRooAllowedCommands(t)...)
+	findings = append(findings, r.checkEditorSurfaces(t)...)
+	findings = append(findings, checkExtensionRecommendations(t)...)
 	return findings
 }
 
@@ -301,7 +313,7 @@ func (r *cfg048) checkPermissionLevel(t *Target) []finding.Finding {
 		Scope:    t.Scope,
 		File:     t.VSCodeSettingsFile,
 		Message: permissionLevelKey + " is \"" + strings.TrimSpace(value) + "\" — every new chat session starts in that mode, where " + what +
-			". Committed to a repo this hands the approvals to anyone who opens it, before they agree to anything; it is the successor to the chat.tools.autoApprove of CVE-2025-53773. Remove the key, or set it to \"default\"",
+			". Committed to a repo this hands the approvals to anyone who opens it: before they agree to anything up to VS Code 1.144, and once the workspace is trusted from 1.145, which marks the key `restricted`; it is the successor to the chat.tools.autoApprove of CVE-2025-53773. Remove the key, or set it to \"default\"",
 	}}
 }
 
@@ -615,6 +627,75 @@ func (r *cfg048) checkFixedKeys(t *Target) []finding.Finding {
 	if v, ok := s.BoolField("terminal.integrated.allowInUntrustedWorkspace"); ok && v && s.Nested("terminal.integrated.allowInUntrustedWorkspace") {
 		add(finding.Warn, "terminal.integrated.allowInUntrustedWorkspace is true, written in nested-object form — the setting lets terminals start in an untrusted workspace, and VS Code 1.136.1 and earlier did not run the nested form through the Restricted Mode filter, so a committed file could turn it on before trust (CVE-2026-70334, whose own example this is). From 1.136.2 the value is ignored until the workspace is trusted. Remove it")
 	}
+	return findings
+}
+
+// workspaceAgentHost is one chat.workspaceRemoteAgentHosts entry.
+type workspaceAgentHost struct {
+	Address         string `json:"address"`
+	Name            string `json:"name"`
+	ConnectionToken string `json:"connectionToken"`
+}
+
+// workspaceAgentHosts returns the entries of chat.workspaceRemoteAgentHosts.
+func workspaceAgentHosts(s *parser.VSCodeSettings) []workspaceAgentHost {
+	raw, ok := s.RawValue(workspaceAgentHostsKey)
+	if !ok {
+		return nil
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return nil
+	}
+	var out []workspaceAgentHost
+	for _, it := range items {
+		var h workspaceAgentHost
+		if json.Unmarshal(it, &h) == nil && strings.TrimSpace(h.Address) != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// agentHostLoopback reports whether an address such as localhost:3000 or
+// ws://127.0.0.1:3000 stays on the machine.
+func agentHostLoopback(address string) bool {
+	a := strings.TrimSpace(address)
+	if _, rest, ok := strings.Cut(a, "://"); ok {
+		a = rest
+	}
+	a, _, _ = strings.Cut(a, "/")
+	if i := strings.LastIndexByte(a, ':'); i >= 0 && !strings.HasSuffix(a, "]") {
+		a = a[:i]
+	}
+	return isLoopbackHost(a)
+}
+
+// checkWorkspaceAgentHosts inspects chat.workspaceRemoteAgentHosts (VS Code
+// 1.145, #1394), the workspace successor to chat.remoteAgentHosts. Its
+// description says "connected hosts receive your GitHub credentials", so a host
+// off the machine is an error. A loopback address reaches a process already
+// running here, so it is a warn.
+func (r *cfg048) checkWorkspaceAgentHosts(t *Target) []finding.Finding {
+	var remote, local []string
+	for _, h := range workspaceAgentHosts(t.VSCodeSettings) {
+		if agentHostLoopback(h.Address) {
+			local = append(local, h.Address)
+		} else {
+			remote = append(remote, h.Address)
+		}
+	}
+	var findings []finding.Finding
+	add := func(sev finding.Severity, hosts []string) {
+		if len(hosts) == 0 {
+			return
+		}
+		findings = append(findings, finding.Finding{RuleID: "CFG048", Severity: sev, Scope: t.Scope, File: t.VSCodeSettingsFile,
+			Message: workspaceAgentHostsKey + " connects to the agent host " + quoteList(hosts) + " while the workspace is open, and connected hosts receive the user's GitHub credentials." +
+				vscodeRestrictedNote + " Remove the entry, or let each user add it to their own settings"})
+	}
+	add(finding.Error, remote)
+	add(finding.Warn, local)
 	return findings
 }
 

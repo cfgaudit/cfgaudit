@@ -32,6 +32,15 @@ func (r *cfg058) Check(t *Target) []finding.Finding {
 		if !strings.EqualFold(strings.TrimSpace(ref.Server.Type), "sse") {
 			continue
 		}
+		if ref.Server.ImpliedSSE {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG058",
+				Severity: finding.Warn,
+				File:     ref.File,
+				Message:  "mcpServers." + ref.Name + " sets url, which Qwen Code connects to over the deprecated SSE transport, whatever the server speaks — the spec has superseded standalone HTTP+SSE with Streamable HTTP, and a Streamable HTTP endpoint may not answer over SSE. Use httpUrl for a Streamable HTTP server; keep any remaining SSE server on a loopback / tightly-controlled channel",
+			})
+			continue
+		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG058",
 			Severity: finding.Warn,

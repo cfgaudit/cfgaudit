@@ -32,6 +32,33 @@ type commandSite struct {
 	// attributed correctly (settings.json vs an MCP config such as .mcp.json).
 	File    string
 	Command string
+	// HookInput marks a string from a Codex mcp_tool hook's input (#972): it
+	// is checked like a command, but it is what the hook passes to a tool,
+	// not what it runs, so LaunchCommands leaves it out.
+	HookInput bool
+	// PowerShell is set when the command runs in PowerShell: a Claude Code
+	// hook with "shell": "powershell", or the powershell command of a Copilot
+	// or Devin hook. $LASTEXITCODE is an automatic variable there (#1198).
+	PowerShell bool
+	// Line is the line of a script site in its script, 0 for every other
+	// site, whose line keyline finds from the message (#1365).
+	Line int
+	// Raw is a script site's text before maskMessageQuotes, for the rules
+	// that read string contents: a secret in an echo is still committed.
+	Raw string
+}
+
+// raw is the site's text with its quoted messages and patterns intact.
+func (s commandSite) raw() string {
+	if s.Raw != "" {
+		return s.Raw
+	}
+	return s.Command
+}
+
+// agentHookSite builds the site of one of an agent hook's commands.
+func agentHookSite(label, file string, h parser.AgentHook, cmd string) commandSite {
+	return commandSite{Label: label, File: file, Command: cmd, PowerShell: cmd == h.Shell && cmd != h.Bash && cmd != h.Command}
 }
 
 // claudeHookCommand is a Claude Code command hook's text as one line: the
@@ -61,7 +88,7 @@ func commandSites(t *Target) []commandSite {
 			for _, group := range s.Hooks[event] {
 				for _, h := range group.Hooks {
 					if h.Command != "" {
-						sites = append(sites, commandSite{Label: "hooks." + event + " command", File: t.SettingsFile, Command: claudeHookCommand(h)})
+						sites = append(sites, commandSite{Label: "hooks." + event + " command", File: t.SettingsFile, Command: claudeHookCommand(h), PowerShell: strings.EqualFold(h.Shell, "powershell")})
 					}
 				}
 			}
@@ -300,6 +327,15 @@ func commandSites(t *Target) []commandSite {
 					for _, cmd := range h.Commands() {
 						sites = append(sites, commandSite{Label: "Codex hooks." + event + " command", File: t.CodexHooksFile, Command: cmd})
 					}
+					// An mcp_tool hook passes its input to a tool on every
+					// matching event, so each string in it gets the
+					// command-content rules: a shell tool takes a command
+					// there (#972).
+					if server, tool, ok := h.MCPToolCall(event); ok {
+						for _, in := range h.InputStrings() {
+							sites = append(sites, commandSite{Label: "Codex hooks." + event + " mcp_tool " + server + "/" + tool + " input." + in.Path, File: t.CodexHooksFile, Command: in.Value, HookInput: true})
+						}
+					}
 				}
 			}
 		}
@@ -328,14 +364,17 @@ func commandSites(t *Target) []commandSite {
 			for _, group := range t.SubagentHooks[event] {
 				for _, h := range group.Hooks {
 					if h.Command != "" {
-						sites = append(sites, commandSite{Label: t.frontmatterHooksKind() + " frontmatter hooks." + event + " command", File: t.SubagentHooksFile, Command: claudeHookCommand(h)})
+						sites = append(sites, commandSite{Label: t.frontmatterHooksKind() + " frontmatter hooks." + event + " command", File: t.SubagentHooksFile, Command: claudeHookCommand(h), PowerShell: strings.EqualFold(h.Shell, "powershell")})
 					}
 				}
 			}
 		}
 	}
 
-	// Claude Code skill and slash command `!` blocks (#643). Measured with
+	// Claude Code skill and slash command `!` blocks (#643), and the `!{...}`
+	// commands of Gemini CLI and Qwen Code custom commands (#750), which run
+	// when the command is invoked, after a confirmation unless the policy or
+	// allow list covers them (or, in Qwen, YOLO mode is on). Measured with
 	// 2.1.296: the command runs when the skill is invoked, by a user typing the
 	// slash command or by the model through the Skill tool, before any model
 	// turn; it runs without a prompt when the file's allowed-tools or the
@@ -343,6 +382,21 @@ func commandSites(t *Target) []commandSite {
 	// content rules judge.
 	for _, cmd := range t.SkillShellCommands {
 		sites = append(sites, commandSite{Label: skillShellLabel(t.InstructionFile), File: t.InstructionFile, Command: cmd})
+	}
+
+	// pi (#1055): shellCommandPrefix is prepended to every shell command,
+	// npmCommand runs for every package lookup, and an MCP env or headers value
+	// starting with "!" is run as a shell command when the server loads.
+	if t.Pi != nil {
+		if p := parser.PiString(t.Pi.ShellCommandPrefix); p != "" {
+			sites = append(sites, commandSite{Label: "pi shellCommandPrefix", File: t.PiFile, Command: p})
+		}
+		if np := parser.PiStrings(t.Pi.NpmCommand); len(np) > 0 {
+			sites = append(sites, commandSite{Label: "pi npmCommand", File: t.PiFile, Command: strings.Join(np, " ")})
+		}
+	}
+	for _, c := range t.PiMCPCommands {
+		sites = append(sites, commandSite{Label: "pi mcp.json server \"" + c.Server + "\" " + c.Field + "." + c.Key + " `!` command", File: t.PiMCPFile, Command: c.Command})
 	}
 
 	// qwen-code .qwen/agents/*.md `executor:` block (#579). A qwen-only extension
@@ -375,6 +429,27 @@ func commandSites(t *Target) []commandSite {
 				for _, h := range group.Hooks {
 					if h.Command != "" {
 						sites = append(sites, commandSite{Label: "Grok hooks." + event + " command", File: t.GrokHooksFile, Command: h.Command})
+					}
+				}
+			}
+		}
+	}
+
+	// goose recipe retry commands and project plugin hooks (#1414).
+	for _, c := range t.GooseRecipeCommands {
+		sites = append(sites, commandSite{Label: "goose recipe " + c.Key + " command", File: t.GooseRecipeFile, Command: c.Command})
+	}
+	if gh := t.GooseHooks; gh != nil {
+		events := make([]string, 0, len(gh.Hooks))
+		for e := range gh.Hooks {
+			events = append(events, e)
+		}
+		sort.Strings(events)
+		for _, event := range events {
+			for _, group := range gh.Hooks[event] {
+				for _, h := range group.Hooks {
+					if gooseRunsHook(h.Type, h.Command) {
+						sites = append(sites, commandSite{Label: "goose plugin hooks." + event + " command", File: t.GooseHooksFile, Command: h.Command})
 					}
 				}
 			}
@@ -444,7 +519,7 @@ func commandSites(t *Target) []commandSite {
 		for _, event := range events {
 			for _, h := range ah.Hooks[event] {
 				for _, cmd := range h.ShellCommands() {
-					sites = append(sites, commandSite{Label: t.AgentHooksKind + " hooks." + event + " command", File: t.AgentHooksFile, Command: cmd})
+					sites = append(sites, agentHookSite(t.AgentHooksKind+" hooks."+event+" command", t.AgentHooksFile, h, cmd))
 				}
 			}
 		}
@@ -456,7 +531,7 @@ func commandSites(t *Target) []commandSite {
 		for _, event := range sortedKeys2(ah.Hooks) {
 			for _, h := range ah.Hooks[event] {
 				for _, cmd := range h.ShellCommands() {
-					sites = append(sites, commandSite{Label: "Copilot agent hooks." + event + " command", File: t.CopilotAgentHooksFile, Command: cmd})
+					sites = append(sites, agentHookSite("Copilot agent hooks."+event+" command", t.CopilotAgentHooksFile, h, cmd))
 				}
 			}
 		}
@@ -522,6 +597,10 @@ func credentialHelpers(s *parser.Settings) []credentialHelper {
 
 // skillShellLabel names a `!` command by the kind of file it sits in.
 func skillShellLabel(file string) string {
+	slash := "/" + filepath.ToSlash(file)
+	if strings.Contains(slash, "/.gemini/commands/") || strings.Contains(slash, "/.qwen/commands/") {
+		return "custom command `!{...}` command"
+	}
 	if strings.EqualFold(filepath.Base(file), "SKILL.md") {
 		return "skill `!` command"
 	}

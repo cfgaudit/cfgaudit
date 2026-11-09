@@ -22,7 +22,7 @@ inputs:
     required: false
     default: "false"
   user:
-    description: Also scan user-global config under ~/.claude ("true" to enable).
+    description: Also scan the user-scope config of each agent (~/.claude/, ~/.codex/, ~/.cursor/, ~/.gemini/, ...) ("true" to enable).
     required: false
     default: "false"
   config:
@@ -31,6 +31,16 @@ inputs:
       directory. Relative paths are inside the workspace; an absolute path outside
       it (e.g. under $RUNNER_TEMP) is mounted read-only, so a pull request cannot
       change it. Optional.
+    required: false
+    default: ""
+  baseline:
+    description: >-
+      Baseline file written by `cfgaudit baseline` (#998): the findings it lists
+      are not reported and do not fail the step; secret findings always are.
+      Like config, an absolute path outside the workspace (e.g. the base
+      branch's copy under $RUNNER_TEMP) is mounted read-only, so a pull request
+      cannot add its own findings to it. Needs cfgaudit 1.20.0 or later.
+      Optional.
     required: false
     default: ""
   plugins:
@@ -53,7 +63,7 @@ inputs:
   image:
     description: cfgaudit container image to run (advanced; override to pin a digest).
     required: false
-    default: ghcr.io/cfgaudit/cfgaudit:1.19.0
+    default: ghcr.io/cfgaudit/cfgaudit:1.20.0
 
 outputs:
   exit-code:
@@ -75,6 +85,7 @@ runs:
         IN_USER: ${{ inputs.user }}
         IN_CONFIG: ${{ inputs.config }}
         IN_PLUGINS: ${{ inputs.plugins }}
+        IN_BASELINE: ${{ inputs.baseline }}
         IN_OUTPUT: ${{ inputs.output }}
         IN_FAIL_ON: ${{ inputs.fail-on }}
         IN_IMAGE: ${{ inputs.image }}
@@ -103,6 +114,20 @@ runs:
               args+=( --config /cfgaudit-config.yml )
               ;;
             *) args+=( --config "$IN_CONFIG" ) ;;
+          esac
+        fi
+        if [ -n "$IN_BASELINE" ]; then
+          case "$IN_BASELINE" in
+            "$GITHUB_WORKSPACE"/*) args+=( --baseline "/github/workspace/${IN_BASELINE#"$GITHUB_WORKSPACE"/}" ) ;;
+            /*)
+              if [ ! -f "$IN_BASELINE" ]; then
+                echo "::error::baseline file $IN_BASELINE does not exist"
+                exit 2
+              fi
+              mounts+=( -v "$IN_BASELINE:/cfgaudit-baseline.json:ro" )
+              args+=( --baseline /cfgaudit-baseline.json )
+              ;;
+            *) args+=( --baseline "$IN_BASELINE" ) ;;
           esac
         fi
         if [ -n "$IN_PLUGINS" ]; then args+=( --plugins "$IN_PLUGINS" ); fi

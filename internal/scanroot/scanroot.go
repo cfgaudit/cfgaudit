@@ -42,6 +42,9 @@ import (
 type Escape struct {
 	Path string
 	Link string
+	// Walked marks a link the repository walk found by its text (#1417), which
+	// nothing has to open: its target usually does not exist on this machine.
+	Walked bool
 }
 
 var (
@@ -51,6 +54,12 @@ var (
 	escapes  []Escape
 	seen     map[string]bool
 	failed   map[string]bool // paths that exist but could not be read
+	dangling map[string]bool // symlinks whose target does not exist
+	// aliases maps a path cfgaudit looked for to the path committed under
+	// another spelling of it (#990); listings caches directory names for
+	// that lookup.
+	aliases  map[string]string
+	listings map[string][]string
 )
 
 // Set makes dir the scanned directory and forgets earlier escapes. An empty
@@ -58,7 +67,8 @@ var (
 func Set(dir string) error {
 	mu.Lock()
 	defer mu.Unlock()
-	root, resolved, escapes, seen, failed = "", "", nil, nil, map[string]bool{}
+	root, resolved, escapes, seen, failed, dangling = "", "", nil, nil, map[string]bool{}, map[string]bool{}
+	aliases, listings = map[string]string{}, map[string][]string{}
 	if dir == "" {
 		return nil
 	}
@@ -79,6 +89,95 @@ func Escapes() []Escape {
 	mu.Lock()
 	defer mu.Unlock()
 	return append([]Escape(nil), escapes...)
+}
+
+// Aliases returns, for each path cfgaudit looked for that the repository
+// commits under another spelling, that spelling (#990).
+func Aliases() map[string]string {
+	mu.Lock()
+	defer mu.Unlock()
+	out := make(map[string]string, len(aliases))
+	for k, v := range aliases {
+		out[k] = v
+	}
+	return out
+}
+
+// caseResolve returns path as committed when it is absent under the spelling
+// asked for but present under another spelling of its components, and
+// records the alias (#990). On macOS and Windows the default filesystem
+// ignores case, so an agent opens .Cursor/mcp.json as its .cursor/mcp.json;
+// on a case-sensitive filesystem the scan would not find it. A component with
+// more than one other spelling is left alone. Paths outside the scanned
+// directory are returned as they are.
+func caseResolve(path string) string {
+	if _, err := os.Lstat(path); err == nil || !errors.Is(err, fs.ErrNotExist) {
+		return path
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if root == "" {
+		return path
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil || !within(filepath.Clean(abs), root) || filepath.Clean(abs) == root {
+		return path
+	}
+	cur, ok := aliases[abs]
+	if !ok {
+		if cur = resolveComponents(abs); cur == "" {
+			return path
+		}
+		aliases[abs] = cur
+	}
+	if !filepath.IsAbs(path) {
+		if wd, err := os.Getwd(); err == nil {
+			if r, err := filepath.Rel(wd, cur); err == nil {
+				return r
+			}
+		}
+	}
+	return cur
+}
+
+// resolveComponents returns abs with each component that is absent replaced
+// by its one other spelling in the directory, or "" when there is none, more
+// than one, or no component changed. mu is held.
+func resolveComponents(abs string) string {
+	rel, _ := filepath.Rel(root, filepath.Clean(abs))
+	cur, changed := root, false
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		next := filepath.Join(cur, part)
+		if _, err := os.Lstat(next); err == nil {
+			cur = next
+			continue
+		}
+		names, ok := listings[cur]
+		if !ok {
+			entries, _ := os.ReadDir(cur)
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			listings[cur] = names
+		}
+		match := ""
+		for _, n := range names {
+			if strings.EqualFold(n, part) {
+				if match != "" {
+					return ""
+				}
+				match = n
+			}
+		}
+		if match == "" {
+			return ""
+		}
+		cur, changed = filepath.Join(cur, match), true
+	}
+	if !changed {
+		return ""
+	}
+	return cur
 }
 
 // ReadErrors returns the paths recorded since the last Set that exist but
@@ -134,6 +233,7 @@ func blocker(path string) string {
 // absent (#828): a repository with a .rules folder or an empty .codex file
 // used to stop the whole scan.
 func ReadFile(path string) ([]byte, error) {
+	path = caseResolve(path)
 	if err := check(path); err != nil {
 		return nil, err
 	}
@@ -141,7 +241,49 @@ func ReadFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	data, err := os.ReadFile(path) // #nosec G304 -- path is checked against the scanned directory above
+	if err != nil && errors.Is(err, fs.ErrNotExist) {
+		recordDanglingLink(path)
+	}
 	return data, absentOrRecorded(absentErr(err, path), path)
+}
+
+// IsDanglingLink reports whether path is a symlink whose target does not exist.
+func IsDanglingLink(path string) bool {
+	fi, err := os.Lstat(path)
+	if err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+		return false
+	}
+	_, err = os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// recordDanglingLink records path when it is a symlink whose target does not
+// exist. Every agent reads such a file as absent, so the scan does too: it is
+// not a parse error (#1189) and not an incomplete scan, which would fail CI
+// over a property of the repository (#1363). DanglingLinks names it.
+func recordDanglingLink(path string) {
+	if !IsDanglingLink(path) {
+		return
+	}
+	mu.Lock()
+	if dangling == nil {
+		dangling = map[string]bool{}
+	}
+	dangling[path] = true
+	mu.Unlock()
+}
+
+// DanglingLinks returns the symlinks read since the last Set whose target
+// does not exist, sorted.
+func DanglingLinks() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	out := make([]string, 0, len(dangling))
+	for p := range dangling {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ReadOwnFile is ReadFile for cfgaudit's own inputs, such as a discovered
@@ -162,6 +304,7 @@ func ReadOwnFile(path string) ([]byte, error) {
 // Open is os.Open for repository content, with ReadFile's handling of
 // directories.
 func Open(path string) (*os.File, error) {
+	path = caseResolve(path)
 	if err := check(path); err != nil {
 		return nil, err
 	}
@@ -175,6 +318,7 @@ func Open(path string) (*os.File, error) {
 // ReadDir is os.ReadDir with ReadFile's handling of a path that exists but
 // cannot be read.
 func ReadDir(path string) ([]fs.DirEntry, error) {
+	path = caseResolve(path)
 	entries, err := os.ReadDir(path)
 	return entries, absentOrRecorded(absentErr(err, path), path)
 }
@@ -182,6 +326,7 @@ func ReadDir(path string) ([]fs.DirEntry, error) {
 // Stat is os.Stat with ReadFile's handling of a path that exists but cannot be
 // read.
 func Stat(path string) (fs.FileInfo, error) {
+	path = caseResolve(path)
 	info, err := os.Stat(path)
 	return info, absentOrRecorded(absentErr(err, path), path)
 }
@@ -190,6 +335,7 @@ func Stat(path string) (fs.FileInfo, error) {
 // path it cannot stat, and skips it, instead of handing fn the error. Absent
 // paths still reach fn, as before.
 func WalkDir(root string, fn fs.WalkDirFunc) error {
+	root = caseResolve(root)
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil && !IsAbsent(err) {
 			_ = absentOrRecorded(err, path)
@@ -214,6 +360,7 @@ func Glob(pattern string) ([]string, error) {
 
 func glob(pattern string) []string {
 	if !hasMeta(pattern) {
+		pattern = caseResolve(pattern)
 		if _, err := os.Lstat(pattern); absentOrRecorded(err, pattern) != nil {
 			return nil
 		}
@@ -221,7 +368,7 @@ func glob(pattern string) []string {
 	}
 	dir, file := filepath.Split(pattern)
 	dir = filepath.Clean(dir)
-	dirs := []string{dir}
+	dirs := []string{caseResolve(dir)}
 	if hasMeta(dir) {
 		dirs = glob(dir)
 	}
@@ -293,8 +440,60 @@ func check(path string) error {
 	if !seen[abs] {
 		seen[abs] = true
 		escapes = append(escapes, Escape{Path: abs, Link: firstLink(abs)})
+	} else {
+		// The walk may have got here first; a read makes it a config path.
+		for i := range escapes {
+			if escapes[i].Path == abs {
+				escapes[i].Walked = false
+			}
+		}
 	}
 	return &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+}
+
+// RecordLink records a symbolic link whose committed text leaves the scanned
+// directory. The target is judged by that text alone and is never followed.
+func RecordLink(path, link string) {
+	mu.Lock()
+	defer mu.Unlock()
+	abs, err := filepath.Abs(path)
+	if err != nil || seen[abs] {
+		return
+	}
+	seen[abs] = true
+	escapes = append(escapes, Escape{Path: abs, Link: link, Walked: true})
+}
+
+// LinkLeaves reports whether the link text of the symbolic link at path points
+// outside the scanned directory. It reads the text only, so a target that does
+// not exist on this machine counts as much as one that does. A leading ~ is not
+// expanded by the operating system, but it is how a link names a home directory
+// and no repository has a directory called that.
+func LinkLeaves(path, link string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	if root == "" {
+		return false
+	}
+	link = filepath.FromSlash(strings.ReplaceAll(link, `\`, "/"))
+	if strings.HasPrefix(link, "~") {
+		return true
+	}
+	if isAbsLink(link) {
+		clean := filepath.Clean(link)
+		return !within(clean, root) && !within(clean, resolved)
+	}
+	abs, err := filepath.Abs(path)
+	return err == nil && !within(filepath.Join(filepath.Dir(abs), link), root)
+}
+
+// isAbsLink reports an absolute link text, in the form of either system: a
+// repository is written on one and scanned on another.
+func isAbsLink(link string) bool {
+	if filepath.IsAbs(link) || strings.HasPrefix(link, "/") || strings.HasPrefix(link, `\`) {
+		return true
+	}
+	return len(link) > 2 && link[1] == ':' && (link[2] == '/' || link[2] == '\\')
 }
 
 // firstLink returns the text of the first symbolic link on the way from the

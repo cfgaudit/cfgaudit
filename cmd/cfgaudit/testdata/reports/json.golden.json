@@ -1,0 +1,44 @@
+[
+  {
+    "RuleID": "CFG004",
+    "Severity": "error",
+    "Scope": "project",
+    "File": ".claude/settings.json",
+    "Line": 1,
+    "Col": 17,
+    "Message": "defaultMode: \"bypassPermissions\" disables all permission checks",
+    "OWASP": "LLM03",
+    "AVEID": "AVE-2026-00063"
+  },
+  {
+    "RuleID": "CFG006",
+    "Severity": "warn",
+    "Scope": "project",
+    "File": ".claude/settings.json",
+    "Line": 0,
+    "Col": 0,
+    "Message": "no permissions.deny list",
+    "OWASP": "LLM03"
+  },
+  {
+    "RuleID": "CFG024",
+    "Severity": "error",
+    "Scope": "project",
+    "File": "docs/CLAUDE.md",
+    "Line": 3,
+    "Col": 0,
+    "Message": "hidden Unicode character",
+    "OWASP": "LLM01",
+    "AVEID": "AVE-2026-00029"
+  },
+  {
+    "RuleID": "CFG040",
+    "Severity": "info",
+    "Scope": "user",
+    "File": ".mcp.json",
+    "Line": 2,
+    "Col": 5,
+    "Message": "user-scope example",
+    "OWASP": "LLM03"
+  }
+]

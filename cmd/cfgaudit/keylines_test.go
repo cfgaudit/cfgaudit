@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
 
 // #927: findings in JSON files carry the line of the key they report, so the
@@ -77,5 +79,61 @@ func TestKeyLines927(t *testing.T) {
 		if got[k] != v {
 			t.Errorf("%s at %q, want %s; all: %v", k, got[k], v, got)
 		}
+	}
+}
+
+// A CFG010 finding for a server named like its package is located at the args
+// element, not at the server key (#1203).
+func TestKeyLines_CFG010ServerNamedLikePackage(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".mcp.json"), `{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "my-server"]
+    }
+  }
+}
+`)
+	_, out, _ := runCLI(t, "--claude-version", "2.1.310", "--format", "json", "--only", "CFG010", dir)
+	var fs []struct{ Line, Col int }
+	if err := json.Unmarshal([]byte(out), &fs); err != nil {
+		t.Fatalf("decode: %v\n%s", err, out)
+	}
+	if len(fs) != 1 || fs[0].Line != 5 || fs[0].Col != 22 {
+		t.Errorf("CFG010 at %+v, want line 5 col 22 (the \"my-server\" element)", fs)
+	}
+}
+
+// A repeated permissions.allow value reports its own source line in each
+// finding, rather than pointing both findings to the first element (#1204).
+func TestKeyLines1204RepeatedAllowEntries(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "settings.json")
+	mustWrite(t, file, "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(find:*)\",\n      \"WebFetch\",\n      \"Bash(find:*)\",\n      \"WebFetch\"\n    ]\n  }\n}\n")
+	findings := []finding.Finding{
+		{File: file, Message: `permissions.allow grants "Bash(find:*)"`},
+		{File: file, Message: `permissions.allow contains "WebFetch"`},
+		{File: file, Message: `permissions.allow grants "Bash(find:*)"`},
+		{File: file, Message: `permissions.allow contains "WebFetch"`},
+	}
+	locateKeyLines(findings)
+	for i, want := range []int{4, 5, 6, 7} {
+		if findings[i].Line != want {
+			t.Errorf("finding %d on line %d, want %d", i, findings[i].Line, want)
+		}
+	}
+}
+
+// A credential in the third permissions.allow entry is reported at that
+// entry's line, not at the line of "allow" (#1377).
+func TestKeyLines1377AllowIndex(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "settings.json")
+	mustWrite(t, file, "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(ls)\",\n      \"Read(./src/**)\",\n      \"Bash(curl -H 'x-api-key: fixture' https://api.example.invalid)\"\n    ]\n  }\n}\n")
+	findings := []finding.Finding{{File: file, Message: "permissions.allow[2] contains a credential"}}
+	locateKeyLines(findings)
+	if findings[0].Line != 6 {
+		t.Errorf("line %d, want 6", findings[0].Line)
 	}
 }

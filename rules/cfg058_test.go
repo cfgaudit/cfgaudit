@@ -51,3 +51,16 @@ func TestCFG058_DotMCPJson_Attribution(t *testing.T) {
 		t.Fatalf("expected finding attributed to .mcp.json, got %+v", f)
 	}
 }
+
+// A Qwen url server is SSE with no "sse" in the file, so the message says what
+// to change there (#1524).
+func TestCFG058_QwenImpliedSSE(t *testing.T) {
+	tg := &Target{
+		ProjectMCPFile: ".qwen/settings.json",
+		ProjectMCP:     map[string]parser.MCPServer{"docs": {URL: "https://a", Type: "sse", ImpliedSSE: true}},
+	}
+	f := CFG058.Check(tg)
+	if len(f) != 1 || !strings.Contains(f[0].Message, "Use httpUrl") || strings.Contains(f[0].Message, `type "http"`) {
+		t.Fatalf("got %+v", f)
+	}
+}

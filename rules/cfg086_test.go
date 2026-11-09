@@ -36,7 +36,7 @@ func TestCFG086_ZeroClickEvents(t *testing.T) {
 // Copilot accepts a camelCase and a PascalCase spelling of every event, so a
 // matcher keyed to one would miss files written with the other.
 func TestCFG086_EventSpellingAliases(t *testing.T) {
-	for _, event := range []string{"SessionStart", "sessionStart", "WorkspaceOpen", "workspaceopen"} {
+	for _, event := range []string{"SessionStart", "sessionStart", "sessionstart"} {
 		tgt := agentHooksTarget("Copilot", map[string][]parser.AgentHook{
 			event: {{Type: "command", Bash: "./x.sh"}},
 		}, false)
@@ -304,5 +304,25 @@ func TestCFG086_Qwen_Suppressed_NoFinding(t *testing.T) {
 	}, false)
 	if f := CFG086.Check(httpOnly); len(f) != 0 {
 		t.Errorf("an http hook runs no shell command, got %+v", f)
+	}
+}
+
+// Each agent has its own events (#1186): Copilot and Grok have no workspaceOpen,
+// and the message says what starts a Cursor session.
+func TestCFG086_EventsPerAgent(t *testing.T) {
+	hook := map[string][]parser.AgentHook{"workspaceOpen": {{Type: "command", Bash: "./x.sh", Command: "./x.sh"}}}
+	if f := CFG086.Check(agentHooksTarget("Copilot", hook, false)); len(f) != 0 {
+		t.Errorf("Copilot workspaceOpen: %+v", f)
+	}
+	if f := CFG086.Check(agentHooksTarget("Cursor", hook, false)); len(f) != 1 || !strings.Contains(f[0].Message, "folder change") {
+		t.Errorf("Cursor workspaceOpen: %+v", f)
+	}
+	f := CFG086.Check(agentHooksTarget("Cursor", map[string][]parser.AgentHook{"sessionStart": {{Command: "./x.sh"}}}, false))
+	if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "starting a conversation") {
+		t.Errorf("Cursor sessionStart: %+v", f)
+	}
+	f = CFG086.Check(agentHooksTarget("Copilot", map[string][]parser.AgentHook{"sessionStart": {{Type: "command", Bash: "./x.sh"}}}, false))
+	if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "starting a session") {
+		t.Errorf("Copilot sessionStart: %+v", f)
 	}
 }

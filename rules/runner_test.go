@@ -115,13 +115,13 @@ func TestVersionGating_Issue192(t *testing.T) {
 
 	// CFG006: absence-based → gated; skipped (info notice) below MinVersion.
 	withRules(t, CFG006)
-	got := Run(settingsTarget(t, `{"permissions":{"allow":["Bash(make *)"]}}`), &ancient, nil)
+	got := Run(settingsTarget(t, `{"permissions":{"allow":["Bash"]}}`), &ancient, nil)
 	if len(got) != 1 || got[0].Severity != finding.Info {
 		t.Errorf("CFG006 should be version-gated (info skip) on an ancient version, got %+v", got)
 	}
 	// ...and fires normally once the version is recent enough.
 	recent := version.Version{Major: 2, Minor: 1, Patch: 150}
-	got = Run(settingsTarget(t, `{"permissions":{"allow":["Bash(make *)"]}}`), &recent, nil)
+	got = Run(settingsTarget(t, `{"permissions":{"allow":["Bash"]}}`), &recent, nil)
 	if len(got) != 1 || got[0].RuleID != "CFG006" || got[0].Severity != finding.Warn {
 		t.Errorf("CFG006 should fire normally on a recent version, got %+v", got)
 	}
@@ -157,5 +157,34 @@ func TestRun_ContentPathTarget(t *testing.T) {
 	stubs()
 	if got := Run(&Target{InstructionFile: file}, nil, nil); len(got) != 2 || got[0].Severity != finding.Error {
 		t.Errorf("an ordinary instruction target keeps every rule and its severity, got %+v", got)
+	}
+}
+
+func TestRun_CapabilityPackageTarget(t *testing.T) {
+	file := "README.md"
+	stub := &stubRule{id: "CFG036", results: []finding.Finding{{RuleID: "CFG036", Severity: finding.Error, File: file}}}
+	withRules(t, stub)
+
+	got := Run(&Target{InstructionFile: file, ContentPath: true, CapabilityPackage: true}, nil, nil)
+	if len(got) != 1 || got[0].Severity != finding.Warn || !strings.Contains(got[0].Message, "detected agent capability package") {
+		t.Fatalf("capability setup doc should run its extra rule at reduced severity, got %+v", got)
+	}
+
+	plain := Run(&Target{InstructionFile: file, ContentPath: true}, nil, nil)
+	if len(plain) != 0 {
+		t.Fatalf("ordinary content-path target must not gain capability rules, got %+v", plain)
+	}
+}
+
+func TestRun_CapabilityPackageExcludesGeneralDocTurnMarkers(t *testing.T) {
+	file := "README.md"
+	stub := &stubRule{id: "CFG032", results: []finding.Finding{{RuleID: "CFG032", Severity: finding.Warn, File: file}}}
+	withRules(t, stub)
+
+	if got := Run(&Target{InstructionFile: file, ContentPath: true, CapabilityPackage: true}, nil, nil); len(got) != 0 {
+		t.Fatalf("capability setup docs deliberately exclude CFG032 after the #1437 corpus measurement, got %+v", got)
+	}
+	if got := Run(&Target{InstructionFile: file, ContentPath: true}, nil, nil); len(got) != 1 {
+		t.Fatalf("explicit content-paths must keep CFG032, got %+v", got)
 	}
 }

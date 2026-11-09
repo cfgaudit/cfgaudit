@@ -12,10 +12,19 @@ on:
 permissions:
   contents: read
 
+env:
+  # The ShellCheck that Lint and the CFG045 integration test install, and that
+  # the Docker job expects in the image. The image takes it from Alpine, so an
+  # Alpine bump can move it: update both values to match, after the 7-day
+  # cooldown. The digest is the sha256 of the linux.x86_64.tar.xz release asset.
+  SHELLCHECK_VERSION: "0.11.0"
+  SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,10 +50,14 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A pull request runs on its merge commit; the check of the changed
+          # lines below compares it with its first parent, the base.
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -53,14 +66,15 @@ jobs:
       # -coverpkg=./... counts a statement as covered when any package's tests
       # run it, not only its own package's (#706). Parser code is mostly
       # exercised by the rule tests, which assert on the findings it feeds;
-      # without the flag it reads as untested.
-      - run: go test -race -coverpkg=./... -coverprofile=coverage.out ./...
+      # without the flag it reads as untested. -count=1 because a cached result
+      # brings the line numbers of an older checkout into the profile (#1442).
+      - run: go test -race -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
       # Shows the total and per-package coverage on the run's summary page and
       # fails below COVERAGE_FLOOR (#674). Raise the floor in a PR when the
-      # total has moved up; it was 91.5% when the floor was last set (#706).
+      # total has moved up; it was 96.5% when the floor was last set (#1442).
       - name: Coverage
         env:
-          COVERAGE_FLOOR: "90.0"
+          COVERAGE_FLOOR: "95.0"
         run: |
           set -euo pipefail
           total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub("%", "", $NF); print $NF }')
@@ -94,10 +108,30 @@ jobs:
             exit 1
           fi
           echo "Total coverage ${total}% (floor ${COVERAGE_FLOOR}%)"
+      # A change cannot hide behind the total above: the lines it adds must be
+      # covered themselves (#1442). Only .github/coverage-allow.txt excepts a
+      # function. The thresholds are the defaults of cmd/coveragecheck.
+      - name: Coverage of the changed lines
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          go run ./cmd/coveragecheck -profile coverage.out -base HEAD^1 \
+            -allow .github/coverage-allow.txt | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage
           path: coverage.out
+      # The tests above use whatever ShellCheck the runner image has, and skip
+      # the real binary when it has none. This step uses the pinned one, and the
+      # variable turns every such skip into a failure (#1445). -run takes all of
+      # CFG045, so renaming a test cannot leave it matching nothing.
+      - name: Install ShellCheck
+        run: .github/scripts/install-shellcheck.sh "$RUNNER_TEMP/shellcheck"
+      - name: CFG045 against the pinned ShellCheck
+        run: |
+          PATH="$RUNNER_TEMP/shellcheck:$PATH" \
+            CFGAUDIT_REQUIRE_SHELLCHECK="$SHELLCHECK_VERSION" \
+            go test -count=1 -v -run '^TestCFG045' ./rules
 
   # Publishes main's coverage to Codecov for the README badge and the history
   # (#703). The floor in the Test job stays the gate: this job never runs on
@@ -107,6 +141,7 @@ jobs:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       id-token: write # OIDC upload, no stored Codecov token
@@ -133,6 +168,7 @@ jobs:
   branch-coverage:
     name: Branch coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -148,7 +184,10 @@ jobs:
         run: go build -o "$RUNNER_TEMP/gobco" github.com/rillig/gobco
       - name: Branch coverage
         env:
-          BRANCH_FLOOR: "80.0"
+          # The total was 90.4% when these were last set (#1442). The critical
+          # packages have their own floors in the case below, so a drop there
+          # cannot be hidden by the rest of the repository.
+          BRANCH_FLOOR: "88.0"
         run: |
           set -euo pipefail
           # gobco copies each package to a temporary module that cannot resolve
@@ -157,14 +196,33 @@ jobs:
           {
             echo "## Branch coverage (gobco)"
             echo
-            echo "| Package | Covered | Branches |"
-            echo "|---|---|---|"
+            echo "| Package | Covered | Branches | Coverage | Floor |"
+            echo "|---|---|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
-          covered=0 branches=0
+          covered=0 branches=0 below=""
           for pkg in $(go list -f '{{.Dir}}' ./... | sed "s|^$PWD|.|"); do
-            line=$("$RUNNER_TEMP/gobco" -branch "$pkg" | grep '^Branch coverage: ')
+            # gobco sends the failures of go test to stdout, so keep them for the
+            # job log instead of filtering them out.
+            if ! "$RUNNER_TEMP/gobco" -branch "$pkg" > "$RUNNER_TEMP/gobco.log" 2>&1; then
+              cat "$RUNNER_TEMP/gobco.log"
+              exit 1
+            fi
+            line=$(grep '^Branch coverage: ' "$RUNNER_TEMP/gobco.log")
             c=${line#Branch coverage: }
-            echo "| \`$pkg\` | ${c%/*} | ${c#*/} |" >> "$GITHUB_STEP_SUMMARY"
+            case "$pkg" in
+              ./cmd/cfgaudit) floor=84.0 ;;
+              ./internal/parser) floor=90.0 ;;
+              ./internal/scanroot) floor=87.0 ;;
+              ./rules) floor=90.0 ;;
+              *) floor="" ;;
+            esac
+            percent=$(awk -v c="${c%/*}" -v b="${c#*/}" 'BEGIN { printf "%.1f", 100 * c / b }')
+            mark=""
+            if [ -n "$floor" ] && awk -v t="$percent" -v f="$floor" 'BEGIN { exit !(t < f) }'; then
+              mark=" **below**"
+              below="$below $pkg ($percent% < $floor%)"
+            fi
+            echo "| \`$pkg\` | ${c%/*} | ${c#*/} | ${percent}%${mark} | ${floor:+$floor%} |" >> "$GITHUB_STEP_SUMMARY"
             covered=$((covered + ${c%/*})) branches=$((branches + ${c#*/}))
           done
           total=$(awk -v c="$covered" -v b="$branches" 'BEGIN { printf "%.1f", 100 * c / b }')
@@ -174,16 +232,22 @@ jobs:
             echo "::error::Branch coverage ${total}% is below the floor of ${BRANCH_FLOOR}%"
             exit 1
           fi
+          if [ -n "$below" ]; then
+            echo "::error::Branch coverage below the package floor:$below"
+            exit 1
+          fi
           echo "Branch coverage ${covered}/${branches} = ${total}% (floor ${BRANCH_FLOOR}%)"
 
-  # cfgaudit ships macOS and Windows binaries but the required Test job above runs
-  # Linux only. This non-required leg exercises the OS-sensitive code (filepath /
-  # glob discovery, case-sensitivity, line endings) on the other two platforms.
-  # Kept separate rather than matrixing Test, so the branch-protection "Test"
-  # required check keeps its name; Linux is already covered above.
+  # cfgaudit ships macOS, Windows and Windows on ARM binaries but the Test job
+  # above runs Linux only. These legs exercise the OS-sensitive code (filepath /
+  # glob discovery, case-sensitivity, line endings) on those platforms. Branch
+  # protection requires the Cross-platform job below, not the legs, so a leg can
+  # change without touching the setting; Test keeps covering Linux under its own
+  # required name.
   test-cross:
     name: Cross-platform tests
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -213,9 +277,37 @@ jobs:
             go test -race ./...
           fi
 
+  # The required check for all legs of test-cross (#1441). always() matters: with
+  # a plain needs this job is skipped when a leg fails, and a skipped required
+  # check can count as passing. A leg that got no runner is cancelled, which
+  # fails here too: rerun it, do not override the check.
+  cross-platform:
+    name: Cross-platform
+    needs: test-cross
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULT: ${{ needs.test-cross.result }}
+        run: |
+          if [ "$RESULT" != success ]; then
+            echo "::error::Cross-platform tests: $RESULT. See the legs of test-cross; rerun a leg that got no runner."
+            exit 1
+          fi
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Installed from its release and checked against this digest, as pinact
+      # is below; ShellCheck is pinned at the top of this file. Both run in this
+      # job because Lint is a required check. The digest is the release asset's
+      # sha256 for linux_amd64. Bump both values together, after the 7-day
+      # cooldown.
+      ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -227,10 +319,35 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
+      - name: Install actionlint and ShellCheck
+        run: |
+          set -euo pipefail
+          actionlint=actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz
+          curl -sSfLo "$RUNNER_TEMP/$actionlint" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$actionlint"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$actionlint" | sha256sum -c -
+          .github/scripts/install-shellcheck.sh "$RUNNER_TEMP/lint-tools"
+          tar -xzf "$RUNNER_TEMP/$actionlint" -C "$RUNNER_TEMP/lint-tools" actionlint
+          "$RUNNER_TEMP/lint-tools/actionlint" --version
+      # The runner image ships its own ShellCheck; the prepended directory and
+      # the -shellcheck flag make sure the pinned one runs. actionlint hands it
+      # every bash run block in the workflows, which the script below cannot
+      # reach (#1446).
+      - name: Lint shell scripts
+        run: PATH="$RUNNER_TEMP/lint-tools:$PATH" .github/scripts/lint-shell.sh
+      # -ignore: actionlint 1.7.12 rejects `uses: $/`, the runner's reference to
+      # the commit under test (#693). Drop it once a release accepts that form.
+      # It is here on the command line, so it is reviewed like the workflow.
+      - name: Lint workflows
+        run: |
+          "$RUNNER_TEMP/lint-tools/actionlint" -pyflakes= \
+            -shellcheck="$RUNNER_TEMP/lint-tools/shellcheck" \
+            -ignore '(action|reusable workflow call) "\$/'
 
   deadcode:
     name: Dead code
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -251,6 +368,7 @@ jobs:
   pinact:
     name: Security (pinact)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       # pinact is installed from its release and checked against this digest,
       # as lychee is in linkcheck.yml. A Go tool module would pull in Go 1.27
@@ -288,6 +406,7 @@ jobs:
   security:
     name: Security (govulncheck)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -314,6 +433,7 @@ jobs:
     name: Dependency review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -329,6 +449,7 @@ jobs:
   docker:
     name: Docker build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -367,16 +488,28 @@ jobs:
           set -euo pipefail
           proj=$(mktemp -d)
           mkdir -p "$proj/.claude"
+          # shellcheck disable=SC2016 # $FILE is the unquoted hook input CFG045 must report
           printf '%s\n' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"rm $FILE"}]}]}}' \
             > "$proj/.claude/settings.json"
           chmod -R a+rX "$proj" # the image runs as uid 65532
           docker run --rm -v "$proj:/work:ro" -w /work cfgaudit:ci \
             --claude-version 2.1.0 --shellcheck --only CFG045 --format json . > cfg045.json
           jq -e 'any(.[]; .RuleID == "CFG045" and (.Message | contains("SC2086")))' cfg045.json > /dev/null
+      # The Test job proves CFG045 against the pinned version, which only says
+      # something about the image while the two agree (#1445).
+      - name: The image ships the pinned ShellCheck
+        run: |
+          set -euo pipefail
+          version=$(docker run --rm --entrypoint shellcheck cfgaudit:ci --version | sed -n 's/^version: //p')
+          if [ "$version" != "$SHELLCHECK_VERSION" ]; then
+            echo "::error::The image ships ShellCheck ${version:-of no known version}, ci.yml pins $SHELLCHECK_VERSION. Update SHELLCHECK_VERSION and SHELLCHECK_SHA256."
+            exit 1
+          fi
 
   hadolint:
     name: Security (hadolint)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -391,6 +524,7 @@ jobs:
   dockle:
     name: Security (dockle)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -410,6 +544,7 @@ jobs:
   action:
     name: Action smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -485,6 +620,7 @@ jobs:
   reuse:
     name: REUSE
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -504,6 +640,7 @@ jobs:
   cfgaudit:
     name: Security (cfgaudit)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -513,7 +650,7 @@ jobs:
       # workspace; rm -f drops a file or symlink the pull request put here.
       - run: rm -f .cfgaudit-ci.yml && touch .cfgaudit-ci.yml
       - name: Scan agent instructions, settings and the plugin package
-        uses: cfgaudit/cfgaudit@d490362f1889e84c2704ae304a0e6bb1863697fa # v1.18.1
+        uses: cfgaudit/cfgaudit@bf8e9c02ee9d99e88c65b5a3241545e63c216312 # v1.19.0
         with:
           plugins: .
           config: .cfgaudit-ci.yml
@@ -523,6 +660,7 @@ jobs:
   zizmor:
     name: Security (zizmor)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

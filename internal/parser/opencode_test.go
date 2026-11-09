@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -238,11 +239,11 @@ func TestParseOpenCodeConfig_V2CommandV1WinsConflict(t *testing.T) {
 	}
 }
 
-// A v2 `permissions` block makes the whole file fail to load, so cfgaudit must
-// read nothing from it — not its mcp, not its v1 permission.
-func TestParseOpenCodeConfig_V2PermissionsDoesNotLoad(t *testing.T) {
+// A v2 `permissions` block makes OpenCode 1.x reject the file, and OpenCode 2
+// load it (#748): it is read, and marked V2.
+func TestParseOpenCodeConfig_V2PermissionsLoads(t *testing.T) {
 	for name, body := range map[string]string{
-		"top-level": `{"permissions": {"edit": "deny"},
+		"top-level": `{"permissions": [{"action": "edit", "resource": "*", "effect": "deny"}],
                        "mcp": {"probe": {"type": "local", "command": ["x"]}}}`,
 		"under agent": `{"agent": {"a": {"permissions": {"bash": "allow"}}},
                         "mcp": {"probe": {"type": "local", "command": ["x"]}}}`,
@@ -251,9 +252,45 @@ func TestParseOpenCodeConfig_V2PermissionsDoesNotLoad(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: parse: %v", name, err)
 		}
-		if len(c.MCPServerMap()) != 0 || len(c.Permission) != 0 {
-			t.Errorf("%s: a file with v2 permissions must yield nothing, got mcp=%v perm=%s", name, c.MCPServerMap(), c.Permission)
+		if !c.V2 || len(c.MCPServerMap()) != 1 {
+			t.Errorf("%s: got V2=%v mcp=%v", name, c.V2, c.MCPServerMap())
 		}
+	}
+}
+
+// OpenCode 2 joins the v1 rules and the native list in that order, renames
+// v1 write to edit, keeps native rules as written, and drops a list entry that
+// is not a rule. A native agents entry replaces the v1 agent of the same name.
+func TestOpenCodeConfig_V2PermissionBlocks(t *testing.T) {
+	c, err := ParseOpenCodeConfig(writeOpenCode(t, `{
+      "permission": {"write": "allow"},
+      "permissions": [{"action": "shell", "resource": "git *", "effect": "allow"}, {"action": "read"}, {"action": "x", "resource": "*", "effect": "Allow"}, 3,
+                      {"action": "subagent", "resource": "*", "effect": "deny"}],
+      "agent": {"a": {"permission": {"read": "allow"}}, "b": {"permission": "allow"}},
+      "agents": {"a": {"permissions": [{"action": "read", "resource": "*.env", "effect": "allow"}]}}
+    }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := c.PermissionBlocks()
+	if len(blocks) != 3 || blocks[0].Where != "permissions" || !blocks[0].Top() || blocks[1].Where != "agents.a.permissions" || blocks[2].Where != "agent.b.permission" || blocks[1].Top() {
+		t.Fatalf("got %+v", blocks)
+	}
+	top := blocks[0].Rules
+	if len(top) != 3 || top[0].Action != "edit" || top[0].Spelled() != "edit" || top[1].Action != "bash" || top[1].Spelled() != "shell" || top[2].Action != "task" {
+		t.Errorf("top rules %+v", top)
+	}
+	if a := blocks[1].Rules; len(a) != 1 || a[0].Resource != "*.env" {
+		t.Errorf("agent a %+v", a)
+	}
+	if decodeOpenCodeRuleset([]byte(`{"action": "read"}`)) != nil || decodeOpenCodeRuleset(nil) != nil {
+		t.Error("not a list")
+	}
+	// Without a v2 block the file is one OpenCode 1.x loads too, and the v1
+	// agent keeps a same-name conflict, as 1.x does.
+	c, _ = ParseOpenCodeConfig(writeOpenCode(t, `{"permission": {"write": "allow"}, "agent": {"a": {"permission": {"read": "allow"}}}, "agents": {"a": {"system": "x"}}}`))
+	if blocks := c.PermissionBlocks(); c.V2 || len(blocks) != 2 || blocks[0].Rules[0].Action != "write" || blocks[1].Where != "agent.a.permission" {
+		t.Errorf("v1 file: %+v", blocks)
 	}
 }
 
@@ -435,5 +472,41 @@ func TestOpenCodeConfig_PermissionBlocks(t *testing.T) {
 	}
 	if blocks[0].Rules[0].Effect != "allow" || blocks[1].Rules[0].Effect != "deny" {
 		t.Errorf("rules = %+v", blocks)
+	}
+}
+
+// skills is an array, or the older {paths, urls}; only strings count (#748).
+func TestOpenCodeConfig_SkillSources(t *testing.T) {
+	var nilCfg *OpenCodeConfig
+	if nilCfg.SkillSources() != nil || (&OpenCodeConfig{}).SkillSources() != nil {
+		t.Fatal("empty")
+	}
+	for body, want := range map[string]string{
+		`["a", 1, "b"]`:                      "a,b",
+		`{"paths": ["p"], "urls": ["u", 2]}`: "p,u",
+		`{"paths": "p"}`:                     "",
+		`"x"`:                                "",
+	} {
+		c := &OpenCodeConfig{Skills: []byte(body)}
+		if got := strings.Join(c.SkillSources(), ","); got != want {
+			t.Errorf("%s: got %q, want %q", body, got, want)
+		}
+	}
+}
+
+// plugin and plugins list strings, v1 [name, options] tuples and v2
+// {package, options}; a "-name" removal is not a source (#748).
+func TestOpenCodeConfig_PluginSources(t *testing.T) {
+	var nilCfg *OpenCodeConfig
+	if nilCfg.PluginSources() != nil {
+		t.Fatal("nil")
+	}
+	c := &OpenCodeConfig{Plugin: []byte(`["a", ["b", {}], "-c", [], 3]`), Plugins: []byte(`[{"package": "d"}, "e"]`)}
+	if got := strings.Join(c.PluginSources(), ","); got != "a,b,d,e" {
+		t.Errorf("got %q", got)
+	}
+	c = &OpenCodeConfig{Plugin: []byte(`"a"`)}
+	if c.PluginSources() != nil {
+		t.Error("not a list")
 	}
 }

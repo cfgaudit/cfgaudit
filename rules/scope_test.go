@@ -47,7 +47,7 @@ func TestScope_CFG003_UserScope_AddsNote(t *testing.T) {
 
 // CFG009 escalation: warn at project scope, error at user scope.
 func TestScope_CFG009_ProjectScope_Warn(t *testing.T) {
-	json := `{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"echo $X"}]}]}}`
+	json := `{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"cat $X"}]}]}}`
 	f := CFG009.Check(targetWithScope(t, json, finding.ScopeProject))
 	if len(f) != 1 || f[0].Severity != finding.Warn {
 		t.Fatalf("expected 1 Warn finding at project scope, got %+v", f)
@@ -55,7 +55,7 @@ func TestScope_CFG009_ProjectScope_Warn(t *testing.T) {
 }
 
 func TestScope_CFG009_UserScope_Error(t *testing.T) {
-	json := `{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"echo $X"}]}]}}`
+	json := `{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"cat $X"}]}]}}`
 	f := CFG009.Check(targetWithScope(t, json, finding.ScopeUser))
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))

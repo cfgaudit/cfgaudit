@@ -129,3 +129,93 @@ func TestParseGeminiSettings_JSONCComments(t *testing.T) {
 		t.Fatalf("expected defaultApprovalMode through the comments, got %+v", gs.General)
 	}
 }
+
+// mcp.excluded and the tool lists read their shape loosely, so an odd value
+// costs only the policy, not the file (#1517).
+func TestGeminiSettings_PolicyFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	for src, want := range map[string]int{
+		`{"mcp":{"excluded":["a","b"]},"tools":{"exclude":"x"}}`: 2,
+		`{"mcp":"x"}`: 0,
+		`{}`:          0,
+	} {
+		if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s, err := ParseGeminiSettings(path)
+		if err != nil {
+			t.Fatalf("%s: %v", src, err)
+		}
+		if got := s.ExcludedMCPServers(); len(got) != want {
+			t.Errorf("%s: got %q", src, got)
+		}
+	}
+}
+
+func TestResolveGeminiEnvVars(t *testing.T) {
+	env := map[string]string{"HOST": "https://c.example", "E": ""}
+	for in, want := range map[string]string{
+		"$HOST/v1":             "https://c.example/v1",
+		"${HOST}":              "https://c.example",
+		"${MISSING:-http://d}": "http://d",
+		"${MISSING:-}x":        "x",
+		"${E:-z}":              "",
+		"$MISSING":             "$MISSING",
+		"${MISSING}":           "${MISSING}",
+		"plain":                "plain",
+	} {
+		if got := ResolveGeminiEnvVars(in, env); got != want {
+			t.Errorf("%s: got %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseGeminiSettingsEnv(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(p, []byte(`{// c
+	  "telemetry": {"otlpEndpoint": "$X", "enabled": true},
+	  "mcpServers": {"s": {"url": "${X}/mcp", "headers": {"a": "$K"}, "timeout": 5, "args": ["$X"]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := ParseGeminiSettingsEnv(p, map[string]string{"X": "https://e.example", "K": "v"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Telemetry.OtlpEndpoint != "https://e.example" || s.MCPServers["s"].URL != "https://e.example/mcp" || s.MCPServers["s"].Headers["a"] != "v" || s.MCPServers["s"].Args[0] != "https://e.example" {
+		t.Fatalf("got %+v %+v", s.Telemetry, s.MCPServers["s"])
+	}
+	if s, err := ParseGeminiSettingsEnv(p, nil); err != nil || s.Telemetry.OtlpEndpoint != "$X" {
+		t.Fatalf("no env: %v %+v", err, s)
+	}
+	if err := os.WriteFile(p, []byte(`{`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseGeminiSettingsEnv(p, map[string]string{"X": "y"}); err == nil {
+		t.Fatal("broken file parsed")
+	}
+	if _, err := ParseGeminiSettingsEnv(filepath.Join(dir, "missing.json"), map[string]string{"X": "y"}); err == nil {
+		t.Fatal("missing file parsed")
+	}
+	if err := os.WriteFile(p, []byte(`{"mcpServers": []}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseGeminiSettingsEnv(p, map[string]string{"X": "y"}); err == nil {
+		t.Fatal("wrong type parsed")
+	}
+}
+
+func TestGeminiEnvTelemetry(t *testing.T) {
+	if tel, _ := GeminiEnvTelemetry(map[string]string{"X": "1"}); tel != nil {
+		t.Fatal("no telemetry vars")
+	}
+	tel, key := GeminiEnvTelemetry(map[string]string{"GEMINI_TELEMETRY_ENABLED": "yes", "GEMINI_TELEMETRY_LOG_PROMPTS": "1",
+		"OTEL_EXPORTER_OTLP_ENDPOINT": "https://o", "GEMINI_TELEMETRY_OTLP_ENDPOINT": " https://g "})
+	if tel == nil || *tel.Enabled || !*tel.LogPrompts || tel.OtlpEndpoint != "https://g" || key != "GEMINI_TELEMETRY_OTLP_ENDPOINT" {
+		t.Fatalf("got %+v %s", tel, key)
+	}
+	if tel, key := GeminiEnvTelemetry(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "https://o"}); tel.OtlpEndpoint != "https://o" || key != "OTEL_EXPORTER_OTLP_ENDPOINT" || tel.Enabled != nil {
+		t.Fatalf("otel: %+v", tel)
+	}
+}

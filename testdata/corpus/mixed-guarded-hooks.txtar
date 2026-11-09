@@ -1,0 +1,31 @@
+Pattern: a settings file whose hooks look risky to a regex but are not. Any project hook draws the CFG067 notice, so this case cannot be clean.
+Issues: #892, #1198
+-- .claude/settings.json --
+{
+  "permissions": {
+    "allow": ["Bash(git status)", "Bash(go test:*)", "Read(./src/**)"],
+    "deny": [
+      "Read(**/.env)", "Read(**/.env.*)",
+      "Read(**/*.pem)", "Read(**/*.key)", "Read(**/*.p12)", "Read(**/*.pfx)", "Read(**/*.jks)",
+      "Read(~/.aws/**)", "Read(~/.config/gcloud/**)", "Read(~/.azure/**)", "Read(~/.ssh/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          { "type": "command", "command": "gofmt -l ." }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "shell": "powershell", "command": "exit $LASTEXITCODE" },
+          { "type": "command", "command": "grep -q example ~/.bashrc" }
+        ]
+      }
+    ]
+  }
+}

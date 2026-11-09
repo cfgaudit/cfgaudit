@@ -127,6 +127,10 @@ type Policy struct {
 	ForbidAllow ForbidAllow `yaml:"forbid-allow"`
 	Deny        PolicyRules `yaml:"deny"`
 	Agents      []string    `yaml:"agents"`
+	// Rulesync adds .rulesync/permissions.jsonc to the policy (#1519). It is
+	// opt-in: a generated project should not start failing on a rule set nobody
+	// asked cfgaudit to enforce.
+	Rulesync bool `yaml:"rulesync"`
 }
 
 // PolicyRules are agent-neutral policy entries, one list per category.
@@ -180,11 +184,11 @@ func (f *ForbidAllow) UnmarshalYAML(node *yaml.Node) error {
 // PolicyAgents are the agent names policy.agents accepts. Agents that later
 // phases of #1081 will check are rejected rather than skipped, so a policy
 // never claims coverage cfgaudit does not provide.
-var PolicyAgents = []string{"claude-code", "devin", "zed", "continue"}
+var PolicyAgents = []string{"claude-code", "devin", "zed", "continue", "goose", "kimi-cli", "cline", "cursor-cli", "qwen-code", "grok", "opencode", "kilo-code", "codex", "roo-code", "gemini-cli", "pi", "cursor", "vscode", "kimi-code", "junie", "copilot", "antigravity"}
 
 // Configured reports whether any policy entries are set.
 func (p Policy) Configured() bool {
-	return len(p.RequireDeny) > 0 || len(p.ForbidAllow.Claude) > 0 || !p.ForbidAllow.Empty() || !p.Deny.Empty()
+	return p.Rulesync || len(p.RequireDeny) > 0 || len(p.ForbidAllow.Claude) > 0 || !p.ForbidAllow.Empty() || !p.Deny.Empty()
 }
 
 // RuleConfig is a per-rule override. It accepts either the flat form

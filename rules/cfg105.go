@@ -84,8 +84,11 @@ func (r *cfg105) Check(t *Target) []finding.Finding {
 			if !ok || rule.Effect != "allow" {
 				continue
 			}
-			add("resolves reading " + res + " to \"allow\" (" + describeRule(rule) + ") — OpenCode's defaults put .env files on \"ask\" even though read is otherwise allowed, and a later rule wins, so this silently removes the prompt in front of the file where secrets usually are." +
-				" Keep the default by restoring both patterns, for example {\"*\": \"allow\", \"*.env\": \"ask\", \"*.env.*\": \"ask\"}")
+			fix := " Keep the default by restoring both patterns, for example {\"*\": \"allow\", \"*.env\": \"ask\", \"*.env.*\": \"ask\"}"
+			if rule.Native != "" {
+				fix = " Keep the default: after that rule, add {\"action\": \"read\", \"resource\": \"*.env\", \"effect\": \"ask\"} and the same for \"*.env.*\""
+			}
+			add("resolves reading " + res + " to \"allow\" (" + describeRule(rule) + ") — OpenCode's defaults put .env files on \"ask\" even though read is otherwise allowed, and a later rule wins, so this silently removes the prompt in front of the file where secrets usually are." + fix)
 			break
 		}
 	}
@@ -135,6 +138,9 @@ func wildcardCovers(pattern, value string) bool {
 // describeRule renders the rule that decided the outcome, so a reader can find
 // the line rather than the mechanism.
 func describeRule(rule parser.OpenCodePermissionRule) string {
+	if rule.Native != "" {
+		return "from {\"action\": \"" + rule.Native + "\", \"resource\": \"" + rule.Resource + "\", \"effect\": \"" + rule.Effect + "\"}"
+	}
 	if rule.Resource == "*" {
 		return "from \"" + rule.Action + "\": \"" + rule.Effect + "\""
 	}

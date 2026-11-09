@@ -25,6 +25,10 @@ type node struct {
 	isStr     bool
 	line, col int // of the key, or of the array element
 	end       int // nodes[i+1:end] lie inside this member's value
+	// elems is where each element of the member's value starts, when the
+	// value is an array, so "permissions.allow[2]" resolves to the third
+	// entry (#1377).
+	elems [][2]int
 }
 
 // Doc is a parsed JSON or JSONC document.
@@ -50,6 +54,10 @@ func Parse(src []byte) *Doc {
 }
 
 type parser struct {
+	// lastElems is the element positions of the array parsed last; object
+	// reads it right after an array value.
+	lastElems [][2]int
+
 	src       []byte
 	pos       int
 	line      int
@@ -187,8 +195,14 @@ func (p *parser) object(path []string) bool {
 				return false
 			}
 			p.doc.nodes[i].str, p.doc.nodes[i].isStr = s, true
-		} else if !p.value(child) {
-			return false
+		} else {
+			isArray := p.pos < len(p.src) && p.src[p.pos] == '['
+			if !p.value(child) {
+				return false
+			}
+			if isArray {
+				p.doc.nodes[i].elems = p.lastElems
+			}
 		}
 		p.doc.nodes[i].end = len(p.doc.nodes)
 		if !p.sep('}') {
@@ -203,6 +217,7 @@ func (p *parser) array(path []string) bool {
 	}
 	defer func() { p.depth-- }()
 	p.pos++
+	var elems [][2]int
 	for {
 		p.skip()
 		if p.pos >= len(p.src) {
@@ -210,8 +225,10 @@ func (p *parser) array(path []string) bool {
 		}
 		if p.src[p.pos] == ']' {
 			p.pos++
+			p.lastElems = elems
 			return true
 		}
+		elems = append(elems, [2]int{p.line, p.col()})
 		if p.src[p.pos] == '"' {
 			line, col := p.line, p.col()
 			s, ok := p.str()
@@ -246,6 +263,9 @@ func (p *parser) sep(closer byte) bool {
 	return false
 }
 
+// indexRe matches an array index right after the key path: "[2]".
+var indexRe = regexp.MustCompile(`^\[(\d+)\]`)
+
 // quotedRe matches a Go-quoted string, as rules write values with %q.
 var quotedRe = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
 
@@ -263,25 +283,25 @@ var quotedRe = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
 // (opencode.json "mcp", VS Code "servers") and some put the agent first
 // ("Gemini hooks.SessionStart"), so when msg names no key, Locate tries again
 // without its first path segment and then without its first word.
-func (d *Doc) Locate(msg string) (line, col int) {
+func (d *Doc) Locate(msg string, used map[[2]int]bool) (line, col int) {
 	if d == nil {
 		return 0, 0
 	}
-	if line, col = d.locate(msg); line > 0 {
+	if line, col = d.locate(msg, used); line > 0 {
 		return line, col
 	}
 	if i := strings.IndexAny(msg, ". "); i > 0 && msg[i] == '.' {
-		if line, col = d.locate(msg[i+1:]); line > 0 {
+		if line, col = d.locate(msg[i+1:], used); line > 0 {
 			return line, col
 		}
 	}
 	if i := strings.IndexByte(msg, ' '); i > 0 {
-		return d.locate(msg[i+1:])
+		return d.locate(msg[i+1:], used)
 	}
 	return 0, 0
 }
 
-func (d *Doc) locate(msg string) (line, col int) {
+func (d *Doc) locate(msg string, used map[[2]int]bool) (line, col int) {
 	best, bestLen, rooted := []int(nil), 0, false
 	for i, n := range d.nodes {
 		if n.key == "" {
@@ -320,7 +340,7 @@ func (d *Doc) locate(msg string) (line, col int) {
 	if want != "" && len(best) > 1 {
 		var holding []int
 		for _, i := range best {
-			if _, ok := d.find(i, want); ok {
+			if _, ok := d.find(i, want, used); ok {
 				holding = append(holding, i)
 			}
 		}
@@ -336,8 +356,14 @@ func (d *Doc) locate(msg string) (line, col int) {
 		}
 	}
 	i := best[len(best)-1]
+	if m := indexRe.FindStringSubmatch(rest); m != nil {
+		// "permissions.allow[2] holds ..." names the element, not the array.
+		if n, err := strconv.Atoi(m[1]); err == nil && n < len(d.nodes[i].elems) {
+			return d.nodes[i].elems[n][0], d.nodes[i].elems[n][1]
+		}
+	}
 	if want != "" {
-		if j, ok := d.find(i, want); ok {
+		if j, ok := d.find(i, want, used); ok {
 			return d.nodes[j].line, d.nodes[j].col
 		}
 	}
@@ -346,21 +372,21 @@ func (d *Doc) locate(msg string) (line, col int) {
 
 // find returns the first node from member i on whose key or string value is
 // want, or else the first whose string value contains it.
-func (d *Doc) find(i int, want string) (int, bool) {
+func (d *Doc) find(i int, want string, used map[[2]int]bool) (int, bool) {
 	// A member wins over an array element with the same value: a VS Code
 	// task's "label" over another task's "dependsOn" naming it.
 	for j := i; j < d.nodes[i].end; j++ {
-		if n := d.nodes[j]; n.key != "" && (n.key == want || (n.isStr && n.str == want)) {
+		if n := d.nodes[j]; !used[[2]int{n.line, n.col}] && n.key != "" && (n.key == want || (n.isStr && n.str == want)) {
 			return j, true
 		}
 	}
 	for j := i; j < d.nodes[i].end; j++ {
-		if n := d.nodes[j]; n.isStr && n.str == want {
+		if n := d.nodes[j]; !used[[2]int{n.line, n.col}] && n.isStr && n.str == want {
 			return j, true
 		}
 	}
 	for j := i; j < d.nodes[i].end; j++ {
-		if n := d.nodes[j]; n.isStr && strings.Contains(n.str, want) {
+		if n := d.nodes[j]; !used[[2]int{n.line, n.col}] && n.isStr && strings.Contains(n.str, want) {
 			return j, true
 		}
 	}

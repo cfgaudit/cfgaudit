@@ -51,13 +51,14 @@ jobs:
       github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read # download the release assets
       attestations: read # verify their provenance
     outputs:
       version: ${{ steps.tag.outputs.version }}
     steps:
-      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           disable-telemetry: true
@@ -160,6 +161,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     permissions: {}
     defaults:
       run:
@@ -204,13 +206,14 @@ jobs:
     needs: [build, smoke]
     if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: pypi
       url: https://pypi.org/project/cfgaudit/${{ needs.build.outputs.version }}/
     permissions:
       id-token: write # Trusted Publishing and PyPI attestations
     steps:
-      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           disable-telemetry: true

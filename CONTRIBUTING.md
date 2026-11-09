@@ -21,7 +21,7 @@ Vulnerabilities in cfgaudit itself go through private reporting instead, see [SE
 
 ## Development environment
 
-- **Go**: 1.26 or newer (`go.mod` declares `go 1.26`; CI and releases build with the newest 1.26 patch).
+- **Go**: 1.26 or newer (`go.mod` declares `go 1.26`; CI and releases build with the newest 1.26 patch, and the "Test (Go stable)" job also runs the tests with the current stable Go release).
 - **Optional**: Docker (for the release image), `zizmor` for workflow linting, Node.js if you want to run the SchemaStore fixture validator locally (`npm ci --prefix .github/tools/ajv`, then `node .github/tools/ajv/validate.js <schema> testdata/settings/valid/*.json`).
 
 Clone and build:
@@ -47,7 +47,7 @@ What each test layer protects against, and when it runs, is in [TESTING.md](TEST
 ```sh
 go test ./...                  # unit tests + cross-cutting consistency / fixture tests
 go test -run TestCFG001 ./...  # one rule
-go vet ./...                   # cheap static check, same one CI runs
+go vet ./...                   # cheap static check; CI runs it as golangci-lint's govet
 ```
 
 CI additionally runs:
@@ -55,6 +55,7 @@ CI additionally runs:
 - `golangci-lint` (latest)
 - `govulncheck` against the module
 - `zizmor` against `.github/workflows/`
+- `actionlint` against `.github/workflows/`, and ShellCheck against every tracked shell script and every `run` block (see [Shell scripts and workflows](#shell-scripts-and-workflows))
 - Branch coverage with `gobco` (see [Tests](#4-tests))
 - `deadcode` from `cmd/cfgaudit`: an exported function that nothing reachable calls fails the build unless `.github/deadcode-allow.txt` lists it with a reason
 - Schema validation of `testdata/settings/valid/*.json` against the live SchemaStore schema (push, PR, and nightly)
@@ -85,6 +86,39 @@ npx markdownlint-cli2@0.23.2 --config .markdownlint-site.jsonc "docs/rules/*.md"
 
 If you change anything under `.github/workflows/`, run `zizmor .github/workflows/` locally — actions must be pinned to commit SHAs and `persist-credentials: false` must stay on `actions/checkout`.
 
+### Shell scripts and workflows
+
+The Lint job runs ShellCheck and actionlint at the versions pinned in `ci.yml`. To reproduce it, with both tools on `PATH`:
+
+```sh
+.github/scripts/lint-shell.sh  # ShellCheck on every tracked shell script
+# the workflows, and ShellCheck on their run blocks
+actionlint -pyflakes= -ignore '(action|reusable workflow call) "\$/'
+```
+
+The `-ignore` is there because actionlint does not know `uses: $/` yet, the runner's reference to the commit under test.
+
+The script finds its files itself: every tracked `*.sh` file and every file with a `sh` or `bash` shebang, outside `testdata/`. ShellCheck takes the dialect from the shebang.
+
+| Files | Dialect | Why |
+|---|---|---|
+| `bin/cfgaudit` | POSIX `sh` | The plugin wrapper runs on the user's machine, where bash may be missing or old. |
+| `.github/scripts/*.sh` | `bash` | They run on GitHub's runners or on a contributor's machine. |
+| `run` blocks in `.github/workflows/` | `bash` | The default on the Linux runners, and set explicitly for the Windows legs. |
+
+Fix a finding rather than silence it. When the code is right as it is, add `# shellcheck disable=SC1234 # reason` directly above the command, with the narrowest scope that works. There is no central list of disabled checks and no `.shellcheckrc`.
+
+### Promoting a finding into the corpus
+
+A false positive or a missed finding from a real repository, from a bug report or from the manual review in [RELEASING.md](RELEASING.md#before-the-release), gets a case in `testdata/corpus/` once it is confirmed. The rule's unit test still comes with the fix; the case adds the scan of a whole project.
+
+1. **Minimize.** Keep the shape, not the source. Rewrite the sentences and commands so that the rule still decides the same way, and drop every file the result does not depend on.
+2. **Strip.** No repository, organization or personal name, no real credential, host or URL that is not needed for the shape, and no copied prose longer than the shape. Use inert commands and `example.invalid`. A value that must look like a credential uses a dummy from the rule docs.
+3. **Write the case.** `<name>.txtar` holds the files, after three header lines. `Pattern:` says which shape it reproduces, `Issues:` names the issues behind it, and the optional `Flags:` adds scan flags such as `--plugins`. Provenance means the rule and the shape, never where it was found.
+4. **Choose the name.** A `clean-*` case must report nothing at all, not even at `info`, and has no golden. Use `mixed-*` when the same scan reports something, for example a real finding next to the form that used to be a false positive.
+5. **Write the golden.** Run `go test ./cmd/cfgaudit -run TestCorpus -update`, then read the diff of the `.golden` files. A new rule that fires on a case shows up there, and each changed line is a decision for the reviewer. The flag never changes a `clean-*` case: when one fails, fix the rule or move the case.
+6. **Check that it catches the bug.** The case must fail without the fix.
+
 ### Benchmarks
 
 The benchmarks scan a corpus that `internal/benchcorpus` generates from a fixed seed: neutral project documentation, skills, commands, rules files, settings and MCP configs. Nothing in it is copied from a real repository.
@@ -112,6 +146,12 @@ benchstat old.txt new.txt
 The Benchmarks workflow (`.github/workflows/bench.yml`) does the same on every pull request: it runs base and head in turns, puts the `benchstat` table on the run's summary page, and fails when a benchmark's median `allocs/op` (or `init-allocs/op`) rises by more than 20% and by more than 100 allocations. Time is shown but not gated, because hosted runners vary too much between runs.
 
 On every push to `main`, the Benchmark history workflow (`.github/workflows/bench-history.yml`) appends one line with the medians, the runner CPU and the time ratio against the latest release to `bench.jsonl` on the `bench-data` branch. The branch's README describes the format.
+
+Every Monday, the CI durations workflow (`.github/workflows/ci-durations.yml`) runs `cmd/ciduration` and appends median, p90 and maximum per workflow, and for the jobs of the 30 newest `CI` runs, to `ci-durations.jsonl` on the same branch. A workflow with at least 5 runs and a p90 above 15 minutes opens an issue, or updates the open one. Duration is not a check on pull requests, because hosted runners vary too much. To see the report:
+
+```sh
+GITHUB_TOKEN=$(gh auth token) go run ./cmd/ciduration
+```
 
 `TestBenchCorpus_ScansClean` and `TestBenchCorpus_PrefilterPassRate` keep the corpus honest: it must produce no findings, and a few percent of its lines must still pass the literal prefilter. If a rule change makes the corpus match, adjust the rule or the corpus in a commit of its own, because a corpus change moves every benchmark number.
 
@@ -188,7 +228,20 @@ Settings expose typed fields (`Permissions`, `Env`, `Hooks`, `MCPServers`) plus 
 
 ### 4. Tests
 
-Every change in behaviour comes with tests: a new rule, a new scanned file or surface, a fix, a new flag or output. A fix adds a test that fails without it. A change that only moves code keeps the existing tests passing unchanged. CI fails when total statement coverage drops below the floor in `ci.yml`, or when branch coverage drops below 80%.
+Every change in behaviour comes with tests: a new rule, a new scanned file or surface, a fix, a new flag or output. A fix adds a test that fails without it. A change that only moves code keeps the existing tests passing unchanged. CI enforces coverage in three ways, with the numbers in `ci.yml`:
+
+- Total statement coverage must stay above the floor.
+- The Go lines a pull request adds must be covered: at least 95% of them, unless at most 5 are uncovered. A line is covered when any package's tests run it. Comments, tests and generated files do not count, and neither does code that does not build on Linux.
+- Branch coverage must stay above the floor for the repository, and above their own floors for `cmd/cfgaudit`, `internal/parser`, `internal/scanroot` and `rules`.
+
+To check the changed lines before you push (without `-coverpkg=./...` a line only another package's tests reach reads as uncovered, and without `-count=1` a cached test result brings old line numbers into the profile):
+
+```sh
+go test -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
+go run ./cmd/coveragecheck -profile coverage.out -base origin/main -allow .github/coverage-allow.txt
+```
+
+The check lists the uncovered lines. Add tests for them. Only code no test can reach, such as a `main` that is one `os.Exit` call, may be excepted, by a line with a reason in `.github/coverage-allow.txt`. That file is a sensitive path, so a change to it needs maintainer review. Do not lower a floor to get a change through.
 
 Branch coverage is measured with [gobco](https://github.com/rillig/gobco), which counts a branch as covered only when the package's own tests take it. To see the uncovered branches of a package, build gobco from the pinned module and run it on a copy of the checkout with the dependencies vendored (gobco cannot resolve them from the module cache; do not commit the `vendor/` directory):
 
@@ -254,7 +307,19 @@ The consistency test (`rules/consistency_test.go`) requires:
 
 The schema-validation workflow (`.github/workflows/schema-validation.yml`) validates `valid/*.json` against the upstream Claude Code schema on push and nightly. `invalid/*.json` is only checked for parseable JSON (with `jq empty`), since invalid fixtures are intentionally non-compliant.
 
-### 7. Update the rule index
+### 7. Record the advisory
+
+This step also applies when you add a CVE or GHSA to an existing rule, or change what a rule reports for one.
+
+If the rule doc cites a CVE or GHSA, it needs an entry in [`docs/advisories.yml`](docs/advisories.yml):
+
+- **Not listed yet:** add an entry that names the rule, with a short `summary` and a fixture in `testdata/advisories/<id>.txtar`. Give a GHSA that only its repository publishes a `repo` key, because the weekly validity check asks that repository. If the rule fires on the fixture, list it under `rules` with its severity. If the doc only mentions the advisory, list it under `related`.
+- **Already listed:** add the rule to that entry. Update its severity and `coverage` if the change affects them.
+- **The other way round:** an entry that names a rule needs the citation in that rule's doc.
+
+`TestAdvisories_*` in `cmd/cfgaudit/advisories_test.go` checks the structure, the fixtures at the listed severity, and both directions of the link, so a missing entry fails the tests. The website's `/advisories/` page prints this file, and the comment at the top of the file explains the keys. Fixtures keep the configuration shape only: inert commands, `example.invalid` hosts, no working payload.
+
+### 8. Update the rule index
 
 Add a row to the rule table of the agent's section in [`docs/rules/README.md`](docs/rules/README.md):
 
@@ -301,16 +366,18 @@ Every change, including the maintainer's own, lands through a pull request; noth
 **What the reviewer checks:**
 
 - **Scope.** The change does what its issue asks and nothing unrelated; a change in behaviour has an issue.
-- **Tests.** The tests cover the change, and a fix adds a test that fails without it (see [Tests](#4-tests)). Coverage stays above both floors.
+- **Tests.** The tests cover the change, and a fix adds a test that fails without it (see [Tests](#4-tests)). Coverage passes the checks in [Tests](#4-tests).
 - **Rules.** A new or changed rule has its doc page, fixtures and rule-index row, follows the agent's real loader (measured, not assumed), and its message names keys and files, never a secret value.
 - **The trust boundary.** Scanned content is still never executed or evaluated, every read of repository content still goes through `internal/scanroot`, and the scanner opens no network connection. A change that adds a process, a network call or a new kind of input updates [docs/design.md](docs/design.md).
 - **Dependencies.** A new or updated dependency follows [Dependencies](#dependencies).
-- **Workflows.** Actions are pinned to commit SHAs with a version comment that pinact checks against the SHA, permissions are the least the job needs, no input is interpolated into a script, and zizmor passes.
+- **Workflows.** Actions are pinned to commit SHAs with a version comment that pinact checks against the SHA, every job sets `timeout-minutes` (`TestEveryJobHasATimeout`), permissions are the least the job needs, no input is interpolated into a script, and zizmor passes.
 - **Docs and style.** README, the pages in `docs/`, rule docs and CONTRIBUTING.md match the change.
 
 **Sensitive paths.** A pull request that touches the plugin (`hooks/`, `bin/`, `skills/`), the build and release files including `go.mod`, the published Action, pre-commit hook and GitLab components, `SECURITY.md`, agent or editor config, or the files that steer the other checks and watches fails the `Sensitive paths` check until the maintainer has looked at those files and set the `sensitive-paths-reviewed` label. A new push removes the label again when it changes what the pull request does to those files; bringing the branch up to date with `main`, or a push that only touches other files, keeps it. The full list is in `.github/scripts/sensitive-paths.sh`.
 
 **What makes a change acceptable:** all required checks pass, every review comment is resolved, and the title is a conventional commit line that references the issue. The pull request is then squash-merged.
+
+**When a platform leg fails.** `Cross-platform` is required and fails when any of the macOS, Windows or Windows on ARM legs does not succeed. A leg that was cancelled because it got no runner says nothing about the change, so rerun it. Do not override the check.
 
 **Allow edits by maintainers.** Open a pull request from a fork with "Allow edits by maintainers" enabled; the checkbox is on the pull request page, and you can turn it on later in the right sidebar. A branch has to be up to date with `main` before it can be merged, and when several pull requests land in a row, yours falls behind after each one. With the option on, the maintainer brings your branch up to date right before the squash merge, so you do not have to rebase after every other merge. The maintainer only updates the branch with `main`; a change to your code is asked for in the pull request, not pushed. GitHub does not offer the option for a fork owned by an organization; there you rebase when asked.
 
@@ -362,6 +429,9 @@ The steps of a release, including the ones done by hand, are in [RELEASING.md](R
 
 ```text
 cmd/cfgaudit/        # CLI entrypoint, output formatters (text/JSON/SARIF), flag parsing
+cmd/advisorycheck/   # weekly check that the ids in docs/advisories.yml are still valid; not released
+cmd/ciduration/      # weekly report of how long the workflows take; not released
+cmd/ioccheck/        # validates internal/maliciousioc/npm.json and its review date, weekly in CI; not released
 internal/parser/     # settings.json + .claudeignore parsing
 internal/finding/    # Finding/Severity/Scope types
 internal/version/    # Claude Code version detect + compare
@@ -369,7 +439,8 @@ internal/schema/     # bundled SchemaStore schema + lightweight introspection
 rules/               # one file per rule + cross-cutting tests + runner
 docs/rules/          # one Markdown file per rule
 testdata/settings/   # valid/ and invalid/ fixtures (driven by rules/fixtures_test.go)
-.github/workflows/   # CI, Docker release, nightly schema validation
+testdata/corpus/     # whole-project regression cases and their goldens (driven by cmd/cfgaudit/corpus_test.go)
+.github/workflows/   # CI, Docker release, nightly schema validation, weekly advisory check
 ```
 
 If something here looks out of date, please send a PR.

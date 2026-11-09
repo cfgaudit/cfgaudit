@@ -48,6 +48,8 @@ var dangerousAllowGroups = []struct {
 		[]string{"find", "sed", "awk", "gawk", "xargs", "env", "tar", "rg"}},
 	{allowCat{finding.Warn, "a remote-execution and lateral-movement tool"},
 		[]string{"ssh", "scp", "rsync"}},
+	{allowCat{finding.Warn, "a full coding-agent CLI; the child agent is not constrained by the parent agent Edit/Write deny rules"},
+		agentCLINames},
 }
 
 var dangerousAllowLookup = func() map[string]allowCat {
@@ -164,22 +166,27 @@ func runnerPackagePinned(inner string) bool {
 // network access, privilege escalation, or lateral movement. Exactly-pinned
 // commands (no wildcard) are exempt: the user spelled out precisely what may run.
 func (r *cfg023) Check(t *Target) []finding.Finding {
-	if t == nil || t.Settings == nil || t.Settings.Permissions == nil {
+	if t == nil {
 		return nil
 	}
 	var findings []finding.Finding
-	for _, entry := range t.Settings.Permissions.Allow {
-		bin, cat, ok := dangerousAllowBinary(entry)
-		if !ok || deniedInSameFile(t, entry) {
-			continue
+	if t.Settings != nil && t.Settings.Permissions != nil {
+		for _, entry := range t.Settings.Permissions.Allow {
+			bin, cat, ok := dangerousAllowBinary(entry)
+			if !ok || deniedInSameFile(t, entry) {
+				continue
+			}
+			if isAgentCLI(bin) && hasAgentConfigDeny(t.Settings.Permissions.Deny) {
+				cat.sev = finding.Error
+			}
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG023",
+				Severity: cat.sev,
+				File:     t.SettingsFile,
+				Message: "permissions.allow grants \"" + entry + "\" — \"" + bin + "\" is " + cat.reason +
+					"; allow only an exact command (no wildcard) instead" + userScopeNote(t),
+			})
 		}
-		findings = append(findings, finding.Finding{
-			RuleID:   "CFG023",
-			Severity: cat.sev,
-			File:     t.SettingsFile,
-			Message: "permissions.allow grants \"" + entry + "\" — \"" + bin + "\" is " + cat.reason +
-				"; allow only an exact command (no wildcard) instead" + userScopeNote(t),
-		})
 	}
 	return findings
 }
@@ -205,6 +212,15 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 		tok = tok[i+1:]
 	}
 	tok = strings.ToLower(strings.TrimSpace(tok))
+	for _, suffix := range []string{".exe", ".cmd", ".bat"} {
+		tok = strings.TrimSuffix(tok, suffix)
+	}
+	if agent, args, agentOK := agentAllowInvocation(inner); agentOK {
+		if agentCLIReadOnly(agent, args) {
+			return "", allowCat{}, false
+		}
+		return agent, dangerousAllowLookup[agent], true
+	}
 	// git is judged per subcommand rather than per binary: the pin decides which
 	// of git's exec vectors the entry can still reach.
 	if tok == "git" {
@@ -218,10 +234,79 @@ func dangerousAllowBinary(entry string) (string, allowCat, bool) {
 	if shellInterpreters[tok] && shellScriptPinned(inner) {
 		return "", allowCat{}, false
 	}
+	if pinnableInterpreters[tok] && interpreterVersionOnly(inner, tok) {
+		return "", allowCat{}, false
+	}
+	if pinnableInterpreters[tok] && interpreterOperandPinned(inner) {
+		return "", allowCat{}, false
+	}
 	if cat, ok := dangerousAllowLookup[tok]; ok {
 		return tok, cat, true
 	}
 	return "", allowCat{}, false
+}
+
+// pinnableInterpreters are the interpreters whose first operand can pin the
+// program they run: a script path or, for Python, `-m <module>` (#1205).
+var pinnableInterpreters = map[string]bool{
+	"python": true, "python3": true, "perl": true, "ruby": true, "node": true, "deno": true,
+}
+
+// Version flags exit before running a script, so a wildcard following one
+// does not grant arbitrary interpreter execution (#1204).
+func interpreterVersionOnly(inner, bin string) bool {
+	fields := strings.Fields(inner)
+	if len(fields) < 2 {
+		return false
+	}
+	flag := strings.TrimSuffix(fields[1], ":*")
+	return flag == "--version" ||
+		(bin == "node" && flag == "-v") ||
+		((bin == "python" || bin == "python3") && flag == "-V")
+}
+
+// runnerModules are Python modules that run or install other code, so `-m`
+// naming one of them pins nothing: `python -m pip install <remote>`.
+var runnerModules = []string{"pip", "pipx", "uv", "ensurepip", "venv", "http.server", "runpy", "code"}
+
+var (
+	// pythonModuleRe is a dotted module name: pytest, my_tool.cli.
+	pythonModuleRe = regexp.MustCompile(`^[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*$`)
+	// scriptPathRe is a script file the interpreter runs: a path or a file
+	// with a source extension. "deno run" and "node build" are not scripts.
+	scriptPathRe = regexp.MustCompile(`(?i)^[\w./-]*\.(?:py|js|mjs|cjs|ts|mts|cts|rb|pl|pm)$`)
+)
+
+// interpreterOperandPinned reports whether a Bash(python …*) style entry
+// names the program the interpreter runs, so the wildcard only reaches that
+// program's argv (#1205), the same reasoning as #874 for shells and #850 for
+// npx. The first operand is either a script path with no wildcard or shell
+// metacharacter ("node tools/report.js *", "python scripts/check.py:*"), or
+// `-m <module>` for a module that does not run other code ("python -m pytest
+// *"). An option first ("node --import x tools/report.js *", "python -c:*")
+// keeps the entry open.
+func interpreterOperandPinned(inner string) bool {
+	fields := strings.Fields(inner)
+	if len(fields) < 2 {
+		return false
+	}
+	first := strings.TrimSuffix(fields[1], ":*")
+	if first == "-m" {
+		if len(fields) < 3 {
+			return false
+		}
+		module := strings.TrimSuffix(fields[2], ":*")
+		if !pythonModuleRe.MatchString(module) {
+			return false
+		}
+		for _, r := range runnerModules {
+			if module == r || strings.HasPrefix(module, r+".") {
+				return false
+			}
+		}
+		return true
+	}
+	return !strings.HasPrefix(first, "-") && !strings.ContainsAny(first, "*$`;|&<>") && scriptPathRe.MatchString(first)
 }
 
 // shellScriptPinned reports whether a Bash(bash …*) entry names the script

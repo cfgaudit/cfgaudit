@@ -28,7 +28,14 @@ import (
 // true), so a committed .qwen/settings.json — mcpServers, tools.approvalMode, and
 // hooks — is applied with no trust prompt, the inverse of Cursor/Codex/Grok.
 type QwenSettings struct {
-	Tools      *QwenTools         `json:"tools,omitempty"`
+	Tools *QwenTools `json:"tools,omitempty"`
+
+	// Permissions is the rule list the agent-neutral policy checks. Rules from
+	// every scope are unioned, and deny wins over ask and allow. It stays raw so
+	// that a shape the policy cannot read does not fail the whole file, which
+	// the other rules read too.
+	Permissions json.RawMessage `json:"permissions,omitempty"`
+
 	MCPServers map[string]QwenMCP `json:"mcpServers,omitempty"`
 
 	// Telemetry is the OpenTelemetry export block, inherited from Gemini CLI
@@ -47,6 +54,9 @@ type QwenSettings struct {
 	// Memory carries the auto-skill confirmation pair.
 	Memory *QwenMemory `json:"memory,omitempty"`
 
+	// Skills carries skills.directories (#973).
+	Skills *QwenSkills `json:"skills,omitempty"`
+
 	// Hooks is qwen's hooks block: an event name → matcher groups (the shared
 	// Claude/Gemini shape). It is decoded lazily via HookGroups() rather than as
 	// map[string][]HookGroup, because qwen skips the reserved keys enabled/disabled/
@@ -58,6 +68,15 @@ type QwenSettings struct {
 	// DisableAllHooks is qwen's top-level kill switch (verified: replaces gemini's
 	// hooksConfig.enabled). true switches the whole hook system off.
 	DisableAllHooks bool `json:"disableAllHooks,omitempty"`
+
+	// ModelProviders is the modelProviders block, an auth type → model
+	// entries map, read only by QwenWebSearchLeaks (#974).
+	ModelProviders json.RawMessage `json:"modelProviders,omitempty"`
+
+	// Model and Security stay raw; ModelProviderEntries reads model.name and
+	// security.auth.selectedType from them (#1565).
+	Model    json.RawMessage `json:"model,omitempty"`
+	Security json.RawMessage `json:"security,omitempty"`
 }
 
 // qwenReservedHookKeys are the keys qwen skips inside the hooks object because they
@@ -108,6 +127,10 @@ func (s *QwenSettings) HooksDisabled() bool {
 type QwenTools struct {
 	ApprovalMode string `json:"approvalMode,omitempty"`
 
+	// Exclude is the legacy deny list. Qwen's settings reference maps it to
+	// permissions.deny and says it is "still honoured at startup".
+	Exclude json.RawMessage `json:"exclude,omitempty"`
+
 	// SandboxImage is the container image the agent's sandbox runs from:
 	// "Sandbox image URI used by Docker/Podman when --sandbox-image and
 	// QWEN_SANDBOX_IMAGE are not set."
@@ -123,6 +146,9 @@ type QwenTools struct {
 	// telling whether SandboxImage can take effect from settings alone. It is
 	// deliberately not a finding of its own: enabling a sandbox hardens.
 	Sandbox *json.RawMessage `json:"sandbox,omitempty"`
+
+	// WebSearch is tools.webSearch (#974).
+	WebSearch *QwenWebSearch `json:"webSearch,omitempty"`
 }
 
 // QwenMemory is the memory block. Only the auto-skill pair is decoded.
@@ -136,6 +162,35 @@ type QwenTools struct {
 type QwenMemory struct {
 	EnableAutoSkill  *bool `json:"enableAutoSkill,omitempty"`
 	AutoSkillConfirm *bool `json:"autoSkillConfirm,omitempty"`
+}
+
+// QwenSkills is the skills block. Only directories is decoded. It stays raw so
+// that one entry of the wrong type does not fail the whole file: Qwen itself
+// keeps only the non-empty strings.
+type QwenSkills struct {
+	Directories json.RawMessage `json:"directories,omitempty"`
+}
+
+// SkillDirectories returns skills.directories as Qwen reads it: the string
+// entries, trimmed, without the empty ones. Qwen loads each as a folder of
+// personal skills, <directory>/<skill-name>/SKILL.md, and the key is not on its
+// workspace-restricted list, so a project settings file can set it.
+func (s *QwenSettings) SkillDirectories() []string {
+	if s == nil || s.Skills == nil {
+		return nil
+	}
+	var raw []json.RawMessage
+	if json.Unmarshal(s.Skills.Directories, &raw) != nil {
+		return nil
+	}
+	var out []string
+	for _, r := range raw {
+		var d string
+		if json.Unmarshal(r, &d) == nil && strings.TrimSpace(d) != "" {
+			out = append(out, strings.TrimSpace(d))
+		}
+	}
+	return out
 }
 
 // SandboxEnabledInSettings reports whether tools.sandbox turns a sandbox on from
@@ -185,24 +240,30 @@ type QwenMCP struct {
 
 // MCPServerMap converts the qwen mcpServers block to the shared MCPServer shape so
 // the existing MCP rules (CFG010–021, CFG049–059) apply unchanged, attributed to
-// the settings file. httpUrl is folded into URL when url is absent.
+// the settings file. httpUrl wins over url, as in Qwen, and the
+// field that is used sets the transport.
 func (s *QwenSettings) MCPServerMap() map[string]MCPServer {
 	if s == nil || len(s.MCPServers) == 0 {
 		return nil
 	}
 	out := make(map[string]MCPServer, len(s.MCPServers))
 	for name, m := range s.MCPServers {
-		url := m.URL
-		if url == "" {
-			url = m.HTTPURL
-		}
-		out[name] = MCPServer{
+		srv := MCPServer{
 			Command: m.Command,
 			Args:    m.Args,
 			Env:     m.Env,
-			URL:     url,
+			URL:     m.URL,
 			Headers: m.Headers,
 		}
+		// createTransport in mcp-client.ts takes httpUrl first and connects to
+		// a lone url over SSE. Qwen reads no transport type from the file.
+		switch {
+		case m.HTTPURL != "":
+			srv.URL, srv.Type = m.HTTPURL, "http"
+		case m.URL != "":
+			srv.Type, srv.ImpliedSSE = "sse", true
+		}
+		out[name] = srv
 	}
 	return out
 }
@@ -226,4 +287,20 @@ func ParseQwenSettings(path string) (*QwenSettings, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &s, nil
+}
+
+// PolicyEntries returns the allow and deny rules the agent-neutral policy
+// checks, with the legacy tools.exclude counted as deny.
+func (s *QwenSettings) PolicyEntries() (allow, deny []string) {
+	var p Permissions
+	if json.Unmarshal(s.Permissions, &p) == nil {
+		allow, deny = p.Allow, p.Deny
+	}
+	if s.Tools != nil {
+		var exclude []string
+		if json.Unmarshal(s.Tools.Exclude, &exclude) == nil {
+			deny = append(deny, exclude...)
+		}
+	}
+	return allow, deny
 }

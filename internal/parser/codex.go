@@ -430,6 +430,13 @@ type CodexMCP struct {
 	DefaultToolsApprovalMode string                  `toml:"default_tools_approval_mode"`
 	Tools                    map[string]CodexMCPTool `toml:"tools"`
 
+	// Enabled, EnabledTools and DisabledTools decide which tools a server
+	// offers: enabled_tools first, then disabled_tools removes names from it.
+	// The agent-neutral policy reads them (#1516).
+	Enabled       *bool    `toml:"enabled"`
+	EnabledTools  []string `toml:"enabled_tools"`
+	DisabledTools []string `toml:"disabled_tools"`
+
 	// OAuth is [mcp_servers.<name>.oauth]. Only client_secret is read: "OAuth
 	// client secret used for token exchange with a pre-registered client"
 	// (config/src/mcp_types.rs), a literal with no environment-variable form,
@@ -439,7 +446,15 @@ type CodexMCP struct {
 
 // CodexPlugin is one [plugins."<id>"] table; see CodexConfig.Plugins.
 type CodexPlugin struct {
+	// Enabled is false for a plugin turned off in this file; Codex then skips
+	// its apps overlay (#1585).
+	Enabled    *bool                     `toml:"enabled"`
 	MCPServers map[string]CodexPluginMCP `toml:"mcp_servers"`
+	// Apps is plugins.<id>.apps.<connector>, new in Codex 0.167.0 (#1585):
+	// "Connector-wide app settings keyed by connector ID. Ignored when this
+	// plugin is disabled by configuration. Explicit top-level app fields win."
+	// It is not on PROJECT_LOCAL_CONFIG_DENYLIST.
+	Apps map[string]CodexApp `toml:"apps"`
 }
 
 // CodexPluginMCP is the approval overlay for one MCP server a plugin brings.

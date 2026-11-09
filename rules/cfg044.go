@@ -39,7 +39,7 @@ func (r *cfg044) Check(t *Target) []finding.Finding {
 	if denyReadsCovered(deny, sshKeyCoverRe, sshKeySecretPaths, t.ClaudeVersion) {
 		return nil
 	}
-	sev, note := credentialCoverage(t, deny, false)
+	sev, note := credentialCoverageAt(t, deny, false, true)
 	return []finding.Finding{{
 		RuleID:   "CFG044",
 		Severity: sev,

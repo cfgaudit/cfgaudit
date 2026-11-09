@@ -135,11 +135,44 @@ func TestCFG101_LongListCapped(t *testing.T) {
 	}
 }
 
+func TestCFG101_Issue1212_UncoveredSuggestion(t *testing.T) {
+	for _, tc := range []struct {
+		entries         []string
+		absent, present string
+	}{
+		{[]string{"Bash(rm -rf *)", "Bash(rm -fr *)"}, `"-fr"`, "target -rf"},
+		{[]string{"Bash(rm -rf *)", "Bash(rm -fr *)", "Bash(rm -r -f *)"}, `"-fr"`, "target -rf"},
+		{[]string{"Bash(rm -rf *)", "Bash(cat -fr *)"}, "target -rf", `"-fr"`},
+		{[]string{"Bash(rm -rf *)", "Bash(rm -frz *)"}, "target -rf", `"-fr"`},
+		{[]string{"Bash(rm -rf *)"}, "target -rf", `"-fr"`},
+	} {
+		hint := permutationHint([]string{"-rf"}, tc.entries, []string{"rm"})
+		if strings.Contains(hint, tc.absent) || !strings.Contains(hint, tc.present) {
+			t.Errorf("suggestion must be uncovered for %+v: %s", tc.entries, hint)
+		}
+	}
+	for _, input := range []string{
+		`{"permissions":{"deny":["Bash(rm -rf *)","Bash(rm -fr *)"]}}`,
+		`{"permissions":{"deny":["Bash(rm -rf *)","Bash(rm -fr *)","Bash(rm -r -f *)"]}}`,
+		`{"permissions":{"deny":["Bash(rm -rf *)"]}}`,
+	} {
+		onlyFinding(t, CFG101.Check(settingsTarget(t, input)), finding.Warn)
+	}
+}
+
 func TestCFG101_NoPermissions(t *testing.T) {
 	if f := CFG101.Check(settingsTarget(t, `{}`)); len(f) != 0 {
 		t.Errorf("expected no findings, got %+v", f)
 	}
 	if f := CFG101.Check(&Target{}); len(f) != 0 {
 		t.Errorf("expected no findings without settings, got %+v", f)
+	}
+}
+
+// A deny entry that is not a Bash rule covers no spelling (#1337).
+func TestCFG101_NonBashEntry1337(t *testing.T) {
+	hint := permutationHint([]string{"-rf"}, []string{"Read(./secrets/**)", "Bash(rm -rf *)"}, []string{"rm"})
+	if !strings.Contains(hint, `"-fr"`) {
+		t.Errorf("hint: %s", hint)
 	}
 }

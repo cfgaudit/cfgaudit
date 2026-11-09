@@ -1,0 +1,233 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The project files cfgaudit claims to read, per agent (#1443). It is the first
+# half of the check that cfgaudit's model of an agent still matches the agent:
+# cmd/cfgaudit/surfaces_test.go writes each file into an empty directory and
+# requires `cfgaudit inventory` to list it under the agent named here, and it
+# fails on an agent prefix of the inventory that no line covers.
+#
+# A path with a name in it, such as .claude/skills/a/SKILL.md, stands for the
+# whole family.
+#
+# Lines with `scope: user` are the user-global files `--user` reads, with the
+# path relative to the home directory. The test writes them into a temporary
+# home. Plugin packages under ~/.claude/plugins and ~/.claude/skills stay out,
+# like .claude-plugin/ in a project: they are read as packages.
+#
+# Managed files are not listed, because cfgaudit reads none. They sit outside
+# the repository and the home directory, under paths such as /etc, and an
+# administrator controls them, not a repository. A rule that needs one can only
+# state what it assumes.
+#
+# Keys:
+#   agent    the name `cfgaudit inventory` prints
+#   kind     what the file configures, one word
+#   path     the file, relative to the repository root
+#   scope    user for a user-global file; project when absent
+#   content  a minimal file that yields a target; plain text when absent.
+#            Inert: nothing here is executed, the scan only reads it.
+
+surfaces:
+  # claude-code
+  - {agent: claude-code, kind: settings, path: .claude/settings.json, content: "{\"permissions\":{\"allow\":[\"Read\"]}}"}
+  - {agent: claude-code, kind: settings, path: .claude/settings.local.json, content: "{\"permissions\":{\"allow\":[\"Read\"]}}"}
+  - {agent: claude-code, kind: mcp, path: .mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: claude-code, kind: instructions, path: CLAUDE.md}
+  - {agent: claude-code, kind: instructions, path: CLAUDE.local.md}
+  - {agent: claude-code, kind: instructions, path: .claude/CLAUDE.md}
+  - {agent: claude-code, kind: instructions, path: .claude/rules/a.md}
+  - {agent: claude-code, kind: tasks, path: .claude/scheduled_tasks.json, content: "{\"tasks\":[{\"id\":\"a\",\"cron\":\"0 8 * * 1\",\"prompt\":\"x\",\"recurring\":true}]}"}
+  - {agent: claude-code, kind: skills, path: .claude/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: claude-code, kind: agents, path: .claude/agents/a.md, content: "---\nname: a\n---\nx"}
+  - {agent: claude-code, kind: commands, path: .claude/commands/a.md}
+  # gemini-cli
+  - {agent: gemini-cli, kind: settings, path: .gemini/settings.json, content: "{\"a\":1}"}
+  - {agent: gemini-cli, kind: env, path: .gemini/.env, content: "A=1"}
+  - {agent: gemini-cli, kind: instructions, path: GEMINI.md}
+  - {agent: gemini-cli, kind: agents, path: .gemini/agents/a.md, content: "---\nname: a\n---\nx"}
+  - {agent: gemini-cli, kind: skills, path: .gemini/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: gemini-cli, kind: extension, path: gemini-extension.json, content: "{\"name\":\"e\",\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: gemini-cli, kind: extension, path: tools/ext/gemini-extension.json, content: "{\"name\":\"e\",\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: gemini-cli, kind: commands, path: .gemini/commands/a/b.toml, content: "prompt = \"x\""}
+  # kimi-cli (archived; installs up to 1.50.0)
+  - {agent: kimi-cli, kind: instructions, path: .kimi/AGENTS.md}
+  - {agent: kimi-cli, kind: skills, path: .kimi/skills/a/SKILL.md}
+  - {agent: kimi-cli, kind: skills, path: .kimi/skills/a.MD}
+  # pi
+  - {agent: pi, kind: settings, path: .pi/settings.json, content: "{\"shellPath\":\"/bin/zsh\"}"}
+  - {agent: pi, kind: mcp, path: .pi/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: pi, kind: code, path: .pi/extensions/a.ts}
+  - {agent: pi, kind: code, path: .pi/extensions/b/index.ts}
+  - {agent: pi, kind: instructions, path: .pi/SYSTEM.md}
+  - {agent: pi, kind: instructions, path: .pi/APPEND_SYSTEM.md}
+  - {agent: pi, kind: instructions, path: AGENTS.override.md}
+  - {agent: pi, kind: commands, path: .pi/prompts/a.md}
+  - {agent: pi, kind: skills, path: .pi/skills/a/b/SKILL.md, content: "---\nname: a\n---\nx"}
+  # antigravity
+  - {agent: antigravity, kind: mcp, path: .agents/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: antigravity, kind: hooks, path: .agents/hooks.json, content: "{\"h\":{\"Stop\":[{\"command\":\"echo\"}]}}"}
+  - {agent: antigravity, kind: instructions, path: .agents/AGENTS.md}
+  - {agent: antigravity, kind: instructions, path: .agents/GEMINI.md}
+  - {agent: antigravity, kind: rules, path: .agents/rules/a.md}
+  - {agent: antigravity, kind: rules, path: .agent/rules/a.md}
+  - {agent: antigravity, kind: skills, path: .agent/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: antigravity, kind: mcp, path: .agents/plugins/p/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: antigravity, kind: hooks, path: .agents/plugins/p/hooks.json, content: "{\"h\":{\"Stop\":[{\"command\":\"echo\"}]}}"}
+  # kilo-code
+  - {agent: kilo-code, kind: settings, path: kilo.jsonc, content: "{\"mcp\":{}}"}
+  - {agent: kilo-code, kind: settings, path: kilo.json, content: "{\"mcp\":{}}"}
+  - {agent: kilo-code, kind: settings, path: .kilo/kilo.jsonc, content: "{\"mcp\":{}}"}
+  - {agent: kilo-code, kind: settings, path: .kilocode/opencode.json, content: "{\"mcp\":{}}"}
+  - {agent: kilo-code, kind: mcp, path: .kilocode/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: kilo-code, kind: rules, path: .kilo/rules/a.md}
+  - {agent: kilo-code, kind: rules, path: .kilocode/rules-code/a.md}
+  - {agent: kilo-code, kind: rules, path: .kilocoderules}
+  - {agent: kilo-code, kind: rules, path: .kilocoderules-code}
+  - {agent: kilo-code, kind: instructions, path: .kilocodemodes}
+  - {agent: kilo-code, kind: commands, path: .kilocode/workflows/a.md}
+  - {agent: kilo-code, kind: agents, path: .kilo/agents/sub/a.md}
+  - {agent: kilo-code, kind: commands, path: .kilo/commands/a.md}
+  - {agent: kilo-code, kind: skills, path: .kilo/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: kilo-code, kind: code, path: .kilo/plugin/a.ts}
+  - {agent: kilo-code, kind: code, path: .kilocode/tools/a.js}
+  # qwen-code
+  - {agent: qwen-code, kind: settings, path: .qwen/settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: qwen-code, kind: instructions, path: QWEN.md}
+  - {agent: qwen-code, kind: agents, path: .qwen/agents/a.md}
+  - {agent: qwen-code, kind: skills, path: .qwen/skills/a/SKILL.md}
+  - {agent: qwen-code, kind: commands, path: .qwen/commands/a/b.toml, content: "prompt = \"x\""}
+  - {agent: qwen-code, kind: commands, path: .qwen/commands/a/b.md}
+  # codex
+  - {agent: codex, kind: settings, path: .codex/config.toml, content: "model=\"x\""}
+  - {agent: codex, kind: hooks, path: .codex/hooks.json, content: "{\"hooks\":{\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]}}"}
+  # shared
+  - {agent: shared, kind: skills, path: .agents/skills/a/SKILL.md}
+  - {agent: shared, kind: instructions, path: AGENTS.md}
+  - {agent: shared, kind: instructions, path: packages/a/AGENTS.md}
+  - {agent: claude-code, kind: instructions, path: packages/a/CLAUDE.md}
+  - {agent: cursor, kind: instructions, path: packages/a/.cursor/rules/r.mdc}
+  - {agent: devin, kind: instructions, path: packages/a/.devin/rules/r.md}
+  - {agent: shared, kind: instructions, path: agents.md}
+  - {agent: shared, kind: skills, path: skills/a/SKILL.md}
+  # cursor
+  - {agent: cursor, kind: mcp, path: .cursor/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: cursor, kind: hooks, path: .cursor/hooks.json, content: "{\"version\":1,\"hooks\":{\"beforeShellExecution\":[{\"command\":\"x\"}]}}"}
+  - {agent: cursor, kind: permissions, path: .cursor/permissions.json, content: "{\"terminalAllowlist\":[\"*\"],\"mcpAllowlist\":[\"*\"]}"}
+  - {agent: cursor, kind: sandbox, path: .cursor/sandbox.json, content: "{\"networkPolicy\":{\"default\":\"allow\"}}"}
+  - {agent: cursor, kind: cli, path: .cursor/cli.json, content: "{\"permissions\":{\"allow\":[\"Shell(*)\"]}}"}
+  - {agent: cursor, kind: instructions, path: .cursorrules}
+  - {agent: cursor, kind: instructions, path: .cursor/rules/a.mdc}
+  - {agent: cursor, kind: skills, path: .cursor/skills/a/SKILL.md}
+  - {agent: cursor, kind: agents, path: .cursor/agents/a.md}
+  # vscode
+  - {agent: vscode, kind: tasks, path: .vscode/tasks.json, content: "{\"version\":\"2.0.0\",\"tasks\":[{\"label\":\"a\",\"command\":\"x\",\"runOptions\":{\"runOn\":\"folderOpen\"}}]}"}
+  - {agent: vscode, kind: settings, path: .vscode/settings.json, content: "{\"a\":1}"}
+  - {agent: vscode, kind: mcp, path: .vscode/mcp.json, content: "{\"servers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: vscode, kind: workspace, path: a.code-workspace, content: "{\"folders\":[{\"path\":\".\"}],\"settings\":{\"chat.tools.autoApprove\":true}}"}
+  # copilot
+  - {agent: copilot, kind: instructions, path: .github/copilot-instructions.md}
+  - {agent: copilot, kind: instructions, path: .github/instructions/a.instructions.md}
+  - {agent: copilot, kind: agents, path: .github/agents/a.agent.md}
+  - {agent: copilot, kind: hooks, path: .github/hooks/a.json, content: "{\"version\":1,\"hooks\":{\"sessionStart\":[{\"type\":\"command\",\"bash\":\"x\"}]}}"}
+  - {agent: copilot, kind: mcp, path: .github/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: copilot, kind: prompts, path: .github/prompts/a.prompt.md}
+  - {agent: copilot, kind: extensions, path: .github/extensions/a/extension.mjs}
+  - {agent: copilot, kind: skills, path: .github/skills/a/SKILL.md}
+  - {agent: copilot, kind: lsp, path: .github/lsp.json, content: "{\"lspServers\":{\"a\":{\"command\":\"x\"}}}"}
+  # roo-code
+  - {agent: roo-code, kind: instructions, path: .roorules}
+  - {agent: roo-code, kind: instructions, path: .roo/rules/a.md}
+  - {agent: roo-code, kind: instructions, path: .roo/rules-code/a.md}
+  - {agent: roo-code, kind: modes, path: .roomodes, content: "{\"customModes\":[]}"}
+  - {agent: roo-code, kind: mcp, path: .roo/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  # continue
+  - {agent: continue, kind: settings, path: .continue/config.yaml, content: "name: a"}
+  - {agent: continue, kind: mcp, path: .continue/mcpServers/a.yaml, content: "name: a"}
+  - {agent: continue, kind: instructions, path: .continuerules}
+  - {agent: continue, kind: instructions, path: .continue/rules/a.md}
+  # devin
+  - {agent: devin, kind: config, path: .devin/config.json, content: "{\"permissions\":{\"allow\":[\"Exec(*)\"]},\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: devin, kind: hooks, path: .devin/hooks.json, content: "{\"hooks\":{\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]}}"}
+  - {agent: devin, kind: hooks, path: .devin/hooks.v1.json, content: "{\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]}"}
+  - {agent: devin, kind: agents, path: .devin/agents/a.md}
+  - {agent: devin, kind: skills, path: .devin/skills/a/SKILL.md}
+  # devin-desktop
+  - {agent: devin-desktop, kind: hooks, path: .windsurf/hooks.json, content: "{\"hooks\":{\"pre_run_command\":[{\"command\":\"x\"}]}}"}
+  - {agent: devin-desktop, kind: instructions, path: .windsurfrules}
+  - {agent: devin-desktop, kind: instructions, path: .windsurf/rules/a.md}
+  - {agent: devin-desktop, kind: workflows, path: .windsurf/workflows/a.md}
+  - {agent: devin-desktop, kind: skills, path: .windsurf/skills/a/SKILL.md}
+  # zed
+  - {agent: zed, kind: settings, path: .zed/settings.json, content: "{\"context_servers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: zed, kind: tasks, path: .zed/tasks.json, content: "[{\"label\":\"a\",\"command\":\"x\"}]"}
+  - {agent: zed, kind: debug, path: .zed/debug.json, content: "[{\"label\":\"a\",\"adapter\":\"x\",\"program\":\"y\",\"request\":\"launch\"}]"}
+  - {agent: zed, kind: instructions, path: .rules}
+  # opencode
+  - {agent: opencode, kind: settings, path: opencode.json, content: "{\"a\":1}"}
+  - {agent: opencode, kind: settings, path: opencode.jsonc, content: "{\"a\":1}"}
+  - {agent: opencode, kind: settings, path: .opencode/opencode.json, content: "{\"a\":1}"}
+  - {agent: opencode, kind: agents, path: .opencode/agents/a.md}
+  - {agent: opencode, kind: plugins, path: .opencode/plugins/a.ts}
+  - {agent: opencode, kind: tools, path: .opencode/tools/a.ts}
+  - {agent: opencode, kind: commands, path: .opencode/commands/a.md}
+  # kimi-code
+  - {agent: kimi-code, kind: skills, path: .kimi-code/skills/a/SKILL.md}
+  # grok
+  - {agent: grok, kind: settings, path: .grok/config.toml, content: "[mcp_servers.a]\ncommand = \"x\""}
+  - {agent: grok, kind: hooks, path: .grok/hooks/a.json, content: "{\"hooks\":{\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]}}"}
+  - {agent: grok, kind: lsp, path: .grok/lsp.json, content: "{\"lspServers\":{\"a\":{\"command\":\"x\"}}}"}
+  # cline
+  - {agent: cline, kind: instructions, path: .clinerules}
+  - {agent: cline, kind: instructions, path: .cline/rules/a.md}
+  - {agent: cline, kind: mcp, path: cline_mcp_settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  # amp
+  - {agent: amp, kind: instructions, path: AGENT.md}
+  # git
+  - {agent: git, kind: submodules, path: .gitmodules, content: "[submodule \"a\"]\n\tpath = a\n\turl = https://example.invalid/a.git"}
+
+  # user-global
+  - {agent: claude-code, scope: user, kind: settings, path: .claude/settings.json, content: "{\"permissions\":{\"allow\":[\"Read\"]}}"}
+  - {agent: claude-code, scope: user, kind: instructions, path: .claude/CLAUDE.md}
+  - {agent: goose, kind: instructions, path: .goosehints}
+  - {agent: goose, kind: skills, path: .goose/skills/a/SKILL.md, content: "---\nname: a\ndescription: a\n---\nbody\n"}
+  - {agent: goose, kind: recipes, path: .goose/recipes/a.yaml, content: "retry:\n  on_failure: x\n"}
+  - {agent: goose, kind: recipes, path: .agents/recipes/a.yaml, content: "retry:\n  on_failure: x\n"}
+  - {agent: goose, kind: hooks, path: .agents/plugins/a/hooks/hooks.json, content: "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]}}"}
+  - {agent: junie, kind: instructions, path: .junie/AGENTS.md}
+  - {agent: junie, kind: instructions, path: .junie/playbook.md}
+  - {agent: junie, kind: instructions, path: .junie/rules/a.md}
+  - {agent: junie, kind: instructions, path: .junie/guidelines.md}
+  - {agent: junie, kind: instructions, path: .junie/guidelines/a.md}
+  - {agent: junie, kind: mcp, path: .junie/mcp/mcp.json, content: "{\"mcpServers\":{\"a\":{\"command\":\"a\"}}}"}
+  - {agent: junie, kind: skills, path: .junie/skills/a/SKILL.md, content: "---\nname: a\ndescription: a\n---\nbody\n"}
+  - {agent: junie, kind: commands, path: .junie/commands/a.md}
+  - {agent: junie, kind: agents, path: .junie/agents/a.md}
+  - {agent: junie, kind: settings, path: .junie/config.json, content: "{\"proxies\":[{\"api-url\":\"https://a.example\"}]}"}
+  - {agent: claude-code, scope: user, kind: agents, path: .claude/agents/a.md}
+  - {agent: claude-code, scope: user, kind: commands, path: .claude/commands/a.md}
+  - {agent: claude-code, scope: user, kind: instructions, path: .claude/output-styles/a.md}
+  - {agent: claude-code, scope: user, kind: instructions, path: .claude/rules/a.md}
+  - {agent: claude-code, scope: user, kind: skills, path: .claude/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: claude-desktop, scope: user, kind: mcp, path: .config/Claude/claude_desktop_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: claude-desktop, scope: user, kind: mcp, path: "Library/Application Support/Claude/claude_desktop_config.json", content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: claude-desktop, scope: user, kind: mcp, path: AppData/Roaming/Claude/claude_desktop_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: gemini-cli, scope: user, kind: settings, path: .gemini/settings.json, content: "{\"a\":1}"}
+  - {agent: gemini-cli, scope: user, kind: instructions, path: .gemini/GEMINI.md}
+  - {agent: gemini-cli, scope: user, kind: skills, path: .gemini/skills/SKILL.md}
+  - {agent: gemini-cli, scope: user, kind: skills, path: .gemini/skills/a/SKILL.md}
+  - {agent: gemini-cli, scope: user, kind: commands, path: .gemini/commands/a.toml, content: "prompt = \"x\""}
+  - {agent: qwen-code, scope: user, kind: settings, path: .qwen/settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/QWEN.md}
+  - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/output-styles/a.md}
+  - {agent: qwen-code, scope: user, kind: instructions, path: .qwen/rules/a.md}
+  - {agent: qwen-code, scope: user, kind: commands, path: .qwen/commands/a.toml, content: "prompt = \"x\""}
+  - {agent: qwen-code, scope: user, kind: commands, path: .qwen/commands/a/b.md}
+  - {agent: codex, scope: user, kind: settings, path: .codex/config.toml, content: "model=\"x\""}
+  - {agent: continue, scope: user, kind: settings, path: .continue/config.yaml, content: "name: a"}
+  - {agent: continue, scope: user, kind: mcp, path: .continue/config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: cursor, scope: user, kind: mcp, path: .cursor/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: cursor, scope: user, kind: skills, path: .cursor/skills/a/SKILL.md}
+  - {agent: devin-desktop, scope: user, kind: mcp, path: .codeium/windsurf/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: devin-desktop, scope: user, kind: mcp, path: .windsurf/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: shared, scope: user, kind: skills, path: .agents/skills/a/SKILL.md}

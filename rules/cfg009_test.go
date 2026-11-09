@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 func TestCFG009_DollarVar(t *testing.T) {
@@ -86,6 +87,43 @@ func TestCFG009_SafeVarMixedWithUnsafe_FlagsUnsafe(t *testing.T) {
 	}
 }
 
+func TestCFG009_Issue1198_MissingClaudeVars(t *testing.T) {
+	for _, name := range []string{
+		"CLAUDE_TOOL_INPUT", "CLAUDE_FILE_PATH", "CLAUDE_FILE_PATHS",
+		"TOOL_INPUT_FILE_PATH", "CLAUDE_TOOL_ARG_file_path",
+	} {
+		f := CFG009.Check(hookTarget(t, "echo $"+name))
+		if len(f) != 1 || f[0].Severity != finding.Info ||
+			!strings.Contains(f[0].Message, "stdin") {
+			t.Errorf("undefined Claude variable %s must be Info with stdin guidance: %+v", name, f)
+		}
+	}
+	f := CFG009.Check(hookTarget(t, "notify-send $CLAUDE_FILE_PATHS $USER_INPUT"))
+	if len(f) != 2 || f[0].Severity != finding.Info ||
+		f[1].Severity != finding.Warn || !strings.Contains(f[1].Message, "$USER_INPUT") ||
+		strings.Contains(f[1].Message, "$CLAUDE_FILE_PATHS") {
+		t.Errorf("mixed missing/unsafe variables require separate findings: %+v", f)
+	}
+}
+
+func TestCFG009_Issue1198_FrameworkPaths(t *testing.T) {
+	for _, variable := range []string{
+		"CLAUDE_CODE_REMOTE", "CLAUDE_ENV_FILE", "CLAUDE_PLUGIN_DATA",
+		"CURSOR_PROJECT_DIR", "GEMINI_PROJECT_DIR", "DROID_PLUGIN_ROOT",
+		"ZCODE_PLUGIN_ROOT", "GROK_WORKSPACE_ROOT",
+	} {
+		command := "bash $" + variable + "/scripts/check.sh"
+		if f := CFG009.Check(hookTarget(t, command)); len(f) != 0 {
+			t.Errorf("trusted framework variable %s must not be reported: %+v", variable, f)
+		}
+	}
+	f := CFG009.Check(hookTarget(t, "bash $CURSOR_PROJECT_DIR/check.sh $USER_INPUT"))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "$USER_INPUT") ||
+		strings.Contains(f[0].Message, "$CURSOR_PROJECT_DIR") {
+		t.Errorf("actual untrusted value must still be reported: %+v", f)
+	}
+}
+
 func TestCFG009_CommandSubstitution_NoFinding(t *testing.T) {
 	// $(...) is command substitution, a separate concern (issue #38) — not flagged here.
 	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"echo $(date)"}]}]}}`
@@ -106,7 +144,7 @@ func TestCFG009_PositionalParam_NoFinding(t *testing.T) {
 
 func TestCFG009_OneFindingPerCommand(t *testing.T) {
 	// Two separate hook commands → two findings.
-	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"echo $A"},{"type":"command","command":"echo $B"}]}]}}`
+	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"cat $A"},{"type":"command","command":"cat $B"}]}]}}`
 	f := CFG009.Check(settingsTarget(t, json))
 	if len(f) != 2 {
 		t.Fatalf("expected 2 findings, got %d", len(f))
@@ -185,7 +223,8 @@ func TestCFG009_Quoting(t *testing.T) {
 		{`python3 -c "print('$f')"`, "$f"},
 		{`eval "$CMD"`, "$CMD"},
 		{`sh -c "echo $f"`, "$f"},
-		{`bash -lc 'echo $f'`, "$f"},
+		{`bash -lc 'rm $f'`, "$f"},
+		{`bash -lc 'echo $f'`, ""},
 		{`printf '%s' "$f" | xargs sh -c 'rm $0'`, "$f"},
 		{`"$CMD" --version`, "$CMD"},
 		{`X=1 "$CMD"`, "$CMD"},
@@ -231,5 +270,33 @@ func TestCFG009_SkillDirHomeAndDateFormat(t *testing.T) {
 		case tc.want != "" && (len(f) != 1 || !strings.Contains(f[0].Message, tc.want) || strings.Contains(f[0].Message, "CLAUDE_SKILL_DIR")):
 			t.Errorf("%s: want one finding naming only %s, got %+v", tc.cmd, tc.want, f)
 		}
+	}
+}
+
+// $LASTEXITCODE is PowerShell's own automatic variable, so it is exempt in a
+// PowerShell hook and nowhere else (#1198).
+func TestCFG009_LastExitCodePowerShell1198(t *testing.T) {
+	const cmd = `if ($LASTEXITCODE -ne 0) { exit 1 }`
+	ps := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","shell":"powershell","command":` + jsonQuote(cmd) + `}]}]}}`
+	if f := CFG009.Check(settingsTarget(t, ps)); len(f) != 0 {
+		t.Errorf("PowerShell hook: %+v", f)
+	}
+	copilot := agentHooksTarget("Copilot", map[string][]parser.AgentHook{
+		"preToolUse": {{Bash: "./check.sh", Shell: cmd}},
+	}, false)
+	if f := CFG009.Check(copilot); len(f) != 0 {
+		t.Errorf("Copilot powershell command: %+v", f)
+	}
+	agent := &Target{Scope: finding.ScopeProject, CopilotAgentHooksFile: ".github/agents/a.agent.md",
+		CopilotAgentHooks: &parser.AgentHooks{Hooks: map[string][]parser.AgentHook{"preToolUse": {{Shell: cmd}}}}}
+	if f := CFG009.Check(agent); len(f) != 0 {
+		t.Errorf("Copilot agent powershell command: %+v", f)
+	}
+	if f := CFG009.Check(hookTarget(t, `exit $LASTEXITCODE`)); len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Errorf("bash hook must stay warn: %+v", f)
+	}
+	f := CFG009.Check(settingsTarget(t, `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","shell":"powershell","command":"Write-Output $LASTEXITCODE $USER_INPUT"}]}]}}`))
+	if len(f) != 1 || strings.Contains(f[0].Message, "LASTEXITCODE") {
+		t.Errorf("other variables in a PowerShell hook stay reported: %+v", f)
 	}
 }

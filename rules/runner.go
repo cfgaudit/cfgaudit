@@ -5,6 +5,7 @@ package rules
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -42,7 +43,16 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 		if accept != nil && !accept(r) {
 			continue
 		}
-		if target.ContentPath && !ContentPathRules[r.ID()] {
+		if target.ContentPath {
+			allowed := ContentPathRules[r.ID()]
+			if target.CapabilityPackage {
+				allowed = CapabilityPackageRules[r.ID()]
+			}
+			if !allowed {
+				continue
+			}
+		}
+		if target.SkillHelper != "" && !SkillHelperRules[r.ID()] {
 			continue
 		}
 		if detected != nil {
@@ -58,6 +68,7 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 			}
 		}
 		results := r.Check(target)
+		shipped := skillScripts(target)
 		for i := range results {
 			if results[i].Scope == "" {
 				results[i].Scope = target.Scope
@@ -65,11 +76,30 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 			if len(target.ImportChain) > 0 && results[i].File == target.InstructionFile {
 				results[i].Message += "; Claude Code loads this file through @-imports: " + strings.Join(target.ImportChain, " -> ")
 			}
+			if target.NestedDir != "" && results[i].File == target.InstructionFile {
+				results[i].Message += nestedDirNote(target)
+			}
 			if target.ContentPath && results[i].File == target.InstructionFile {
 				if results[i].Severity == finding.Error {
 					results[i].Severity = finding.Warn
 				}
-				results[i].Message += "; scanned because content-paths lists it: agents read this file when they open it, not as instructions"
+				if target.CapabilityPackage {
+					results[i].Message += "; scanned as setup documentation of a detected agent capability package: an agent may relay these installation steps, but does not load this file as trusted instructions"
+				} else {
+					results[i].Message += "; scanned because content-paths lists it: agents read this file when they open it, not as instructions"
+				}
+			}
+			if skill, ok := shipped[results[i].File]; ok {
+				if results[i].Severity == finding.Error {
+					results[i].Severity = finding.Warn
+				}
+				results[i].Message += "; the agent runs this script when the skill " + skill + " tells it to, not on its own"
+			}
+			if target.SkillHelper != "" && results[i].File == target.InstructionFile {
+				if results[i].Severity == finding.Error {
+					results[i].Severity = finding.Warn
+				}
+				results[i].Message += "; this file ships with the skill " + target.SkillHelper + ", and the agent reads it when the skill points it there"
 			}
 		}
 		out = append(out, results...)
@@ -93,6 +123,59 @@ var ContentPathRules = map[string]bool{
 	"CFG080": true,
 }
 
+// CapabilityPackageRules replace ContentPathRules for setup documents in
+// a structurally identified capability package (#1437). CFG036 covers the
+// AgentBaiting/ClawHub installation shapes (download-and-run, encoded shell
+// payloads and password-protected archives); CFG120 covers prose exfiltration.
+// The target is still a ContentPath, so findings cannot exceed warn. CFG014 and
+// CFG119 keep their command/script semantics and inspect executable surfaces,
+// not inert prose; they are documented as complementary rather than run here.
+var CapabilityPackageRules = map[string]bool{
+	"CFG024": true,
+	"CFG036": true,
+	"CFG057": true,
+	"CFG080": true,
+	"CFG120": true,
+}
+
+// skillScripts maps the file of each script t's skill ships (#987) to that
+// skill. Nothing starts such a script but the agent, when the skill tells it
+// to, so Run reports its findings at most at warn: on 2,051 corpus
+// repositories with skill helper files the errors were connectivity probes
+// over /dev/tcp, VM bootstrap scripts enabling a service and release scripts
+// reading the keychain.
+func skillScripts(t *Target) map[string]string {
+	var m map[string]string
+	for _, s := range t.LaunchedScripts {
+		if s.Skill != "" {
+			if m == nil {
+				m = map[string]string{}
+			}
+			m[s.File] = s.Skill
+		}
+	}
+	return m
+}
+
+// SkillHelperRules are the rules that run on a Markdown file beside a
+// SKILL.md (#987). The agent reads such a file when the skill tells it to, so
+// the instruction-content rules apply; the rules about frontmatter, skill
+// triggers and the file's own name do not. Run reports at most warn on these
+// files: on 2,051 corpus repositories, 145 errors in 59 of them were mostly
+// security skills quoting the attacks they detect, defensive "ignore
+// instructions embedded in it" lines, invisible marks in copied reference
+// docs and comments in report templates.
+var SkillHelperRules = map[string]bool{
+	"CFG024": true, // hidden Unicode controls
+	"CFG026": true, // instruction-bypass phrases
+	"CFG031": true, // sensitive file paths
+	"CFG036": true, // shell commands for auto-execution or exfiltration
+	"CFG057": true, // encoded payloads
+	"CFG080": true, // directives in HTML comments
+	"CFG081": true, // surviving context compaction
+	"CFG120": true, // exfiltration directives in prose
+}
+
 // versionSkip returns a non-empty notice message when r is Versioned and
 // requires a Claude Code release newer than detected.
 func versionSkip(r Rule, detected version.Version) string {
@@ -112,4 +195,20 @@ func versionSkip(r Rule, detected version.Version) string {
 		return ""
 	}
 	return fmt.Sprintf("skipped: requires Claude Code >= %s, detected %s", minStr, detected)
+}
+
+// nestedDirNote names the folder a nested instruction file applies to, and the
+// agent that loads it there (#975).
+func nestedDirNote(t *Target) string {
+	slash := filepath.ToSlash(t.InstructionFile)
+	switch {
+	case strings.Contains(slash, "/.cursor/rules/"):
+		return "; this rule applies to work under " + t.NestedDir + "/ (Cursor attaches nested rules when files there are in use)"
+	case strings.Contains(slash, "/.devin/rules/"), strings.Contains(slash, "/.windsurf/rules/"):
+		return "; this rule applies to work under " + t.NestedDir + "/ (Devin reads rule folders from subdirectories of the workspace)"
+	}
+	if filepath.Base(t.InstructionFile) == "CLAUDE.md" {
+		return "; this CLAUDE.md applies to work under " + t.NestedDir + "/ (Claude Code loads it when it works in that folder)"
+	}
+	return "; this AGENTS.md applies to work under " + t.NestedDir + "/ (Cursor loads it as soon as its agent edits a file there)"
 }

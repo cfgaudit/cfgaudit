@@ -409,7 +409,7 @@ func TestPolicy_NeutralRejects(t *testing.T) {
 	cases := []struct{ yaml, want string }{
 		{"policy:\n  deny:\n    comands: [x]\n", `test:3: unknown key "policy.deny.comands"`},
 		{"policy:\n  forbid-allow:\n    read: [x]\n", `test:3: unknown key "policy.forbid-allow.read"`},
-		{"policy:\n  agents: [claude-code, cursor]\n", `test:2: policy.agents: "cursor" is not an agent the policy can check yet`},
+		{"policy:\n  agents: [claude-code, windsurf]\n", `test:2: policy.agents: "windsurf" is not an agent the policy can check yet`},
 		{"policy:\n  deny:\n    commands: [\"Bash(git push:*)\"]\n", `policy.deny.commands: "Bash(git push:*)" is not a plain command`},
 		{"policy:\n  deny:\n    commands: [\"\"]\n", `policy.deny.commands: "" is empty`},
 		{"policy:\n  deny:\n    read: [/etc/passwd]\n", `policy.deny.read: "/etc/passwd" starts with /`},

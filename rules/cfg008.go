@@ -24,12 +24,16 @@ var reverseShellPatterns = []struct {
 	label string
 }{
 	{regexp.MustCompile(`/dev/tcp/`), "/dev/tcp/ redirect (bash networking)"},
-	{regexp.MustCompile(`\b(?:nc|ncat)\s+[^|;&\n]*-[A-Za-z]*[el]`), "netcat with -e/-l flag"},
+	// netcat in command position: not after "-", so `jq -nc` is not netcat
+	// (#1356), and the -e/-l flag is an argument of its own.
+	{regexp.MustCompile(`(?:^|[\s;&|(` + "`" + `"'])(?:nc|ncat|netcat)\s+(?:[^|;&\n]*\s)?-[A-Za-z]*[el][A-Za-z]*\b`), "netcat with -e/-l flag"},
 	{regexp.MustCompile(`\bbash\s+-i\b[^|;&\n]{0,40}[>&]`), "interactive bash redirected"},
 	{regexp.MustCompile(`\bmkfifo\s+/tmp/`), "mkfifo staging in /tmp"},
 	{regexp.MustCompile(`\bsocat\b[^|;&\n]{0,80}\bexec\b`), "socat exec bridge"},
 	{regexp.MustCompile(`(?i)New-Object\s+(?:System\.)?Net\.Sockets\.TCPClient`), "PowerShell TCPClient reverse shell"},
-	{regexp.MustCompile(`(?i)(?:^|[\s"'` + "`" + `(])-e[a-z]*\s+[A-Za-z0-9+/=]{24,}`), "PowerShell encoded command (-EncodedCommand)"},
+	// Only after powershell or pwsh on the same line: `plutil -extract
+	// CFBundleShortVersionString` is not an encoded command (#1356).
+	{regexp.MustCompile(`(?i)\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]*?(?:^|[\s"'` + "`" + `(])-e[a-z]*\s+[A-Za-z0-9+/=]{24,}`), "PowerShell encoded command (-EncodedCommand)"},
 }
 
 func (r *cfg008) Check(t *Target) []finding.Finding {
@@ -44,6 +48,7 @@ func (r *cfg008) Check(t *Target) []finding.Finding {
 				RuleID:   "CFG008",
 				Severity: finding.Error,
 				File:     site.File,
+				Line:     site.Line,
 				Message:  site.Label + " matches reverse-shell pattern (" + label + ") — grants remote interactive access when it runs" + userScopeNote(t),
 			})
 		}

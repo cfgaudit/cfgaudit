@@ -28,9 +28,7 @@ import (
 // keys were agent, command, mcp, mode, plugin and username.
 //
 // Beyond `mcp` this reads the keys that carry a command, instruction text, or a
-// permission decision (#525). `plugin` and `skills` are still unmodelled: both
-// need their own false-positive measurement before a rule, and parsing them
-// ahead of one would be dead config.
+// permission decision (#525), and the `skills` and `plugin(s)` sources (#748).
 type OpenCodeConfig struct {
 	MCP map[string]OpenCodeMCP `json:"mcp,omitempty"`
 
@@ -58,6 +56,30 @@ type OpenCodeConfig struct {
 	// "*" or as an object of rules, and it repeats per agent. It is kept raw
 	// because the value is a union of three shapes; PermissionGrants decodes it.
 	Permission json.RawMessage `json:"permission,omitempty"`
+
+	// Permissions is the OpenCode 2 rule list, `[{action, resource, effect}]`,
+	// applied after the rules lowered from `permission` (normalize.ts:
+	// [...toolRules, ...permissionRules, ...nativePermissions]).
+	Permissions json.RawMessage `json:"permissions,omitempty"`
+
+	// Plugin (v1) and Plugins (OpenCode 2) list plugins: a package name, a
+	// local path, or a "-name" removal; v1 also takes [name, options] and v2
+	// {package, options} (normalize.ts lowers plugin onto plugins).
+	Plugin  json.RawMessage `json:"plugin,omitempty"`
+	Plugins json.RawMessage `json:"plugins,omitempty"`
+
+	// Skills lists more skill sources: paths and http(s) URLs, as an array or,
+	// in the older spelling, {paths, urls} (normalizeSkills in normalize.ts).
+	Skills json.RawMessage `json:"skills,omitempty"`
+
+	// V2 reports a file only OpenCode 2 loads: it carries a v2 `permissions`
+	// block, top-level or in an agent, which OpenCode 1.x and Kilo Code reject
+	// with the whole file ("V2 permissions are not supported by OpenCode V1").
+	// OpenCode 2 reads it, so it is read with OpenCode 2's rules (#748).
+	V2 bool `json:"-"`
+
+	// ProviderURLs are the provider and model base URLs (#779).
+	ProviderURLs []OpenCodeProviderURL `json:"-"`
 }
 
 // OpenCodeAgent is one `agent.<name>` entry. Only the fields cfgaudit reads are
@@ -66,6 +88,10 @@ type OpenCodeConfig struct {
 type OpenCodeAgent struct {
 	Prompt     string          `json:"prompt,omitempty"`
 	Permission json.RawMessage `json:"permission,omitempty"`
+
+	// Permissions is the agent's OpenCode 2 rule list, from agents.<name> in
+	// the config or `permissions` in an agent Markdown file read as V2.
+	Permissions json.RawMessage `json:"-"`
 }
 
 // OpenCodeCommand is one `command.<name>` entry. Template is required upstream
@@ -226,21 +252,18 @@ func ParseOpenCodeConfig(path string) (*OpenCodeConfig, error) {
 
 	// A v2 `permissions` block (top-level or under agents/agent/mode.<name>) is a
 	// hard load error in the v1 loader ("V2 permissions are not supported by
-	// OpenCode V1", lower() throws InvalidError before returning), so the whole
-	// file fails to load and nothing in it applies. Report nothing on it, the same
-	// discipline as an unparseable file — reading its mcp or permission would fire
-	// on config the agent never ran (#580). Note the v1 key is the singular
-	// `permission`, which is unaffected.
-	if openCodeHasV2Permissions(top) {
-		return &OpenCodeConfig{}, nil
-	}
-
+	// OpenCode V1"), so OpenCode 1.x and Kilo Code load nothing from the file
+	// (#580). OpenCode 2 loads it, with `permissions` as its native key (#748),
+	// so the file is read and marked V2: its permission rules follow OpenCode
+	// 2, and Kilo Code's policy check skips it.
 	var c OpenCodeConfig
 	if err := json.Unmarshal(withoutMCPEnvelope(clean, top), &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	c.V2 = openCodeHasV2Permissions(top)
 
 	lowerOpenCodeV2(top, &c)
+	c.ProviderURLs = openCodeProviderURLs(top)
 	return &c, nil
 }
 
@@ -312,8 +335,7 @@ func openCodeHasV2Permissions(top map[string]json.RawMessage) bool {
 // conflict the v1 entry wins, as upstream does. `disabled: true` is read by
 // OpenCodeMCP.Disabled directly, so no separate fold is needed for it.
 //
-// v2 `skills` (a string array split into skills.paths/urls) is deliberately not
-// folded: cfgaudit models no skills surface in either spelling yet. The `oauth`
+// `skills` is read by SkillSources in both spellings. The `oauth`
 // snake-case keys (client_secret) are a possible CFG050 position but are read in
 // neither spelling today.
 func lowerOpenCodeV2(top map[string]json.RawMessage, c *OpenCodeConfig) {
@@ -338,17 +360,21 @@ func lowerOpenCodeV2(top map[string]json.RawMessage, c *OpenCodeConfig) {
 
 	if raw, ok := top["agents"]; ok {
 		var agents map[string]struct {
-			System string `json:"system"`
+			System      string          `json:"system"`
+			Permissions json.RawMessage `json:"permissions"`
 		}
 		if json.Unmarshal(raw, &agents) == nil && len(agents) > 0 {
 			if c.Agent == nil {
 				c.Agent = make(map[string]OpenCodeAgent, len(agents))
 			}
 			for name, a := range agents {
-				if _, exists := c.Agent[name]; exists {
-					continue // the v1 `agent` entry wins on a same-name conflict
+				// On a same-name conflict OpenCode 1.x keeps the v1 `agent` entry
+				// and OpenCode 2 the native one (mergeMaps in normalize.ts). A V2
+				// file only OpenCode 2 loads.
+				if _, exists := c.Agent[name]; exists && !c.V2 {
+					continue
 				}
-				c.Agent[name] = OpenCodeAgent{Prompt: a.System}
+				c.Agent[name] = OpenCodeAgent{Prompt: a.System, Permissions: a.Permissions}
 			}
 		}
 	}
@@ -414,4 +440,70 @@ func openCodeIsDirectServer(raw json.RawMessage) bool {
 		}
 	}
 	return false
+}
+
+// SkillSources returns the `skills` entries: the array form, or the paths then
+// the urls of the object form, keeping only strings, as normalizeSkills does.
+func (c *OpenCodeConfig) SkillSources() []string {
+	if c == nil || len(c.Skills) == 0 {
+		return nil
+	}
+	strs := func(raw json.RawMessage) []string {
+		var items []json.RawMessage
+		if json.Unmarshal(raw, &items) != nil {
+			return nil
+		}
+		var out []string
+		for _, it := range items {
+			var s string
+			if json.Unmarshal(it, &s) == nil {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	if list := strs(c.Skills); list != nil {
+		return list
+	}
+	var obj struct {
+		Paths json.RawMessage `json:"paths"`
+		URLs  json.RawMessage `json:"urls"`
+	}
+	if json.Unmarshal(c.Skills, &obj) != nil {
+		return nil
+	}
+	return append(strs(obj.Paths), strs(obj.URLs)...)
+}
+
+// PluginSources returns the plugin targets of `plugin` then `plugins`, in the
+// order OpenCode 2 applies them, without the "-name" removals.
+func (c *OpenCodeConfig) PluginSources() []string {
+	if c == nil {
+		return nil
+	}
+	var out []string
+	for _, raw := range []json.RawMessage{c.Plugin, c.Plugins} {
+		var items []json.RawMessage
+		if len(raw) == 0 || json.Unmarshal(raw, &items) != nil {
+			continue
+		}
+		for _, it := range items {
+			var s string
+			var tuple []json.RawMessage
+			var obj struct {
+				Package string `json:"package"`
+			}
+			switch {
+			case json.Unmarshal(it, &s) == nil:
+			case json.Unmarshal(it, &tuple) == nil && len(tuple) > 0:
+				_ = json.Unmarshal(tuple[0], &s)
+			case json.Unmarshal(it, &obj) == nil:
+				s = obj.Package
+			}
+			if s != "" && !strings.HasPrefix(s, "-") {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
 }

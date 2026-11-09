@@ -6,6 +6,7 @@ package rules
 import (
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -153,7 +154,70 @@ func isSecretReference(v string) bool {
 }
 
 func (r *cfg007) Check(t *Target) []finding.Finding {
-	if t.Settings == nil || t.Settings.Env == nil {
+	if t.Settings == nil {
+		return nil
+	}
+	findings := envSecrets(t)
+	return append(findings, permissionSecrets(t)...)
+}
+
+// permissionTokenSplitRe splits a permission entry into the words a key can
+// be: a shell word, a quoted string, a header value.
+var permissionTokenSplitRe = regexp.MustCompile("[\\s\"'=:(),;|&<>`]+")
+
+// permissionAssignRe matches a NAME=value assignment in a permission entry,
+// quoted or bare.
+var permissionAssignRe = regexp.MustCompile(`\b([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|'([^']*)'|([^\s"';&|)]+))`)
+
+// permissionSecrets reports a credential in a permissions.allow, ask or deny
+// entry (#1168). Claude Code writes an approved command into the allow list
+// as it was typed, so a token exported or sent in a session ends up there,
+// and a committed settings file publishes it.
+func permissionSecrets(t *Target) []finding.Finding {
+	p := t.Settings.Permissions
+	if p == nil {
+		return nil
+	}
+	var findings []finding.Finding
+	for _, list := range []struct {
+		name    string
+		entries []string
+	}{{"allow", p.Allow}, {"ask", p.Ask}, {"deny", p.Deny}} {
+		for i, entry := range list.entries {
+			what := ""
+			for _, tok := range permissionTokenSplitRe.Split(entry, -1) {
+				if label, ok := matchSecretPattern(tok); ok {
+					what = "a hardcoded " + label
+					break
+				}
+			}
+			if what == "" {
+				for _, m := range permissionAssignRe.FindAllStringSubmatch(entry, -1) {
+					v := m[2] + m[3] + m[4]
+					if v != "" && !isSecretReference(v) && literalUnderSecretName(m[1], v) {
+						what = "a literal value for " + m[1]
+						break
+					}
+				}
+			}
+			if what == "" {
+				continue
+			}
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG007",
+				Severity: finding.Error,
+				File:     t.SettingsFile,
+				Message: "permissions." + list.name + "[" + strconv.Itoa(i) + "] contains " + what +
+					" — the entry was probably recorded when a command that used the key was approved. Rotate the key: deleting the entry is not enough, since it stays in git history" + userScopeNote(t),
+			})
+		}
+	}
+	return findings
+}
+
+// envSecrets reports a credential in the env block.
+func envSecrets(t *Target) []finding.Finding {
+	if t.Settings.Env == nil {
 		return nil
 	}
 	keys := make([]string, 0, len(t.Settings.Env))

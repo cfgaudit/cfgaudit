@@ -18,6 +18,7 @@ import (
 // the key; Code Climate points at line 1.
 func locateKeyLines(all []finding.Finding) {
 	docs := map[string]*keyline.Doc{}
+	assigned := map[string]map[[2]int]bool{}
 	for i := range all {
 		f := &all[i]
 		if f.Line > 0 || !isJSONFile(f.File) {
@@ -34,13 +35,20 @@ func locateKeyLines(all []finding.Finding) {
 		if f.Key != "" {
 			msg = f.Key + " " + msg
 		}
-		f.Line, f.Col = d.Locate(msg)
+		key := f.File + "\x00" + msg
+		if assigned[key] == nil {
+			assigned[key] = map[[2]int]bool{}
+		}
+		f.Line, f.Col = d.Locate(msg, assigned[key])
+		if f.Line > 0 {
+			assigned[key][[2]int{f.Line, f.Col}] = true
+		}
 	}
 }
 
 func isJSONFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".json", ".jsonc":
+	case ".json", ".jsonc", ".code-workspace":
 		return true
 	}
 	return false

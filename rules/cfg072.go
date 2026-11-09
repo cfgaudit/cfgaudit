@@ -79,6 +79,7 @@ func (r *cfg072) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG072",
 			Severity: finding.Error,
 			File:     site.File,
+			Line:     site.Line,
 			Message: site.Label + " encodes a command substitution into " + via +
 				" — the result becomes a DNS label resolved over UDP/53 to a recursive resolver, exfiltrating the data off-host with no TCP connection an HTTP firewall would see. Remove it" + userScopeNote(t),
 		})

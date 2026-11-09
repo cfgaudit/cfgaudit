@@ -1,0 +1,48 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Check agent loaders
+
+# Weekly: a newer release of an agent that changes one of its loader files opens
+# or updates an issue, so a new surface or a changed precedence does not stay a
+# false negative (#1443). It reads upstream source at release tags and never
+# runs it. The list and the reviewed releases are in .github/agent-loaders.json.
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the report instead of opening or updating an issue"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Compare agent loader files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare with the latest releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: .github/scripts/check-agent-loaders.sh .github/agent-loaders.json "$RUNNER_TEMP/agent-loader-diffs"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-loader-diffs
+          path: ${{ runner.temp }}/agent-loader-diffs
+          if-no-files-found: ignore

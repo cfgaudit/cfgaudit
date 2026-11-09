@@ -4,6 +4,8 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"regexp"
 
 	cfgaudit "github.com/cfgaudit/cfgaudit"
@@ -20,6 +22,14 @@ type jsonFinding struct {
 	finding.Finding
 	OWASP string `json:"OWASP,omitempty"`
 	AVEID string `json:"AVEID,omitempty"`
+}
+
+// encodeJSON writes the --format json report: the findings with their OWASP
+// and AVE ids, in the shape schema/findings.schema.json describes (#1078).
+func encodeJSON(w io.Writer, findings []finding.Finding) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(withTaxonomy(findings))
 }
 
 // withTaxonomy wraps each finding with its OWASP LLM and AVE ids for JSON output.
@@ -57,6 +67,7 @@ var aveByRule = map[string]string{
 	"CFG035": "AVE-2026-00011", // configure/trust MCP → dynamic tool call
 	"CFG113": "AVE-2026-00001", // fetch remote instructions and follow them → metamorphic payload via external config fetch
 	"CFG036": "AVE-2026-00003", // embedded exfil shell → credential exfil
+	"CFG120": "AVE-2026-00013", // exfil directive in prose → PII exfil
 	"CFG051": "AVE-2026-00048", // allowed-tools grant → unsafe delegation
 	"CFG056": "AVE-2026-00058", // broad trigger → deceptive trigger scope
 	"CFG057": "AVE-2026-00057", // encoded payload → obfuscated payload
@@ -83,11 +94,14 @@ var aveByRule = map[string]string{
 	"CFG054": "AVE-2026-00047", // entropy secret → hardcoded credentials
 	"CFG065": "AVE-2026-00047", // Continue inline apiKey → hardcoded credentials
 	"CFG073": "AVE-2026-00047", // crypto signing key → hardcoded credentials
-	"CFG052": "AVE-2026-00017", // name shadowing → server impersonation
 	"CFG059": "AVE-2026-00017", // typosquat → server impersonation
 	"CFG019": "AVE-2026-00055", // MCP inline script → untrusted launch config command exec
 	"CFG020": "AVE-2026-00055", // MCP env code injection → untrusted launch config command exec
 	"CFG070": "AVE-2026-00055", // MCP repo-relative command → untrusted launch config command exec
+	"CFG127": "AVE-2026-00055", // hidden-home MCP runtime → untrusted launch config command exec
+
+	// Bytecode poisoning (AVE-2026-00075), read from the .pyc header only.
+	"CFG129": "AVE-2026-00075", // .pyc that runs instead of its source
 
 	// Approval gate bypassed by declarative configuration (AVE-2026-00063).
 	// The record is explicit that it is "distinct from AVE-2026-00048" and

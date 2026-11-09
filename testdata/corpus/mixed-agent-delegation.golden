@@ -1,0 +1,6 @@
+exit 1
+CFG010 warn .mcp.json:3
+CFG023 warn .claude/settings.json:3
+CFG067 info .claude/settings.json:10
+CFG124 warn .mcp.json:3
+CFG125 error .claude/settings.json:11

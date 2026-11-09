@@ -24,7 +24,12 @@ var (
 	//     / `dump-keychain` / `export`
 	//   - Linux Secret Service: `secret-tool lookup` / `search`
 	//   - system password DB: `getent shadow` / `gshadow`
-	credStoreCmdRe = regexp.MustCompile(`(?i)\bsecurity\s+(?:find-(?:generic|internet)-password|dump-keychain|export)\b|\bsecret-tool\s+(?:lookup|search)\b|\bgetent\s+g?shadow\b`)
+	//
+	// find-generic-password and find-internet-password print a secret only with
+	// -w (the password) or -g (attributes and password); without them they print
+	// the item's attributes, which is how a script checks that an item exists
+	// (#1366). The flags are case-sensitive: -G is a generic attribute.
+	credStoreCmdRe = regexp.MustCompile(`(?i)\bsecurity\s+find-(?:generic|internet)-password\b[^|;&\n]*?(?-i:\s-[a-zA-Z]*[wg][a-zA-Z]*\b)|\bsecurity\s+(?:dump-keychain|export)\b|\bsecret-tool\s+(?:lookup|search)\b|\bgetent\s+g?shadow\b`)
 	// credFileRe matches a read/copy/archive verb touching a credential store on
 	// disk: the shadow password DB, the macOS Keychain directory, the Linux
 	// keyring directory, or a browser saved-credential DB (Firefox logins.json /
@@ -51,6 +56,7 @@ func (r *cfg078) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG078",
 			Severity: finding.Error,
 			File:     site.File,
+			Line:     site.Line,
 			Message: site.Label + " reads an OS credential store (macOS Keychain, Linux keyring, /etc/shadow, or a browser saved-password DB) — this exfiltrates stored passwords and tokens. A hook must not read credential stores" +
 				userScopeNote(t),
 		})
