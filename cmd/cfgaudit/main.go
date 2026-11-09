@@ -1253,6 +1253,8 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// pi .pi/: settings that load code or change commands, extensions, the
 	// "!" commands of mcp.json and SYSTEM.md (#1055).
 	targets = append(targets, piTargets(dir)...)
+	// Kilo Code: kilo.json(c), .kilocode/ and .kilo/ (#1056).
+	targets = append(targets, kiloTargets(dir)...)
 
 	// Antigravity CLI: .agents/mcp_config.json, .agents/hooks.json and the
 	// workspace plugins in .agents/plugins (#1057).
@@ -2145,6 +2147,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	for _, m := range antigravityInstructionFiles(dir) {
+		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	for _, m := range kiloInstructionFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
 	for _, m := range devinAgentDirFiles(dir) {
@@ -3404,17 +3409,35 @@ var openCodeConfigFiles = []string{
 // files' servers, and `shell`, a single value, is kept only on the last file
 // that sets it. Other blocks are judged per file.
 func openCodeTargets(dir string) ([]*rules.Target, error) {
+	targets := openCodeFileTargets(dir, openCodeConfigFiles)
+
+	agents, err := openCodeAgentPermissionTargets(dir)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, agents...)
+
+	code, err := openCodeCodeTargets(dir)
+	if err != nil {
+		return nil, err
+	}
+	targets = append(targets, code...)
+	return append(targets, copilotExtensionTargets(dir)...), nil
+}
+
+// openCodeFileTargets builds one target per present file of rels, an OpenCode
+// format config list in merge order, lowest precedence first. A file that does
+// not parse is reported by CFG109 through loadOpenCodeConfigOptional, which
+// never returns an error.
+func openCodeFileTargets(dir string, rels []string) []*rules.Target {
 	type loaded struct {
 		path string
 		cfg  *parser.OpenCodeConfig
 	}
 	var files []loaded
-	for _, rel := range openCodeConfigFiles {
+	for _, rel := range rels {
 		path := filepath.Join(dir, rel)
-		cfg, err := loadOpenCodeConfigOptional(path)
-		if err != nil {
-			return nil, err
-		}
+		cfg, _ := loadOpenCodeConfigOptional(path)
 		if cfg != nil {
 			files = append(files, loaded{path, cfg})
 		}
@@ -3451,19 +3474,7 @@ func openCodeTargets(dir string) ([]*rules.Target, error) {
 		}
 		targets = append(targets, tgt)
 	}
-
-	agents, err := openCodeAgentPermissionTargets(dir)
-	if err != nil {
-		return nil, err
-	}
-	targets = append(targets, agents...)
-
-	code, err := openCodeCodeTargets(dir)
-	if err != nil {
-		return nil, err
-	}
-	targets = append(targets, code...)
-	return append(targets, copilotExtensionTargets(dir)...), nil
+	return targets
 }
 
 // openCodeAgentDirs are where OpenCode reads agent definitions: agents recursively
@@ -3498,7 +3509,9 @@ func openCodeAgentPermissionTargets(dir string) ([]*rules.Target, error) {
 		for _, path := range files {
 			data, err := scanroot.ReadFile(path)
 			if err != nil {
-				return nil, err
+				// A dangling link reads as absent (#1363, #1572); scanroot
+				// records an unreadable file for CFG109.
+				continue
 			}
 			perm, native := parser.OpenCodeAgentPermission(string(data))
 			if perm == nil {

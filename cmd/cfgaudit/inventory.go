@@ -59,6 +59,7 @@ var pathAgents = []struct{ prefix, agent string }{
 	{".zed/", "zed"}, {".rules", "zed"}, {".opencode/", "opencode"}, {"opencode.json", "opencode"}, {"opencode.jsonc", "opencode"},
 	{".kimi-code/", "kimi-code"}, {".kimi/", "kimi-cli"}, {".grok/", "grok"}, {".cline/", "cline"}, {".clinerules", "cline"}, {"cline_mcp_settings.json", "cline"},
 	{"AGENT.md", "amp"}, {".gitmodules", "git"}, {".pi/", "pi"}, {"AGENTS.override.md", "pi"},
+	{".kilo/", "kilo-code"}, {".kilocode/", "kilo-code"}, {"kilo.json", "kilo-code"}, {"kilo.jsonc", "kilo-code"}, {".kilocodemodes", "kilo-code"},
 	{".goose/", "goose"}, {".junie/", "junie"}, {".goosehints", "goose"}, {".agents/recipes/", "goose"}, {".agents/plugins/", "goose"},
 	{".agents/mcp_config.json", "antigravity"}, {".agents/hooks.json", "antigravity"}, {".agents/AGENTS.md", "antigravity"},
 	{".agents/GEMINI.md", "antigravity"}, {".agents/rules/", "antigravity"}, {".agent/", "antigravity"},
@@ -89,6 +90,9 @@ func agentOfPath(rel string) string {
 		case "mcp_config.json", "hooks.json":
 			return "antigravity"
 		}
+	}
+	if best == 0 && strings.HasPrefix(rel, ".kilocoderules") && !strings.Contains(rel, "/") {
+		return "kilo-code"
 	}
 	if best == 0 && path.Base(rel) == "CLAUDE.md" {
 		return "claude-code"

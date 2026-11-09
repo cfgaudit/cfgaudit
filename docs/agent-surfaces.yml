@@ -72,6 +72,23 @@ surfaces:
   - {agent: antigravity, kind: skills, path: .agent/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
   - {agent: antigravity, kind: mcp, path: .agents/plugins/p/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: antigravity, kind: hooks, path: .agents/plugins/p/hooks.json, content: "{\"h\":{\"Stop\":[{\"command\":\"echo\"}]}}"}
+  # kilo-code
+  - {agent: kilo-code, kind: settings, path: kilo.jsonc, content: "{\"mcp\":{}}"}
+  - {agent: kilo-code, kind: settings, path: kilo.json, content: "{\"mcp\":{}}"}
+  - {agent: kilo-code, kind: settings, path: .kilo/kilo.jsonc, content: "{\"mcp\":{}}"}
+  - {agent: kilo-code, kind: settings, path: .kilocode/opencode.json, content: "{\"mcp\":{}}"}
+  - {agent: kilo-code, kind: mcp, path: .kilocode/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: kilo-code, kind: rules, path: .kilo/rules/a.md}
+  - {agent: kilo-code, kind: rules, path: .kilocode/rules-code/a.md}
+  - {agent: kilo-code, kind: rules, path: .kilocoderules}
+  - {agent: kilo-code, kind: rules, path: .kilocoderules-code}
+  - {agent: kilo-code, kind: instructions, path: .kilocodemodes}
+  - {agent: kilo-code, kind: commands, path: .kilocode/workflows/a.md}
+  - {agent: kilo-code, kind: agents, path: .kilo/agents/sub/a.md}
+  - {agent: kilo-code, kind: commands, path: .kilo/commands/a.md}
+  - {agent: kilo-code, kind: skills, path: .kilo/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: kilo-code, kind: code, path: .kilo/plugin/a.ts}
+  - {agent: kilo-code, kind: code, path: .kilocode/tools/a.js}
   # qwen-code
   - {agent: qwen-code, kind: settings, path: .qwen/settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: qwen-code, kind: instructions, path: QWEN.md}

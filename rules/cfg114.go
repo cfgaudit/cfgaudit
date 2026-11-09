@@ -5,6 +5,7 @@ package rules
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -59,6 +60,17 @@ func (r *cfg114) Check(t *Target) []finding.Finding {
 			File:     t.AgentCode.Path,
 			Message: "committed OpenCode desktop plugin directory " + filepath.Base(filepath.Dir(t.AgentCode.Path)) + " has only a desktop part, " + filepath.Base(t.AgentCode.Path) +
 				", which the OpenCode 2 desktop app runs in its windows when it opens this project. Whether that asks first is not measured. cfgaudit does not analyse the code; review it before opening a clone in the desktop app",
+		}}
+	}
+	if kind, ok := strings.CutPrefix(t.AgentCode.Kind, "kilo-"); ok {
+		when := "every time Kilo Code starts in this repository, before any session and with no prompt"
+		if kind == "tool" {
+			when = "as soon as Kilo Code loads an agent in this repository, before the model calls anything and with no prompt"
+		}
+		return []finding.Finding{{
+			RuleID: "CFG114", Severity: finding.Error, Scope: t.Scope, File: t.AgentCode.Path,
+			Message: "committed Kilo Code " + kind + " " + filepath.Base(t.AgentCode.Path) + " is imported and run " + when +
+				" (Kilo Code shares OpenCode's loader, read from the v7.8.27 source). It has no workspace trust step for this code, so anyone who opens a clone with Kilo Code runs it with their own permissions. cfgaudit does not analyse the code itself; review it before the first run",
 		}}
 	}
 	when := openCodeCodeWhen[t.AgentCode.Kind]

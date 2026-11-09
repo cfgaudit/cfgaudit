@@ -144,6 +144,7 @@ The rules are grouped by the configuration they read. [Rules](docs/rules/README.
 - [Roo Code — `.roo/`, `.roorules` & `.roomodes`](docs/rules/README.md#roo-code--roo-roorules--roomodes)
 - [Antigravity CLI — `.agents/`](docs/rules/README.md#antigravity-cli--agents)
 - [pi — `.pi/`](docs/rules/README.md#pi--pi)
+- [Kilo Code — `kilo.jsonc`, `.kilo/` & `.kilocode/`](docs/rules/README.md#kilo-code--kilojsonc-kilo--kilocode)
 
 How the rules map to the OWASP risks, and which risks a configuration file cannot show, is in [OWASP mapping](docs/rules/README.md#owasp-mapping).
 
