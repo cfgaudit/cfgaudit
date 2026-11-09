@@ -40,12 +40,19 @@ func (r *cfg136) Check(t *Target) []finding.Finding {
 		if parser.ManifestPathEscapes(m) {
 			where = m
 		}
+		// A skills-directory plugin loads by itself once the workspace is
+		// trusted; any other package only when someone installs it, so for
+		// its author and reviewer the module is listed, not alarmed on.
+		sev, when := finding.Info, "once the plugin is installed and enabled"
+		if t.PluginAutoLoads {
+			sev, when = finding.Warn, "once the workspace is trusted and with no install step"
+		}
 		out = append(out, finding.Finding{
 			RuleID:   "CFG136",
-			Severity: finding.Warn,
+			Severity: sev,
 			File:     t.PluginHookModulesFile,
 			Key:      "modules",
-			Message:  "hooks.json loads the hooks module \"" + where + "\": Claude Code runs it as code in a worker of its own process at session start, once the workspace is trusted and with no install step, and through its $ it can run host commands ($.process.run), read and write files and answer tool calls. cfgaudit does not scan the module's code. Review it as you would a hook script, or drop the plugin" + userScopeNote(t),
+			Message:  "hooks.json loads the hooks module \"" + where + "\": Claude Code runs it as code in a worker of its own process at session start, " + when + ", and through its $ it can run host commands ($.process.run), read and write files and answer tool calls. cfgaudit does not scan the module's code. Review it as you would a hook script, or drop the plugin" + userScopeNote(t),
 		})
 	}
 	return out

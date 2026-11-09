@@ -133,6 +133,7 @@ func skillsDirPluginTargets(root, manifest string, m *parser.PluginManifest, unr
 			continue
 		}
 		if t != nil {
+			t.PluginAutoLoads = true
 			targets = append(targets, t)
 		}
 	}
@@ -474,6 +475,9 @@ func scanPluginRoot(root string, unreadable func(path string, err error)) ([]*ru
 				return fail(path, err)
 			}
 			if t != nil {
+				// A skills-directory plugin inside a walked package still
+				// loads by itself from the repository (#1601).
+				t.PluginAutoLoads = isSkillsDirPlugin(filepath.Dir(filepath.Dir(path)))
 				targets = append(targets, t)
 			}
 		case "plugin.json":

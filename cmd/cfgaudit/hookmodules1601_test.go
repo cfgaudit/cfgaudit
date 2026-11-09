@@ -24,10 +24,47 @@ func TestHookModules1601(t *testing.T) {
 	var got []string
 	for _, f := range scanFindings(t, dir) {
 		if f.RuleID == "CFG136" {
-			got = append(got, filepath.ToSlash(f.File))
+			got = append(got, filepath.ToSlash(f.File)+" "+string(f.Severity))
 		}
 	}
-	if len(got) != 1 || !strings.HasSuffix(got[0], ".claude/skills/mod/hooks/hooks.json") {
+	if len(got) != 1 || !strings.HasSuffix(got[0], ".claude/skills/mod/hooks/hooks.json warn") {
+		t.Errorf("got %v", got)
+	}
+}
+
+// A plugin package scanned with --plugins lists its module at info: it loads
+// only once someone installs it.
+func TestHookModulesPackage1601(t *testing.T) {
+	dir := t.TempDir()
+	pkg := filepath.Join(dir, "pkg")
+	mustWrite(t, filepath.Join(pkg, ".claude-plugin", "plugin.json"), `{"name":"pkg"}`)
+	mustWrite(t, filepath.Join(pkg, "hooks", "hooks.json"), `{"modules":["./register.ts"]}`)
+	var got []string
+	for _, f := range scanFindings(t, "--plugins", pkg, dir) {
+		if f.RuleID == "CFG136" {
+			got = append(got, string(f.Severity))
+		}
+	}
+	if len(got) != 1 || got[0] != "info" {
+		t.Errorf("got %v", got)
+	}
+}
+
+// A skills-directory plugin inside a repository that is itself a plugin
+// package is still the auto-loading kind.
+func TestHookModulesNestedSkillsDir1601(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"repo"}`)
+	sk := filepath.Join(dir, ".claude", "skills", "inner")
+	mustWrite(t, filepath.Join(sk, ".claude-plugin", "plugin.json"), `{"name":"inner"}`)
+	mustWrite(t, filepath.Join(sk, "hooks", "hooks.json"), `{"modules":["./register.ts"]}`)
+	var got []string
+	for _, f := range scanFindings(t, dir) {
+		if f.RuleID == "CFG136" {
+			got = append(got, string(f.Severity))
+		}
+	}
+	if len(got) != 1 || got[0] != "warn" {
 		t.Errorf("got %v", got)
 	}
 }
