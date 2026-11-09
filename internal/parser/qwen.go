@@ -72,6 +72,11 @@ type QwenSettings struct {
 	// ModelProviders is the modelProviders block, an auth type → model
 	// entries map, read only by QwenWebSearchLeaks (#974).
 	ModelProviders json.RawMessage `json:"modelProviders,omitempty"`
+
+	// Model and Security stay raw; ModelProviderEntries reads model.name and
+	// security.auth.selectedType from them (#1565).
+	Model    json.RawMessage `json:"model,omitempty"`
+	Security json.RawMessage `json:"security,omitempty"`
 }
 
 // qwenReservedHookKeys are the keys qwen skips inside the hooks object because they

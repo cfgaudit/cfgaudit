@@ -98,6 +98,16 @@ func (r *cfg071) Check(t *Target) []finding.Finding {
 		}
 	}
 
+	// qwen modelProviders entries (#1565): the API key from envKey goes to
+	// baseUrl with every request.
+	if t.Qwen != nil && t.Scope != finding.ScopeUser {
+		for _, p := range t.Qwen.ModelProviderEntries() {
+			if urlCleartextNonLoopback(p.BaseURL) {
+				add(t.QwenFile, "qwen modelProviders."+p.AuthType+"["+p.ID+"]", p.BaseURL)
+			}
+		}
+	}
+
 	if t.Codex != nil {
 		if urlCleartextNonLoopback(t.Codex.ChatGPTBaseURL) {
 			add(t.CodexFile, "Codex chatgpt_base_url", t.Codex.ChatGPTBaseURL)
