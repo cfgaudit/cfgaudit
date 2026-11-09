@@ -446,7 +446,15 @@ type CodexMCP struct {
 
 // CodexPlugin is one [plugins."<id>"] table; see CodexConfig.Plugins.
 type CodexPlugin struct {
+	// Enabled is false for a plugin turned off in this file; Codex then skips
+	// its apps overlay (#1585).
+	Enabled    *bool                     `toml:"enabled"`
 	MCPServers map[string]CodexPluginMCP `toml:"mcp_servers"`
+	// Apps is plugins.<id>.apps.<connector>, new in Codex 0.167.0 (#1585):
+	// "Connector-wide app settings keyed by connector ID. Ignored when this
+	// plugin is disabled by configuration. Explicit top-level app fields win."
+	// It is not on PROJECT_LOCAL_CONFIG_DENYLIST.
+	Apps map[string]CodexApp `toml:"apps"`
 }
 
 // CodexPluginMCP is the approval overlay for one MCP server a plugin brings.
