@@ -1969,6 +1969,14 @@
           "description": "Additional directories to include in the permission scope",
           "examples": [["//Users/alice/Documents", "~/projects"]],
           "uniqueItems": true
+        },
+        "blockWritesOutsideWorkingDirectories": {
+          "type": "boolean",
+          "description": "Write, Edit and NotebookEdit refuse paths outside the working directories in every permission mode, and file-tool writes to Claude Code settings files inside them. Does not limit shell, MCP or hooks. Merged restrictively: true in any source wins. Added in 2.1.314."
+        },
+        "blockReadsOutsideWorkingDirectories": {
+          "type": "boolean",
+          "description": "Read refuses paths outside the working directories. Merged restrictively: true in any source wins."
         }
       },
       "additionalProperties": false,

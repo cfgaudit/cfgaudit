@@ -82,6 +82,9 @@ func (r *cfg012) Check(t *Target) []finding.Finding {
 var misplacedSecurityKeys = map[string]string{
 	"allowUnsandboxedCommands":     "sandbox.allowUnsandboxedCommands",
 	"disableBypassPermissionsMode": "permissions.disableBypassPermissionsMode: \"disable\"",
+	// Measured on 2.1.319: at the top level neither blocks anything (#1396).
+	"blockWritesOutsideWorkingDirectories": "permissions.blockWritesOutsideWorkingDirectories",
+	"blockReadsOutsideWorkingDirectories":  "permissions.blockReadsOutsideWorkingDirectories",
 }
 
 // misplacedKey reports a top-level key that the schema defines under sandbox
