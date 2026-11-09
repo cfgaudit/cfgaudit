@@ -70,6 +70,11 @@ var safeShellVars = map[string]bool{
 	"HOME": true,
 }
 
+// formatArgRe matches a format argument whose conversions read as cmd.exe
+// variables: git's --format and --pretty ("%h%n%b" holds "%n%"), stat -c and
+// --printf, find -printf, and the first argument of printf (#1559).
+var formatArgRe = regexp.MustCompile(`(?:--(?:format|pretty)(?:=|\s+)|\bstat\s+(?:-[A-Za-z]+\s+)*-c\s*|--printf(?:=|\s+)|\s-printf\s+|\bprintf\s+(?:-v\s+\S+\s+)?)(?:'[^']*'|"[^"]*"|\S+)`)
+
 // dateFormatRe matches a date(1) +FORMAT argument, whose strftime conversions
 // read as cmd.exe variables: +%Y-%m-%dT%H:%M:%SZ holds "%dT%" (#935).
 var dateFormatRe = regexp.MustCompile(`(?:^|\s)['"]?\+%\S*`)
@@ -101,6 +106,10 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 			// PowerShell sets $LASTEXITCODE itself; in bash it is an ordinary
 			// variable from the environment (#1198).
 			if site.PowerShell && strings.EqualFold(strings.Trim(name, "${}"), "LASTEXITCODE") {
+				continue
+			}
+			// PowerShell does not expand %NAME% either; only cmd.exe does (#1559).
+			if site.PowerShell && strings.HasPrefix(name, "%") {
 				continue
 			}
 			if undefinedClaudeHookVars[name] {
@@ -170,7 +179,7 @@ func extractShellVars(cmd string, hookStdin bool) []string {
 	for _, body := range bodies {
 		check(body, commandTaint(body, outerTaint, hookStdin), outerTaint)
 	}
-	for _, m := range cmdVarRe.FindAllStringSubmatch(dateFormatRe.ReplaceAllString(cmd, " "), -1) {
+	for _, m := range cmdVarRe.FindAllStringSubmatch(formatArgRe.ReplaceAllString(dateFormatRe.ReplaceAllString(cmd, " "), " "), -1) {
 		addKey("%" + m[1] + "%")
 	}
 	return out
