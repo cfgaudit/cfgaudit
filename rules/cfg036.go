@@ -72,6 +72,13 @@ var (
 	archiveLinkRe     = regexp.MustCompile(`(?i)https?://\S`)
 	archivePasswordRe = mustFiltered(`(?i:\b(?:extract|unzip|unpack|decompress)\w*\b[^\n]{0,40}?(?:\b(?:using|with)\b[^\n]{0,15}?|\(\s*)\bpass(?:word|phrase)?\b)|\bunzip\s+-P\s*\S+|\b7z\s+x\b[^\n]*\s-p\S+`)
 	archiveRunRe      = regexp.MustCompile(`(?i)\b(?:run|execute|launch|open|start)\b`)
+	// archiveExecRe matches running an extracted file in the command itself,
+	// with no run verb in the prose (#1401): "unzip -P x a.zip && chmod +x a
+	// && ./a", ".\\helper.exe", Start-Process.
+	archiveExecRe = regexp.MustCompile("(?i)(?:^|&&|;|\\|\\|?|`)\\s*(?:sudo\\s+)?(?:\\./|\\.\\\\)[\\w.\\-]+|\\bchmod\\s+(?:\\+|u\\+|a\\+)?x\\b|\\bStart-Process\\b|\\b(?:ba|z)?sh\\s+\\./")
+	// archiveNoRunRe matches a run verb that is negated ("Do not run files
+	// from the archive"), which is not the run step.
+	archiveNoRunRe = regexp.MustCompile(`(?i)\b(?:do\s+not|don't|never|not)\s+(?:\w+\s+)?(?:run|execute|launch|open|start)\b`)
 	// A paste-site link whose content the text says to run in a terminal
 	// (Part G, #910): "Visit [this page](https://glot.io/snippets/...) and
 	// execute the installation command in Terminal". A paste can change after
@@ -136,15 +143,19 @@ func pasteRun(lines []string, i int) bool {
 
 // passwordArchiveRun reports whether the archive password on line i comes
 // with a download link on that line or up to 3 lines before it, and an
-// instruction to run what it holds on that line or up to 3 lines after it
-// (Part F, #908).
+// instruction to run what it holds up to 3 lines before or after it (Part F,
+// #908). The run step is a run verb that is not negated, or running the
+// extracted file in the command itself (#1401): malicious skills put "run
+// fixture-helper.exe" above the password line, or chain "&& ./helper" onto
+// the extraction.
 func passwordArchiveRun(lines []string, i int) bool {
 	link, run := false, false
 	for j := max(0, i-3); j <= i; j++ {
 		link = link || archiveLinkRe.MatchString(lines[j])
 	}
-	for j := i; j <= min(len(lines)-1, i+3); j++ {
-		run = run || archiveRunRe.MatchString(lines[j])
+	for j := max(0, i-3); j <= min(len(lines)-1, i+3); j++ {
+		l := lines[j]
+		run = run || archiveExecRe.MatchString(l) || (archiveRunRe.MatchString(l) && !archiveNoRunRe.MatchString(l))
 	}
 	return link && run
 }
