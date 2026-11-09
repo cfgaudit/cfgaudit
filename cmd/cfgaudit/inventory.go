@@ -94,6 +94,10 @@ func agentOfPath(rel string) string {
 	if best == 0 && strings.HasPrefix(rel, ".kilocoderules") && !strings.Contains(rel, "/") {
 		return "kilo-code"
 	}
+	// A Gemini extension's manifest, wherever the repository keeps it (#1556).
+	if best == 0 && path.Base(rel) == "gemini-extension.json" {
+		return "gemini-cli"
+	}
 	if best == 0 && path.Base(rel) == "CLAUDE.md" {
 		return "claude-code"
 	}

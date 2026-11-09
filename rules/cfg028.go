@@ -43,7 +43,7 @@ const trustName = `(?i:CLAUDE\.md|CLAUDE\.local\.md|settings\.local\.json|settin
 	`\.vscode/tasks\.json|\.github/mcp\.json|\.github/lsp\.json|\.github/copilot-instructions\.md|` +
 	`AGENTS\.override\.md|AGENTS\.md|AGENT\.md|GEMINI\.md|QWEN\.md|SKILL\.md|` +
 	`\.goosehints|\.cursorrules|\.windsurfrules|\.clinerules|\.roorules|\.roomodes|\.kilocoderules|\.kilocodemodes|\.continuerules|\.rules|` +
-	`opencode\.jsonc?|kilo\.jsonc?|cline_mcp_settings\.json|mcp_config\.json|claude_desktop_config\.json)`
+	`opencode\.jsonc?|kilo\.jsonc?|gemini-extension\.json|cline_mcp_settings\.json|mcp_config\.json|claude_desktop_config\.json)`
 
 const trustDir = `(?i:\.claude/|\.cursor/|\.roo/|\.gemini/|\.codex/|\.agents/|\.agent/|\.windsurf/|\.opencode/|\.qwen/|\.kimi/|\.kimi-code/|` +
 	`\.devin/|\.junie/|\.continue/|\.zed/|\.grok/|\.kilo/|\.kilocode/|\.cline/|\.pi/|\.goose/|` +

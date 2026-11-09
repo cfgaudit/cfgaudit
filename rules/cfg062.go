@@ -25,6 +25,13 @@ func (r *cfg062) ID() string { return "CFG062" }
 // Only fires on an explicit `false` (not the absence of the field) and only when
 // security.allowedExtensions does not narrow what may be installed.
 func (r *cfg062) Check(t *Target) []finding.Finding {
+	if t != nil && t.GeminiExtensionLink != "" {
+		// An extension Gemini loads from a repository-relative GEMINI_CLI_HOME
+		// (#1556) whose install metadata links it to a folder outside the
+		// repository: Gemini loads the extension from that source.
+		return []finding.Finding{{RuleID: "CFG062", Severity: finding.Warn, Scope: t.Scope, File: t.GeminiExtensionLinkFile,
+			Message: "Gemini extension install metadata has type \"link\" and source \"" + t.GeminiExtensionLink + "\", outside the repository: Gemini loads the extension's manifest, MCP servers, hooks and commands from that folder on the reader's machine, which no review of this repository covers. cfgaudit does not read it. Commit the extension itself, or install it in the user's own home"}}
+	}
 	if t == nil || t.Gemini == nil {
 		return nil
 	}

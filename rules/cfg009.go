@@ -59,6 +59,11 @@ var safeShellVars = map[string]bool{
 	// Zed task variables (crates/task/src/task_template.rs VariableName)
 	"ZED_WORKTREE_ROOT":     true,
 	"ZED_MAIN_GIT_WORKTREE": true,
+	// Gemini CLI substitutes these in an extension's manifest and hooks
+	// before anything runs (recursivelyHydrateStrings in
+	// extension-manager.ts, v0.67.0), so they never reach a shell (#1556).
+	"extensionPath": true,
+	"workspacePath": true,
 	// the shell's own cwd, and the user's home directory, which the login sets
 	// (#935)
 	"PWD":  true,

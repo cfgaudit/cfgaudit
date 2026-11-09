@@ -127,7 +127,16 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 	// and here).
 	if g := t.Gemini; g != nil && !g.HooksDisabled() && len(g.Hooks) > 0 {
 		if groups, ok := g.Hooks[geminiZeroClickEvent]; ok && grokEventHasCommand(groups, g.DisabledHookNames()) {
-			findings = append(findings, zeroClickFinding(t, "Gemini", geminiZeroClickEvent, startingASession, t.GeminiFile))
+			if t.GeminiExtensionPublished {
+				// A published extension's hook runs for whoever installs it, and
+				// Gemini's install consent says the extension has hooks
+				// (extensionConsentString, consent.ts), so it is not zero-click
+				// for someone who opens this repository (#1556).
+				findings = append(findings, finding.Finding{RuleID: "CFG086", Severity: finding.Info, Scope: t.Scope, File: t.GeminiFile,
+					Message: "Gemini extension hooks." + geminiZeroClickEvent + " runs a shell command at the start of every session for whoever installs this extension; Gemini's install consent says the extension has hooks, but not which command they run. The command-content rules judge the command"})
+			} else {
+				findings = append(findings, zeroClickFinding(t, "Gemini", geminiZeroClickEvent, startingASession, t.GeminiFile))
+			}
 		}
 	}
 

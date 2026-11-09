@@ -105,3 +105,34 @@ func ParseAntigravityHooks(path string) (*AgentHooks, error) {
 	}
 	return h, nil
 }
+
+// ParseGeminiExtensionMCP reads the mcpServers of a Gemini extension's
+// gemini-extension.json (#1556). The manifest is not a settings file: its
+// other keys (name, version, contextFileName, excludeTools, settings, and
+// whatever else an author adds) are not read, and a server cfgaudit cannot
+// decode is skipped rather than failing the file. Only JSON that does not
+// parse is an error.
+func ParseGeminiExtensionMCP(path string) (map[string]MCPServer, error) {
+	data, err := scanroot.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	var servers map[string]json.RawMessage
+	if json.Unmarshal(top["mcpServers"], &servers) != nil {
+		return nil, nil
+	}
+	out := map[string]MCPServer{}
+	for name, raw := range servers {
+		one, _ := json.Marshal(map[string]map[string]json.RawMessage{"mcpServers": {name: raw}})
+		if cfg, err := parseMCPConfigBytes(one, path); err == nil {
+			if s, ok := cfg.MCPServers[name]; ok {
+				out[name] = s
+			}
+		}
+	}
+	return out, nil
+}
