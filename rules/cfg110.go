@@ -223,7 +223,7 @@ func geminiCLIHomeFinding(t *Target, v string) finding.Finding {
 	what := "Gemini CLI then looks for the user's extensions, custom commands and skills under " + quoteValue(v+"/.gemini") + " instead of the real home directory, once the folder is trusted and .gemini/.env loads. An extension there can start MCP servers"
 	if hasRepoRelativeEntry(v) {
 		return finding.Finding{RuleID: "CFG110", Severity: finding.Error, Scope: t.Scope, File: t.GeminiDotEnvFile,
-			Message: "GEMINI_CLI_HOME is set to " + quoteValue(v) + ", a folder in the repository: " + what + ", so the repository supplies what Gemini treats as the user's own configuration (the mechanism of CVE-2026-13745). cfgaudit does not read that folder as a home directory; remove the variable"}
+			Message: "GEMINI_CLI_HOME is set to " + quoteValue(v) + ", a folder in the repository: " + what + ", so the repository supplies what Gemini treats as the user's own configuration (the mechanism of CVE-2026-13745). cfgaudit reads the extensions in that folder like the repository's own (#1556); remove the variable"}
 	}
 	return finding.Finding{RuleID: "CFG110", Severity: finding.Info, Scope: t.Scope, File: t.GeminiDotEnvFile,
 		Message: "GEMINI_CLI_HOME is set to " + quoteValue(v) + ": " + what + ". The path is absolute or home-relative, so it names a folder on the machine rather than one in the repository; a home directory override belongs in the user's own environment"}

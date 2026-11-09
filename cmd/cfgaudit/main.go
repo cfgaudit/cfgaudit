@@ -1260,6 +1260,10 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// workspace plugins in .agents/plugins (#1057).
 	targets = append(targets, antigravityTargets(dir)...)
 
+	// Gemini CLI extensions: under a repository-relative GEMINI_CLI_HOME, and
+	// the ones the repository publishes (#1556).
+	targets = append(targets, geminiExtensionTargets(dir)...)
+
 	// Continue config.yaml (.continue/, and ~/.continue/ with --user). Its
 	// mcpServers list rides ProjectMCP so the MCP rules apply; inline apiKey
 	// literals drive CFG065.
@@ -2241,6 +2245,22 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range customCommandFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
+	// Gemini CLI extensions (#1556): their context files, skills, agents and
+	// custom commands.
+	extInstructions, extCommands := geminiExtensionFiles(dir)
+	extCommand := map[string]bool{}
+	for _, m := range extInstructions {
+		if !listed[m] {
+			listed[m] = true
+			paths = append(paths, scopedPath{m, finding.ScopeProject})
+		}
+	}
+	for _, m := range extCommands {
+		if !listed[m] {
+			listed[m], extCommand[m] = true, true
+			paths = append(paths, scopedPath{m, finding.ScopeProject})
+		}
+	}
 	if includeUser {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -2291,6 +2311,9 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	shellOff := skillShellDisabled(dir)
 	for _, p := range paths {
 		agent := customCommandAgent(p.path)
+		if extCommand[p.path] {
+			agent = "gemini"
+		}
 		if agent != "" && filepath.Ext(p.path) == ".toml" {
 			if target, ok := customCommandTarget(p.path, agent); ok {
 				target.Scope = p.scope

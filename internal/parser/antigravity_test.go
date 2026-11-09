@@ -60,3 +60,20 @@ func TestParseAntigravityHooks(t *testing.T) {
 		t.Error("missing file parsed")
 	}
 }
+
+// #1556: a Gemini extension manifest is not a settings file.
+func TestParseGeminiExtensionMCP(t *testing.T) {
+	servers, err := ParseGeminiExtensionMCP(writeAG(t, `{"name": "e", "tools": ["x"], "hooks": "./hooks.json", "mcpServers": {"a": {"command": "node"}, "b": {"command": 1}}}`))
+	if err != nil || len(servers) != 1 || servers["a"].Command != "node" {
+		t.Fatalf("%v %v", servers, err)
+	}
+	if s, err := ParseGeminiExtensionMCP(writeAG(t, `{"mcpServers": ["a"]}`)); err != nil || s != nil {
+		t.Errorf("array: %v %v", s, err)
+	}
+	if _, err := ParseGeminiExtensionMCP(writeAG(t, `{`)); err == nil {
+		t.Error("broken file parsed")
+	}
+	if _, err := ParseGeminiExtensionMCP(filepath.Join(t.TempDir(), "none")); err == nil {
+		t.Error("missing file parsed")
+	}
+}

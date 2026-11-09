@@ -213,6 +213,16 @@ type Target struct {
 	PiMCPFile     string
 	PiSystemFile  string
 
+	// GeminiExtensionLink is the source of a Gemini extension installed with
+	// type "link" from outside the repository (#1556), and
+	// GeminiExtensionLinkFile its .gemini-extension-install.json.
+	GeminiExtensionLink     string
+	GeminiExtensionLinkFile string
+
+	// GeminiExtensionPublished marks the hooks target of an extension the
+	// repository publishes rather than one Gemini loads from it (#1556).
+	GeminiExtensionPublished bool
+
 	// QwenWebSearchLeaks are the qwen web search backends whose host only the
 	// repository's own allowedHosts admits (#974), on a target of their own.
 	QwenWebSearchLeaks []parser.QwenWebSearchLeak

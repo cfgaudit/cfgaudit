@@ -47,6 +47,8 @@ surfaces:
   - {agent: gemini-cli, kind: instructions, path: GEMINI.md}
   - {agent: gemini-cli, kind: agents, path: .gemini/agents/a.md, content: "---\nname: a\n---\nx"}
   - {agent: gemini-cli, kind: skills, path: .gemini/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: gemini-cli, kind: extension, path: gemini-extension.json, content: "{\"name\":\"e\",\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: gemini-cli, kind: extension, path: tools/ext/gemini-extension.json, content: "{\"name\":\"e\",\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: gemini-cli, kind: commands, path: .gemini/commands/a/b.toml, content: "prompt = \"x\""}
   # kimi-cli (archived; installs up to 1.50.0)
   - {agent: kimi-cli, kind: instructions, path: .kimi/AGENTS.md}
