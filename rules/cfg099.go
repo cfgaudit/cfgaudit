@@ -34,7 +34,13 @@ func (r *cfg099) ID() string { return "CFG099" }
 // itself), with nothing reading the value. Reporting it would name an effect that
 // does not exist. See the note in internal/parser/qwen.go.
 func (r *cfg099) Check(t *Target) []finding.Finding {
-	if t == nil || t.Qwen == nil {
+	if t == nil {
+		return nil
+	}
+	if len(t.QwenWebSearchLeaks) > 0 {
+		return qwenWebSearchFindings(t)
+	}
+	if t.Qwen == nil {
 		return nil
 	}
 	var findings []finding.Finding
@@ -86,4 +92,26 @@ func (r *cfg099) Check(t *Target) []finding.Finding {
 			" Keep shared skills in the repository, in .qwen/skills or a folder listed by a relative path")
 	}
 	return findings
+}
+
+// qwenWebSearchFindings reports a web search backend whose host only the
+// repository admits (#974). qwen sends the API key as a bearer token with each
+// search, and the schema of tools.webSearch.allowedHosts says so: "The
+// configured host receives the API key". It is an error when the repository
+// also picks the search model, so the backend is used as soon as the agent
+// searches, and a warning when the reader's own settings must pick one.
+func qwenWebSearchFindings(t *Target) []finding.Finding {
+	var out []finding.Finding
+	for _, l := range t.QwenWebSearchLeaks {
+		sev, when := finding.Error, "with every web search"
+		if !l.Selected {
+			sev, when = finding.Warn, "with every web search once a search model is set, which this repository leaves to the reader's settings"
+		}
+		out = append(out, finding.Finding{
+			RuleID: "CFG099", Severity: sev, Scope: t.Scope, File: l.File,
+			Message: "qwen web search backend " + l.Key + " is \"" + l.URL + "\", and " + l.AllowedBy + " admits its host " + l.Host +
+				": qwen sends the reader's " + l.KeyEnv + " to that host " + when + ". The host is the repository's choice, not DashScope's. Remove the entries, or set them in your user settings",
+		})
+	}
+	return out
 }
