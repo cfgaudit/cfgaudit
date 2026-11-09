@@ -34,6 +34,8 @@ func TestCFG009Printed1558(t *testing.T) {
 		`echo $A; cat $B`:                   {"$B"},
 		`echo "$X`:                          {"$X"},
 		`echo $CLAUDE_FILE_PATH`:            {"$CLAUDE_FILE_PATH"},
+
+		// Files read back as code or as NAME=value lines.
 		`echo "export Y=$X" >> "$CLAUDE_ENV_FILE"`: {"$X"},
 		`echo "v $X" >> $GITHUB_ENV`:               {"$X", "$GITHUB_ENV"},
 		`echo "v=$X" >> ${GITHUB_OUTPUT}`:          {"$GITHUB_OUTPUT"},
