@@ -475,6 +475,7 @@ Roo Code (#989) is covered by the existing rules on the files it loads:
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
 | [CFG134](CFG134.md) | warn/info | a committed `.pi/` loads code or changes the commands pi runs once the project is trusted: `packages` (warn without a fixed version, info when pinned), `extensions` and `.pi/extensions/` files, `shellPath`, `shellCommandPrefix`, `npmCommand`, an MCP `env`/`headers` value starting with `!`, and `SYSTEM.md` (info) | LLM03 |
+
 ### Kilo Code — `kilo.jsonc`, `.kilo/` & `.kilocode/`
 
 [Kilo Code](https://github.com/Kilo-Org/kilocode) is an OpenCode fork whose CLI and VS Code extension share OpenCode's backend and config format under Kilo's own names ([#1056](https://github.com/cfgaudit/cfgaudit/issues/1056), read from the v7.8.27 source, `packages/opencode/src`). cfgaudit reads:
