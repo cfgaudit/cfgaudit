@@ -200,6 +200,13 @@ func versionSkip(r Rule, detected version.Version) string {
 // nestedDirNote names the folder a nested instruction file applies to, and the
 // agent that loads it there (#975).
 func nestedDirNote(t *Target) string {
+	slash := filepath.ToSlash(t.InstructionFile)
+	switch {
+	case strings.Contains(slash, "/.cursor/rules/"):
+		return "; this rule applies to work under " + t.NestedDir + "/ (Cursor attaches nested rules when files there are in use)"
+	case strings.Contains(slash, "/.devin/rules/"), strings.Contains(slash, "/.windsurf/rules/"):
+		return "; this rule applies to work under " + t.NestedDir + "/ (Devin reads rule folders from subdirectories of the workspace)"
+	}
 	if filepath.Base(t.InstructionFile) == "CLAUDE.md" {
 		return "; this CLAUDE.md applies to work under " + t.NestedDir + "/ (Claude Code loads it when it works in that folder)"
 	}

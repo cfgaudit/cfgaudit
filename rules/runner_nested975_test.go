@@ -36,3 +36,16 @@ func TestRunNestedClaudeNote(t *testing.T) {
 		t.Fatalf("got %+v", out)
 	}
 }
+
+func TestNestedDirNoteRules(t *testing.T) {
+	for file, want := range map[string]string{
+		"/r/web/.cursor/rules/a.mdc":  "(Cursor attaches nested rules when files there are in use)",
+		"/r/svc/.devin/rules/a.md":    "(Devin reads rule folders from subdirectories of the workspace)",
+		"/r/svc/.windsurf/rules/a.md": "(Devin reads rule folders from subdirectories of the workspace)",
+		"/r/svc/AGENTS.md":            "(Cursor loads it as soon as its agent edits a file there)",
+	} {
+		if got := nestedDirNote(&Target{InstructionFile: file, NestedDir: "x"}); !strings.HasSuffix(got, want) {
+			t.Errorf("%s: %s", file, got)
+		}
+	}
+}
