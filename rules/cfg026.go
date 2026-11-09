@@ -818,7 +818,11 @@ func roleNotSpeaker(line string, sm []int) bool {
 // "Don't ignore input validation", "never disregard the error output" (#655).
 // Only the word right before the verb counts, so "do not follow" and "do not
 // obey", which carry their own negation, are not affected.
-var overrideNegationRe = regexp.MustCompile(`(?i)\b(?:don'?t|do\s+not|never|must\s+not|mustn'?t|should\s+not|shouldn'?t|cannot|can'?t|won'?t|will\s+not|not)\s+$`)
+//
+// A description of code is negated in the third person, often with an adverb
+// in between: "doesn't just ignore response", "does not silently discard the
+// request" (#1568).
+var overrideNegationRe = regexp.MustCompile(`(?i)\b(?:don'?t|do\s+not|doesn'?t|does\s+not|didn'?t|did\s+not|isn'?t|never|must\s+not|mustn'?t|should\s+not|shouldn'?t|cannot|can'?t|won'?t|will\s+not|not)\s+(?:(?:just|simply|merely|only|silently|blindly|quietly)\s+)?$`)
 
 // overrideNegated reports whether a pattern-1 verb is negated: telling the agent
 // not to ignore something is the opposite of an override.
