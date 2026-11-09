@@ -139,7 +139,7 @@ var commentDirectiveRe = regexp.MustCompile(`(?is)(` +
 // Benign descriptions and quoted diagnostics can contain directive words
 // without instructing the agent to act (#1185).
 var commentInstructionsDescriptionRe = regexp.MustCompile(`(?i)^(?:see\s+\S+\s+for\s+|this\s+file\s+contains\s+|a\s+guide\s+to\s+)\S*.*\binstructions?\s+for\s+(?:ai|claude|agents?)\b`)
-var commentLicenseRe = regexp.MustCompile(`(?i)^you should have received a copy of the (?:gnu\s+)?(?:affero\s+)?(?:lesser\s+)?general public license\b`)
+var commentLicenseRe = regexp.MustCompile(`(?i)\byou should have received a copy of the (?:gnu\s+)?(?:affero\s+)?(?:lesser\s+)?general public license\b`)
 var commentQuotedDiagnosticRe = regexp.MustCompile(`(?i)^[a-z][\w.-]*:\s*[^|\n]+\|\s+`)
 
 // A diagnostic saying "you must define a field" is not an instruction to the
@@ -151,9 +151,10 @@ var commentImperativeRe = regexp.MustCompile(`(?i)\b(?:you\s+(?:must|should)|alw
 func benignCommentProse(body string) bool {
 	trimmed := strings.TrimSpace(body)
 	if m := commentLicenseRe.FindStringIndex(trimmed); m != nil {
-		// Exclude the standard "You should have received..." opening, but
-		// inspect anything appended after the licence name for instructions.
-		return !commentDirectiveRe.MatchString(trimmed[m[1]:])
+		// Exclude the standard "You should have received..." sentence wherever
+		// it stands, since a licence header often opens with a copyright line
+		// (#1375), but inspect the text before and after it for instructions.
+		return !commentDirectiveRe.MatchString(trimmed[:m[0]]) && !commentDirectiveRe.MatchString(trimmed[m[1]:])
 	}
 	if commentQuotedDiagnosticRe.MatchString(trimmed) {
 		_, afterDiagnostic, _ := strings.Cut(trimmed, "|")
