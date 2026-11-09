@@ -1,4 +1,8 @@
 exit 1
+CFG049 warn .codex/config.toml:3
+CFG049 warn .mcp.json:3
+CFG049 warn .mcp.json:4
+CFG049 warn opencode.json:3
 CFG126 error .codex/config.toml:1
 CFG126 error .cursor/mcp.json:3
 CFG126 error .mcp.json:3
