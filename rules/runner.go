@@ -75,6 +75,9 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 			if len(target.ImportChain) > 0 && results[i].File == target.InstructionFile {
 				results[i].Message += "; Claude Code loads this file through @-imports: " + strings.Join(target.ImportChain, " -> ")
 			}
+			if target.NestedAgentsDir != "" && results[i].File == target.InstructionFile {
+				results[i].Message += "; this AGENTS.md applies to work under " + target.NestedAgentsDir + "/ (Cursor loads it as soon as its agent edits a file there)"
+			}
 			if target.ContentPath && results[i].File == target.InstructionFile {
 				if results[i].Severity == finding.Error {
 					results[i].Severity = finding.Warn

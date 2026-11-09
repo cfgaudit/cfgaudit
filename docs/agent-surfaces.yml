@@ -61,6 +61,7 @@ surfaces:
   # shared
   - {agent: shared, kind: skills, path: .agents/skills/a/SKILL.md}
   - {agent: shared, kind: instructions, path: AGENTS.md}
+  - {agent: shared, kind: instructions, path: packages/a/AGENTS.md}
   - {agent: shared, kind: instructions, path: agents.md}
   - {agent: shared, kind: skills, path: skills/a/SKILL.md}
   # cursor
