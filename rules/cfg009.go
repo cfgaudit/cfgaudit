@@ -91,7 +91,8 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 
 	var findings []finding.Finding
 	for _, site := range commandSites(t) {
-		vars := extractShellVars(site.Command)
+		// A custom command's !{...} gets no hook JSON on stdin (#1560).
+		vars := extractShellVars(site.Command, !strings.Contains(site.Label, "`!{...}`"))
 		if len(vars) == 0 {
 			continue
 		}
@@ -134,7 +135,7 @@ func (r *cfg009) Check(t *Target) []finding.Finding {
 	return findings
 }
 
-func extractShellVars(cmd string) []string {
+func extractShellVars(cmd string, hookStdin bool) []string {
 	seen := map[string]bool{}
 	var out []string
 	addKey := func(key string) {
@@ -151,7 +152,7 @@ func extractShellVars(cmd string) []string {
 	// at all (#1199), and a single-quoted `sh -c` body is checked as a script
 	// of its own.
 	outerCmd, bodies := splitSingleQuotedSh(cmd)
-	outerTaint := commandTaint(outerCmd, nil)
+	outerTaint := commandTaint(outerCmd, nil, hookStdin)
 	check := func(text string, st, outer shellTaint) {
 		reparse := shellReparseRe.MatchString(text)
 		for _, u := range shellVarUses(text) {
@@ -163,7 +164,7 @@ func extractShellVars(cmd string) []string {
 	}
 	check(outerCmd, outerTaint, nil)
 	for _, body := range bodies {
-		check(body, commandTaint(body, outerTaint), outerTaint)
+		check(body, commandTaint(body, outerTaint, hookStdin), outerTaint)
 	}
 	for _, m := range cmdVarRe.FindAllStringSubmatch(dateFormatRe.ReplaceAllString(cmd, " "), -1) {
 		addKey("%" + m[1] + "%")

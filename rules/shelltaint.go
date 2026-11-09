@@ -60,7 +60,11 @@ func (st shellTaint) untrusted(name string, outer shellTaint) bool {
 
 // commandTaint collects the assignments in cmd and resolves which of them are
 // untrusted.
-func commandTaint(cmd string, outer shellTaint) shellTaint {
+//
+// hookStdin is false for a command whose stdin is not hook input, such as a
+// custom command's !{...} (#1560): a program reading stdin there reads
+// nothing an attacker chose.
+func commandTaint(cmd string, outer shellTaint, hookStdin bool) shellTaint {
 	values := map[string][]string{}
 	add := func(name, value string) { values[name] = append(values[name], value) }
 	for _, m := range assignStartRe.FindAllStringSubmatchIndex(cmd, -1) {
@@ -100,7 +104,7 @@ func commandTaint(cmd string, outer shellTaint) shellTaint {
 				continue
 			}
 			for _, v := range vs {
-				if valueUntrusted(v, st, outer) {
+				if valueUntrusted(v, st, outer, hookStdin) {
 					st[name], changed = true, true
 					break
 				}
@@ -112,8 +116,38 @@ func commandTaint(cmd string, outer shellTaint) shellTaint {
 
 var assignmentNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-func valueUntrusted(v string, st, outer shellTaint) bool {
-	if stdinValueRe.MatchString(v) {
+// explicitStdinRe is the part of stdinValueRe that names stdin outright, so
+// it reads the hook's input wherever it sits in a pipeline.
+var explicitStdinRe = regexp.MustCompile(`(?i)json\.load|sys\.stdin|/dev/stdin|\bstdin\b|readFileSync\(\s*0|ReadToEnd|\[Console\]::In|\$input\b|Read-Host|\$\{?(?:ARGUMENTS\b|[0-9@*])`)
+
+// pipeRe splits a value into pipeline stages on a single |, not on ||.
+var pipeRe = regexp.MustCompile(`\|\|`)
+
+// readsHookStdin reports whether a value reads the hook's input (#1560). A
+// program that reads stdin by default counts only in the first stage of its
+// pipeline: after a pipe it reads the stage before it, which the reference
+// checks judge on their own. "TAGS=$(git tag | head -n 2)" holds tag names.
+func readsHookStdin(v string, hookStdin bool) bool {
+	if explicitStdinRe.MatchString(v) {
+		return true
+	}
+	if !hookStdin {
+		return false
+	}
+	first := pipeRe.ReplaceAllString(v, "\x00\x00")
+	if i := strings.IndexByte(first, '|'); i >= 0 {
+		first = first[:i]
+	}
+	return stdinValueRe.MatchString(first) || stdinFilterRe.MatchString(first)
+}
+
+// stdinFilterRe matches a filter that reads stdin when it opens a pipeline:
+// "f=$(tr -d '\n' | grep -o ...)" reads the hook JSON through tr. After a
+// pipe these read the stage before, so only the first stage counts (#1560).
+var stdinFilterRe = regexp.MustCompile(`(?:^|[\s(;&` + "`" + `])(?:\$\()?\s*(?:tr|grep|egrep|fgrep|sed|awk|gawk|cut|sort|uniq|wc|base64|xxd|od)\b`)
+
+func valueUntrusted(v string, st, outer shellTaint, hookStdin bool) bool {
+	if readsHookStdin(v, hookStdin) {
 		return true
 	}
 	for _, m := range hookVarRe.FindAllStringSubmatch(v, -1) {
