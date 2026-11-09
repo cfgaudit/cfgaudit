@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path"
 	"sort"
 	"strings"
 
@@ -76,6 +77,10 @@ func agentOfPath(rel string) string {
 		if (rel == p.prefix || (strings.HasSuffix(p.prefix, "/") && strings.HasPrefix(rel, p.prefix))) && len(p.prefix) > best {
 			best, agent = len(p.prefix), p.agent
 		}
+	}
+	// A CLAUDE.md in a subfolder is Claude Code's nested file (#975).
+	if best == 0 && path.Base(rel) == "CLAUDE.md" {
+		return "claude-code"
 	}
 	return agent
 }

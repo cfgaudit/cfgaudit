@@ -5,6 +5,7 @@ package rules
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -75,8 +76,8 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 			if len(target.ImportChain) > 0 && results[i].File == target.InstructionFile {
 				results[i].Message += "; Claude Code loads this file through @-imports: " + strings.Join(target.ImportChain, " -> ")
 			}
-			if target.NestedAgentsDir != "" && results[i].File == target.InstructionFile {
-				results[i].Message += "; this AGENTS.md applies to work under " + target.NestedAgentsDir + "/ (Cursor loads it as soon as its agent edits a file there)"
+			if target.NestedDir != "" && results[i].File == target.InstructionFile {
+				results[i].Message += nestedDirNote(target)
 			}
 			if target.ContentPath && results[i].File == target.InstructionFile {
 				if results[i].Severity == finding.Error {
@@ -194,4 +195,13 @@ func versionSkip(r Rule, detected version.Version) string {
 		return ""
 	}
 	return fmt.Sprintf("skipped: requires Claude Code >= %s, detected %s", minStr, detected)
+}
+
+// nestedDirNote names the folder a nested instruction file applies to, and the
+// agent that loads it there (#975).
+func nestedDirNote(t *Target) string {
+	if filepath.Base(t.InstructionFile) == "CLAUDE.md" {
+		return "; this CLAUDE.md applies to work under " + t.NestedDir + "/ (Claude Code loads it when it works in that folder)"
+	}
+	return "; this AGENTS.md applies to work under " + t.NestedDir + "/ (Cursor loads it as soon as its agent edits a file there)"
 }
