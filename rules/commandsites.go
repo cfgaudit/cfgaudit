@@ -384,6 +384,21 @@ func commandSites(t *Target) []commandSite {
 		sites = append(sites, commandSite{Label: skillShellLabel(t.InstructionFile), File: t.InstructionFile, Command: cmd})
 	}
 
+	// pi (#1055): shellCommandPrefix is prepended to every shell command,
+	// npmCommand runs for every package lookup, and an MCP env or headers value
+	// starting with "!" is run as a shell command when the server loads.
+	if t.Pi != nil {
+		if p := parser.PiString(t.Pi.ShellCommandPrefix); p != "" {
+			sites = append(sites, commandSite{Label: "pi shellCommandPrefix", File: t.PiFile, Command: p})
+		}
+		if np := parser.PiStrings(t.Pi.NpmCommand); len(np) > 0 {
+			sites = append(sites, commandSite{Label: "pi npmCommand", File: t.PiFile, Command: strings.Join(np, " ")})
+		}
+	}
+	for _, c := range t.PiMCPCommands {
+		sites = append(sites, commandSite{Label: "pi mcp.json server \"" + c.Server + "\" " + c.Field + "." + c.Key + " `!` command", File: t.PiMCPFile, Command: c.Command})
+	}
+
 	// qwen-code .qwen/agents/*.md `executor:` block (#579). A qwen-only extension
 	// that delegates the subagent's turn to an external process: the committed
 	// Command (and Args) name a binary the repository chooses, spawned at the

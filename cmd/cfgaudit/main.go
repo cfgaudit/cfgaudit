@@ -1250,6 +1250,10 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, qwen...)
 
+	// pi .pi/: settings that load code or change commands, extensions, the
+	// "!" commands of mcp.json and SYSTEM.md (#1055).
+	targets = append(targets, piTargets(dir)...)
+
 	// Continue config.yaml (.continue/, and ~/.continue/ with --user). Its
 	// mcpServers list rides ProjectMCP so the MCP rules apply; inline apiKey
 	// literals drive CFG065.
@@ -1877,6 +1881,13 @@ var (
 		// agents.md for each folder from the project root down. Releases from
 		// 1.52.0 on no longer run the agent, so only older installs read it.
 		filepath.Join(".kimi", "AGENTS.md"),
+		// pi (#1055): .pi/SYSTEM.md replaces the system prompt and
+		// .pi/APPEND_SYSTEM.md is appended to it (resource-loader.ts, v1.5.0);
+		// AGENTS.override.md comes first among the context files pi loads,
+		// without project trust.
+		filepath.Join(".pi", "SYSTEM.md"),
+		filepath.Join(".pi", "APPEND_SYSTEM.md"),
+		"AGENTS.override.md",
 		// Claude Code's own project instruction files beyond the repo-root
 		// CLAUDE.md. The 2.1.281 binary carries the two lists verbatim as
 		// ["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"] and
@@ -2037,6 +2048,8 @@ var (
 		// off by default. Discovery is a single readdir with a /\.md$/i filter
 		// (loadOutputStylesFromDir), not a walk, so a glob matches it exactly (#564).
 		filepath.Join(".qwen", "output-styles", "*.md"),
+		// pi prompt templates, exposed as slash commands (#1055).
+		filepath.Join(".pi", "prompts", "*.md"),
 	}
 	// userInstructionGlobs are scanned only with --user (relative to $HOME): the
 	// user-global subagents, slash commands, and skills apply to every project.
@@ -2694,6 +2707,9 @@ var filteredInstructionDirs = []filteredInstructionDir{
 	{filepath.Join(".continue", "rules"), isMarkdown},
 	{filepath.Join(".continue", "prompts"), isMarkdown},
 	{filepath.Join(".continue", "skills"), isSkillFile},
+	// pi project skills: "Directories containing SKILL.md are discovered
+	// recursively" (docs/skills.md, v1.5.0, #1055).
+	{filepath.Join(".pi", "skills"), isSkillFile},
 	{filepath.Join(".opencode", "skill"), isSkillFile},
 	{filepath.Join(".opencode", "skills"), isSkillFile},
 }
@@ -3691,6 +3707,7 @@ var (
 		filepath.Join(".github", "mcp.json"),    // Copilot CLI workspace MCP, auto-loaded since 1.0.61 (#747)
 		"cline_mcp_settings.json",               // Cline
 		filepath.Join(".roo", "mcp.json"),       // Roo Code project MCP, loaded automatically and taking precedence over the global file (#989)
+		filepath.Join(".pi", "mcp.json"),        // pi project MCP, read once the project is trusted (#1055)
 		filepath.Join(".kimi-code", "mcp.json"), // Kimi Code project MCP — same {mcpServers} shape as .mcp.json; it OVERRIDES the repo-root .mcp.json (Kimi spreads it last) and its stdio entries execute at session start, so it is scanned as its own attributed target rather than merged (which would hide the override)
 	}
 	userAgentMCPFiles = []string{
@@ -3728,6 +3745,14 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, rel := range agentMCPFiles {
 		if err := add(filepath.Join(dir, rel), finding.ScopeProject); err != nil {
 			return nil, err
+		}
+	}
+	// A pi env or headers value starting with "!" is a command, read as one by
+	// piTargets, not a literal the secret rules should judge (#1055).
+	piMCP := filepath.Join(dir, ".pi", "mcp.json")
+	for _, t := range targets {
+		if t.ProjectMCPFile == piMCP {
+			t.ProjectMCP = parser.WithoutPiBangValues(t.ProjectMCP)
 		}
 	}
 	for _, p := range junieMCPFiles(dir) {

@@ -203,6 +203,16 @@ type Target struct {
 	Qwen     *parser.QwenSettings
 	QwenFile string
 
+	// Pi* carry a project .pi/ folder of the pi coding agent (#1055): its
+	// settings.json, the extensions in .pi/extensions, the "!" commands of
+	// .pi/mcp.json and .pi/SYSTEM.md, on a target of their own.
+	Pi            *parser.PiSettings
+	PiFile        string
+	PiExtensions  []string
+	PiMCPCommands []parser.PiBangCommand
+	PiMCPFile     string
+	PiSystemFile  string
+
 	// QwenWebSearchLeaks are the qwen web search backends whose host only the
 	// repository's own allowedHosts admits (#974), on a target of their own.
 	QwenWebSearchLeaks []parser.QwenWebSearchLeak

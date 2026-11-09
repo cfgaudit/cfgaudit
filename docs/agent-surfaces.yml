@@ -52,6 +52,16 @@ surfaces:
   - {agent: kimi-cli, kind: instructions, path: .kimi/AGENTS.md}
   - {agent: kimi-cli, kind: skills, path: .kimi/skills/a/SKILL.md}
   - {agent: kimi-cli, kind: skills, path: .kimi/skills/a.MD}
+  # pi
+  - {agent: pi, kind: settings, path: .pi/settings.json, content: "{\"shellPath\":\"/bin/zsh\"}"}
+  - {agent: pi, kind: mcp, path: .pi/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: pi, kind: code, path: .pi/extensions/a.ts}
+  - {agent: pi, kind: code, path: .pi/extensions/b/index.ts}
+  - {agent: pi, kind: instructions, path: .pi/SYSTEM.md}
+  - {agent: pi, kind: instructions, path: .pi/APPEND_SYSTEM.md}
+  - {agent: pi, kind: instructions, path: AGENTS.override.md}
+  - {agent: pi, kind: commands, path: .pi/prompts/a.md}
+  - {agent: pi, kind: skills, path: .pi/skills/a/b/SKILL.md, content: "---\nname: a\n---\nx"}
   # qwen-code
   - {agent: qwen-code, kind: settings, path: .qwen/settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: qwen-code, kind: instructions, path: QWEN.md}

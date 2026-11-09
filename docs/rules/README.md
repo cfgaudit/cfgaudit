@@ -468,6 +468,14 @@ Roo Code (#989) is covered by the existing rules on the files it loads:
 
 `.clinerules`, Roo Code's legacy fallback, and `AGENTS.md`, which it also loads, are read already.
 
+### pi — `.pi/`
+
+[pi](https://github.com/earendil-works/pi) keeps its project configuration in `.pi/` ([#1055](https://github.com/cfgaudit/cfgaudit/issues/1055)). Its `mcp.json` (`mcpServers`) rides the shared MCP rules (CFG010–CFG021, CFG049–CFG059). `SYSTEM.md`, `APPEND_SYSTEM.md`, `prompts/*.md`, `skills/**/SKILL.md` and the root `AGENTS.override.md` ride the instruction-content rules. `shellCommandPrefix`, `npmCommand` and the `!` commands of `mcp.json` are command sites.
+
+| ID | Severity | Description | OWASP |
+|----|----------|-------------|-------|
+| [CFG134](CFG134.md) | warn/info | a committed `.pi/` loads code or changes the commands pi runs once the project is trusted: `packages` (warn without a fixed version, info when pinned), `extensions` and `.pi/extensions/` files, `shellPath`, `shellCommandPrefix`, `npmCommand`, an MCP `env`/`headers` value starting with `!`, and `SYSTEM.md` (info) | LLM03 |
+
 ## OWASP mapping
 
 cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code first-class, with portable rules extended to other agents). It maps each finding to an [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) risk — but by design it only sees what is *declared in config*, not model behaviour, runtime traffic, or training data. That scope determines which risks it can and cannot address.
@@ -478,7 +486,7 @@ cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code fi
 |----|------|---------------|
 | LLM01 | [Prompt Injection](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM01_PromptInjection.md) | CFG009, CFG015, CFG024, CFG026, CFG030, CFG032, CFG034, CFG056, CFG057, CFG080, CFG081, CFG092, CFG113, CFG116 |
 | LLM02 | [Sensitive Information Disclosure](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM02_SensitiveInformationDisclosure.md) | CFG005, CFG007, CFG012, CFG013, CFG016, CFG021, CFG031, CFG033, CFG036, CFG037, CFG038, CFG041, CFG042, CFG043, CFG044, CFG046, CFG049, CFG050, CFG054, CFG058, CFG065, CFG068, CFG069, CFG071, CFG072, CFG073, CFG075, CFG078, CFG082, CFG088, CFG097, CFG099, CFG112, CFG115, CFG120 |
-| LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG018–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG060, CFG061, CFG063, CFG064, CFG066, CFG076, CFG077, CFG079, CFG083, CFG085, CFG087, CFG090, CFG091, CFG093, CFG094, CFG095, CFG096, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG108, CFG109, CFG110, CFG111, CFG117, CFG118, CFG124, CFG125, CFG130, CFG131, CFG132, CFG133 |
+| LLM03 | [Excessive Agency](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM03_ExcessiveAgency.md) | CFG001–CFG004, CFG006, CFG008, CFG011, CFG018–CFG020, CFG022, CFG023, CFG025, CFG027, CFG028, CFG029, CFG035, CFG039, CFG040, CFG045, CFG047, CFG048, CFG051, CFG053, CFG060, CFG061, CFG063, CFG064, CFG066, CFG076, CFG077, CFG079, CFG083, CFG085, CFG087, CFG090, CFG091, CFG093, CFG094, CFG095, CFG096, CFG099, CFG101, CFG103, CFG104, CFG105, CFG106, CFG107, CFG108, CFG109, CFG110, CFG111, CFG117, CFG118, CFG124, CFG125, CFG130, CFG131, CFG132, CFG133, CFG134 |
 | LLM04 | [Supply Chain](https://github.com/GenAI-Security-Project/GenAI-LLM-Top10/blob/main/2026/final/LLM04_SupplyChain.md) | CFG010, CFG014, CFG052, CFG055, CFG059, CFG062, CFG067, CFG070, CFG074, CFG084, CFG086, CFG089, CFG098, CFG100, CFG102, CFG114, CFG119, CFG121, CFG122, CFG123, CFG126, CFG127, CFG128, CFG129 |
 
 The 2026 edition renumbered the list (#619): Excessive Agency moved from LLM06 to **LLM03** and Supply Chain from LLM03 to **LLM04**, while Prompt Injection and Sensitive Information Disclosure kept their numbers. LLM04:2026 also narrowed: it covers the model and data supply chain and refers agentic supply chain, *"including MCP servers and tool registries"*, to **ASI04 Agentic Supply Chain Vulnerabilities** in the [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/). The supply-chain rules keep LLM04 as their primary id and name ASI04 on an `**OWASP Agentic:**` line in their docs.
