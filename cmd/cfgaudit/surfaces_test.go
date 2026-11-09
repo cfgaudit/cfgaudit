@@ -144,7 +144,6 @@ func TestAgentSurfacesCoverTheUserLists(t *testing.T) {
 // surfacesNotListed are agent prefixes of the inventory with no line, and why.
 var surfacesNotListed = map[string]string{
 	".claude-plugin/": "read as a plugin package, not as a project file",
-	".kimi/":          "Kimi CLI is not read yet (#1012)",
 }
 
 // Every agent prefix of the inventory has a line or a reason, so a surface

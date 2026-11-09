@@ -1872,6 +1872,11 @@ var (
 		// Continue's workspace rules dot file (#645): getWorkspaceContinueRuleDotFiles
 		// reads <workspace>/.continuerules whole as a rule.
 		".continuerules",
+		// Kimi CLI (#1012), the archived Python agent separate from Kimi Code:
+		// soul/agent.py at 1.50.0 loads .kimi/AGENTS.md next to AGENTS.md or
+		// agents.md for each folder from the project root down. Releases from
+		// 1.52.0 on no longer run the agent, so only older installs read it.
+		filepath.Join(".kimi", "AGENTS.md"),
 		// Claude Code's own project instruction files beyond the repo-root
 		// CLAUDE.md. The 2.1.281 binary carries the two lists verbatim as
 		// ["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"] and
@@ -2109,6 +2114,15 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	for _, m := range kimiSkillFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
+	}
+	kimiListed := map[string]bool{}
+	for _, p := range paths {
+		kimiListed[p.path] = true
+	}
+	for _, m := range kimiCLISkillFiles(dir) {
+		if !kimiListed[m] {
+			paths = append(paths, scopedPath{m, finding.ScopeProject})
+		}
 	}
 	for _, m := range rooInstructionFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
@@ -2754,6 +2768,57 @@ func kimiSkillFiles(base string) []string {
 				continue
 			}
 			if info, err := scanroot.Stat(filepath.Join(root, strings.TrimSuffix(name, ".md"), "SKILL.md")); err == nil && !info.IsDir() {
+				continue
+			}
+			out = append(out, filepath.Join(root, name))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// kimiCLISkillRoots are the project skill roots of Kimi CLI 1.50.0
+// (skill/__init__.py): the first existing of .kimi/skills, .claude/skills and
+// .codex/skills, and always .agents/skills. All of them are read here, since a
+// repository can add or remove a folder to change which one Kimi CLI picks.
+var kimiCLISkillRoots = []string{
+	filepath.Join(".kimi", "skills"),
+	filepath.Join(".claude", "skills"),
+	filepath.Join(".codex", "skills"),
+	filepath.Join(".agents", "skills"),
+}
+
+// kimiCLISkillFiles returns the skills Kimi CLI reads from a project beyond
+// the ones the shared skill walks find (#1012). In each root, pass 1 reads
+// <name>/SKILL.md and pass 2 every other file whose name ends in .md in any
+// case (entry.name.lower().endswith(".md")), except a top-level SKILL.md in
+// any case. A flat file named after a <name>/SKILL.md folder is left out:
+// Kimi CLI keeps the folder's skill when both claim a name.
+func kimiCLISkillFiles(base string) []string {
+	var out []string
+	for i, rel := range kimiCLISkillRoots {
+		root := filepath.Join(base, rel)
+		entries, err := scanroot.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() {
+				// Only .kimi/skills is Kimi CLI's own; the shared roots'
+				// <name>/SKILL.md are read by the skills walk already.
+				if i == 0 {
+					if info, err := scanroot.Stat(filepath.Join(root, name, "SKILL.md")); err == nil && info.Mode().IsRegular() {
+						out = append(out, filepath.Join(root, name, "SKILL.md"))
+					}
+				}
+				continue
+			}
+			lower := strings.ToLower(name)
+			if !strings.HasSuffix(lower, ".md") || lower == "skill.md" {
+				continue
+			}
+			if info, err := scanroot.Stat(filepath.Join(root, name[:len(name)-3], "SKILL.md")); err == nil && info.Mode().IsRegular() {
 				continue
 			}
 			out = append(out, filepath.Join(root, name))
