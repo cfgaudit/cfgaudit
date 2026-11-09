@@ -129,7 +129,7 @@ func (r *cfg015) Check(t *Target) []finding.Finding {
 		// Option C of #1201: a substitution that reads nothing an attacker can
 		// write (hook input, $ARGUMENTS, repository text, the network) is info.
 		sev := finding.Info
-		taint := commandTaint(site.Command, nil)
+		taint := commandTaint(site.Command, nil, !strings.Contains(site.Label, "`!{...}`"))
 		for _, s := range substs {
 			if hookNetworkCmdRe.MatchString(s) {
 				sev = finding.Error

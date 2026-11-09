@@ -35,7 +35,7 @@ func TestExtractShellVars1376(t *testing.T) {
 		`f=$(jq -r .p); echo "$((1+2)) $f"`: {"$f"},
 		`f=$(jq -r .p); echo "$(date $f`:    {"$f"},
 	} {
-		if got := extractShellVars(cmd); !reflect.DeepEqual(got, want) {
+		if got := extractShellVars(cmd, true); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: got %v, want %v", cmd, got, want)
 		}
 	}
@@ -44,7 +44,7 @@ func TestExtractShellVars1376(t *testing.T) {
 // The info for the variable stays, and no warn is added for its copy.
 func TestCFG009_CopyOfUnsetVariable1376(t *testing.T) {
 	cmd := `for f in $CLAUDE_FILE_PATHS; do echo "NOTE: $f changed"; done`
-	if got := extractShellVars(cmd); len(got) != 1 || !strings.Contains(got[0], "CLAUDE_FILE_PATHS") || !undefinedClaudeHookVars[got[0]] {
+	if got := extractShellVars(cmd, true); len(got) != 1 || !strings.Contains(got[0], "CLAUDE_FILE_PATHS") || !undefinedClaudeHookVars[got[0]] {
 		t.Errorf("got %v", got)
 	}
 	if neverSet("f", shellTaint{}, nil) {
