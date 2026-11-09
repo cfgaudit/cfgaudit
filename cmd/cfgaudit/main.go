@@ -1250,6 +1250,10 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	}
 	targets = append(targets, qwen...)
 
+	// pi .pi/: settings that load code or change commands, extensions, the
+	// "!" commands of mcp.json and SYSTEM.md (#1055).
+	targets = append(targets, piTargets(dir)...)
+
 	// Continue config.yaml (.continue/, and ~/.continue/ with --user). Its
 	// mcpServers list rides ProjectMCP so the MCP rules apply; inline apiKey
 	// literals drive CFG065.
@@ -1877,6 +1881,13 @@ var (
 		// agents.md for each folder from the project root down. Releases from
 		// 1.52.0 on no longer run the agent, so only older installs read it.
 		filepath.Join(".kimi", "AGENTS.md"),
+		// pi (#1055): .pi/SYSTEM.md replaces the system prompt and
+		// .pi/APPEND_SYSTEM.md is appended to it (resource-loader.ts, v1.5.0);
+		// AGENTS.override.md comes first among the context files pi loads,
+		// without project trust.
+		filepath.Join(".pi", "SYSTEM.md"),
+		filepath.Join(".pi", "APPEND_SYSTEM.md"),
+		"AGENTS.override.md",
 		// Claude Code's own project instruction files beyond the repo-root
 		// CLAUDE.md. The 2.1.281 binary carries the two lists verbatim as
 		// ["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"] and
@@ -2037,6 +2048,8 @@ var (
 		// off by default. Discovery is a single readdir with a /\.md$/i filter
 		// (loadOutputStylesFromDir), not a walk, so a glob matches it exactly (#564).
 		filepath.Join(".qwen", "output-styles", "*.md"),
+		// pi prompt templates, exposed as slash commands (#1055).
+		filepath.Join(".pi", "prompts", "*.md"),
 	}
 	// userInstructionGlobs are scanned only with --user (relative to $HOME): the
 	// user-global subagents, slash commands, and skills apply to every project.
@@ -2694,6 +2707,9 @@ var filteredInstructionDirs = []filteredInstructionDir{
 	{filepath.Join(".continue", "rules"), isMarkdown},
 	{filepath.Join(".continue", "prompts"), isMarkdown},
 	{filepath.Join(".continue", "skills"), isSkillFile},
+	// pi project skills: "Directories containing SKILL.md are discovered
+	// recursively" (docs/skills.md, v1.5.0, #1055).
+	{filepath.Join(".pi", "skills"), isSkillFile},
 	{filepath.Join(".opencode", "skill"), isSkillFile},
 	{filepath.Join(".opencode", "skills"), isSkillFile},
 }
@@ -3730,6 +3746,7 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			return nil, err
 		}
 	}
+
 	for _, p := range junieMCPFiles(dir) {
 		if err := add(p, finding.ScopeProject); err != nil {
 			return nil, err

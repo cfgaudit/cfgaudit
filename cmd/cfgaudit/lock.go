@@ -179,6 +179,7 @@ func targetFiles(t *rules.Target) []string {
 	for _, s := range t.LaunchedScripts {
 		out = append(out, s.File)
 	}
+	out = append(out, t.PiExtensions...)
 	if t.AgentCode != nil {
 		out = append(out, t.AgentCode.Path)
 	}
