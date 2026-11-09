@@ -38,13 +38,23 @@ var (
 	// substDomainRe matches a command substitution immediately followed by a dotted
 	// domain suffix — `$(cat ~/.ssh/id_rsa | base64).attacker.com` — i.e. the
 	// substitution output becomes a DNS label under an attacker domain.
-	substDomainRe = regexp.MustCompile(cmdSubstPat + `\.[A-Za-z0-9.-]*[A-Za-z]`)
+	// More label characters or substitutions may sit between the substitution
+	// and the dot: `$(whoami)x.evil.com`, `$(id)-$(whoami).evil.com` (#1369).
+	substDomainRe = regexp.MustCompile(cmdSubstPat + dottedLabelSuffix)
+
+	// dottedLabelSuffix is what follows a substitution that becomes a DNS label:
+	// label characters or further substitutions, then a dot and a domain. A
+	// port or a path right after the substitution does not match, so a
+	// substitution that is the whole host, `http://$(curl ifconfig.me):13000`
+	// or `http://$(hostname)/health`, is not reported (#1369).
+	dottedLabelSuffix = `(?:[A-Za-z0-9-]|` + cmdSubstPat + `)*\.[A-Za-z0-9.-]*[A-Za-z]`
 
 	// substURLHostRe matches a command substitution sitting in the host segment of
 	// a URL — `http://data$(env).evil.com` — between `://` and the first path,
 	// query, or fragment delimiter. Host-label characters (no `/?#` or space) may
 	// prefix the substitution; the substitution itself may contain spaces/slashes.
-	substURLHostRe = regexp.MustCompile(`(?i)[a-z][a-z0-9+.-]*://[A-Za-z0-9._~%-]*` + cmdSubstPat)
+	// A dotted label must follow it, as for substDomainRe (#1369).
+	substURLHostRe = regexp.MustCompile(`(?i)[a-z][a-z0-9+.-]*://[A-Za-z0-9._~%-]*` + cmdSubstPat + dottedLabelSuffix)
 )
 
 // Check flags a command site that smuggles data out through a DNS query name. A
