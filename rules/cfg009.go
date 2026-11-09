@@ -155,8 +155,12 @@ func extractShellVars(cmd string, hookStdin bool) []string {
 	outerTaint := commandTaint(outerCmd, nil, hookStdin)
 	check := func(text string, st, outer shellTaint) {
 		reparse := shellReparseRe.MatchString(text)
+		printed := printSafe(text)
 		for _, u := range shellVarUses(text) {
-			if !st.untrusted(u.name, outer) || (!reparse && (u.safe || u.literal)) {
+			// A variable Claude Code never sets keeps its info finding even when
+			// it is only printed (#1558).
+			printedOnly := u.printed && printed && !undefinedClaudeHookVars["$"+u.name]
+			if !st.untrusted(u.name, outer) || (!reparse && (u.safe || u.literal || printedOnly)) {
 				continue
 			}
 			addKey("$" + u.name)
