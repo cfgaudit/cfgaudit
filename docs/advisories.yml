@@ -309,6 +309,7 @@
 
 - id: "CVE-2025-8217"
   aliases: [GHSA-7g7f-ff96-5gcw]
+  repo: aws/aws-toolkit-vscode
   kind: cve
   agent: "Amazon Q Developer"
   summary: "An instruction gave the agent a destructive goal in prose."
