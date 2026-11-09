@@ -63,11 +63,11 @@ func (r *cfg047) checkZed(t *Target) []finding.Finding {
 		}
 		msg := "Zed task \"" + task.Name() + "\" is spawned by the \"" + strings.Join(hooks, "\", \"") +
 			"\" hook — Zed runs it in a terminal when a git worktree is created, without asking about the command. " +
-			"Unlike .zed/settings.json, this file is not worktree-trust gated, so a committed task applies to whoever opens the repo. Drop the hook and invoke the task explicitly"
+			"Up to Zed 1.27 this file, unlike .zed/settings.json, is not worktree-trust gated, so a committed task applies to whoever opens the repo; from 1.28 it waits for worktree trust, one prompt that covers the whole worktree. Drop the hook and invoke the task explicitly"
 		if strings.EqualFold(strings.TrimSpace(task.Reveal), "never") {
 			msg = "Zed task \"" + task.Name() + "\" is spawned by the \"" + strings.Join(hooks, "\", \"") +
 				"\" hook with reveal: \"never\" — Zed runs it in a terminal when a git worktree is created, without asking about the command and without showing it. " +
-				"Unlike .zed/settings.json, this file is not worktree-trust gated, so a committed task applies to whoever opens the repo. Drop the hook and invoke the task explicitly"
+				"Up to Zed 1.27 this file, unlike .zed/settings.json, is not worktree-trust gated, so a committed task applies to whoever opens the repo; from 1.28 it waits for worktree trust, one prompt that covers the whole worktree. Drop the hook and invoke the task explicitly"
 		}
 		findings = append(findings, finding.Finding{
 			RuleID:   "CFG047",
