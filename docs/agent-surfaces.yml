@@ -62,6 +62,16 @@ surfaces:
   - {agent: pi, kind: instructions, path: AGENTS.override.md}
   - {agent: pi, kind: commands, path: .pi/prompts/a.md}
   - {agent: pi, kind: skills, path: .pi/skills/a/b/SKILL.md, content: "---\nname: a\n---\nx"}
+  # antigravity
+  - {agent: antigravity, kind: mcp, path: .agents/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: antigravity, kind: hooks, path: .agents/hooks.json, content: "{\"h\":{\"Stop\":[{\"command\":\"echo\"}]}}"}
+  - {agent: antigravity, kind: instructions, path: .agents/AGENTS.md}
+  - {agent: antigravity, kind: instructions, path: .agents/GEMINI.md}
+  - {agent: antigravity, kind: rules, path: .agents/rules/a.md}
+  - {agent: antigravity, kind: rules, path: .agent/rules/a.md}
+  - {agent: antigravity, kind: skills, path: .agent/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
+  - {agent: antigravity, kind: mcp, path: .agents/plugins/p/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
+  - {agent: antigravity, kind: hooks, path: .agents/plugins/p/hooks.json, content: "{\"h\":{\"Stop\":[{\"command\":\"echo\"}]}}"}
   # qwen-code
   - {agent: qwen-code, kind: settings, path: .qwen/settings.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: qwen-code, kind: instructions, path: QWEN.md}

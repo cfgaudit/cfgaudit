@@ -476,6 +476,18 @@ Roo Code (#989) is covered by the existing rules on the files it loads:
 |----|----------|-------------|-------|
 | [CFG134](CFG134.md) | warn/info | a committed `.pi/` loads code or changes the commands pi runs once the project is trusted: `packages` (warn without a fixed version, info when pinned), `extensions` and `.pi/extensions/` files, `shellPath`, `shellCommandPrefix`, `npmCommand`, an MCP `env`/`headers` value starting with `!`, and `SYSTEM.md` (info) | LLM03 |
 
+### Antigravity CLI — `.agents/`
+
+[Antigravity CLI](https://antigravity.google/docs) (`agy`), Gemini CLI's successor for consumer plans, keeps its workspace configuration in `.agents/` ([#1057](https://github.com/cfgaudit/cfgaudit/issues/1057)). It ships no source, so this is read from its docs (`/docs/mcp`, `/docs/hooks`, `/docs/rules`, `/docs/subagents`, `/docs/plugins`, `/docs/build-plugins`):
+
+- **MCP.** `.agents/mcp_config.json` (`mcpServers`; the remote URL is `serverUrl`, and `url` also works) rides the shared MCP rules. The docs show plain JSON, and comments are tolerated.
+- **Hooks.** In `.agents/hooks.json`, hook names map to an optional `enabled` and event keys. `PreToolUse` and `PostToolUse` take `[{matcher, hooks: [...]}]`. `SessionStart`, `PreInvocation`, `PostInvocation` and `Stop` take the handlers directly. A hook with `enabled: false` is not read. The commands ride the command-content rules, and a `SessionStart` hook is [CFG086](CFG086.md)'s zero-click event. The docs do not say whether workspace hooks wait for folder trust; the CLI changelog (1.1.1) says they do.
+- **Workspace plugins.** Each `.agents/plugins/<name>/` contributes `mcp_config.json`, `hooks.json` (run with the plugin root as working directory), `skills/**/SKILL.md`, `agents/*.md` and `agents/<name>/agent.md`, and `rules/*.md`.
+- **Instruction content.** `.agents/AGENTS.md`, `.agents/GEMINI.md`, `.agents/rules/*.md`, and the legacy `.agent/rules/*.md` and `.agent/skills/**/SKILL.md` are read. Root `AGENTS.md`, `GEMINI.md`, `.agents/skills` and `.agents/agents` were read already.
+- **Not read.** Subagent `commandExecutionPolicy`: the docs list `off`, `auto`, `eager` and `sandbox` (default) without saying what each allows. Plugin `bin/`: not in the documented layout.
+
+Whether workspace MCP servers start after trust is not measured. An upstream issue reports workspace MCP not loading on 1.1.3.
+
 ## OWASP mapping
 
 cfgaudit is a **static auditor of AI-agent configuration files** (Claude Code first-class, with portable rules extended to other agents). It maps each finding to an [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) risk — but by design it only sees what is *declared in config*, not model behaviour, runtime traffic, or training data. That scope determines which risks it can and cannot address.
