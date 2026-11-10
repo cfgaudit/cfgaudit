@@ -83,3 +83,21 @@ func TestTaxonomyProps_OmittedWhenAbsent(t *testing.T) {
 		t.Errorf("expected nil props for an unmapped/undocumented rule, got %v", p)
 	}
 }
+
+// #1616: the rules added for v1.21.0.
+func TestAVEMap_V121(t *testing.T) {
+	want := map[string]string{
+		"CFG125": "AVE-2026-00063", "CFG131": "AVE-2026-00073", "CFG132": "AVE-2026-00001",
+		"CFG134": "AVE-2026-00064", "CFG136": "AVE-2026-00064",
+	}
+	for id, ave := range want {
+		if aveByRule[id] != ave {
+			t.Errorf("%s: got %q, want %q", id, aveByRule[id], ave)
+		}
+	}
+	for _, id := range []string{"CFG124", "CFG126", "CFG128", "CFG130", "CFG133", "CFG135"} {
+		if ave, ok := aveByRule[id]; ok {
+			t.Errorf("%s is a recorded gap but maps to %s", id, ave)
+		}
+	}
+}
