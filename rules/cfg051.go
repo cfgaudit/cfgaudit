@@ -61,9 +61,6 @@ func (r *cfg051) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	switch {
-	case root == rootUnmeasured:
-		sev = finding.Info
-		what += " (Claude Code does not read this skill root; Copilot CLI 1.0.95, OpenCode 1.18.18 and Codex 0.166.0 do not treat allowed-tools as a grant; whether Cursor does is not measured)"
 	case sev == finding.Warn && !grantsClaudeShell(allowed):
 		// Claude Code matches tool names case-sensitively: measured on 2.1.316,
 		// allowed-tools: bash let no Bash call through, Bash did (#1196).
@@ -135,26 +132,29 @@ func isDevinAgentProfile(path string) bool {
 // bash set to ask) still ask. Codex 0.166.0 does not read the field at all:
 // its SKILL.md frontmatter has name, description and metadata only
 // (codex-rs/skills/src/parser.rs), and it has no per-tool approval a skill
-// could grant (#1354). Cursor could not be measured.
+// could grant (#1354). Cursor CLI 2026.11.05-86047df rejects the shell call
+// under allowed-tools: Bash in .cursor/skills and .agents/skills, as it does
+// without it, while a Shell(touch) allow rule in .cursor/cli.json lets it run
+// (#1354).
 const (
 	rootClaude = iota
 	rootIgnoresField
-	rootUnmeasured
 )
 
 // skillRootKind classifies the skill root of path: read only by agents that
-// ignore allowed-tools, read by agents that were not measured, or a root
-// Claude Code reads (the default, which covers .claude/ and plugins).
+// ignore allowed-tools, or a root Claude Code reads (the default, which covers
+// .claude/ and plugins).
 func skillRootKind(path string) int {
 	p := strings.ReplaceAll(path, `\`, "/")
 	switch {
 	// Junie documents name and description for a skill, and tools for a
 	// subagent; allowed-tools is not one of its fields (#1413).
-	// Only Codex reads .codex/skills (#1354).
-	case strings.Contains(p, ".github/skills/"), strings.Contains(p, ".opencode/skill/"), strings.Contains(p, ".opencode/skills/"), strings.Contains(p, ".junie/"), strings.Contains(p, ".codex/"):
+	// Codex, Cursor CLI, Copilot CLI and OpenCode read .agents/skills, Cursor
+	// reads .cursor/skills, and none of them grants anything for the field
+	// (#1354).
+	case strings.Contains(p, ".github/skills/"), strings.Contains(p, ".opencode/skill/"), strings.Contains(p, ".opencode/skills/"), strings.Contains(p, ".junie/"), strings.Contains(p, ".codex/"),
+		strings.Contains(p, ".agents/skills/"), strings.Contains(p, ".cursor/skills/"):
 		return rootIgnoresField
-	case strings.Contains(p, ".agents/skills/"), strings.Contains(p, ".cursor/skills/"):
-		return rootUnmeasured
 	}
 	return rootClaude
 }

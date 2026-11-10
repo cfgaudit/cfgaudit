@@ -139,9 +139,9 @@ func TestCFG051_SkillRoots1196(t *testing.T) {
 		".github/skills/release/SKILL.md":   "",
 		".opencode/skills/release/SKILL.md": "",
 		".opencode/skill/release/SKILL.md":  "",
-		".agents/skills/release/SKILL.md":   "info",
+		".agents/skills/release/SKILL.md":   "", // no measured reader grants for the field (#1354)
 		".codex/skills/release/SKILL.md":    "", // Codex 0.166.0 does not read the field (#1354)
-		".cursor/skills/release/SKILL.md":   "info",
+		".cursor/skills/release/SKILL.md":   "", // Cursor CLI 2026.11.05 does not grant for the field (#1354)
 		"my-plugin/skills/release/SKILL.md": "warn",
 	} {
 		f := CFG051.Check(instructionTarget(path, content))
