@@ -42,6 +42,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The Release profile, four times Large, so the runner's CPU quota period
+      # is a small share of a scan (#1626).
       - name: Write the input
         run: CFGAUDIT_BENCH_INPUT="$RUNNER_TEMP/input" go test -run '^TestWriteReleaseBenchInput$' -count 1 ./internal/benchcorpus
       # Each release's linux_amd64 binary, checked against its checksums.txt.
@@ -79,7 +81,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/cwd"
           cd "$RUNNER_TEMP/cwd"
           python3 -I "$GITHUB_WORKSPACE/.github/scripts/release-bench.py" \
-            "$RUNNER_TEMP/releases.tsv" "$RUNNER_TEMP/input" "$RUNNER_TEMP/records.jsonl" "$RUN_ID" "$(go env GOVERSION)"
+            "$RUNNER_TEMP/releases.tsv" "$RUNNER_TEMP/input" benchcorpus.Release "$RUNNER_TEMP/records.jsonl" "$RUN_ID" "$(go env GOVERSION)"
           cat "$RUNNER_TEMP/records.jsonl"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -127,6 +129,7 @@ jobs:
           git fetch -q --depth 1 "$remote" bench-data
           git checkout -q -b bench-data FETCH_HEAD
           cat "$RUNNER_TEMP/records/records.jsonl" >> releases.jsonl
+          # shellcheck disable=SC2016 # the backticks below are Markdown, not a substitution
           if ! grep -q 'releases.jsonl' README.md; then
             cat >> README.md <<'EOF'
 
@@ -138,11 +141,15 @@ jobs:
           | `kind` | `release` |
           | `tag`, `commit`, `date` | the release, its commit and commit date |
           | `rules` | number of rules (`cfgaudit list --format json`), `null` where the release lacks it |
-          | `input`, `input_sha256` | the generated input (`benchcorpus.Large`) and a hash of its files |
+          | `input`, `input_sha256` | the generated input (a `benchcorpus` profile: `Release` since #1626, `Large` before) and a hash of its files |
           | `run` | the workflow run id |
           | `median_ms`, `runs_ms` | wall time of `cfgaudit <input>`: the median and every timed run, after one warm-up scan |
           | `cpu`, `go` | runner CPU model and the Go version of the measuring job |
           EOF
+            git add README.md
+          elif grep -q '(`benchcorpus.Large`)' README.md; then
+            # The first version of the section named Large only (#1626).
+            sed -i 's/the generated input (`benchcorpus.Large`)/the generated input (a `benchcorpus` profile: `Release` since #1626, `Large` before)/' README.md
             git add README.md
           fi
           git add releases.jsonl
