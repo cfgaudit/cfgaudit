@@ -37,7 +37,9 @@ func (r *cfg136) Check(t *Target) []finding.Finding {
 			continue
 		}
 		where := filepath.ToSlash(filepath.Join(filepath.Base(dir), filepath.FromSlash(m)))
-		if parser.ManifestPathEscapes(m) {
+		// Judge the resolved path, relative to the plugin root (#1613):
+		// "../desktop/x.tsx" from hooks/ is desktop/x.tsx, inside the plugin.
+		if parser.ManifestPathEscapes(where) {
 			where = m
 		}
 		// A skills-directory plugin loads by itself once the workspace is
