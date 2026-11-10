@@ -207,8 +207,10 @@ var cursorCLITokenRe = regexp.MustCompile(`^\s*(Shell|Mcp)\(\s*(.*?)\s*\)\s*$`)
 //
 // Bounded entries (Shell(git), Mcp(datadog:search)) are not reported here.
 // CFG093 reports them in permissions.json because Cursor documents that file as
-// concatenated with the user's own, so they cannot be taken back; how the CLI
-// merges cli.json with the user's list is not documented.
+// concatenated with the user's own, so they cannot be taken back. A cli.json
+// is not concatenated: measured on 2026.11.05-86047df, a project allow list
+// replaced the user's (#1521), and a teammate who edits the repository file
+// takes an entry back.
 func cursorCLIFindings(t *Target) []finding.Finding {
 	p := t.CursorCLI.Permissions
 	if p == nil {
