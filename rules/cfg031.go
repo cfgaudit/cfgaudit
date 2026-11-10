@@ -224,6 +224,22 @@ func notASecretFile(line string, loc []int, full string) bool {
 // probe sent to a web server, not a local file (#887).
 var baseURLPathRe = regexp.MustCompile(`^(?:\{\{?\s*[A-Za-z_]\w*\s*\}?\}|\$\{?[A-Za-z_]\w*\}?)/`)
 
+// deniedListLabelRe matches a list label, the text before the first colon,
+// that says the listed paths are refused: "Read-denied paths", "Deny read",
+// "Blocked files", "Forbidden paths", "Not readable" (#1608).
+var deniedListLabelRe = regexp.MustCompile(`(?i)\b(?:denied|deny|blocked|forbidden|disallowed|excluded|no[- ]access|not\s+(?:readable|allowed))\b`)
+
+// onlyPaths reports whether s is a list of paths and nothing else: every item
+// between commas, spaces and quotes holds a "/", "." or "~".
+func onlyPaths(s string) bool {
+	for _, item := range strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune(" \t,;`'\"*", r) }) {
+		if !strings.ContainsAny(item, "/.~") {
+			return false
+		}
+	}
+	return true
+}
+
 // noBeforeRe matches a bare "no" right before the path: "has no
 // `.credentials.json`", which says the file is not there.
 var noBeforeRe = regexp.MustCompile("(?i)\\bno\\s+[`'\"]?$")
@@ -324,6 +340,14 @@ func notARead(lines []string, i int, loc []int, full string) bool {
 	}
 	// "a sandbox that has no `.credentials.json` yet" negates the path (#1374).
 	if noBeforeRe.MatchString(line[:start]) {
+		return true
+	}
+	// "- Read-denied paths: .env, ~/.ssh, ~/.netrc" labels the whole list as
+	// forbidden (#1608).
+	// Only a list: between the colon and the path there may be nothing but
+	// other paths, so "**Permission denied**: load the key with `cat
+	// ~/.ssh/id_rsa`" is still an instruction.
+	if label, rest, ok := strings.Cut(line[:start], ":"); ok && deniedListLabelRe.MatchString(label) && onlyPaths(rest) {
 		return true
 	}
 	if writeOrTestBeforeRe.MatchString(line[:start]) || copyDestination(line, start, loc[1]) ||
