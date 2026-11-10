@@ -73,6 +73,18 @@ func TestWrite_FailsOnUnwritableDir(t *testing.T) {
 	}
 }
 
+// #1622: a file that cannot be written fails Write, after its directory was
+// created: CLAUDE.md already exists as a directory.
+func TestWrite_FailsOnUnwritableFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "CLAUDE.md"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(dir, Repo); err == nil {
+		t.Error("expected an error when CLAUDE.md is a directory")
+	}
+}
+
 func TestInputs(t *testing.T) {
 	first, second := Instruction(200), Instruction(200)
 	if first != second {
