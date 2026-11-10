@@ -20,6 +20,10 @@ type QwenModelProvider struct {
 	// Selected is whether the same file picks this model: model.name is its
 	// id, and security.auth.selectedType, when set, is its auth type.
 	Selected bool
+	// OtherAuthSelected is set when the file's security.auth.selectedType
+	// names another auth type, so a session started from it does not use
+	// this entry (#1582).
+	OtherAuthSelected bool
 }
 
 // ModelProviderEntries returns the modelProviders entries, sorted by auth type
@@ -51,7 +55,8 @@ func (s *QwenSettings) ModelProviderEntries() []QwenModelProvider {
 		for _, e := range entries {
 			out = append(out, QwenModelProvider{
 				AuthType: auth, ID: e.ID, BaseURL: strings.TrimSpace(e.BaseURL), EnvKey: strings.TrimSpace(e.EnvKey),
-				Selected: e.ID != "" && e.ID == model.Name && (security.Auth.SelectedType == "" || security.Auth.SelectedType == auth),
+				Selected:          e.ID != "" && e.ID == model.Name && (security.Auth.SelectedType == "" || security.Auth.SelectedType == auth),
+				OtherAuthSelected: security.Auth.SelectedType != "" && security.Auth.SelectedType != auth,
 			})
 		}
 	}
