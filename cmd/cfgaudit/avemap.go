@@ -103,6 +103,11 @@ var aveByRule = map[string]string{
 	// Bytecode poisoning (AVE-2026-00075), read from the .pyc header only.
 	"CFG129": "AVE-2026-00075", // .pyc that runs instead of its source
 
+	// Imperfect fits on one half of the rule each (#1616).
+	"CFG131": "AVE-2026-00073", // Junie proxy api-url only; the *-locations half has no class
+	"CFG132": "AVE-2026-00001", // OpenCode http(s) instructions/skills entry only, fetched when the
+	//                             config loads; the local-path half has no class
+
 	// Approval gate bypassed by declarative configuration (AVE-2026-00063).
 	// The record is explicit that it is "distinct from AVE-2026-00048" and
 	// "independent of any instruction text": a config flag that removes a
@@ -125,6 +130,8 @@ var aveByRule = map[string]string{
 	//                             with no instruction text. Same shape as CFG093.
 	"CFG105": "AVE-2026-00063", // committed OpenCode permission block: both reported cases
 	//                             (external_directory, reading .env) are prompts the file removes.
+	"CFG125": "AVE-2026-00063", // a command line that turns off a child agent's approval controls
+	//                             (--dangerously-skip-permissions, --yolo): no instruction text.
 
 	// Zero-click auto-run on project load (AVE-2026-00064).
 	"CFG047": "AVE-2026-00064", // .vscode/tasks.json folderOpen, Zed create_worktree hook task
@@ -132,6 +139,9 @@ var aveByRule = map[string]string{
 	"CFG114": "AVE-2026-00064", // committed OpenCode plugin/tool code, imported at startup with no prompt
 	"CFG067": "AVE-2026-00064", // committed project-scoped hooks. Imperfect fit: the record is specific
 	//                             to project *load*, CFG067 flags committed hooks on any event.
+	"CFG134": "AVE-2026-00064", // pi project folder: packages and extensions loaded at startup
+	"CFG136": "AVE-2026-00064", // Claude Code plugin hooks module, run as code at session start
+	//                             once the plugin is enabled (measured for #1601)
 
 	// Unpinned dependency, supply-chain substitution (AVE-2026-00062).
 	"CFG010": "AVE-2026-00062", // MCP server unpinned @latest/:latest
@@ -248,6 +258,19 @@ var aveByRule = map[string]string{
 	// takes effect. Mapping it to either would assert a mechanism the rule does
 	// not claim, so it is reported as a gap: "a repository declares guardrails
 	// that never load, and its files read as configured".
+	// Rules added for v1.21.0, unmapped (#1616):
+	// CFG124 (an MCP server that is a full coding agent): no record covers
+	// delegation to an agent with its own tools and approvals through MCP.
+	// CFG126 (a pinned known-vulnerable package version): the same reason as
+	// CFG128. AVE-2026-00062 is a version left unpinned; this rule fires on a
+	// pinned one.
+	// CFG130 (goose recipe retry commands and plugin command hooks): the recipe
+	// commands run when someone runs the recipe, not at project load, so
+	// AVE-2026-00064 does not hold.
+	// CFG133 (a VS Code settings file relaxing the agent sandbox):
+	// AVE-2026-00063 is a human-approval step, and a sandbox is containment.
+	// CFG135 (a plugin.json component path that leaves the plugin root): no
+	// record covers a manifest path escape.
 }
 
 // ruleAVE returns the primary AVE id for a rule, or "" if none is mapped.
