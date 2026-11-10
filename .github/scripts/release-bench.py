@@ -3,10 +3,11 @@
 
 """Measure the scan time of release binaries on one input (#1619).
 
-Usage: release-bench.py RELEASES INPUT OUT RUN_ID GO_VERSION [RUNS]
+Usage: release-bench.py RELEASES INPUT INPUT_NAME OUT RUN_ID GO_VERSION [RUNS]
 
 RELEASES is a tab-separated file with one release per line: tag, binary,
-commit, date. Every binary scans INPUT once to warm up and then RUNS times
+commit, date. INPUT_NAME says which generated tree INPUT is, such as
+benchcorpus.Release, and goes into every record. Every binary scans INPUT once to warm up and then RUNS times
 (default 7). The releases take turns, one scan each per round, so a runner
 that slows down mid-job affects every release alike. One JSON record per
 release goes to OUT; the format is described in the bench-data README.
@@ -85,11 +86,11 @@ def cpu_model():
 
 
 def main(argv):
-    if len(argv) not in (6, 7):
+    if len(argv) not in (7, 8):
         print(__doc__.strip().splitlines()[2], file=sys.stderr)
         return 2
-    releases_file, root, out_file, run_id, go_version = argv[1:6]
-    runs = int(argv[6]) if len(argv) == 7 else 7
+    releases_file, root, input_name, out_file, run_id, go_version = argv[1:7]
+    runs = int(argv[7]) if len(argv) == 8 else 7
 
     releases = []
     with open(releases_file, encoding="utf-8") as f:
@@ -127,7 +128,7 @@ def main(argv):
                 "commit": rel["commit"],
                 "date": rel["date"],
                 "rules": rule_count(rel["binary"]),
-                "input": "benchcorpus.Large",
+                "input": input_name,
                 "input_sha256": digest,
                 "run": int(run_id),
                 "median_ms": round(statistics.median(rel["times"]), 1),
