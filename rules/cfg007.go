@@ -98,7 +98,21 @@ var pathValueRe = regexp.MustCompile(`^(?:/|~/|\./|\.\./|[A-Za-z]:[\\/]|%[A-Za-z
 // or a boolean switch ("BRIDGE_PERSISTENT_SECRET": "true") (#891).
 func literalUnderSecretName(k, v string) bool {
 	v = strings.TrimSpace(v)
-	return secretKeyName(k) && !pathValueRe.MatchString(v) && !relativeFileValueRe.MatchString(v) && !booleanValueRe.MatchString(v) && !literalPlaceholder(v)
+	if !secretKeyName(k) || slightSecretValue(v) {
+		return false
+	}
+	return !pathValueRe.MatchString(v) && !relativeFileValueRe.MatchString(v) && !booleanValueRe.MatchString(v) && !literalPlaceholder(v)
+}
+
+// slightSecretValue reports whether a value under a secret-like name is too
+// slight to be a committed credential, so it reads as a placeholder (#1664):
+// it carries a glob wildcard (a permission pattern such as `GH_TOKEN=*`), or is
+// nothing but a vendor prefix with no key body (`sk-`, `github_pat_`). A
+// full-length token still matches its vendor pattern in matchSecretPattern and
+// is reported there; a short weak password (`hunter2`) is not a bare prefix and
+// stays reported.
+func slightSecretValue(v string) bool {
+	return strings.Contains(v, "*") || tokenPrefixRe.FindString(v) == v
 }
 
 // relativeFileValueRe matches a relative file path with at least one directory

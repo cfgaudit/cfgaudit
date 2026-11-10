@@ -275,6 +275,25 @@ func TestCFG007_HeaderEnvAndKnownNames(t *testing.T) {
 	}
 }
 
+// A permission wildcard (GH_TOKEN=*) and a value that is only a vendor prefix
+// (sk-) read as placeholders, not committed secrets; a full-length token in an
+// allow entry is still reported (#1664).
+func TestCFG007_WildcardAndShortPrefix_1664(t *testing.T) {
+	ghp := "ghp_" + strings.Repeat("Ab1Cd2Ef3G", 4)[:36]
+	for _, js := range []string{
+		`{"permissions":{"allow":["Bash(GH_TOKEN=* gh pr *)"]}}`,
+		`{"permissions":{"allow":["Bash(GH_TOKEN=* GH_HOST=* gh pr *)"]}}`,
+		`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-"}}`,
+	} {
+		if f := CFG007.Check(settingsTarget(t, js)); len(f) != 0 {
+			t.Errorf("%s: want no finding, got %+v", js, f)
+		}
+	}
+	if f := CFG007.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(GH_TOKEN=`+ghp+` gh pr *)"]}}`)); len(f) != 1 {
+		t.Errorf("a full-format token in an allow entry must still be reported, got %+v", f)
+	}
+}
+
 // A credential in a permission entry, recorded from an approved command, is
 // reported; references, placeholders and plain values are not (#1168).
 func TestCFG007_PermissionEntries1168(t *testing.T) {
