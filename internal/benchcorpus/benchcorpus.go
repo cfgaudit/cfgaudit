@@ -194,10 +194,11 @@ func Write(dir string, p Profile) error {
 	}
 	for rel, content := range files {
 		path := filepath.Join(dir, rel)
-		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		// dir is the caller's output directory; rel is one of the fixed names above.
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { //nolint:gosec // see above
 			return err
 		}
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil { //nolint:gosec // see above
 			return err
 		}
 	}
