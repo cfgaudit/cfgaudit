@@ -1,0 +1,35 @@
+# Copyright the cfgaudit contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Accessibility barrier
+description: Something about cfgaudit or its documentation is hard or impossible to use with assistive technology
+labels: [accessibility]
+body:
+  - type: textarea
+    id: barrier
+    attributes:
+      label: What got in the way
+      description: What were you trying to do, and what stopped you?
+    validations:
+      required: true
+  - type: input
+    id: surface
+    attributes:
+      label: Where
+      description: The command-line tool, an output format (text, table, json, sarif, codeclimate), the GitHub Action or GitLab component, or a page of the website (URL).
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Tool and assistive technology
+      description: cfgaudit version, operating system, terminal or browser, and any screen reader or other assistive technology, with versions.
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: What would help
+      description: Optional. What would make this usable for you.
+    validations:
+      required: false
