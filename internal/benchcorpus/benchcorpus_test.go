@@ -43,6 +43,7 @@ func TestWrite_ReproducibleAndSized(t *testing.T) {
 	}{
 		{"Repo", Repo, 37},
 		{"Large", Large, 119},
+		{"Release", Release, 461},
 	} {
 		a, b := t.TempDir(), t.TempDir()
 		if err := Write(a, c.p); err != nil {

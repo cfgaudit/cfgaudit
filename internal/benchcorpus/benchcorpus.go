@@ -39,6 +39,10 @@ var (
 	// Large is sized like a developer's --user scan with plugins and skills:
 	// about 118 targets and 13,000 instruction lines.
 	Large = Profile{Seed: 2, Skills: 50, Commands: 30, Agents: 14, CursorRules: 10, ClineRules: 10, Lines: 110}
+	// Release is the input every release scans in release-bench.yml, four
+	// times Large (#1626): long enough that the hosted runner's CPU quota
+	// period, about 50 ms, is a small share of a scan.
+	Release = Profile{Seed: 3, Skills: 200, Commands: 120, Agents: 56, CursorRules: 40, ClineRules: 40, Lines: 110}
 )
 
 // seed is fixed: the corpus must not change between runs.
