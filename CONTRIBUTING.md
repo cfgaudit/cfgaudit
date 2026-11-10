@@ -17,6 +17,16 @@ For a false positive or a missed detection, name the agent and its version (e.g.
 
 Vulnerabilities in cfgaudit itself go through private reporting instead, see [SECURITY.md](SECURITY.md).
 
+An accessibility barrier, in the tool, its output or the website, has its own [issue template](https://github.com/cfgaudit/cfgaudit/issues/new?template=accessibility.yml).
+
+## Accessibility
+
+[ACCESSIBILITY.md](ACCESSIBILITY.md) says what cfgaudit does for people who use assistive technology. A change to the output keeps it true:
+
+- the severity stays a word in the text and table output, never colour alone;
+- `--no-color`, `NO_COLOR` and the non-terminal default keep colour off; `cmd/cfgaudit/accessibility_test.go` checks both;
+- the structured formats (`json`, `sarif`, `codeclimate`) keep carrying every finding.
+
 ---
 
 ## Development environment
