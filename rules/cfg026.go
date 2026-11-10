@@ -49,7 +49,12 @@ var bypassPatterns = []bypassPattern{
 	// only fired when the qualifier followed the verb directly. It is a closed set
 	// on purpose — a generic `(?:\s+\w+){0,3}` filler would drag in benign prose,
 	// because the noun list carries broad words (data, content, context, text).
-	{1, mustFiltered(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|override|discard|supersede|set aside|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
+	//
+	// guidance, directions and orders are the same override vocabulary (#1641).
+	// "rules" and "guidelines" are not here: bare, they are ordinary words in
+	// instruction files ("ignore the lint rules", #993; "ignore the rules" in a
+	// roleplay skill, #1358), so they stay in the qualifier-required entry below.
+	{1, mustFiltered(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|override|discard|supersede|set aside|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|directions?|guidance|orders?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
 		finding.Error, "instruction override", false},
 	// The same override aimed at the rules the agent works under, which needs
 	// the qualifier: "disregard all earlier guardrails", "ignore your previous
