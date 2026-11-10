@@ -33,6 +33,7 @@ func TestCFG055DevinRequiredPlugins(t *testing.T) {
 		{"source": "local", "path": "../outside"},
 		{"source": "git-subdir", "url": "https://github.com/acme/skills.git", "path": "plugins/ops"},
 		42,
+		{"source": "local"},
 		{"source": "unknown"}
 	]`))
 	want := []finding.Severity{finding.Warn, finding.Warn, finding.Warn, finding.Warn, finding.Error, finding.Error, finding.Error, finding.Warn}
