@@ -23,6 +23,7 @@ import os
 import statistics
 import subprocess
 import sys
+import threading
 import time
 
 TIMEOUT_SECONDS = 120
@@ -61,17 +62,29 @@ def rule_count(binary):
 
 
 def scan_ms(binary, root):
-    """Wall time of one scan in ms, or None when the scan did not finish."""
+    """Wall time of one scan in ms, or None when the scan did not finish.
+
+    The wait blocks in waitpid. Popen.wait or subprocess.run with a timeout
+    polls instead, sleeping up to 50 ms between polls, which rounded every
+    time up to 14 ms plus a multiple of 50 (#1629). A timer kills a scan that
+    runs past TIMEOUT_SECONDS.
+    """
     start = time.perf_counter()
     try:
-        done = subprocess.run(
+        proc = subprocess.Popen(
             [binary, root], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, timeout=TIMEOUT_SECONDS, check=False,
+            stderr=subprocess.DEVNULL,
         )
-    except (OSError, subprocess.SubprocessError):
+    except OSError:
         return None
+    timer = threading.Timer(TIMEOUT_SECONDS, proc.kill)
+    timer.start()
+    try:
+        code = proc.wait()
+    finally:
+        timer.cancel()
     elapsed = (time.perf_counter() - start) * 1000
-    return round(elapsed, 1) if done.returncode in (0, 1) else None
+    return round(elapsed, 1) if code in (0, 1) else None
 
 
 def cpu_model():
