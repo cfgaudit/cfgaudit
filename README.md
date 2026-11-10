@@ -24,7 +24,7 @@ Time depends on the runner; read it through `ratio`. `B/op` and `allocs/op` do n
 | `kind` | `release` |
 | `tag`, `commit`, `date` | the release, its commit and commit date |
 | `rules` | number of rules (`cfgaudit list --format json`), `null` where the release lacks it |
-| `input`, `input_sha256` | the generated input (`benchcorpus.Large`) and a hash of its files |
+| `input`, `input_sha256` | the generated input (a `benchcorpus` profile: `Release` since #1626, `Large` before) and a hash of its files |
 | `run` | the workflow run id |
 | `median_ms`, `runs_ms` | wall time of `cfgaudit <input>`: the median and every timed run, after one warm-up scan |
 | `cpu`, `go` | runner CPU model and the Go version of the measuring job |
