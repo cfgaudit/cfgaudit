@@ -24,4 +24,8 @@ func TestCFG136(t *testing.T) {
 			t.Errorf("%+v: %+v", tg, f)
 		}
 	}
+	f = CFG136.Check(&Target{PluginHookModules: []string{"../desktop/app/hooks/register.tsx"}, PluginHookModulesFile: "p/hooks/hooks.json"})
+	if len(f) != 1 || !strings.Contains(f[0].Message, `"desktop/app/hooks/register.tsx"`) {
+		t.Errorf("inside the plugin: %+v", f)
+	}
 }
