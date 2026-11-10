@@ -64,7 +64,7 @@ The root **`.mcp.json` is not Claude-Code-only**: Kimi Code CLI reads the same r
 |----|----------|-------------|-------|
 | [CFG003](CFG003.md) | error | `enableAllProjectMcpServers: true` — auto-approves all repo MCP servers (CVE-2025-59536) | LLM03 |
 | [CFG053](CFG053.md) | error/warn | blanket MCP-trust settings — `allowAllClaudeAiMcps: true`, `enabledMcpjsonServers` with `*`/huge list, or a wildcard `allowedMcpServers` `serverUrl` | LLM03 |
-| [CFG055](CFG055.md) | error/warn/info | committed settings `enabledPlugins` enables a plugin (its hooks/MCP) or `extraKnownMarketplaces` (or its alias `additionalMarketplaces`) registers a third-party marketplace | LLM04 |
+| [CFG055](CFG055.md) | error/warn/info | committed settings `enabledPlugins` enables a plugin (its hooks/MCP) or `extraKnownMarketplaces` (or its alias `additionalMarketplaces`) registers a third-party marketplace; a Devin `.devin/config.json` `requiredPlugins` entry, which Devin installs and activates with no prompt (`error` for a local path outside the repository) | LLM04 |
 | [CFG098](CFG098.md) | error/warn | committed `.claude-plugin/marketplace.json` publishes a plugin nothing pins — an `archive` source with no `sha256` (→ error: no git object model behind it, so the plugin is whatever the server serves at install time; verified in the binary, the hash is compared only when the entry declares one), or an `npm` source resolving from a non-default `registry` (→ warn). Unpinned `github`/`url`/`git-subdir` sources are **not** flagged: under 9% of real marketplaces carry any `sha` and upstream documents the omission as the normal case | LLM04 |
 | [CFG010](CFG010.md) | warn/info | MCP server uses unpinned package or image version (`@latest`, `:latest`, no `@version`; npx/pnpm/yarn/bunx + uvx/pipx `==` pins) | LLM04 |
 | [CFG126](CFG126.md) | error | an MCP launcher pins an npm package version in a reviewed known-vulnerable range | LLM04 |
@@ -302,7 +302,7 @@ A committed `SessionStart` command hook is flagged by [CFG086](CFG086.md), and t
 
 ### Devin CLI — `.devin/` and everything it imports
 
-`.devin/config.json` is described by Devin's own docs as *"shared team configuration committed to version control"*. Its `mcpServers`, `hooks` and `permissions` are scanned; `sandbox` is not, because Devin documents it as user-only and reading it from a project file would invent a finding on configuration the CLI ignores.
+`.devin/config.json` is described by Devin's own docs as *"shared team configuration committed to version control"*. Its `mcpServers`, `hooks`, `permissions` and `requiredPlugins` (CFG055, #1603) are scanned; `sandbox` is not, because Devin documents it as user-only and reading it from a project file would invent a finding on configuration the CLI ignores.
 
 Devin keeps **four** project files, and cfgaudit reads all of them, attributing every finding to the file the entry came from:
 
