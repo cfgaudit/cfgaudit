@@ -17,7 +17,7 @@ set -eu
 
 # Kept in lockstep with the release (bumped alongside the distribution pins) so
 # the plugin runs the cfgaudit build that matches the installed plugin version.
-VERSION="1.20.0"
+VERSION="1.21.0"
 REPO="cfgaudit/cfgaudit"
 
 # shellcheck disable=SC1007 # the empty assignment clears CDPATH for this cd
