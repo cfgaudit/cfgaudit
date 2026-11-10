@@ -33,13 +33,13 @@ var antiForensicsPatterns = []struct {
 	{regexp.MustCompile(`(?i)\bunset\s+HISTFILE\b`), "disables shell history (unset HISTFILE)"},
 	{regexp.MustCompile(`(?i)\bHISTFILE\s*=\s*/dev/null\b`), "redirects shell history to /dev/null (HISTFILE=/dev/null)"},
 	{regexp.MustCompile(`(?i)\bset\s+\+o\s+history\b`), "disables shell history logging (set +o history)"},
-	{regexp.MustCompile(`(?i)(?:>|\brm\b|\btruncate\b|\bshred\b)[^|;&\n]*\.(?:bash|zsh)_history\b`), "deletes or truncates the shell history file"},
+	{regexp.MustCompile(`(?i)(?:>|(?:^|[^-\w])rm\b|(?:^|[^-\w])truncate\b|(?:^|[^-\w])shred\b)[^|;&\n]*\.(?:bash|zsh)_history\b`), "deletes or truncates the shell history file"},
 	// System / audit logs.
 	{regexp.MustCompile(`(?i)\bjournalctl\b[^|;&\n]*--(?:vacuum|rotate)`), "purges the systemd journal (journalctl --vacuum/--rotate)"},
-	{regexp.MustCompile(`(?i)(?:\brm\b|\btruncate\b|\bshred\b|\bdd\b)[^|;&\n]*/var/log\b`), "deletes or truncates system logs (/var/log)"},
-	{regexp.MustCompile(`(?i)(?:>|\brm\b|\btruncate\b|\bshred\b)[^|;&\n]*\b(?:wtmp|btmp|lastlog)\b`), "clears login/audit logs (wtmp/btmp/lastlog)"},
+	{regexp.MustCompile(`(?i)(?:(?:^|[^-\w])rm\b|(?:^|[^-\w])truncate\b|(?:^|[^-\w])shred\b|(?:^|[^-\w])dd\b)[^|;&\n]*/var/log\b`), "deletes or truncates system logs (/var/log)"},
+	{regexp.MustCompile(`(?i)(?:>|(?:^|[^-\w])rm\b|(?:^|[^-\w])truncate\b|(?:^|[^-\w])shred\b)[^|;&\n]*\b(?:wtmp|btmp|lastlog)\b`), "clears login/audit logs (wtmp/btmp/lastlog)"},
 	// Secure file wiping (anti-recovery).
-	{regexp.MustCompile(`(?i)\b(?:shred|srm)\b`), "shreds files to prevent recovery (shred/srm)"},
+	{regexp.MustCompile(`(?i)(?:^|[^-\w])(?:shred|srm)\b`), "shreds files to prevent recovery (shred/srm)"},
 }
 
 // Check flags command sites whose command destroys an audit trail — clearing

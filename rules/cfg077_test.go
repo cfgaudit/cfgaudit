@@ -23,6 +23,7 @@ func TestCFG077_ClearsTraces(t *testing.T) {
 		": > /var/log/wtmp",
 		"shred -u secret.txt",
 		"srm -r /tmp/loot",
+		"sudo truncate -s0 /var/log/syslog",
 	} {
 		f := CFG077.Check(hookTarget(t, cmd))
 		if len(f) != 1 || f[0].Severity != finding.Error {
@@ -41,6 +42,12 @@ func TestCFG077_BenignLogAndHistory_NoFinding(t *testing.T) {
 		"history | tail -20",
 		// legitimate app logging to /var/log
 		"echo starting >> /var/log/myapp.log",
+		// `srm`/`shred`/`rm`/... after a dash are not the command (e.g. uname -srm, docker --rm)
+		"uname -srm",
+		`echo "- OS: $(uname -srm)"`,
+		`printf '[info] kernel=%s\n' "$(uname -srm ...)"`,
+		"docker run --rm -v /var/log:/logs alpine ls /logs",
+		"git-shred x",
 	} {
 		if f := CFG077.Check(hookTarget(t, cmd)); len(f) != 0 {
 			t.Errorf("expected no finding for %q, got %+v", cmd, f)
