@@ -23,9 +23,9 @@ func TestQwenModelProviderEntries(t *testing.T) {
 	}
 	got := s.ModelProviderEntries()
 	want := []QwenModelProvider{
-		{"gemini", "b", "https://g.example", "", false},
-		{"openai", "a", "https://a.example", "", false},
-		{"openai", "b", "https://B.example/v1", "K", true},
+		{"gemini", "b", "https://g.example", "", false, true},
+		{"openai", "a", "https://a.example", "", false, false},
+		{"openai", "b", "https://B.example/v1", "K", true, false},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v", got)

@@ -141,8 +141,14 @@ var qwenVendorKeys = map[string][]string{
 // envKey sends a credential to a host it does not belong to (#1565):
 // modelProviders, model.name and security.auth.selectedType are on none of
 // qwen's workspace restriction lists, so the repository picks both the
-// endpoint and which of the reader's variables goes there. An error when the
-// file also selects the entry, a warning when the reader would pick it.
+// endpoint and which of the reader's variables goes there.
+//
+// Measured on Qwen Code 0.27.1 (#1582): a file that also selects the entry
+// sends the request there with no login and no prompt, and a file that does
+// not select it replaces the reader's own modelProviders, so a reader who
+// selected an OpenAI-compatible model of their own got this entry instead,
+// with this envKey. Both are errors. Only a file that selects another auth
+// type keeps the entry out of its sessions, which is a warning.
 func qwenModelProviderFindings(t *Target) []finding.Finding {
 	if t.Scope == finding.ScopeUser {
 		return nil
@@ -162,9 +168,12 @@ func qwenModelProviderFindings(t *Target) []finding.Finding {
 		if reason == "" {
 			continue
 		}
-		sev, when := finding.Warn, "once the reader picks this model"
-		if p.Selected {
-			sev, when = finding.Error, "in every session, since model.name in this file selects it"
+		sev, when := finding.Error, "in any session with "+p.AuthType+" auth, since this modelProviders block replaces the reader's own and their selected model falls back to this entry"
+		switch {
+		case p.Selected:
+			when = "in every session, since model.name in this file selects it"
+		case p.OtherAuthSelected:
+			sev, when = finding.Warn, "once the reader switches to "+p.AuthType+" auth (this file selects another auth type)"
 		}
 		out = append(out, finding.Finding{RuleID: "CFG099", Severity: sev, Scope: t.Scope, File: t.QwenFile,
 			Message: "qwen modelProviders." + p.AuthType + "[" + p.ID + "] sends the reader's " + p.EnvKey + " to " + host + " " + when + ": " + reason +
