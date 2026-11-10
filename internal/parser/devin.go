@@ -38,15 +38,20 @@ type DevinConfig struct {
 	MCPServers  map[string]MCPServer   `json:"mcpServers,omitempty"`
 	Hooks       map[string][]HookGroup `json:"hooks,omitempty"`
 	Permissions *Permissions           `json:"permissions,omitempty"`
+	// RequiredPlugins is the repo level's requiredPlugins (#1603): each entry
+	// a source, a string ("owner/repo", a git URL, a local path) or an object
+	// ({"source": "github"|"url"|"local", "repo"|"url"|"path": ...}).
+	RequiredPlugins []json.RawMessage `json:"requiredPlugins,omitempty"`
 }
 
 // devinTop mirrors the keys DevinConfig reads, with hooks kept raw so each
 // event decodes entry by entry in devinHookGroups. Keep its fields in sync
 // with DevinConfig.
 type devinTop struct {
-	MCPServers  map[string]MCPServer       `json:"mcpServers,omitempty"`
-	Hooks       map[string]json.RawMessage `json:"hooks,omitempty"`
-	Permissions *Permissions               `json:"permissions,omitempty"`
+	MCPServers      map[string]MCPServer       `json:"mcpServers,omitempty"`
+	Hooks           map[string]json.RawMessage `json:"hooks,omitempty"`
+	Permissions     *Permissions               `json:"permissions,omitempty"`
+	RequiredPlugins []json.RawMessage          `json:"requiredPlugins,omitempty"`
 }
 
 // ParseDevinConfig reads a .devin/config.json. A missing key yields a zero value
@@ -83,7 +88,7 @@ func ParseDevinConfig(path string) (*DevinConfig, error) {
 			top.MCPServers[name] = srv
 		}
 	}
-	return &DevinConfig{MCPServers: top.MCPServers, Hooks: hooks, Permissions: top.Permissions}, nil
+	return &DevinConfig{MCPServers: top.MCPServers, Hooks: hooks, Permissions: top.Permissions, RequiredPlugins: top.RequiredPlugins}, nil
 }
 
 // devinMatcher decodes a Devin hook matcher. Devin loads a matcher as a regex
@@ -198,4 +203,64 @@ func DevinSkillPermissions(content string) *Permissions {
 		return nil
 	}
 	return &p
+}
+
+// DevinPluginSource is one requiredPlugins entry: Kind is "github", "url" or
+// "local", Ref the owner/repo, URL or path as written.
+type DevinPluginSource struct {
+	Kind, Ref string
+}
+
+// RequiredPluginSources decodes RequiredPlugins and drops entries of another
+// shape. A string is a local path when it starts with "/", "~", "." or a
+// drive letter, a URL when it holds "://" or starts with "git@", and
+// "owner/repo" otherwise.
+func (c *DevinConfig) RequiredPluginSources() []DevinPluginSource {
+	if c == nil {
+		return nil
+	}
+	var out []DevinPluginSource
+	for _, raw := range c.RequiredPlugins {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			kind := "github"
+			switch {
+			case strings.HasPrefix(s, "/") || strings.HasPrefix(s, "~") || strings.HasPrefix(s, ".") || (len(s) > 1 && s[1] == ':'):
+				kind = "local"
+			case strings.Contains(s, "://") || strings.HasPrefix(s, "git@"):
+				kind = "url"
+			}
+			out = append(out, DevinPluginSource{Kind: kind, Ref: s})
+			continue
+		}
+		var o struct {
+			Source, Repo, URL, Path string
+		}
+		if json.Unmarshal(raw, &o) != nil {
+			continue
+		}
+		// Sources seen: "github" with repo, "url" with url, "git-subdir" with
+		// url and the plugin's path in it, "local" with path.
+		switch src := strings.ToLower(o.Source); {
+		case src == "local" || src == "path":
+			out = append(out, DevinPluginSource{Kind: "local", Ref: o.Path})
+		case o.URL != "":
+			ref := o.URL
+			if o.Path != "" {
+				ref += "#" + o.Path
+			}
+			out = append(out, DevinPluginSource{Kind: "url", Ref: ref})
+		case o.Repo != "":
+			ref := o.Repo
+			if o.Path != "" {
+				ref += "#" + o.Path
+			}
+			out = append(out, DevinPluginSource{Kind: "github", Ref: ref})
+		}
+	}
+	return out
 }

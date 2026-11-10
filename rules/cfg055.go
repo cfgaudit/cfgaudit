@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 )
 
 type cfg055 struct{}
@@ -33,6 +34,9 @@ func (r *cfg055) ID() string { return "CFG055" }
 // from a git source, or from claude-plugins-official, is not installed: the
 // /plugin Errors tab lists it and one Enter installs it.
 func (r *cfg055) Check(t *Target) []finding.Finding {
+	if t != nil && t.Devin != nil && t.Scope != finding.ScopeUser {
+		return devinRequiredPluginFindings(t)
+	}
 	if t == nil || t.Settings == nil || t.Scope == finding.ScopeUser {
 		return nil
 	}
@@ -238,4 +242,38 @@ func pluginEnabled(v json.RawMessage) bool {
 		return len(arr) > 0
 	}
 	return false
+}
+
+// devinRequiredPluginFindings reports the repo level's requiredPlugins in a
+// committed .devin/config.json (#1603). Measured on Devin CLI 3000.12.32 with
+// no account: `devin doctor` in the repository recorded the requirement,
+// installed the plugin and activated it, skills and hooks included, with no
+// login and no prompt, and it stayed installed (inactive) outside the
+// repository. A local path that is absolute or starts with ~ loads whatever
+// sits there on the reader's machine, so it is an error.
+func devinRequiredPluginFindings(t *Target) []finding.Finding {
+	var out []finding.Finding
+	for _, p := range t.Devin.RequiredPluginSources() {
+		if p.Ref == "" {
+			continue
+		}
+		sev := finding.Warn
+		what := "the plugin \"" + p.Ref + "\""
+		if p.Kind == "local" {
+			what = "the local plugin folder \"" + p.Ref + "\""
+			if parser.ManifestPathEscapes(p.Ref) {
+				sev = finding.Error
+				what += ", outside the repository, so what loads depends on the reader's machine"
+			}
+		}
+		out = append(out, finding.Finding{
+			RuleID:   "CFG055",
+			Severity: sev,
+			Scope:    t.Scope,
+			File:     t.DevinFile,
+			Key:      "requiredPlugins",
+			Message:  ".devin/config.json requiredPlugins installs " + what + ": Devin installs and activates a required plugin, with its skills, hooks and MCP servers, for anyone who runs it in this repository, with no prompt, and keeps it installed afterwards. Remove the entry, or move it to optionalPlugins, which Devin does not install",
+		})
+	}
+	return out
 }
