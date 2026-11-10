@@ -42,8 +42,8 @@ Pin it next to your other linters with `cfgaudit==X.Y.Z` in a requirements file.
 With Node.js (the package runs the prebuilt binary for your platform, no install script):
 
 ```sh
-npx cfgaudit@1.20.0 .                                   # run once without installing
-npm install --save-dev --save-exact cfgaudit@1.20.0     # pin it in a JavaScript project
+npx cfgaudit@1.21.0 .                                   # run once without installing
+npm install --save-dev --save-exact cfgaudit@1.21.0     # pin it in a JavaScript project
 ```
 
 Keep the version pinned: cfgaudit reports an unpinned `npx` package in an MCP server ([CFG010](docs/rules/CFG010.md)) for the same reason.
@@ -98,7 +98,7 @@ SARIF upload to GitHub Code Scanning and every input and output are in [CI integ
 
 ```yaml
 include:
-  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.20.0
+  - component: gitlab.com/cfgaudit/cfgaudit/cfgaudit@v1.21.0
     inputs:
       path: .
 ```
