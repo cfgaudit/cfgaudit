@@ -44,7 +44,9 @@ var mcpInstructionPatterns = []mcpInstrPattern{
 // trustedNounAfterRe matches the noun that "trusted" qualifies when it is an
 // adjective of something else: "trusted interactive OS user", "trusted
 // hosts".
-var trustedNounAfterRe = regexp.MustCompile(`(?i)^\s+(?:[\w]+[\s-]+){0,3}?(?:users?|operators?|people|persons?|humans?|hosts?|machines?|clients?|devices?|networks?|developers?|admins?|administrators?|accounts?|part(?:y|ies))\b`)
+// A backticked name in between counts as a word, and a command-line program
+// is one of the nouns: "the MCP server or a trusted `mslearn` CLI" (#1656).
+var trustedNounAfterRe = regexp.MustCompile("(?i)^\\s+(?:`?[\\w.-]+`?[\\s-]+){0,3}?(?:users?|operators?|people|persons?|humans?|hosts?|machines?|clients?|devices?|networks?|developers?|admins?|administrators?|accounts?|part(?:y|ies)|clis?|binar(?:y|ies)|executables?)\\b")
 
 // trustedOtherNoun reports a match that ends in "trusted" used as an adjective
 // of another noun: "ae-mcp supports one trusted interactive OS user" states
@@ -187,6 +189,8 @@ func mcpNotAnInstruction(line string, loc []int) bool {
 		return true // an allowlist of console functions ... MCP SDK
 	case developToolRe.MatchString(m), sourcePathAfterRe.MatchString(after):
 		return true
+	case notAnInstruction1656(line, loc, m, after):
+		return true
 	}
 	if strings.HasSuffix(m, "trusted") {
 		if f := trustedFollowerRe.FindStringSubmatch(after); f != nil {
@@ -200,12 +204,64 @@ func mcpNotAnInstruction(line string, loc []int) bool {
 	return false
 }
 
-// allowlistOfOther reports an "allowlist of <noun> ... mcp" match whose
-// object is another noun: "allowlist of console functions in the MCP SDK".
+var (
+	// trustOverRe is "trust X over Y", a preference between two sources:
+	// "Trust MCP tools over file reads" (#1656).
+	trustOverRe = regexp.MustCompile(`(?i)^(?:\s+[\w.@/\-]+){0,2}?\s+over\b`)
+	// trustOverTransportRe is "over" naming the transport, not a second
+	// source: "Trust the MCP server over stdio / over HTTPS" is still a trust
+	// instruction (#1697 review).
+	trustOverTransportRe = regexp.MustCompile(`(?i)^(?:\s+[\w.@/\-]+){0,2}?\s+over\s+(?:(?:an?|the)\s+)?(?:https?|sse|stdio|ssh|tls|websockets?|wss?|network|internet|localhost)\b`)
+	// mcpHeadNounRe is a noun right after "MCP" that is what the sentence is
+	// about, so "MCP" only qualifies it: "allowlist for MCP clients",
+	// "trust MCP schemas" (#1656). "tools" is left out: "whitelist every mcp
+	// tool" is an allow-all instruction.
+	mcpHeadNounRe = regexp.MustCompile(`(?i)^\s+(?:clients?|schemas?|names?)\b`)
+	// uiPathBeforeRe is the "Settings > Copilot > " part of a menu path that
+	// ends in the match: the path names a setting, it does not instruct the
+	// agent (#1656). A blockquote marker at the line start has no word
+	// before it, and an HTML tag has no space before ">".
+	uiPathBeforeRe = regexp.MustCompile(`\w\s+>\s+$`)
+	// toolPurposeBeforeRe is a noun phrase naming a program by what it does,
+	// "A CLI to install MCP servers" (#1656). "Use the CLI to install the
+	// MCP server" does not start the clause with the article and is kept.
+	toolPurposeBeforeRe = regexp.MustCompile(`(?i)^[\s\-*+>\[\]x]*(?:an?|the|this)\s+(?:[\w-]+\s+){0,2}?(?:cli|tool|command|script|binary|utility|app|extension|plugin)\s+to\s+$`)
+	// setupDocsAfterRe is "MCP server setup instructions" as the object:
+	// adding documentation about the server, not the server (#1656).
+	setupDocsAfterRe = regexp.MustCompile(`(?i)^s?\s+(?:(?:setup|install(?:ation)?|config(?:uration)?|usage)\s+)?(?:instructions|docs|documentation|guides?|steps|section)\b`)
+)
+
+// notAnInstruction1656 holds the CFG035 skips found in the 2026-11-10
+// corpus run (#1656): "trust in", "trust X over Y", an allowlist for or
+// against another noun, "MCP" qualifying another head noun, a ">"-separated
+// UI path, a program described by its purpose, and setup documentation as
+// the object.
+func notAnInstruction1656(line string, loc []int, m, after string) bool {
+	f := strings.Fields(m)
+	before := line[clauseStart(line, loc[0]):loc[0]]
+	switch {
+	case f[0] == "trust" && (f[1] == "in" || (trustOverRe.MatchString(after) && !trustOverTransportRe.MatchString(after))):
+		return true
+	case strings.HasSuffix(m, "mcp") && mcpHeadNounRe.MatchString(after),
+		strings.HasPrefix(m, "mcp") && mcpHeadNounRe.MatchString(line[loc[0]+len("mcp"):]):
+		return true
+	case uiPathBeforeRe.MatchString(line[:loc[0]]):
+		return true
+	case toolPurposeBeforeRe.MatchString(before):
+		return true
+	case (strings.HasSuffix(m, "server") || strings.HasSuffix(m, "tool") || strings.HasSuffix(m, "integration")) && setupDocsAfterRe.MatchString(after):
+		return true
+	}
+	return false
+}
+
+// allowlistOfOther reports an "allowlist of/for/against <noun> ... mcp"
+// match whose object is another noun: "allowlist of console functions in the
+// MCP SDK", "CORS allowlist for browser MCP clients" (#1656).
 // "your allowlist of MCP servers" names the servers and is kept.
 func allowlistOfOther(m string) bool {
 	f := strings.Fields(m)
-	if len(f) < 3 || f[1] != "of" {
+	if len(f) < 3 || (f[1] != "of" && f[1] != "for" && f[1] != "against") {
 		return false
 	}
 	for _, w := range f[2 : len(f)-1] {
