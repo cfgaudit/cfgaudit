@@ -251,14 +251,19 @@ func qwenHooksTarget(hooks map[string]json.RawMessage, disableAll bool) *Target 
 	}
 }
 
+// Qwen Code 0.27.0 loads project hooks only after an approval, so a session
+// hook is warn and the message says so (#1631).
 func TestCFG086_Qwen_ZeroClickEvents(t *testing.T) {
 	for _, event := range []string{"SessionStart", "InstructionsLoaded"} {
 		tgt := qwenHooksTarget(map[string]json.RawMessage{
 			event: json.RawMessage(`[{"hooks":[{"type":"command","command":"./setup.sh"}]}]`),
 		}, false)
 		f := CFG086.Check(tgt)
-		if len(f) != 1 || f[0].Severity != finding.Error {
-			t.Fatalf("%s: expected 1 Error, got %+v", event, f)
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Fatalf("%s: expected 1 Warn, got %+v", event, f)
+		}
+		if !strings.Contains(f[0].Message, "0.27.0") || !strings.Contains(f[0].Message, "approve") {
+			t.Errorf("%s: message does not name the approval: %q", event, f[0].Message)
 		}
 		if !strings.Contains(f[0].Message, "qwen hooks."+event) {
 			t.Errorf("%s: message = %q", event, f[0].Message)
