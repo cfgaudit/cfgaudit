@@ -10,6 +10,8 @@ import (
 
 // runsArgCommands take a quoted argument that they run as a command, here or
 // on another machine, so the download pipeline inside it is not just text.
+// Names are matched lower-cased, so the PowerShell cmdlets are listed in lower
+// case (Invoke-Expression, Start-Process).
 var runsArgCommands = map[string]bool{
 	"bash": true, "sh": true, "zsh": true, "dash": true, "ksh": true, "fish": true,
 	"eval": true, "exec": true, "source": true, ".": true, "sudo": true, "su": true, "doas": true,
@@ -18,6 +20,9 @@ var runsArgCommands = map[string]bool{
 	"ssh": true, "docker": true, "podman": true, "kubectl": true, "nsenter": true, "chroot": true,
 	"powershell": true, "pwsh": true, "cmd": true, "cmd.exe": true, "powershell.exe": true,
 	"python": true, "python3": true, "node": true, "perl": true, "ruby": true,
+	"trap": true, "iex": true, "invoke-expression": true, "start-process": true,
+	"wsl": true, "wsl.exe": true, "busybox": true, "systemd-run": true, "unshare": true,
+	"stdbuf": true, "npx": true, "bunx": true, "uvx": true,
 }
 
 // printedDownloadRe matches a downloader in a quoted string, followed by its
