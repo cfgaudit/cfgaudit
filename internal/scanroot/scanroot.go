@@ -85,6 +85,28 @@ func Set(dir string) error {
 	return nil
 }
 
+// RootOf returns the scanned directory when path lies inside it, or "" when
+// path is outside it or no directory is set. It lets a rule find the
+// repository a file was read from when the file's target carries no
+// ProjectDir (a skill, a command or a plugin file).
+func RootOf(path string) string {
+	mu.Lock()
+	r := root
+	mu.Unlock()
+	if r == "" || path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(r, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return r
+}
+
 // Escapes returns the links recorded since the last Set, in the order found.
 func Escapes() []Escape {
 	mu.Lock()
