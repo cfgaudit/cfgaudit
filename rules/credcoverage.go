@@ -12,7 +12,12 @@ import (
 
 // secretDenyRe matches a deny entry that guards secret files: the bare Read,
 // Edit or Write tool, a wildcard, or a rule on a credential-like path.
-var secretDenyRe = regexp.MustCompile(`(?i)^(?:Read|Edit|Write|Grep|Glob)(?:\(\s*(?:\*\*?|/?/?\*\*(?:/\*)?)\s*\)|\([^)]*(?:\.env|\.pem|\.key\b|\.p12|\.pfx|\.jks|\.ssh|id_(?:rsa|ed25519|ecdsa|dsa)|\.aws|gcloud|\.azure|credential|secret|token|\.npmrc|\.netrc|\.kube|\.gnupg|\.docker)[^)]*\))?$`)
+//
+// `token` is matched only as a credential file name or path component
+// (`token`, `tokens.json`, `.token`, `access_token`, a `token/` directory),
+// not as a substring of a source file name such as `tokens.h` or
+// `spam-tokens.json`, which do not guard a secret (#1662).
+var secretDenyRe = regexp.MustCompile(`(?i)^(?:Read|Edit|Write|Grep|Glob)(?:\(\s*(?:\*\*?|/?/?\*\*(?:/\*)?)\s*\)|\([^)]*(?:\.env|\.pem|\.key\b|\.p12|\.pfx|\.jks|\.ssh|id_(?:rsa|ed25519|ecdsa|dsa)|\.aws|gcloud|\.azure|credential|secret|\.npmrc|\.netrc|\.kube|\.gnupg|\.docker)[^)]*\)|\(\s*(?:[^)]*/)?(?:access[_-])?\.?tokens?(?:\.json)?(?:/[^)]*)?\))?$`)
 
 // guardsSecrets reports whether any deny entry guards secret files.
 func guardsSecrets(deny []string) bool {
