@@ -58,6 +58,44 @@ func TestCredentialCoverage_Severity(t *testing.T) {
 	}
 }
 
+// `token` in a deny entry counts as a secret guard only when it is a
+// credential file name or path component, not a substring of a source file
+// name such as tokens.h or spam-tokens.json (#1662).
+func TestGuardsSecrets_TokenFileNames1662(t *testing.T) {
+	for _, d := range []string{
+		"Edit(syntaqlite-syntax/csrc/tokens.h)",
+		"Write(pkg/src/sqlite/tokens.rs)",
+		"Edit(pkg/fixtures/safes/spam-tokens.json)",
+	} {
+		if guardsSecrets([]string{d}) {
+			t.Errorf("%q should not count as a secret guard", d)
+		}
+	}
+	for _, d := range []string{
+		"Read(./.env)",
+		"Read(**/token.json)",
+		"Read(~/.config/gh/access_token)",
+		"Read(tokens)",
+		"Edit(secrets/token/key.pem)",
+	} {
+		if !guardsSecrets([]string{d}) {
+			t.Errorf("%q should count as a secret guard", d)
+		}
+	}
+}
+
+// A deny list that only names a source file with "tokens" in its name guards no
+// secret, so a credential-coverage gap is a warning, not an error (#1662).
+func TestCredentialCoverage_TokenSourceFile1662(t *testing.T) {
+	tg := settingsTarget(t, `{"permissions":{"deny":["Edit(syntaqlite-syntax/csrc/tokens.h)"]}}`)
+	for _, r := range []Rule{CFG041, CFG042} {
+		f := r.Check(tg)
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("%s: want one warn finding, got %+v", r.ID(), f)
+		}
+	}
+}
+
 // Without a permissions block there is no allow rule that opens a route.
 func TestSilentHomeRoute_NoPermissions(t *testing.T) {
 	if silentHomeRoute(settingsTarget(t, `{"env":{"A":"1"}}`)) {
