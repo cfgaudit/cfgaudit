@@ -55,6 +55,7 @@ var (
 	seen     map[string]bool
 	failed   map[string]bool // paths that exist but could not be read
 	dangling map[string]bool // symlinks whose target does not exist
+	looping  map[string]bool // symlinks that point at themselves or form a cycle
 	// aliases maps a path cfgaudit looked for to the path committed under
 	// another spelling of it (#990); listings caches directory names for
 	// that lookup.
@@ -67,7 +68,7 @@ var (
 func Set(dir string) error {
 	mu.Lock()
 	defer mu.Unlock()
-	root, resolved, escapes, seen, failed, dangling = "", "", nil, nil, map[string]bool{}, map[string]bool{}
+	root, resolved, escapes, seen, failed, dangling, looping = "", "", nil, nil, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	aliases, listings = map[string]string{}, map[string][]string{}
 	if dir == "" {
 		return nil
@@ -202,6 +203,10 @@ func absentOrRecorded(err error, path string) error {
 	if err == nil || IsAbsent(err) {
 		return err
 	}
+	if isLoop(err) {
+		recordLoopingLink(path)
+		return &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+	}
 	blocked := blocker(path)
 	mu.Lock()
 	if failed == nil {
@@ -273,6 +278,22 @@ func recordDanglingLink(path string) {
 	mu.Unlock()
 }
 
+// recordLoopingLink records path when it is a symlink that points at itself
+// or forms a cycle. Every agent reads such a file as absent, so the scan does
+// too: it is not a parse error and not an incomplete scan. LoopingLinks names
+// it.
+func recordLoopingLink(path string) {
+	if !IsLoopingLink(path) {
+		return
+	}
+	mu.Lock()
+	if looping == nil {
+		looping = map[string]bool{}
+	}
+	looping[path] = true
+	mu.Unlock()
+}
+
 // DanglingLinks returns the symlinks read since the last Set whose target
 // does not exist, sorted.
 func DanglingLinks() []string {
@@ -280,6 +301,30 @@ func DanglingLinks() []string {
 	defer mu.Unlock()
 	out := make([]string, 0, len(dangling))
 	for p := range dangling {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// IsLoopingLink reports whether path is a symlink that points at itself or
+// forms a cycle.
+func IsLoopingLink(path string) bool {
+	fi, err := os.Lstat(path)
+	if err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+		return false
+	}
+	_, err = os.Stat(path)
+	return isLoop(err)
+}
+
+// LoopingLinks returns the symlinks read since the last Set that point at
+// themselves or form a cycle, sorted.
+func LoopingLinks() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	out := make([]string, 0, len(looping))
+	for p := range looping {
 		out = append(out, p)
 	}
 	sort.Strings(out)

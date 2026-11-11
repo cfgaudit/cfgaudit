@@ -398,3 +398,55 @@ func TestRecordLink(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 }
+
+// A symlink that points at itself or forms a cycle reads as absent and is
+// listed by LoopingLinks, not by ReadErrors.
+func TestLoopingLinks(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".agents"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	symlink(t, "skills", filepath.Join(repo, ".agents", "skills"))
+	write(t, filepath.Join(repo, "AGENTS.md"), "real")
+	if err := Set(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+	for _, name := range []string{filepath.Join(".agents", "skills"), "AGENTS.md", "QWEN.md"} {
+		_, _ = ReadFile(filepath.Join(repo, name))
+	}
+	if _, err := ReadFile(filepath.Join(repo, ".agents", "skills")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a looping link must read as absent, got %v", err)
+	}
+	if got := LoopingLinks(); len(got) != 1 || got[0] != filepath.Join(repo, ".agents", "skills") {
+		t.Errorf("LoopingLinks = %v, want the .agents/skills link", got)
+	}
+	if got := ReadErrors(); len(got) != 0 {
+		t.Errorf("ReadErrors = %v, want none", got)
+	}
+	if err := Set(repo); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoopingLinks(); len(got) != 0 {
+		t.Errorf("Set must reset LoopingLinks, got %v", got)
+	}
+}
+
+// A looping link recorded before any Set is still recorded.
+func TestLoopingLinksBeforeSet(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".agents"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	symlink(t, "skills", filepath.Join(repo, ".agents", "skills"))
+	mu.Lock()
+	looping = nil
+	mu.Unlock()
+	recordLoopingLink(filepath.Join(repo, ".agents", "skills"))
+	if got := LoopingLinks(); len(got) != 1 {
+		t.Errorf("LoopingLinks = %v, want the link", got)
+	}
+	if err := Set(""); err != nil {
+		t.Fatal(err)
+	}
+}
