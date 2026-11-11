@@ -144,8 +144,12 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 	// qwen matches event names as exact PascalCase (no normalization), its kill
 	// switch is top-level disableAllHooks, and it has TWO zero-click events:
 	// SessionStart (startup/resume) and InstructionsLoaded (fires while QWEN.md and
-	// the context files load at session init, before any user action). Committed
-	// hooks run unprompted because qwen ships folder trust off by default.
+	// the context files load at session init, before any user action). Since
+	// Qwen Code 0.27.0 project hooks load only after an approval bound to a hash
+	// of the hooks (~/.qwen/hookApprovals.json) or in an explicitly trusted
+	// folder, and a headless run leaves them unloaded; measured on 0.27.0
+	// (#1631). Approved once, the hook runs on every session, so it is warn, not
+	// the zero-click error. Older Qwen versions ran it with no prompt.
 	if q := t.Qwen; q != nil && !q.HooksDisabled() {
 		hooks := q.HookGroups()
 		for _, event := range sortedKeys2(hooks) {
@@ -154,7 +158,8 @@ func (r *cfg086) Check(t *Target) []finding.Finding {
 				continue
 			}
 			if grokEventHasCommand(hooks[event], nil) {
-				findings = append(findings, zeroClickFinding(t, "qwen", event, when, t.QwenFile))
+				findings = append(findings, finding.Finding{RuleID: "CFG086", Severity: finding.Warn, Scope: t.Scope, File: t.QwenFile,
+					Message: "qwen hooks." + event + " runs a shell command on " + when + "; Qwen Code 0.27.0 and later ask each user to approve the project's hooks once (older versions run them with no prompt), and after that it runs on every session. Move it to a hook that runs on an explicit action, or to machine-local configuration" + userScopeNote(t)})
 			}
 		}
 	}
