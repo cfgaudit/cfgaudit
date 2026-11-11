@@ -32,8 +32,9 @@ func (r *cfg013) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	// Only fire from the canonical project target so we don't double-emit when
-	// settings.json and settings.local.json both exist.
-	if t.Scope != finding.ScopeProject {
+	// settings.json and settings.local.json both exist. Without one, the
+	// settings.local.json target carries the check (#1632).
+	if t.Scope != finding.ScopeProject && (t.Scope != finding.ScopeProjectLocal || !t.LocalFilesCheck) {
 		return nil
 	}
 
