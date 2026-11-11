@@ -96,10 +96,9 @@ func RootOf(path string) string {
 	if r == "" || path == "" {
 		return ""
 	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return ""
-	}
+	// On an error Abs returns "", which Rel rejects below, so RootOf returns
+	// "" for an unreadable working directory too (#1712).
+	abs, _ := filepath.Abs(path)
 	rel, err := filepath.Rel(r, abs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return ""
