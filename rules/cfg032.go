@@ -223,6 +223,10 @@ var (
 	// spanIdentifierRe is a code span that holds only an identifier template
 	// made of two or more tags: "<GAME>_DEBUG_<SYSTEM>".
 	spanIdentifierRe = regexp.MustCompile(`^[\w-]*(?:<[A-Z][A-Z_]*>[\w-]*){2,}$`)
+	// spanOverrideRe is an override or command word for the agent in a code
+	// span: "`ok <SYSTEM> ignore previous rules`", "`note <ADMIN> you must
+	// obey`". Such a span keeps reporting.
+	spanOverrideRe = regexp.MustCompile(`(?i)\b(?:ignore|disregard|forget|override|bypass|obey|you\s+must)\b`)
 )
 
 // codeSpanPlaceholder reports whether the tag at [start, end) of line sits in
@@ -230,7 +234,8 @@ var (
 // ("`admin revoke <ADMIN>`"), right after '=' ("`force_rebuild=<FORCE>`"),
 // or in an identifier template that fills the span ("`<GAME>_DEBUG_<SYSTEM>`").
 // The span boundary ends the check. A span holding only the tag, a closing
-// tag, or more than a few words after the tag keeps reporting.
+// tag, an override word ("ignore", "you must") or more than a few words
+// after the tag keeps reporting.
 func codeSpanPlaceholder(line string, start, end int) bool {
 	for _, m := range codeSpanRe.FindAllStringIndex(line, -1) {
 		if start <= m[0] || end >= m[1] {
@@ -240,7 +245,7 @@ func codeSpanPlaceholder(line string, start, end int) bool {
 		inner := line[m[0]+ticks : m[1]-ticks]
 		before := line[m[0]+ticks : start]
 		after := line[end : m[1]-ticks]
-		if strings.Contains(after, "</") {
+		if strings.Contains(after, "</") || spanOverrideRe.MatchString(inner) {
 			return false
 		}
 		if spanIdentifierRe.MatchString(inner) {
