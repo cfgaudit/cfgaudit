@@ -34,6 +34,8 @@ var mcpVendors = []mcpVendor{
 	{"mcp.neon.tech", "", "Neon", "https://neon.com/docs/ai/neon-mcp-server"},
 	{"mcp.figma.com", "", "Figma", "https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/"},
 	{"mcp.cloudflare.com", "", "Cloudflare", "https://github.com/cloudflare/mcp-server-cloudflare"},
+	{"*.mcp.cloudflare.com", "", "Cloudflare", "https://github.com/cloudflare/mcp-server-cloudflare"},
+	{"pubmed.mcp.claude.com", "", "Anthropic", "https://academy.claude.com/tutorials/using-the-pubmed-connector-in-claude"},
 	{"mcp.vercel.com", "", "Vercel", "https://vercel.com/docs/mcp/vercel-mcp"},
 	{"huggingface.co", "/mcp", "Hugging Face", "https://huggingface.co/docs/hub/hf-mcp-server"},
 	{"mcp.exa.ai", "", "Exa", "https://docs.exa.ai/reference/exa-mcp"},
@@ -57,7 +59,7 @@ func knownMCPVendor(raw string) (mcpVendor, bool) {
 	}
 	host := strings.ToLower(u.Hostname())
 	for _, v := range mcpVendors {
-		if host != v.host {
+		if !vendorHostMatch(host, v.host) {
 			continue
 		}
 		if v.path == "" || u.Path == v.path || strings.HasPrefix(u.Path, v.path+"/") {
@@ -65,4 +67,13 @@ func knownMCPVendor(raw string) (mcpVendor, bool) {
 		}
 	}
 	return mcpVendor{}, false
+}
+
+// vendorHostMatch reports an exact documented host, or a suffix entry
+// written as "*.mcp.example" that matches any subdomain of mcp.example (#1669).
+func vendorHostMatch(host, pattern string) bool {
+	if strings.HasPrefix(pattern, "*.") {
+		return strings.HasSuffix(host, pattern[1:])
+	}
+	return host == pattern
 }

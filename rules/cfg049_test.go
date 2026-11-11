@@ -31,7 +31,7 @@ func TestCFG049_RawIP_Error(t *testing.T) {
 }
 
 func TestCFG049_TLSHostname_Warn(t *testing.T) {
-	f := CFG049.Check(settingsTarget(t, `{"mcpServers":{"m":{"type":"http","url":"https://mcp.partner.example/sse"}}}`))
+	f := CFG049.Check(settingsTarget(t, `{"mcpServers":{"m":{"type":"http","url":"https://mcp.untrusted-partner.dev/sse"}}}`))
 	if len(f) != 1 || f[0].Severity != finding.Warn {
 		t.Fatalf("expected TLS-hostname Warn, got %+v", f)
 	}
@@ -51,11 +51,11 @@ func TestCFG049_VendorEndpoints1202(t *testing.T) {
 		{"https://learn.microsoft.com/api/mcp", finding.Info},
 		{"https://MCP.Linear.app/sse", finding.Info},
 		{"https://mcp.example-unknown.com/mcp", finding.Warn},
-		{"https://api.githubcopilot.com.example.com/mcp", finding.Warn},
+		{"https://api.githubcopilot.com.example.com/mcp", finding.Info},
 		{"https://learn.microsoft.com/en-us/docs", finding.Warn},
 		{"https://huggingface.co/someone/space", finding.Warn},
-		{"https://api.githubcopilot.com@evil.example/mcp", finding.Warn},
-		{"https://evil.example/api.githubcopilot.com/mcp", finding.Warn},
+		{"https://api.githubcopilot.com@evil.invalid/mcp", finding.Warn},
+		{"https://evil.invalid/api.githubcopilot.com/mcp", finding.Warn},
 		{"http://mcp.sentry.dev/mcp", finding.Error},
 		{"http://10.0.0.5:8080/mcp", finding.Error},
 	} {
@@ -64,8 +64,8 @@ func TestCFG049_VendorEndpoints1202(t *testing.T) {
 			t.Errorf("%s: got %+v, want one %s", tc.url, f, tc.want)
 			continue
 		}
-		if tc.want == finding.Info && !strings.Contains(f[0].Message, "documents for its service") {
-			t.Errorf("%s: message does not name the vendor: %s", tc.url, f[0].Message)
+		if tc.want == finding.Info && !strings.Contains(f[0].Message, "documents for its service") && !strings.Contains(f[0].Message, "RFC 2606") {
+			t.Errorf("%s: message does not name the vendor or an example host: %s", tc.url, f[0].Message)
 		}
 	}
 }
@@ -124,5 +124,27 @@ func TestLocalhostSubdomain_Unparsable(t *testing.T) {
 	}
 	if !localhostSubdomain("https://a.localhost/mcp") {
 		t.Error("https://a.localhost/mcp: want true")
+	}
+}
+
+func TestCFG049_VendorSuffixAndExampleHosts1669(t *testing.T) {
+	for _, tc := range []struct {
+		url  string
+		want finding.Severity
+		msg  string
+	}{
+		{"https://builds.mcp.cloudflare.com", finding.Info, "Cloudflare"},
+		{"https://bindings.mcp.cloudflare.com/mcp", finding.Info, "Cloudflare"},
+		{"https://pubmed.mcp.claude.com/mcp", finding.Info, "Anthropic"},
+		{"https://hcls.mcp.claude.com/mcp", finding.Warn, "non-loopback host"},
+		{"https://stage.example.com/mcp", finding.Info, "RFC 2606"},
+		{"https://docs.example.org/mcp", finding.Info, "RFC 2606"},
+		{"https://mcp.partner.example/sse", finding.Info, "RFC 2606"},
+		{"https://mcp.unknown-vendor.dev/mcp", finding.Warn, "non-loopback host"},
+	} {
+		f := CFG049.Check(settingsTarget(t, `{"mcpServers":{"m":{"type":"http","url":"`+tc.url+`"}}}`))
+		if len(f) != 1 || f[0].Severity != tc.want || !strings.Contains(f[0].Message, tc.msg) {
+			t.Errorf("%s: got %+v, want one %s with %q", tc.url, f, tc.want, tc.msg)
+		}
 	}
 }
