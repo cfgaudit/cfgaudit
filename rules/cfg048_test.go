@@ -499,5 +499,15 @@ func TestCFG048_DocumentedAutoReply1679(t *testing.T) {
 	f = CFG048.Check(vscodeSettingsTarget(t, `{"terminal.integrated.autoReplies":{"Do you want to continue? [Y/n]":"y\r"}}`))
 	if len(f) != 1 || f[0].Severity != finding.Warn {
 		t.Fatalf("other auto-reply: want 1 warn, got %+v", f)
+	} // #1695: the documented pair next to another one, and the documented
+	// prompt with a value that is not a string, stay warnings.
+	for _, js := range []string{
+		`{"terminal.integrated.autoReplies":{"Terminate batch job (Y/N)":"Y\r","Overwrite? (y/n)":"y\r"}}`,
+		`{"terminal.integrated.autoReplies":{"Terminate batch job (Y/N)":1}}`,
+	} {
+		f = CFG048.Check(vscodeSettingsTarget(t, js))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("%s: want 1 warn, got %+v", js, f)
+		}
 	}
 }
