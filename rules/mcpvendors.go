@@ -35,7 +35,7 @@ var mcpVendors = []mcpVendor{
 	{"mcp.figma.com", "", "Figma", "https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/"},
 	{"mcp.cloudflare.com", "", "Cloudflare", "https://github.com/cloudflare/mcp-server-cloudflare"},
 	{"*.mcp.cloudflare.com", "", "Cloudflare", "https://github.com/cloudflare/mcp-server-cloudflare"},
-	{"*.mcp.claude.com", "", "Anthropic", "https://code.claude.com/docs/en/connectors/serving-mcp"},
+	{"pubmed.mcp.claude.com", "", "Anthropic", "https://academy.claude.com/tutorials/using-the-pubmed-connector-in-claude"},
 	{"mcp.vercel.com", "", "Vercel", "https://vercel.com/docs/mcp/vercel-mcp"},
 	{"huggingface.co", "/mcp", "Hugging Face", "https://huggingface.co/docs/hub/hf-mcp-server"},
 	{"mcp.exa.ai", "", "Exa", "https://docs.exa.ai/reference/exa-mcp"},

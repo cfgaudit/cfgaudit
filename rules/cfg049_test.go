@@ -135,8 +135,8 @@ func TestCFG049_VendorSuffixAndExampleHosts1669(t *testing.T) {
 	}{
 		{"https://builds.mcp.cloudflare.com", finding.Info, "Cloudflare"},
 		{"https://bindings.mcp.cloudflare.com/mcp", finding.Info, "Cloudflare"},
-		{"https://pubmed.mcp.claude.com", finding.Info, "Anthropic"},
-		{"https://hcls.mcp.claude.com/mcp", finding.Info, "Anthropic"},
+		{"https://pubmed.mcp.claude.com/mcp", finding.Info, "Anthropic"},
+		{"https://hcls.mcp.claude.com/mcp", finding.Warn, "non-loopback host"},
 		{"https://stage.example.com/mcp", finding.Info, "RFC 2606"},
 		{"https://docs.example.org/mcp", finding.Info, "RFC 2606"},
 		{"https://mcp.partner.example/sse", finding.Info, "RFC 2606"},
