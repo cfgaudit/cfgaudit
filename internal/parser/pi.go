@@ -4,6 +4,7 @@
 package parser
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -212,6 +213,14 @@ func ParsePiMCP(path string) (map[string]MCPServer, error) {
 	}
 	out := map[string]MCPServer{}
 	for name, raw := range top.MCPServers {
+		// pi skips a server whose auth is not an object; cfgaudit's own
+		// decoder ignores such a value for the other MCP files (#1666).
+		var a struct {
+			Auth json.RawMessage `json:"auth"`
+		}
+		if json.Unmarshal(raw, &a) == nil && !piAuthObject(a.Auth) {
+			continue
+		}
 		// raw came out of a valid document, so it marshals again.
 		one, _ := json.Marshal(map[string]map[string]json.RawMessage{"mcpServers": {name: raw}})
 		cfg, err := parseMCPConfigBytes(one, path)
@@ -223,4 +232,11 @@ func ParsePiMCP(path string) (map[string]MCPServer, error) {
 		}
 	}
 	return out, nil
+}
+
+// piAuthObject reports whether an MCP server's auth value is absent, null or
+// an object, the shapes pi reads.
+func piAuthObject(raw json.RawMessage) bool {
+	t := bytes.TrimSpace(raw)
+	return len(t) == 0 || string(t) == "null" || t[0] == '{'
 }

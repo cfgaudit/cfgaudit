@@ -761,6 +761,17 @@ type MCPStaticOAuth struct {
 	ClientSecret string `json:"CLIENT_SECRET,omitempty"`
 }
 
+// UnmarshalJSON reads an object as Cursor's static OAuth block and ignores
+// every other value, such as `"auth": "oauth"`, which other MCP clients
+// accept (#1666).
+func (a *MCPStaticOAuth) UnmarshalJSON(data []byte) error {
+	if t := bytes.TrimSpace(data); len(t) == 0 || t[0] != '{' {
+		return nil
+	}
+	type plain MCPStaticOAuth
+	return json.Unmarshal(data, (*plain)(a))
+}
+
 // ToolNames is a list of tool names that reads anything else as empty.
 type ToolNames []string
 

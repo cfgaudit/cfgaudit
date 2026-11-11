@@ -176,6 +176,23 @@ func taskCommandString(raw json.RawMessage) string {
 	return string(raw)
 }
 
+// UnmarshalJSON accepts the same command forms as VSCodeTask for a
+// per-platform override: a string, an array of strings, or a quoted-string
+// object (#1666).
+func (o *VSCodeTaskOverride) UnmarshalJSON(data []byte) error {
+	type plain VSCodeTaskOverride
+	var v struct {
+		plain
+		Command json.RawMessage `json:"command,omitempty"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*o = VSCodeTaskOverride(v.plain)
+	o.Command = taskCommandString(v.Command)
+	return nil
+}
+
 type VSCodeRunOptions struct {
 	RunOn string `json:"runOn,omitempty"`
 }
