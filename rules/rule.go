@@ -102,9 +102,15 @@ type Target struct {
 	// Gitignore is the project's .gitignore, read during discovery so a
 	// symlink that leaves the tree is reported by CFG115 like any other
 	// (#1023); HasGitignore is whether it could be read. Set on the project
-	// targets only.
+	// targets, and on a LocalFilesCheck target.
 	Gitignore    []byte
 	HasGitignore bool
+
+	// LocalFilesCheck is set on the .claude/settings.local.json target when the
+	// scan has no project target for its directory (no settings.json, .mcp.json
+	// or CLAUDE.md), so CFG013 runs there instead, once (#1632). Its Gitignore is
+	// then read too.
+	LocalFilesCheck bool
 
 	// ArchiveName is the archive a scan target was unpacked from (#1002);
 	// ArchiveEntries are its entry names and ArchiveLinks the link entries and
