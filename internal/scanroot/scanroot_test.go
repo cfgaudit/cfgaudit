@@ -398,3 +398,110 @@ func TestRecordLink(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 }
+
+// A symlink that points at itself or forms a cycle reads as absent and is
+// listed by LoopingLinks, not by ReadErrors.
+func TestLoopingLinks(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".agents"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	symlink(t, "skills", filepath.Join(repo, ".agents", "skills"))
+	write(t, filepath.Join(repo, "AGENTS.md"), "real")
+	if err := Set(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+	for _, name := range []string{filepath.Join(".agents", "skills"), "AGENTS.md", "QWEN.md"} {
+		_, _ = ReadFile(filepath.Join(repo, name))
+	}
+	if _, err := ReadFile(filepath.Join(repo, ".agents", "skills")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a looping link must read as absent, got %v", err)
+	}
+	if got := LoopingLinks(); len(got) != 1 || got[0] != filepath.Join(repo, ".agents", "skills") {
+		t.Errorf("LoopingLinks = %v, want the .agents/skills link", got)
+	}
+	if got := ReadErrors(); len(got) != 0 {
+		t.Errorf("ReadErrors = %v, want none", got)
+	}
+	if err := Set(repo); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoopingLinks(); len(got) != 0 {
+		t.Errorf("Set must reset LoopingLinks, got %v", got)
+	}
+}
+
+// A looping link recorded before any Set is still recorded.
+func TestLoopingLinksBeforeSet(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".agents"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	symlink(t, "skills", filepath.Join(repo, ".agents", "skills"))
+	mu.Lock()
+	looping = nil
+	mu.Unlock()
+	recordLoopingLink(filepath.Join(repo, ".agents", "skills"))
+	if got := LoopingLinks(); len(got) != 1 {
+		t.Errorf("LoopingLinks = %v, want the link", got)
+	}
+	if err := Set(""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoopingLinkBranchCoverage(t *testing.T) {
+	base := t.TempDir()
+	repo := filepath.Join(base, "repo")
+	if err := os.MkdirAll(repo, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	loop := filepath.Join(repo, "loop")
+	symlink(t, "loop", loop)
+	write(t, filepath.Join(repo, "regular.txt"), "x")
+	if err := Set(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+
+	if IsLoopingLink(filepath.Join(repo, "regular.txt")) {
+		t.Error("a regular file was reported as a looping link")
+	}
+	if IsLoopingLink(filepath.Join(repo, "missing")) {
+		t.Error("a missing path was reported as a looping link")
+	}
+
+	recordLoopingLink(filepath.Join(repo, "regular.txt"))
+	for _, p := range LoopingLinks() {
+		if p == filepath.Join(repo, "regular.txt") {
+			t.Error("recordLoopingLink recorded a path that is not a looping link")
+		}
+	}
+
+	if err := loopCheck(filepath.Join(repo, "regular.txt")); err != nil {
+		t.Errorf("loopCheck on a readable path returned %v, want nil", err)
+	}
+
+	if f, err := Open(loop); err == nil || !errors.Is(err, fs.ErrNotExist) {
+		if f != nil {
+			_ = f.Close()
+		}
+		t.Errorf("Open on a looping link returned %v, want an absent error", err)
+	}
+
+	if err := WalkDir(loop, func(string, fs.DirEntry, error) error { return nil }); err != nil {
+		t.Errorf("WalkDir on a looping root returned %v, want nil", err)
+	}
+
+	if got, _ := Glob(loop); len(got) != 0 {
+		t.Errorf("Glob on a looping link returned %v, want nothing", got)
+	}
+	if got, _ := Glob(filepath.Join(loop, "*")); len(got) != 0 {
+		t.Errorf("Glob through a looping directory returned %v, want nothing", got)
+	}
+
+	if _, err := ReadDir(loop); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReadDir on a looping link returned %v, want an absent error", err)
+	}
+}
