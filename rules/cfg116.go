@@ -44,8 +44,8 @@ func (r *cfg116) Check(t *Target) []finding.Finding {
 	seen := map[string]bool{}
 	for _, raw := range t.ExternalImports {
 		p := strings.TrimRight(raw, ",.;:)")
-		if p == "" || pathAliasRe.MatchString(p) || seen[p] {
-			continue // #1210: a TypeScript path alias such as @/components
+		if p == "" || isPathAlias(p) || seen[p] {
+			continue // #1210, #1663: a TypeScript path alias such as @/components or @/lib/utils
 		}
 		seen[p] = true
 		sev := finding.Warn
@@ -76,6 +76,33 @@ func (r *cfg116) Check(t *Target) []finding.Finding {
 // one segment without an extension, or `@/*` (#1210). `@/home/...` has two
 // segments and stays reported.
 var pathAliasRe = regexp.MustCompile(`^/(?:\*|[A-Za-z0-9_-]+)/?$`)
+
+// aliasPathRe is an extensionless path of plain segments under `@/`, such as
+// `/lib/utils` or `/components/ui/_` (#1663).
+var aliasPathRe = regexp.MustCompile(`^(?:/[A-Za-z0-9_-]+)+(?:/\*?)?$`)
+
+// filesystemRoots are the top-level directories of macOS and Linux that an
+// absolute import names (`@/home/me/notes`); an alias never starts with one.
+var filesystemRoots = map[string]bool{
+	"home": true, "Users": true, "root": true, "etc": true, "tmp": true, "var": true,
+	"opt": true, "mnt": true, "media": true, "Volumes": true, "private": true,
+	"srv": true, "usr": true,
+}
+
+// isPathAlias reports whether p (the text after `@`) is a TypeScript-style
+// path alias rather than an absolute file: one segment or `@/*` (#1210), or
+// several extensionless segments whose first is not a filesystem root and
+// that name no credentials (#1663).
+func isPathAlias(p string) bool {
+	if pathAliasRe.MatchString(p) {
+		return true
+	}
+	if !aliasPathRe.MatchString(p) || sensitiveImportRe.MatchString(p) {
+		return false
+	}
+	first, _, _ := strings.Cut(p[1:], "/")
+	return !filesystemRoots[first]
+}
 
 // sensitiveImportRe is an import of credentials or keys: SSH, cloud and
 // package-registry credentials, .env files and key files.
