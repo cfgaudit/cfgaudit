@@ -75,6 +75,12 @@ var destructiveLeadWordRe = regexp.MustCompile(`(?i)^(?:please|first|then|next|n
 // paragraph sets it as the agent's goal.
 var destructiveStrongTargetRe = regexp.MustCompile(`(?i)factory\s+state|\b(?:entire|whole)\b|home\s+directory|file[- ]?system|everything|\bcloud\b|\b(?:aws|azure|gcp|s3|ec2)\b|\brm\s|terminate-instances|delete-user|delete-bucket`)
 
+// A broad target that names resources a skill provisions for its own run:
+// "2. Destroy all instances" in a skill that rents GPU instances is its
+// cleanup step (#1612). It lowers a bare imperative, not the goal form, and a
+// strong target ("all EC2 instances") never reaches it.
+var destructiveProvisionedTargetRe = regexp.MustCompile(`(?i)^(?:all|every)\s+(?:of\s+)?(?:the\s+)?instances?$`)
+
 var destructiveAPIHeadingRe = regexp.MustCompile(`(?i)^#{2,6}\s+[^\n]*(?:\([^\n)]*\)|\bAPI\b)\s*$`)
 
 type instructionParagraph struct {
@@ -173,6 +179,11 @@ func destructiveGoalFinding(src instructionSource) []finding.Finding {
 			if !isGoal && !destructiveStrongTargetRe.MatchString(between) && !destructiveBroadLocationRe.MatchString(afterTarget) {
 				sev = finding.Warn
 			}
+			message := " gives the agent a destructive goal against a broad target (pattern 7) — instruction files are read as trusted system context, so this can make the agent wipe user data or cloud infrastructure. Remove the instruction"
+			if sev == finding.Warn && destructiveProvisionedTargetRe.MatchString(paragraph.text[action[1]+target[2]:targetEnd]) {
+				sev = finding.Info
+				message = " tells the agent to destroy all instances (pattern 7), a cleanup step for resources the skill provisions; confirm the step only reaches instances this skill created"
+			}
 			line := paragraph.startLine + strings.Count(paragraph.text[:action[0]], "\n")
 			col := action[0] - strings.LastIndex(paragraph.text[:action[0]], "\n")
 			findings = append(findings, finding.Finding{
@@ -181,7 +192,7 @@ func destructiveGoalFinding(src instructionSource) []finding.Finding {
 				File:     src.File,
 				Line:     line,
 				Col:      col,
-				Message:  src.Name + " line " + strconv.Itoa(line) + " gives the agent a destructive goal against a broad target (pattern 7) — instruction files are read as trusted system context, so this can make the agent wipe user data or cloud infrastructure. Remove the instruction",
+				Message:  src.Name + " line " + strconv.Itoa(line) + message,
 			})
 			break
 		}
