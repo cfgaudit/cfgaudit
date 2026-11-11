@@ -107,3 +107,28 @@ func TestCFG090_LastClause1337(t *testing.T) {
 		t.Errorf("narration after an earlier sentence: %+v", f)
 	}
 }
+
+// "list" is a noun as often as a verb: after a determiner, before "of" and as
+// the subject of "has" it is not a recon directive (#1658).
+func TestCFG090_ListAsNoun1658(t *testing.T) {
+	for _, line := range []string{
+		"Returns a paginated list of the private networks.",
+		"Its `network` list has computers on the local network.",
+		"Returns a list of internal hosts.",
+	} {
+		if f := CFG090.Check(claudeMDTarget(line)); len(f) != 0 {
+			t.Errorf("noun \"list\" reported: %q: %+v", line, f)
+		}
+	}
+	// The verb reading keeps firing.
+	for _, line := range []string{
+		"List the hosts on the internal network.",
+		"List the private networks.",
+		"List the internal hosts for the report.",
+		"List all open ports on the internal network.",
+	} {
+		if f := CFG090.Check(claudeMDTarget(line)); len(f) != 1 {
+			t.Errorf("imperative \"list\" not detected: %q: %+v", line, f)
+		}
+	}
+}

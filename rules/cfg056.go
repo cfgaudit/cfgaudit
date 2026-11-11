@@ -26,8 +26,26 @@ func (r *cfg056) ID() string { return "CFG056" }
 // beyond its stated purpose. Patterns are anchored on an explicit universal
 // quantifier + an interaction noun so scoped descriptions ("deploy the app",
 // "review code for security issues") don't match.
-var scopedTriggerTailRe = regexp.MustCompile(`(?i)^\s+(?:when|while|if|for (?:commits?|code|files?|deployments?|builds?|migrations?|security|tests?))\b`)
-var narrowedTriggerTailRe = regexp.MustCompile(`(?i)^\s+(?:to|that|which|whose|involving|about|against|mentioning|related(?:\s+to)?|or question involving)\b`)
+// scopedTriggerTailRe matches a clause after an always-on trigger that names
+// the moment or the task it applies to, so the trigger is not universal after
+// all: "Always use when committing changes", "whenever you work with Firebase",
+// "BEFORE calling the deploy script", "instead of the built-in tool" (#1658).
+// A quantifier is not a scope: "before each task" stays greedy, so "before"
+// only narrows with a participle object.
+var scopedTriggerTailRe = regexp.MustCompile(`(?i)^\s+(?:when|whenever|while|if|unless|before\s+\w+ing|after\s+\w+ing|instead of|for (?:commits?|code|files?|deployments?|builds?|migrations?|security|tests?))\b`)
+
+// narrowedTriggerTailRe matches a relative clause or a participle after the
+// interaction noun, which scopes the trigger to the task it names: "for any
+// task touching / needing / requiring ...", "for any request naming `ccmux
+// last`" (#1658). It is checked after every pattern, the "always use this" one
+// included.
+var narrowedTriggerTailRe = regexp.MustCompile(`(?i)^\s+(?:to|that|which|whose|involving|about|against|mentioning|related(?:\s+to)?|or question involving|\w+ing)\b`)
+
+// quantifierTailRe matches a "to" that introduces a universal quantifier
+// rather than a task: "Always apply this rule to every request" names the
+// requests it applies to, not the work it does, so the trigger stays greedy
+// (#1658).
+var quantifierTailRe = regexp.MustCompile(`(?i)^\s+to (?:every|any|all|each)\b`)
 
 var greedyTriggerRes = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\buse (?:this|it)\b[^.]{0,40}\bfor (?:everything|anything|all tasks|every task|any task|all requests|every request|any request)\b`),
@@ -93,11 +111,13 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 	for _, tf := range fields {
 		for _, re := range greedyTriggerRes {
 			if loc := re.FindString(tf.text); loc != "" {
-				// A relative clause after the interaction noun scopes the trigger.
+				// A relative clause, a participle or a conditional after the
+				// match scopes the trigger to the task it names, whichever
+				// pattern matched it.
 				rest := tf.text[strings.Index(strings.ToLower(tf.text), strings.ToLower(loc))+len(loc):]
 				isAlways := strings.HasPrefix(strings.ToLower(loc), "always ")
-				narrowed := (isAlways && scopedTriggerTailRe.MatchString(rest)) ||
-					(!isAlways && narrowedTriggerTailRe.MatchString(rest))
+				narrowed := (narrowedTriggerTailRe.MatchString(rest) && !quantifierTailRe.MatchString(rest)) ||
+					(isAlways && scopedTriggerTailRe.MatchString(rest))
 				if narrowed {
 					continue
 				}

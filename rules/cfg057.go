@@ -34,6 +34,13 @@ var (
 	// parentheses, and the payload match stops at ")" or a space, so the note
 	// is often cut short.
 	dataPlaceholderRe = regexp.MustCompile(`^<[^<>]*>$|(?:\.{3}|\x{2026})(?:[(\x{FF08}][^)\x{FF09}]*[)\x{FF09}]?)?$`)
+	// dataSlotRe matches a payload that is a template slot rather than data: a
+	// named slot the build fills in (`{base64EncodedSVG}`), or a template
+	// interpolant (`${Buffer.from(svg).toString('base64')}`, which the payload
+	// match cuts at the closing parenthesis) (#1658). A graded slot holding
+	// more than a name — `{onload:alert(...)}` — is not matched, so markup in
+	// braces stays reported.
+	dataSlotRe = regexp.MustCompile(`^\$\{[^{}]*\}?$|^\{[\w$.-]+\}$`)
 	// base64RunRe matches a base64 run that could carry an encoded payload. The
 	// length floor only bounds decode attempts; the malicious-content gate (not
 	// length) is what keeps false positives low, so a modest floor is fine.
@@ -79,14 +86,14 @@ func (r *cfg057) Check(t *Target) []finding.Finding {
 }
 
 // reportableDataURI reports whether line holds a data: URI that can carry
-// content the model reads: not a raster image, and not a placeholder or a
-// truncated example (#1216).
+// content the model reads: not a raster image, and not a placeholder, a
+// truncated example (#1216) or a template slot (#1658).
 func reportableDataURI(line string) bool {
 	if !dataURIRe.MatchString(line) {
 		return false
 	}
 	for _, m := range dataURIRe.FindAllStringSubmatch(line, -1) {
-		if inertImageTypes[strings.ToLower(m[1])] || dataPlaceholderRe.MatchString(m[2]) {
+		if inertImageTypes[strings.ToLower(m[1])] || dataPlaceholderRe.MatchString(m[2]) || dataSlotRe.MatchString(m[2]) {
 			continue
 		}
 		return true
