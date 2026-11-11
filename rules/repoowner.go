@@ -73,3 +73,13 @@ func githubURLOwner(url string) string {
 	}
 	return strings.ToLower(m[2])
 }
+
+// ownerProjectDir is the directory whose origin remote names the repository's
+// GitHub owner for t: its ProjectDir, or the scanned directory when t is a
+// file inside it with no ProjectDir of its own, such as a skill (#1659).
+func ownerProjectDir(t *Target) string {
+	if t.ProjectDir != "" {
+		return t.ProjectDir
+	}
+	return scanroot.RootOf(t.InstructionFile)
+}
