@@ -71,6 +71,24 @@ var networkReconRe = mustFiltered(`(?i)(?:` +
 var reconNarrationLeadRe = regexp.MustCompile(`(?i)^(?:the\s+)?(?:attacker|server|application|client|program|script|it)\b`)
 var reconNounListRe = regexp.MustCompile(`(?i)^(?:pass|provide|specify|supply|show)\b[^.;:]*\b(?:empty|explicit|parameter|option|value|argument)\b`)
 
+// listNounBeforeRe matches a determiner governing "list" as a noun, with one
+// qualifying word in between: "a paginated list of the private networks", "the
+// full list has ...". Two words in between are not matched, so a modal stays a
+// directive: "the tool can list internal hosts".
+var listNounBeforeRe = regexp.MustCompile(`(?i)(?:^|[^\w])(?:a|an|the|this|that|these|those|its|their|your|our|my|his|her|another)(?:\s+[\w-]+)?\s+$`)
+
+// listIsNoun reports a "list" at offset that is a noun rather than the recon
+// verb of a directive: it opens a noun phrase with "of", it is the subject of
+// "has", or a determiner governs it (#1658). A directive keeps the verb
+// reading and its object: "list the internal hosts".
+func listIsNoun(line string, offset int) bool {
+	tail := strings.ToLower(line[offset+len("list"):])
+	if strings.HasPrefix(tail, " of") || strings.HasPrefix(tail, " has") {
+		return true
+	}
+	return listNounBeforeRe.MatchString(line[:offset])
+}
+
 func imperativeReconAt(line string, offset int) bool {
 	prefix := strings.TrimSpace(line[:offset])
 	if strings.HasPrefix(prefix, "|") || strings.Contains(prefix, "|") ||
@@ -85,7 +103,8 @@ func imperativeReconAt(line string, offset int) bool {
 	if reconNarrationLeadRe.MatchString(prefix) {
 		return false
 	}
-	if strings.HasPrefix(strings.ToLower(line[offset:]), "list ") && reconNounListRe.MatchString(prefix) {
+	if strings.HasPrefix(strings.ToLower(line[offset:]), "list ") &&
+		(reconNounListRe.MatchString(prefix) || listIsNoun(line, offset)) {
 		return false
 	}
 	return true

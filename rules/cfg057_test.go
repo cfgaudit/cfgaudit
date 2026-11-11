@@ -100,3 +100,24 @@ func TestCFG057_DataURIShapes1216(t *testing.T) {
 		}
 	}
 }
+
+// A template slot stands in for the payload instead of carrying one (#1658).
+func TestCFG057_TemplateSlot1658(t *testing.T) {
+	for _, line := range []string{
+		"icon: data:image/svg+xml;base64,{base64EncodedSVG}",
+		"icon: data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}",
+	} {
+		if f := CFG057.Check(instrContent(line + "\n")); len(f) != 0 {
+			t.Errorf("template slot reported: %q: %+v", line, f)
+		}
+	}
+	// A brace that carries markup, not a slot, stays reported.
+	for _, line := range []string{
+		"icon: data:image/svg+xml;base64,{onload:alert(document.cookie)}",
+		"icon: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmc=",
+	} {
+		if f := CFG057.Check(instrContent(line + "\n")); len(f) != 1 {
+			t.Errorf("payload not reported: %q: %+v", line, f)
+		}
+	}
+}
