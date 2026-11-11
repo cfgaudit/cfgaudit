@@ -49,12 +49,22 @@ var bypassPatterns = []bypassPattern{
 	// only fired when the qualifier followed the verb directly. It is a closed set
 	// on purpose — a generic `(?:\s+\w+){0,3}` filler would drag in benign prose,
 	// because the noun list carries broad words (data, content, context, text).
+	//
+	// guidance, directions and orders belong to the same override vocabulary
+	// (#1641), but bare they are ordinary words: singular "order" is sorting
+	// and graph wording ("callers forget the order", "ignore direction" on a
+	// mode flag) and unqualified "guidance" catches editorial instructions
+	// ("ignore guidance below"). Measured on the 25,100-repository corpus,
+	// bare forms added 24 findings and none was a true positive, so like
+	// "rules" and "guidelines" (#993, #1358) they live in the
+	// qualifier-required entry below.
 	{1, mustFiltered(`(?i)\b(ignore|disregard|skip|forget|neglect|overlook|omit|bypass|override|discard|supersede|set aside|pay no attention to|do not follow|do not obey)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial)?\s*(content|text|instructions?|directives?|commands?|context|conversation|inputs?|data|messages?|communication|responses?|requests?)\b`),
 		finding.Error, "instruction override", false},
 	// The same override aimed at the rules the agent works under, which needs
 	// the qualifier: "disregard all earlier guardrails", "ignore your previous
-	// rules", but not "ignore the lint rules for generated files" (#993).
-	{1, mustFiltered(`(?i)\b(ignore|disregard|forget|bypass|override|discard|supersede|set aside)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial|original|existing|system)\s+(rules|guardrails|guidelines|safeguards|policies|safety\s+rules)\b`),
+	// rules", "forget the previous guidance", "ignore the above directions",
+	// but not "ignore the lint rules for generated files" (#993).
+	{1, mustFiltered(`(?i)\b(ignore|disregard|forget|bypass|override|discard|supersede|set aside)\s+(?:(?:all|any|the|these|those|your|its|our|my|of)\s+){0,3}(prior|previous|preceding|above|foregoing|earlier|initial|original|existing|system)\s+(rules|guardrails|guidelines|safeguards|policies|safety\s+rules|guidance|directions|orders)\b`),
 		finding.Error, "instruction override", false},
 	// Pattern 2 targets hijacking of Claude's own identity. Bare "act as <role>" /
 	// "pretend you are <role>" are the standard, legitimate way to define a skill's
