@@ -125,7 +125,8 @@ func (r *cfg075) Check(t *Target) []finding.Finding {
 			}
 		}
 	}
-	return append(findings, r.checkSettingsEnv(t)...)
+	findings = append(findings, r.checkSettingsEnv(t)...)
+	return append(findings, r.checkSSHHostKey(t)...)
 }
 
 // tlsDisplay renders an env value for a message, showing an empty value as "".
