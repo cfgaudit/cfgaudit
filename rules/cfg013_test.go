@@ -159,6 +159,19 @@ func TestCFG013_OnlyFiresOnProjectScope(t *testing.T) {
 	}
 }
 
+// With no project target, the settings.local.json target carries the check
+// (#1632).
+func TestCFG013_LocalFilesCheck_FiresOnProjectLocal(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".claude", "settings.local.json"), "{}")
+	tgt := projectTarget(dir)
+	tgt.Scope = finding.ScopeProjectLocal
+	tgt.LocalFilesCheck = true
+	if f := CFG013.Check(tgt); len(f) != 1 {
+		t.Errorf("expected one finding from a LocalFilesCheck target, got %+v", f)
+	}
+}
+
 func TestCFG013_NoProjectDir_NoFinding(t *testing.T) {
 	if f := CFG013.Check(&Target{Scope: finding.ScopeProject}); len(f) != 0 {
 		t.Errorf("expected no finding when ProjectDir is empty, got %+v", f)
