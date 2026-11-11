@@ -505,3 +505,26 @@ func TestLoopingLinkBranchCoverage(t *testing.T) {
 		t.Errorf("ReadDir on a looping link returned %v, want an absent error", err)
 	}
 }
+
+func TestRootOf1659(t *testing.T) {
+	dir := t.TempDir()
+	if got := RootOf(filepath.Join(dir, "a")); got != "" {
+		t.Errorf("RootOf with no root set = %q, want empty", got)
+	}
+	if err := Set(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+	root := filepath.Clean(dir)
+	for path, want := range map[string]string{
+		filepath.Join(dir, ".claude", "skills", "x", "SKILL.md"): root,
+		dir: root,
+		filepath.Join(dir, "..", "other", "SKILL.md"): "",
+		filepath.Join(dir, "..x", "f"):                root,
+		"":                                            "",
+	} {
+		if got := RootOf(path); got != want {
+			t.Errorf("RootOf(%q) = %q, want %q", path, got, want)
+		}
+	}
+}

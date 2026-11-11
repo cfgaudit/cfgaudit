@@ -313,6 +313,52 @@ func singleKeyLookup(line string, loc []int) bool {
 	return envKeyLookupRe.MatchString(line[loc[0]:loc[1]]) || pyKeyLookupRe.MatchString(line[loc[0]:])
 }
 
+// envKeyExtractCmdRe is one command that prints one named key of an env
+// file: grep '^KEY=' .env (an anchored or upper-case name, so an open search
+// such as "grep token .env" is not one), sed -n 's/^KEY=//p' .env or dotenvx
+// get KEY. The file may sit under a quoted variable directory
+// ("$FRONTEND_DIR/.env"). The key is the first non-empty group.
+var envKeyExtractCmdRe = regexp.MustCompile(`^(?:grep\s+(?:-\w+\s+)*["']?(?:\^([\p{L}_][\p{L}\d_]*)|([\p{Lu}_][\p{Lu}\d_]*))=?["']?|sed\s+-n\s+["']s/\^([\p{L}_][\p{L}\d_]*)=//p["'])\s+["']?(?:\$\{?\w+\}?/)?[\w./\-]*\.env[\w.\-]*["']?(?:\s+2>\s*/dev/null)?$|^dotenvx\s+get\s+([\p{L}_][\p{L}\d_]*)(?:\s+-f\s+["']?[\w./\-$]*\.env[\w.\-]*["']?)?$`)
+
+// groupBraceReplacer removes the braces of a { ...; } command group, so its
+// commands are split like the others.
+var groupBraceReplacer = strings.NewReplacer("{", " ", "}", " ")
+
+// singleKeyExtract reports the keys a substitution extracts when every
+// command in it that names a sensitive path prints one named key of an env
+// file, and the other commands only shape that output (#1610). A name that
+// ends in "_" is a prefix of several keys and does not count: "$({ sed -n
+// 's/^BOT_INSTANCES=//p' .env; echo new-bot; } | tr ',' '\n' | sort -u)".
+func singleKeyExtract(sub string) ([]string, bool) {
+	inner := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(sub), "$("), ")")
+	var keys []string
+	for _, cmd := range splitCommands(groupBraceReplacer.Replace(inner)) {
+		cmd = strings.TrimSpace(cmd)
+		if cmd == "" {
+			continue
+		}
+		if m := envKeyExtractCmdRe.FindStringSubmatch(cmd); m != nil {
+			for _, k := range m[1:] {
+				if k == "" {
+					continue
+				}
+				if strings.HasSuffix(k, "_") {
+					// A prefix (grep '^TWITTER_') prints every key that
+					// starts with it, secrets included, not one setting.
+					return nil, false
+				}
+				keys = append(keys, k)
+				break
+			}
+			continue
+		}
+		if cmdSubstSensitiveRe.MatchString("$( " + cmd + ")") {
+			return nil, false
+		}
+	}
+	return keys, len(keys) > 0
+}
+
 // countOnlyGrepRe is a grep whose flags make it print a count, file names or
 // nothing: -c, -l, -L, -q, alone or in a group (-qE, -cF).
 var countOnlyGrepRe = regexp.MustCompile(`^grep\s+(?:-\w+\s+)*-[A-Za-z]*[clLq][A-Za-z]*\s`)
@@ -397,6 +443,17 @@ func sensitiveSubstitution(line string, inFence, jsFence bool) ([]int, finding.S
 			continue
 		}
 		if check(line[loc[0]:loc[1]]) {
+			// One named key passed to a local command is info; a key named as a
+			// secret keeps warn, and a network command on the line keeps the
+			// checks below (#1610).
+			if keys, ok := singleKeyExtract(line[loc[0]:loc[1]]); ok && !netExfilRe.MatchString(line) {
+				for _, k := range keys {
+					if secretKeyName(k) {
+						return loc, finding.Warn
+					}
+				}
+				return loc, finding.Info
+			}
 			if singleKeyLookup(line, loc) && !netExfilRe.MatchString(line) {
 				return loc, finding.Warn
 			}
@@ -628,12 +685,14 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 				// A read the text refuses is downgraded, not dropped, as
 				// CFG031 does (#869): a refusing heading must not hide a
 				// payload.
-				if listedAsRefused(lines, i, loc) {
+				if sev == finding.Error && listedAsRefused(lines, i, loc) {
 					sev = finding.Warn
 				}
 				span := strings.TrimSpace(line[loc[0]:loc[1]])
 				msg := "uses command substitution reading a sensitive path (Part A) — \"" + span + "…\"; reading credential files in a substitution has no legitimate use in documentation. Remove it"
 				switch {
+				case sev == finding.Info:
+					msg = "extracts one named key from an env file and passes it to a local command (Part A): \"" + span + "…\"; no network command is on the line. Confirm the key is a setting, not a secret"
 				case sev == finding.Warn && remoteSensitiveURL(span):
 					msg = "requests a sensitive path from a remote host (Part A) — \"" + span + "…\"; the file is on another server, not on this machine. Confirm the probe is authorised"
 				case sev == finding.Warn && passwdRe.MatchString(span):
