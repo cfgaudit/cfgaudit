@@ -28,7 +28,7 @@ func (r *cfg049) ID() string { return "CFG049" }
 //     external endpoint).
 //   - warn:  TLS transport to a non-loopback hostname.
 //   - info:  TLS transport to an endpoint a vendor documents for its own
-//     service (mcpvendors.go, #1202).
+//     service (mcpvendors.go, #1202), or to an RFC 2606 example host (#1669).
 //
 // Loopback urls, empty values, and shell-variable references are exempt. Covers
 // every MCP source in scope (settings.json, .mcp.json, other agents' configs).
@@ -88,7 +88,22 @@ func classifyMCPEndpoint(v string) (finding.Severity, string, bool) {
 	if vendor, ok := knownMCPVendor(v); ok {
 		return finding.Info, "the MCP endpoint " + vendor.vendor + " documents for its service (" + vendor.doc + "); it still receives the context and headers the agent sends, so keep it only if the project uses " + vendor.vendor, true
 	}
+	if reservedExampleHost(host) {
+		return finding.Info, "an RFC 2606 example host — documentation or a placeholder, not a live endpoint", true
+	}
 	return finding.Warn, "a non-loopback host — verify it is a trusted endpoint, or point it at a loopback address", true
+}
+
+// reservedExampleHost reports RFC 2606 example names: example.com/org/net
+// and the ".example" TLD (#1669).
+func reservedExampleHost(host string) bool {
+	h := strings.ToLower(host)
+	for _, suf := range []string{"example.com", "example.org", "example.net", "example"} {
+		if h == suf || strings.HasSuffix(h, "."+suf) {
+			return true
+		}
+	}
+	return false
 }
 
 // localhostSubdomain reports whether a URL's host is a subdomain of localhost
