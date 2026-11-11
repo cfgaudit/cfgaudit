@@ -39,12 +39,16 @@ type VSCodeTask struct {
 	Windows   *VSCodeTaskOverride `json:"windows,omitempty"`
 	Linux     *VSCodeTaskOverride `json:"linux,omitempty"`
 	OSX       *VSCodeTaskOverride `json:"osx,omitempty"`
+	// Options (cwd, env, shell) is kept raw: CFG047 only needs to know
+	// whether it is set (#1672).
+	Options json.RawMessage `json:"options,omitempty"`
 }
 
 // VSCodeTaskOverride is a task's per-platform command and arguments.
 type VSCodeTaskOverride struct {
 	Command string            `json:"command,omitempty"`
 	Args    []json.RawMessage `json:"args,omitempty"`
+	Options json.RawMessage   `json:"options,omitempty"`
 }
 
 // CommandLines returns the task's command with its arguments, and each
