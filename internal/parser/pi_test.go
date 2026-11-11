@@ -90,3 +90,35 @@ func TestParsePiMCP(t *testing.T) {
 		t.Error("missing file parsed")
 	}
 }
+
+// pi v1.5.0 rejects a non-object auth only on an HTTP server (#1666); a stdio
+// server, an HTTP server with an auth object and a server of another type
+// are kept.
+func TestParsePiMCPAuth1666(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "mcp.json")
+	doc := `{"mcpServers": {
+		"http-string": {"url": "https://a.example", "auth": "oauth"},
+		"http-null": {"url": "https://b.example", "auth": null},
+		"http-typed": {"type": "streamable-http", "url": "https://c.example", "auth": ["x"]},
+		"http-object": {"url": "https://d.example", "auth": {"provider": "github"}},
+		"stdio-string": {"command": "node", "auth": "oauth"},
+		"stdio-typed": {"type": "stdio", "command": "node", "url": "https://e.example", "auth": true}
+	}}`
+	if err := os.WriteFile(p, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := ParsePiMCP(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"http-string", "http-null", "http-typed"} {
+		if _, ok := servers[name]; ok {
+			t.Errorf("%s kept, pi rejects it", name)
+		}
+	}
+	for _, name := range []string{"http-object", "stdio-string", "stdio-typed"} {
+		if _, ok := servers[name]; !ok {
+			t.Errorf("%s dropped, pi loads it", name)
+		}
+	}
+}
