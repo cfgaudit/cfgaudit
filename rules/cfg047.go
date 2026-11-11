@@ -88,10 +88,43 @@ var configDirFileRe = regexp.MustCompile(`(?:^|[\s"'/=])\.(?:claude|vscode|curso
 // devStepRe is one step of a project's own dev workflow: a package manager
 // running a build, watch, dev-server, test, lint or install script, tsc in
 // watch or build mode, a language toolchain's build/test/sync, or compose up.
-var devStepRe = regexp.MustCompile(`^(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+|run-script\s+)?(?:(?:watch|dev|start|build|compile|test|serve|lint|typecheck|format|prepare|bootstrap)(?:[:\-][\w:\-]*)?|install|i|ci)|(?:npx\s+)?tsc(?:\s+-[-\w]+)*|(?:uv|poetry|pdm|pipenv)\s+(?:sync|install)|(?:cargo|go)\s+(?:build|check|test|watch|run)|(?:make|just)(?:\s+(?:build|watch|dev|all|setup))?|(?:\./)?gradlew?\s+\w+|mvn\s+\S+|dotnet\s+(?:build|watch|restore|run)|docker\s+compose\s+up|deno\s+task\s+(?:dev|watch|build|start))(?:\s+[\w./=:@,\-]+)*$`)
+var devStepRe = regexp.MustCompile(`^(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+|run-script\s+)?(?:(?:watch|dev|start|build|compile|test|serve|lint|typecheck|format|prepare|bootstrap)(?:[:\-][\w:\-]*)?|install|i|ci)|(?:npx\s+)?tsc(?:\s+-[-\w]+)*|(?:uv|poetry|pdm|pipenv)\s+(?:sync|install)|(?:cargo|go)\s+(?:build|check|test|watch|run)|(?:make|just)(?:\s+(?:build|watch|dev|all|setup))?|(?:\./)?gradlew?\s+\w+|mvn\s+\S+|dotnet\s+(?:build|watch|restore|run)|docker\s+compose\s+up|deno\s+task\s+(?:(?:dev|watch|build|start)|[\w:\-]+\s+--watch))(?:\s+[\w./=:@,\-]+)*$`)
 
 // devScriptRe is the script name of an npm-type task with the same meaning.
 var devScriptRe = regexp.MustCompile(`^(?:watch|dev|start|build|compile|test|serve|lint|typecheck|format|prepare|bootstrap|install)(?:[:\-][\w:\-]*)?$`)
+
+// shellOnlyRe is a command that only opens the user's own interactive shell
+// (#1672): ${env:SHELL} or ${env:COMSPEC}, or a bare bash, zsh, pwsh or cmd,
+// with no arguments or only -l, -i or -NoLogo.
+var shellOnlyRe = regexp.MustCompile(`^(?:\$\{env:(?:SHELL|COMSPEC)\}|bash|zsh|pwsh|cmd)(?:\s+(?:-l|-i|-NoLogo))*$`)
+
+// opensShellOnly reports whether the task does nothing but open the user's
+// own shell. Its options (or a per-platform override's) must be unset: an
+// env such as ZDOTDIR, BASH_ENV or ENV, or another shell, could make that
+// shell read a file from the repository. A task with no command line at
+// all (for example an npm task whose per-OS override sets neither command
+// nor args) or with an npm script runs something from the repository, so it
+// is never shell-only.
+func opensShellOnly(task parser.VSCodeTask) bool {
+	if len(task.Options) > 0 || len(task.DependsOnLabels()) > 0 || task.Script != "" {
+		return false
+	}
+	lines := task.CommandLines()
+	if len(lines) == 0 {
+		return false
+	}
+	for _, o := range []*parser.VSCodeTaskOverride{task.Windows, task.Linux, task.OSX} {
+		if o != nil && len(o.Options) > 0 {
+			return false
+		}
+	}
+	for _, l := range lines {
+		if !shellOnlyRe.MatchString(l) {
+			return false
+		}
+	}
+	return true
+}
 
 // devStepSplitRe splits a command line into steps at && and ;.
 var devStepSplitRe = regexp.MustCompile(`&&|;`)
@@ -205,6 +238,11 @@ func (r *cfg047) checkVSCode(t *Target) []finding.Finding {
 		switch {
 		case taskRunsConfigDirFile(task, t.VSCodeTasks.Tasks):
 			msg += " The command runs a file inside an agent or editor configuration directory (.claude/, .vscode/, .cursor/, ...), where a project keeps no build code."
+		case opensShellOnly(task):
+			// #1672: it runs nothing from the repository, less risk than a
+			// dev-workflow step.
+			sev = finding.Warn
+			msg += " The task only opens the user's own shell and runs nothing from the repository, reported at warn."
 		case devWorkflowTask(task, t.VSCodeTasks.Tasks):
 			// #1181 option C: the project's own build, watch, dev-server, test
 			// or dependency-sync command is warn; anything else stays error.

@@ -1132,8 +1132,9 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	if err != nil {
 		return nil, err
 	}
+	var localTarget *rules.Target
 	if localSettings != nil {
-		targets = append(targets, &rules.Target{
+		localTarget = &rules.Target{
 			SettingsFile: localPath,
 			Settings:     localSettings,
 			Scope:        finding.ScopeProjectLocal,
@@ -1149,7 +1150,8 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			SiblingDeny: projectSettings != nil && projectSettings.Permissions != nil &&
 				len(projectSettings.Permissions.Deny) > 0 &&
 				!rules.SettingsDiscarded(projectSettings, nil),
-		})
+		}
+		targets = append(targets, localTarget)
 	}
 
 	// The same root .mcp.json written without its mcpServers wrapper is a file
@@ -1164,6 +1166,19 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				ProjectMCP:     servers,
 				ProjectMCPFile: rootMCP,
 			})
+		}
+	}
+
+	// CFG013 runs once per project, on a project target. A repository whose only
+	// Claude file is .claude/settings.local.json has none, so the local target
+	// carries the check (#1632).
+	if localTarget != nil {
+		localTarget.LocalFilesCheck = true
+		for _, t := range targets {
+			if t.Scope == finding.ScopeProject && t.ProjectDir == dir {
+				localTarget.LocalFilesCheck = false
+				break
+			}
 		}
 	}
 
@@ -1319,7 +1334,7 @@ func buildTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	// The project's .gitignore for CFG013, read here so a symlink out of the
 	// tree is recorded before CFG115 collects the escapes (#1023).
 	for _, t := range targets {
-		if t.ProjectDir != "" && t.Scope == finding.ScopeProject {
+		if t.ProjectDir != "" && (t.Scope == finding.ScopeProject || t.LocalFilesCheck) {
 			if data, err := scanroot.ReadFile(filepath.Join(t.ProjectDir, ".gitignore")); err == nil {
 				t.Gitignore, t.HasGitignore = data, true
 			}
