@@ -77,7 +77,11 @@ func (r *cfg048) checkEditorSurfaces(t *Target) []finding.Finding {
 	}
 	out = append(out, terminalEnvFindings(t)...)
 	if replies, ok := s.ObjectField("terminal.integrated.autoReplies"); ok && len(replies) > 0 {
-		add(finding.Warn, "terminal.integrated.autoReplies", "terminal.integrated.autoReplies types text into the terminal when a pattern appears ("+quoteList(sortedRawKeys(replies))+") — committed, it answers prompts in the user's terminal on the repository's behalf (CVE-2026-21523). Remove it")
+		sev := finding.Warn
+		if onlyVSCodeDocumentedAutoReply(replies) {
+			sev = finding.Info
+		}
+		add(sev, "terminal.integrated.autoReplies", "terminal.integrated.autoReplies types text into the terminal when a pattern appears ("+quoteList(sortedRawKeys(replies))+") — committed, it answers prompts in the user's terminal on the repository's behalf (CVE-2026-21523). Remove it")
 	}
 	for _, key := range copilotDebugURLKeys {
 		if v := copilotAdvancedString(t, key); v != "" {
@@ -301,4 +305,26 @@ func terminalEnvFindings(t *Target) []finding.Finding {
 		}
 	}
 	return out
+}
+
+// vscodeDocumentedAutoReplyPrompt is the pattern in VS Code's own
+// terminal.integrated.autoReplies example, which answers cmd's Ctrl+C prompt
+// (#1679).
+const vscodeDocumentedAutoReplyPrompt = "Terminate batch job (Y/N)"
+
+// onlyVSCodeDocumentedAutoReply reports whether autoReplies is exactly that
+// documented pair. Any other prompt stays a warning.
+func onlyVSCodeDocumentedAutoReply(replies map[string]json.RawMessage) bool {
+	if len(replies) != 1 {
+		return false
+	}
+	raw, ok := replies[vscodeDocumentedAutoReplyPrompt]
+	if !ok {
+		return false
+	}
+	var v string
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return false
+	}
+	return v == "Y\r"
 }
