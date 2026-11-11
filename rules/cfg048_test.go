@@ -490,3 +490,14 @@ func TestCFG048_ExtensionLookalikes995(t *testing.T) {
 		t.Errorf("got %v", ids)
 	}
 }
+
+func TestCFG048_DocumentedAutoReply1679(t *testing.T) {
+	f := CFG048.Check(vscodeSettingsTarget(t, `{"terminal.integrated.autoReplies":{"Terminate batch job (Y/N)":"Y\r"}}`))
+	if len(f) != 1 || f[0].Severity != finding.Info {
+		t.Fatalf("documented pair: want 1 info, got %+v", f)
+	}
+	f = CFG048.Check(vscodeSettingsTarget(t, `{"terminal.integrated.autoReplies":{"Do you want to continue? [Y/n]":"y\r"}}`))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("other auto-reply: want 1 warn, got %+v", f)
+	}
+}
