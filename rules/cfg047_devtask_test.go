@@ -169,3 +169,20 @@ func npmOverrideTask(t *testing.T) parser.VSCodeTask {
 	}
 	return tasks.Tasks[0]
 }
+
+// A task with no script and no command line at all (its only per-OS override
+// sets neither command nor args) is not shell-only (#1703).
+func TestOpensShellOnly_NoCommandLine1703(t *testing.T) {
+	var tasks parser.VSCodeTasks
+	data := `{"tasks":[{"label": "x", "linux": {"problemMatcher": []}, "runOptions": {"runOn": "folderOpen"}}]}`
+	if err := json.Unmarshal([]byte(data), &tasks); err != nil {
+		t.Fatal(err)
+	}
+	task := tasks.Tasks[0]
+	if got := task.CommandLines(); len(got) != 0 {
+		t.Fatalf("want no command lines, got %q", got)
+	}
+	if opensShellOnly(task) {
+		t.Error("a task with no command line must not count as shell-only")
+	}
+}
