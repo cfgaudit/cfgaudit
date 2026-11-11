@@ -450,3 +450,58 @@ func TestLoopingLinksBeforeSet(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLoopingLinkBranchCoverage(t *testing.T) {
+	base := t.TempDir()
+	repo := filepath.Join(base, "repo")
+	if err := os.MkdirAll(repo, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	loop := filepath.Join(repo, "loop")
+	symlink(t, "loop", loop)
+	write(t, filepath.Join(repo, "regular.txt"), "x")
+	if err := Set(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Set("") })
+
+	if IsLoopingLink(filepath.Join(repo, "regular.txt")) {
+		t.Error("a regular file was reported as a looping link")
+	}
+	if IsLoopingLink(filepath.Join(repo, "missing")) {
+		t.Error("a missing path was reported as a looping link")
+	}
+
+	recordLoopingLink(filepath.Join(repo, "regular.txt"))
+	for _, p := range LoopingLinks() {
+		if p == filepath.Join(repo, "regular.txt") {
+			t.Error("recordLoopingLink recorded a path that is not a looping link")
+		}
+	}
+
+	if err := loopCheck(filepath.Join(repo, "regular.txt")); err != nil {
+		t.Errorf("loopCheck on a readable path returned %v, want nil", err)
+	}
+
+	if f, err := Open(loop); err == nil || !errors.Is(err, fs.ErrNotExist) {
+		if f != nil {
+			_ = f.Close()
+		}
+		t.Errorf("Open on a looping link returned %v, want an absent error", err)
+	}
+
+	if err := WalkDir(loop, func(string, fs.DirEntry, error) error { return nil }); err != nil {
+		t.Errorf("WalkDir on a looping root returned %v, want nil", err)
+	}
+
+	if got, _ := Glob(loop); len(got) != 0 {
+		t.Errorf("Glob on a looping link returned %v, want nothing", got)
+	}
+	if got, _ := Glob(filepath.Join(loop, "*")); len(got) != 0 {
+		t.Errorf("Glob through a looping directory returned %v, want nothing", got)
+	}
+
+	if _, err := ReadDir(loop); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReadDir on a looping link returned %v, want an absent error", err)
+	}
+}
