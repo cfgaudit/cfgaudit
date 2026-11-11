@@ -208,6 +208,10 @@ var (
 	// trustOverRe is "trust X over Y", a preference between two sources:
 	// "Trust MCP tools over file reads" (#1656).
 	trustOverRe = regexp.MustCompile(`(?i)^(?:\s+[\w.@/\-]+){0,2}?\s+over\b`)
+	// trustOverTransportRe is "over" naming the transport, not a second
+	// source: "Trust the MCP server over stdio / over HTTPS" is still a trust
+	// instruction (#1697 review).
+	trustOverTransportRe = regexp.MustCompile(`(?i)^(?:\s+[\w.@/\-]+){0,2}?\s+over\s+(?:(?:an?|the)\s+)?(?:https?|sse|stdio|ssh|tls|websockets?|wss?|network|internet|localhost)\b`)
 	// mcpHeadNounRe is a noun right after "MCP" that is what the sentence is
 	// about, so "MCP" only qualifies it: "allowlist for MCP clients",
 	// "trust MCP schemas" (#1656). "tools" is left out: "whitelist every mcp
@@ -236,7 +240,7 @@ func notAnInstruction1656(line string, loc []int, m, after string) bool {
 	f := strings.Fields(m)
 	before := line[clauseStart(line, loc[0]):loc[0]]
 	switch {
-	case f[0] == "trust" && (f[1] == "in" || trustOverRe.MatchString(after)):
+	case f[0] == "trust" && (f[1] == "in" || (trustOverRe.MatchString(after) && !trustOverTransportRe.MatchString(after))):
 		return true
 	case strings.HasSuffix(m, "mcp") && mcpHeadNounRe.MatchString(after),
 		strings.HasPrefix(m, "mcp") && mcpHeadNounRe.MatchString(line[loc[0]+len("mcp"):]):
