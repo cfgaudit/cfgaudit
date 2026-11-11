@@ -370,6 +370,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stderr, "  %s\n", p)
 		}
 	}
+	if links := scanroot.LoopingLinks(); len(links) > 0 {
+		verb := "loops and was"
+		if len(links) > 1 {
+			verb = "loop and were"
+		}
+		_, _ = fmt.Fprintf(stderr, "cfgaudit: %d symbolic %s %s skipped as absent:\n", len(links), pluralize("link", len(links)), verb)
+		for _, p := range links {
+			_, _ = fmt.Fprintf(stderr, "  %s\n", p)
+		}
+	}
 	if len(readErrs) > 0 {
 		_, _ = fmt.Fprintf(stderr, "cfgaudit: could not read %d %s, results are incomplete:\n", len(readErrs), pluralize("path", len(readErrs)))
 		for _, p := range readErrs {
@@ -965,8 +975,8 @@ var unreadable []unreadableFile
 // .cfgaudit.yml that does not parse changes what cfgaudit itself does, so it
 // stays a hard error.
 func skipUnreadable(path string, err error) {
-	if scanroot.IsDanglingLink(path) {
-		return // a dangling link reads as absent and is named on stderr (#1363)
+	if scanroot.IsDanglingLink(path) || scanroot.IsLoopingLink(path) {
+		return // a dangling or looping link reads as absent and is named on stderr
 	}
 	unreadable = append(unreadable, unreadableFile{path: path, reason: unreadableReason(path, err)})
 }

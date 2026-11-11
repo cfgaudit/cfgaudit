@@ -100,12 +100,16 @@ func (r *cfg014) Check(t *Target) []finding.Finding {
 	}
 
 	var findings []finding.Finding
-	for _, site := range commandSitesWithScripts(t) {
+	sites := commandSitesWithScripts(t)
+	for i, site := range sites {
+		reported := false
+		// #1676: a pipeline inside printed text (an install hint in echo) runs nothing.
+		command := maskPrintedText(site.Command)
 		for _, p := range downloadExecPatterns {
-			if !p.re.MatchString(site.Command) {
+			if !p.re.MatchString(command) {
 				continue
 			}
-			if p.re == curlPipeInterpreterRe && !pipesProgramToStdin(site.Command) {
+			if p.re == curlPipeInterpreterRe && !pipesProgramToStdin(command) {
 				continue
 			}
 			findings = append(findings, finding.Finding{
@@ -115,7 +119,26 @@ func (r *cfg014) Check(t *Target) []finding.Finding {
 				Line:     site.Line,
 				Message:  site.Label + " downloads and executes remote code (" + p.label + ") — this runs unverified remote code every time it runs; download to a file first and verify a checksum before running" + userScopeNote(t),
 			})
+			reported = true
 			break
+		}
+		if reported {
+			continue
+		}
+		// #1686: a download saved to a file and run by a later step, on the same
+		// command line or on the next line of the same script.
+		runs := downloadThenRuns(command)
+		if !runs && i+1 < len(sites) && sites[i+1].File == site.File && sites[i+1].Label == site.Label && sites[i+1].Line == site.Line+1 {
+			runs = downloadThenRuns(command + "\n" + maskPrintedText(sites[i+1].Command))
+		}
+		if runs {
+			findings = append(findings, finding.Finding{
+				RuleID:   "CFG014",
+				Severity: finding.Error,
+				File:     site.File,
+				Line:     site.Line,
+				Message:  site.Label + " downloads and executes remote code (download saved to a file and then run) — this runs unverified remote code every time it runs; verify a checksum of the file before running it" + userScopeNote(t),
+			})
 		}
 	}
 	return findings
