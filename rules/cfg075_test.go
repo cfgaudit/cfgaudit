@@ -190,3 +190,65 @@ func TestCFG075_SettingsEnv(t *testing.T) {
 		}
 	}
 }
+
+// #1684: SSH host-key checking turned off in an MCP launch, a hook or GIT_SSH_COMMAND.
+func TestCFG075_SSHHostKeyCheckingOff(t *testing.T) {
+	warnOnly := func(t *testing.T, f []finding.Finding, want string) {
+		t.Helper()
+		if len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, want) {
+			t.Fatalf("expected 1 warn naming %q, got %+v", want, f)
+		}
+	}
+	t.Run("mcp args", func(t *testing.T) {
+		f := CFG075.Check(mcpTarget(t, `{"build":{"command":"ssh","args":["-o","StrictHostKeyChecking=no","-o","UserKnownHostsFile=/dev/null","deploy@build.example.com","mcp-server"]}}`))
+		warnOnly(t, f, "StrictHostKeyChecking=no and UserKnownHostsFile=/dev/null")
+		if !strings.Contains(f[0].Message, "mcpServers.build") {
+			t.Errorf("message should name the server, got %s", f[0].Message)
+		}
+	})
+	t.Run("mcp accept-new in one arg", func(t *testing.T) {
+		warnOnly(t, CFG075.Check(mcpTarget(t, `{"b":{"command":"ssh","args":["-oStrictHostKeyChecking=accept-new","host","srv"]}}`)), "StrictHostKeyChecking=accept-new")
+	})
+	t.Run("mcp env GIT_SSH_COMMAND", func(t *testing.T) {
+		warnOnly(t, CFG075.Check(mcpTarget(t, `{"g":{"command":"git-mcp","env":{"GIT_SSH_COMMAND":"ssh -o StrictHostKeyChecking=off"}}}`)), "GIT_SSH_COMMAND")
+	})
+	t.Run("settings env GIT_SSH_COMMAND", func(t *testing.T) {
+		warnOnly(t, CFG075.Check(settingsTarget(t, `{"env":{"GIT_SSH_COMMAND":"ssh -o UserKnownHostsFile=/dev/null"}}`)), "UserKnownHostsFile=/dev/null")
+	})
+	for _, cmd := range []string{
+		"ssh-keyscan github.com >> ~/.ssh/known_hosts",
+		"ssh-keyscan -t ed25519 github.com > /home/ci/.ssh/known_hosts",
+		"ssh-keyscan github.com | sudo tee -a /etc/ssh/ssh_known_hosts",
+		`GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git push origin main`,
+		"ssh -o 'StrictHostKeyChecking no' deploy@host ./deploy.sh",
+	} {
+		t.Run("hook "+cmd, func(t *testing.T) {
+			f := CFG075.Check(hookTarget(t, cmd))
+			if len(f) != 1 || f[0].Severity != finding.Warn {
+				t.Fatalf("expected 1 warn, got %+v", f)
+			}
+		})
+	}
+}
+
+func TestCFG075_SSHHostKeyChecking_NotReported(t *testing.T) {
+	if f := CFG075.Check(mcpTarget(t, `{"b":{"command":"ssh","args":["deploy@host","mcp-server"]}}`)); len(f) != 0 {
+		t.Errorf("plain ssh launch: expected no finding, got %+v", f)
+	}
+	if f := CFG075.Check(mcpTarget(t, `{"b":{"command":"ssh","args":["-o","StrictHostKeyChecking=yes","host","srv"]}}`)); len(f) != 0 {
+		t.Errorf("StrictHostKeyChecking=yes: expected no finding, got %+v", f)
+	}
+	if f := CFG075.Check(mcpTarget(t, `{"g":{"command":"git-mcp","env":{"GIT_SSH_COMMAND":"${GIT_SSH_COMMAND}"}}}`)); len(f) != 0 {
+		t.Errorf("templated GIT_SSH_COMMAND: expected no finding, got %+v", f)
+	}
+	for _, cmd := range []string{
+		"ssh-keyscan -H host",
+		"ssh-keyscan github.com | ssh-keygen -lf -",
+		"ssh -o UserKnownHostsFile=.ssh/known_hosts deploy@host ./deploy.sh",
+		"cat ~/.ssh/known_hosts",
+	} {
+		if f := CFG075.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%q: expected no finding, got %+v", cmd, f)
+		}
+	}
+}

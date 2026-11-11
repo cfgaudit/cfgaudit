@@ -470,6 +470,19 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			if !acts && strings.EqualFold(path, "/etc/passwd") {
 				continue
 			}
+			if fixturePathRe.MatchString(full) {
+				// A test fixture in the repository, not the user's store (#1609).
+				findings = append(findings, finding.Finding{
+					RuleID:   "CFG031",
+					Severity: finding.Info,
+					File:     src.File,
+					Line:     lineNo,
+					Col:      loc[0] + 1,
+					Message: src.Name + " line " + strconv.Itoa(lineNo) + " names \"" + full +
+						"\", a file in the repository's test-data folder, not the user's credential store; confirm it holds only test values",
+				})
+				continue
+			}
 			sev := finding.Info
 			msg := src.Name + " line " + strconv.Itoa(lineNo) + " mentions the sensitive file \"" + path +
 				"\" — a trusted instruction file naming a credential/secret file is suspicious; confirm this is documentation, not an instruction to access it"
@@ -502,6 +515,13 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 	}
 	return findings
 }
+
+// fixturePathRe matches a repository-relative path under a test-data folder
+// (testdata, .testdata, fixtures, __fixtures__, at any depth): "Read
+// credentials from `.testdata/credentials.json`" names a test input, not the
+// user's credentials (#1609). A path from ~, $HOME, / or a drive letter does not
+// match, and no segment may be "..", so the path stays inside the repository.
+var fixturePathRe = regexp.MustCompile(`^(?:\./)?(?:\.?[\w-][\w.-]*/)*?(?:\.?testdata|fixtures|__fixtures__)/`)
 
 // thirdPersonReadRe matches a program described as reading a file, and a
 // file that was not read: "Registry commands read `~/.docker/config.json`",
