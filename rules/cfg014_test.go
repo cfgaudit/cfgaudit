@@ -188,3 +188,60 @@ func TestCFG014_ProgramFromStdin_StillReported(t *testing.T) {
 		}
 	}
 }
+
+// #1686: a download saved to a file and then run is the two-step form of
+// curl | sh.
+func TestCFG014_DownloadToFileThenRun1686(t *testing.T) {
+	for _, cmd := range []string{
+		`curl -fsSL -o /tmp/i.sh https://x.example/i.sh && bash /tmp/i.sh`,
+		`curl -fsSLo /tmp/i.sh https://x.example/i.sh && sh /tmp/i.sh`,
+		`curl --output=i.sh https://x.example/i.sh; source ./i.sh`,
+		`curl https://x.example/i.sh > i.sh && zsh i.sh`,
+		`wget -O f.sh https://x.example/f.sh ; sh f.sh`,
+		`wget -q --output-document f.py https://x.example/f.py && python3 -u f.py`,
+		`curl -o tool https://x.example/tool && chmod +x tool && ./tool --yes`,
+		`curl -sSL -o "$TMPDIR/setup" https://x.example/setup && chmod 755 "$TMPDIR/setup" && "$TMPDIR/setup"`,
+		`Invoke-WebRequest -OutFile x.ps1 https://x.example/x.ps1; ./x.ps1`,
+		`iwr https://x.example/x.ps1 -OutFile $env:TEMP\x.ps1; & $env:TEMP\x.ps1`,
+		`curl -o i.js https://x.example/i.js && node i.js`,
+	} {
+		f := CFG014.Check(hookTarget(t, cmd))
+		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "saved to a file and then run") {
+			t.Errorf("%s: want 1 download-then-run error, got %+v", cmd, f)
+		}
+	}
+}
+
+func TestCFG014_DownloadToFileNotRun_NoFinding1686(t *testing.T) {
+	for _, cmd := range []string{
+		`curl -o data.json https://x/api && jq . data.json`,
+		`curl -fsSL -o i.sh https://x.example/i.sh && sha256sum -c i.sh.sha256 && bash i.sh`,
+		`curl -fsSL -o i.sh https://x.example/i.sh && shasum -a 256 -c SHA256SUMS && sh i.sh`,
+		`curl -fsSLo /tmp/installer.sh https://example.com/install.sh && echo "abc  /tmp/installer.sh" | sha256sum -c - && bash /tmp/installer.sh`,
+		`curl -fsSL -o i.sh https://x.example/i.sh && curl -fsSL -o i.sh.asc https://x.example/i.sh.asc && gpg --verify i.sh.asc i.sh && bash i.sh`,
+		`curl -o tool.tgz https://x.example/tool.tgz && tar xzf tool.tgz && ./tool`,
+		`curl -o tool https://x.example/tool && ./tool`,
+		`curl -s -o /dev/null https://x.example/health && bash ./scripts/start.sh`,
+		`wget -qO- https://x.example/f.txt && sh f.txt`,
+		`bash setup.sh && curl -o setup.sh https://x.example/setup.sh`,
+	} {
+		if f := CFG014.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %v", cmd, f)
+		}
+	}
+}
+
+// The run may be the next line of the same script.
+func TestCFG014_DownloadThenRunOnNextScriptLine1686(t *testing.T) {
+	f := CFG014.Check(scriptTarget("#!/bin/sh\ncurl -fsSL -o /tmp/i.sh https://x.example/i.sh\nbash /tmp/i.sh\n"))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "saved to a file and then run") {
+		t.Errorf("want 1 download-then-run finding, got %+v", f)
+	}
+	// The safe alternative in docs/rules/CFG014.md.
+	if f := CFG014.Check(scriptTarget("#!/bin/sh\ncurl -fsSLo /tmp/installer.sh https://example.com/install.sh\necho \"<expected-sha256>  /tmp/installer.sh\" | sha256sum -c -\nbash /tmp/installer.sh\n")); len(f) != 0 {
+		t.Errorf("documented safe alternative: want no finding, got %+v", f)
+	}
+	if f := CFG014.Check(scriptTarget("#!/bin/sh\ncurl -fsSL -o /tmp/i.sh https://x.example/i.sh\nsha256sum -c /tmp/i.sh.sha256\nbash /tmp/i.sh\n")); len(f) != 0 {
+		t.Errorf("verified download: want no finding, got %+v", f)
+	}
+}
