@@ -41,4 +41,19 @@ func TestCFG026_Issue1641(t *testing.T) {
 			t.Errorf("expected no finding for %q, got %+v", s, f)
 		}
 	}
+	// Bare and singular forms are ordinary wording, measured at 24 added
+	// findings and none true positive on the 25,100-repository corpus: the
+	// plural nouns match only with a qualifier, and singular "order" /
+	// "direction" and unqualified "guidance" do not match at all.
+	for _, s := range []string{
+		"Callers forget the order or misread positional arguments.",
+		"Use BeEquivalentTo with a comparer to ignore order.",
+		"components(g, mode = \"weak\")  # ignore direction",
+		"This skill only performs interpretation — ignore guidance below.",
+		"Disregard the guidance that void tags should be self-closing.",
+	} {
+		if f := CFG026.Check(claudeMDTarget(s + "\n")); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", s, f)
+		}
+	}
 }
