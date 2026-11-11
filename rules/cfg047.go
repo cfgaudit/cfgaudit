@@ -101,9 +101,16 @@ var shellOnlyRe = regexp.MustCompile(`^(?:\$\{env:(?:SHELL|COMSPEC)\}|bash|zsh|p
 // opensShellOnly reports whether the task does nothing but open the user's
 // own shell. Its options (or a per-platform override's) must be unset: an
 // env such as ZDOTDIR, BASH_ENV or ENV, or another shell, could make that
-// shell read a file from the repository.
+// shell read a file from the repository. A task with no command line at
+// all (for example an npm task whose per-OS override sets neither command
+// nor args) or with an npm script runs something from the repository, so it
+// is never shell-only.
 func opensShellOnly(task parser.VSCodeTask) bool {
-	if len(task.Options) > 0 || len(task.DependsOnLabels()) > 0 {
+	if len(task.Options) > 0 || len(task.DependsOnLabels()) > 0 || task.Script != "" {
+		return false
+	}
+	lines := task.CommandLines()
+	if len(lines) == 0 {
 		return false
 	}
 	for _, o := range []*parser.VSCodeTaskOverride{task.Windows, task.Linux, task.OSX} {
@@ -111,7 +118,7 @@ func opensShellOnly(task parser.VSCodeTask) bool {
 			return false
 		}
 	}
-	for _, l := range task.CommandLines() {
+	for _, l := range lines {
 		if !shellOnlyRe.MatchString(l) {
 			return false
 		}

