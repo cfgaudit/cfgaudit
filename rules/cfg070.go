@@ -65,12 +65,25 @@ func (r *cfg070) Check(t *Target) []finding.Finding {
 // which a fresh clone does not contain (#1211).
 var buildOutputPrefixes = []string{"target/", ".venv/", "venv/", "vendor/bin/", "node_modules/.bin/", "build/", "dist/", ".build/"}
 
-// buildOutputPath reports whether the command's path contains a build or
-// install output directory, at the start or deeper in the path (#1670).
+// deepBuildOutputDirs are output directories whose names mean build or
+// install output wherever they appear in the path, so a command under them
+// deeper in the tree (./.ai/tools/.venv/bin/server) is output too (#1670).
+// build/ and dist/ are not here: they are also common names for committed
+// folders (./tools/build/run.sh), so they only count at the start of the path.
+var deepBuildOutputDirs = []string{".venv/", "venv/", "node_modules/.bin/", ".build/", "target/"}
+
+// buildOutputPath reports whether the command's path starts with a build or
+// install output directory, or contains one of deepBuildOutputDirs deeper in
+// the path.
 func buildOutputPath(cmd string) bool {
 	p := commandPath(cmd)
 	for _, pre := range buildOutputPrefixes {
-		if strings.HasPrefix(p, pre) || strings.Contains(p, "/"+pre) {
+		if strings.HasPrefix(p, pre) {
+			return true
+		}
+	}
+	for _, dir := range deepBuildOutputDirs {
+		if strings.Contains(p, "/"+dir) {
 			return true
 		}
 	}
