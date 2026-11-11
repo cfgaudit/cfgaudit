@@ -213,12 +213,9 @@ func ParsePiMCP(path string) (map[string]MCPServer, error) {
 	}
 	out := map[string]MCPServer{}
 	for name, raw := range top.MCPServers {
-		// pi skips a server whose auth is not an object; cfgaudit's own
-		// decoder ignores such a value for the other MCP files (#1666).
-		var a struct {
-			Auth json.RawMessage `json:"auth"`
-		}
-		if json.Unmarshal(raw, &a) == nil && !piAuthObject(a.Auth) {
+		// cfgaudit's own decoder ignores a non-object auth (#1666), but pi
+		// v1.5.0 rejects it on an HTTP server, so that server is left out.
+		if piRejectsAuth(raw) {
 			continue
 		}
 		// raw came out of a valid document, so it marshals again.
@@ -234,9 +231,30 @@ func ParsePiMCP(path string) (map[string]MCPServer, error) {
 	return out, nil
 }
 
-// piAuthObject reports whether an MCP server's auth value is absent, null or
-// an object, the shapes pi reads.
-func piAuthObject(raw json.RawMessage) bool {
-	t := bytes.TrimSpace(raw)
-	return len(t) == 0 || string(t) == "null" || t[0] == '{'
+// piRejectsAuth reports whether pi v1.5.0 rejects a server for its auth
+// value. validateMcpServerConfig (packages/coding-agent/src/core/mcp-servers.ts)
+// returns "auth.provider must be a provider name" when an HTTP server (a string
+// url, with no type or type "http" or "streamable-http") sets an auth that is
+// not an object, null included. pi reads no auth on a stdio server, so a stdio
+// server keeps whatever auth it has.
+func piRejectsAuth(raw json.RawMessage) bool {
+	var s struct {
+		URL  json.RawMessage `json:"url"`
+		Type json.RawMessage `json:"type"`
+		Auth json.RawMessage `json:"auth"`
+	}
+	if json.Unmarshal(raw, &s) != nil || s.Auth == nil {
+		return false
+	}
+	if t := bytes.TrimSpace(s.URL); len(t) == 0 || t[0] != '"' {
+		return false
+	}
+	if t := bytes.TrimSpace(s.Type); len(t) > 0 {
+		var typ string
+		if json.Unmarshal(t, &typ) != nil || (typ != "http" && typ != "streamable-http") {
+			return false
+		}
+	}
+	t := bytes.TrimSpace(s.Auth)
+	return len(t) == 0 || t[0] != '{'
 }
