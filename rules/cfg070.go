@@ -63,14 +63,14 @@ func (r *cfg070) Check(t *Target) []finding.Finding {
 
 // buildOutputPrefixes are directories a build or package install creates,
 // which a fresh clone does not contain (#1211).
-var buildOutputPrefixes = []string{"target/", ".venv/", "venv/", "vendor/bin/", "node_modules/.bin/", "build/", "dist/"}
+var buildOutputPrefixes = []string{"target/", ".venv/", "venv/", "vendor/bin/", "node_modules/.bin/", "build/", "dist/", ".build/"}
 
-// buildOutputPath reports whether the command's path starts with a build or
-// install output directory.
+// buildOutputPath reports whether the command's path contains a build or
+// install output directory, at the start or deeper in the path (#1670).
 func buildOutputPath(cmd string) bool {
 	p := commandPath(cmd)
 	for _, pre := range buildOutputPrefixes {
-		if strings.HasPrefix(p, pre) {
+		if strings.HasPrefix(p, pre) || strings.Contains(p, "/"+pre) {
 			return true
 		}
 	}
