@@ -128,7 +128,14 @@ func xorDecoderCalls(content string) int {
 // disguisedRunRe matches an interpreter started on a file with an extension.
 // Groups: interpreter, flags, "run", path, extension. disguisedRuns keeps
 // the ones whose extension is not a script's.
-var disguisedRunRe = regexp.MustCompile(`(?i)(?:^|[\s;&|(])(node|nodejs|bun|deno|python[0-9.]*|py|ruby|perl|php|bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?((?:\s+--?[A-Za-z][\w-]*)*)(\s+run)?\s+["']?([^\s"';&|<>]*?[^\s"';&|<>/]\.([A-Za-z0-9]{1,10}))["']?(?:[\s;&|)]|$)`)
+var disguisedRunRe = regexp.MustCompile(`(?i)(?:^|[\s;&|(])(node|nodejs|bun|deno|python[0-9.]*|py|ruby|perl|php|bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?((?:\s+(?:--?[A-Za-z][\w-]*(?:=\S*)?|-?\d+(?:\.\d+)*))*)(\s+run)?\s+["']?([^\s"';&|<>]*?[^ \s"';&|<>/]\.([A-Za-z0-9]{1,10}))["']?(?:[\s;&|)]|$)`)
+
+// interpreterVersionToken reports whether s is a bare interpreter version
+// argument such as 3.9, 22.18 or -3.14, which is not a file to run.
+func interpreterVersionToken(s string) bool {
+	s = strings.Trim(s, `"'`)
+	return regexp.MustCompile(`^-?\d+(?:\.\d+)*$`).MatchString(s)
+}
 
 // scriptExts are the extensions an interpreter runs for a legitimate reason.
 // An interpreter started on anything else (a font, an image, a document, or
@@ -174,6 +181,11 @@ func disguisedRuns(t *Target) []finding.Finding {
 			flags := strings.Fields(m[2])
 			if slices.ContainsFunc(flags, func(f string) bool { return f == "-e" || f == "-c" || f == "-m" || f == "--eval" }) {
 				continue // inline code or a module, not the file
+			}
+			// Skip interpreter version arguments misread as the file
+			// (CFG119 #1649): `py -3.14`, `Python 3.9`, `Node 22.18`.
+			if interpreterVersionToken(m[4]) {
+				continue
 			}
 			path := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(m[4])), "./")
 			if seen[lc.File+"\x00"+path] {
