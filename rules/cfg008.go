@@ -59,11 +59,10 @@ func (r *cfg008) Check(t *Target) []finding.Finding {
 // Compiled once; devTcpReverseShell is called per command site.
 var (
 	devTcpInteractiveRe   = regexp.MustCompile(`\b(?:bash|sh|zsh)(?:\.exe)?\s+-i\b`)
-	devTcpShellRedirectRe = regexp.MustCompile(`(?:bash|sh|zsh)(?:\.exe)?\s+>&\s*/dev/tcp/`)
+	devTcpShellRedirectRe = regexp.MustCompile(`\b(?:bash|sh|zsh)(?:\.exe)?\b\s+>&\s*/dev/tcp/`)
 	devTcpExecFdRe        = regexp.MustCompile(`exec\s+(\d+)<>`)
-	devTcpShellFdRe       = regexp.MustCompile(`(?:bash|sh|zsh)(?:\.exe)?\s+(?:0<&(\d+)|<&(\d+)|>&(\d+)|\d+<&(\d+))`)
-	devTcpCatFdRe         = regexp.MustCompile(`cat\s+<&(\d+)\s*\|\s*(?:bash|sh|zsh)\b`)
-	devTcpGenericCatRe    = regexp.MustCompile(`cat\s+<&\d+\s*\|\s*(?:bash|sh|zsh)`)
+	devTcpShellFdRe       = regexp.MustCompile(`\b(?:bash|sh|zsh)(?:\.exe)?\b\s+(?:0<&(\d+)|<&(\d+)|>&(\d+)|\d+<&(\d+))`)
+	devTcpCatFdRe         = regexp.MustCompile(`cat\s+<&(\d+)\s*\|\s*\b(?:bash|sh|zsh)(?:\.exe)?\b`)
 )
 
 // devTcpReverseShell reports whether a command uses /dev/tcp/ as a reverse
@@ -108,11 +107,6 @@ func devTcpReverseShell(cmd string) bool {
 				return true
 			}
 		}
-	}
-
-	// Generic forms that pipe a socket fd into a shell.
-	if devTcpGenericCatRe.MatchString(cmd) {
-		return true
 	}
 
 	return false
