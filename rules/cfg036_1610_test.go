@@ -51,9 +51,9 @@ func TestSingleKeyExtract1610(t *testing.T) {
 		`$(grep API_KEY .env)`:                                   {"API_KEY"},
 		`$(dotenvx get PORT)`:                                    {"PORT"},
 		`$({ sed -n 's/^A=//p' .env; sed -n 's/^B=//p' .env; })`: {"A", "B"},
-		`$(cat .env)`:                                            nil,
-		`$(echo hi)`:                                             nil,
-		`$(grep x .env)`:                                         nil,
+		`$(cat .env)`:    nil,
+		`$(echo hi)`:     nil,
+		`$(grep x .env)`: nil,
 	} {
 		got, ok := singleKeyExtract(sub)
 		if ok != (want != nil) || strings.Join(got, ",") != strings.Join(want, ",") {
