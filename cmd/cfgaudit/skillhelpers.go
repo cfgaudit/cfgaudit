@@ -90,6 +90,9 @@ func skillHelperTargets(dir string, targets []*rules.Target) []*rules.Target {
 					InstructionFile:    path,
 					InstructionContent: string(data),
 					SkillHelper:        skill,
+					// #1611: a page the skill does not tell the agent to follow
+					// is a reference page, reported at info.
+					SkillHelperFollowed: rules.SkillTellsToFollow(t.InstructionContent, rel),
 				})
 				return nil
 			}

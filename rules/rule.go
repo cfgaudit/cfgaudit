@@ -165,6 +165,10 @@ type Target struct {
 	// such as references/policy.md that the skill tells the agent to read. Run
 	// applies only SkillHelperRules to it and reports at most warn.
 	SkillHelper string
+	// SkillHelperFollowed is set when the SKILL.md tells the agent to follow
+	// this file (#1611). Without it, Run reports the ReferencePageRules at
+	// info, since the file is a reference page rather than instructions.
+	SkillHelperFollowed bool
 
 	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
 	// workspace tasks). A task set to run on folder-open is a code execution
