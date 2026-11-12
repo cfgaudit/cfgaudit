@@ -126,6 +126,11 @@ type Target struct {
 	GitModulesFile string
 	NestedRepos    []NestedRepo
 
+	// KimiLocal is a parsed Kimi Code .kimi-code/local.toml, KimiLocalFile its
+	// path (#1638): project permission rules and workspace.additional_dir.
+	KimiLocal     *parser.KimiLocalConfig
+	KimiLocalFile string
+
 	// Junie is a parsed .junie/config.json, JunieFile its path, and JunieOutside
 	// its location entries that leave the repository (#1413).
 	Junie        *parser.JunieConfig
