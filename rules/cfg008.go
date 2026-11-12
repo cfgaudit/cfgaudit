@@ -4,7 +4,6 @@
 package rules
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -57,52 +56,62 @@ func (r *cfg008) Check(t *Target) []finding.Finding {
 	return findings
 }
 
+// Compiled once; devTcpReverseShell is called per command site.
+var (
+	devTcpInteractiveRe   = regexp.MustCompile(`\b(?:bash|sh|zsh)(?:\.exe)?\s+-i\b`)
+	devTcpShellRedirectRe = regexp.MustCompile(`(?:bash|sh|zsh)(?:\.exe)?\s+>&\s*/dev/tcp/`)
+	devTcpExecFdRe        = regexp.MustCompile(`exec\s+(\d+)<>`)
+	devTcpShellFdRe       = regexp.MustCompile(`(?:bash|sh|zsh)(?:\.exe)?\s+(?:0<&(\d+)|<&(\d+)|>&(\d+)|\d+<&(\d+))`)
+	devTcpCatFdRe         = regexp.MustCompile(`cat\s+<&(\d+)\s*\|\s*(?:bash|sh|zsh)\b`)
+	devTcpGenericCatRe    = regexp.MustCompile(`cat\s+<&\d+\s*\|\s*(?:bash|sh|zsh)`)
+)
+
 // devTcpReverseShell reports whether a command uses /dev/tcp/ as a reverse
-// shell rather than a plain connectivity probe. A bare exec N<>/dev/tcp/...
-// probe, a parenthesised probe, or a printf ... >&N write to the socket does
-// not count; the socket must be wired to a shell's stdio.
+// shell rather than a plain connectivity probe. A bare exec N<>/dev/tcp/...,
+// a parenthesised probe, a printf ... >&N write to the socket, or a
+// </dev/tcp/... port check does not count; the socket must be wired to a
+// shell's stdio.
 func devTcpReverseShell(cmd string) bool {
 	if !strings.Contains(cmd, "/dev/tcp/") {
 		return false
 	}
 
 	// Interactive shell redirected to or from the socket.
-	if regexp.MustCompile(`\b(?:bash|sh|zsh)(?:\.exe)?\s+-i\b`).MatchString(cmd) {
+	if devTcpInteractiveRe.MatchString(cmd) {
 		return true
 	}
-	// A shell whose stdin/stdout is the socket.
+	// A shell whose stdin/stdout is the socket via 0>&1.
 	if strings.Contains(cmd, "0>&1") {
 		return true
 	}
-	if regexp.MustCompile(`>&\s*/dev/tcp/`).MatchString(cmd) {
-		return true
-	}
-	// Reading from the socket into a command (cat < /dev/tcp/...).
-	if regexp.MustCompile(`<\s*/dev/tcp/`).MatchString(cmd) {
+	// A shell redirecting its stdout straight to the socket.
+	if devTcpShellRedirectRe.MatchString(cmd) {
 		return true
 	}
 
 	// exec N<>/dev/tcp/... followed by a shell that reads from or writes to
 	// that file descriptor.
-	for _, m := range regexp.MustCompile(`exec\s+(\d+)<>`).FindAllStringSubmatch(cmd, -1) {
-		fd := m[1]
-		patterns := []string{
-			fmt.Sprintf(`\b(?:bash|sh|zsh)(?:\.exe)?\s+(?:0<&%s|<&%s|>&%s|\d+<&%s)`, fd, fd, fd, fd),
-			fmt.Sprintf(`cat\s+<&%s\s*\|`, fd),
-			fmt.Sprintf(`while\s+read[^;\n]*<\&%s`, fd),
+	execFds := make(map[string]bool)
+	for _, m := range devTcpExecFdRe.FindAllStringSubmatch(cmd, -1) {
+		execFds[m[1]] = true
+	}
+	if len(execFds) > 0 {
+		for _, m := range devTcpShellFdRe.FindAllStringSubmatch(cmd, -1) {
+			for i := 1; i < len(m); i++ {
+				if m[i] != "" && execFds[m[i]] {
+					return true
+				}
+			}
 		}
-		for _, p := range patterns {
-			if regexp.MustCompile(p).MatchString(cmd) {
+		for _, m := range devTcpCatFdRe.FindAllStringSubmatch(cmd, -1) {
+			if execFds[m[1]] {
 				return true
 			}
 		}
 	}
 
 	// Generic forms that pipe a socket fd into a shell.
-	if regexp.MustCompile(`cat\s+<&\d+\s*\|\s*(?:bash|sh|zsh)`).MatchString(cmd) {
-		return true
-	}
-	if regexp.MustCompile(`while\s+read[^;\n]*<\&\d+`).MatchString(cmd) {
+	if devTcpGenericCatRe.MatchString(cmd) {
 		return true
 	}
 

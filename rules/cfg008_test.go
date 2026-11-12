@@ -4,23 +4,18 @@
 package rules
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
 
-func TestCFG008_DevTcpRedirect(t *testing.T) {
+// A bare `</dev/tcp/...` redirect is a port check, not a reverse shell, so
+// it must not be reported (#1677).
+func TestCFG008_DevTcpBareRedirect_NoFinding(t *testing.T) {
 	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"bash -c 'cat < /dev/tcp/attacker.example.com/4444'"}]}]}}`
 	f := CFG008.Check(settingsTarget(t, json))
-	if len(f) != 1 {
-		t.Fatalf("expected 1 finding for /dev/tcp/, got %d", len(f))
-	}
-	if f[0].Severity != finding.Error {
-		t.Errorf("expected Error severity, got %s", f[0].Severity)
-	}
-	if !strings.Contains(f[0].Message, "/dev/tcp/") {
-		t.Errorf("expected message to name the pattern, got: %s", f[0].Message)
+	if len(f) != 0 {
+		t.Errorf("expected no finding for bare /dev/tcp/ redirect, got %d: %+v", len(f), f)
 	}
 }
 
@@ -202,10 +197,26 @@ func TestCFG008_DevTcpGenericCat_Reported(t *testing.T) {
 	}
 }
 
-// Cover the generic while read <&N branch (#1677).
-func TestCFG008_DevTcpGenericWhile_Reported(t *testing.T) {
+// A `while read` loop that only prints what the server sends is a probe, not
+// a reverse shell, so it must not be reported (#1677).
+func TestCFG008_DevTcpGenericWhile_NoFinding(t *testing.T) {
 	cmd := `while read x <&3; do :; done # /dev/tcp/h/p`
-	if f := CFG008.Check(hookTarget(t, cmd)); len(f) == 0 {
-		t.Errorf("expected finding for %q, got none", cmd)
+	if f := CFG008.Check(hookTarget(t, cmd)); len(f) != 0 {
+		t.Errorf("expected no finding for %q, got %v", cmd, f)
+	}
+}
+
+// Bare /dev/tcp port checks and socket writes that never hand the socket to a
+// shell are not reverse shells (#1677).
+func TestCFG008_DevTcpPortChecks_NoFinding(t *testing.T) {
+	for _, cmd := range []string{
+		`timeout 1 bash -c '</dev/tcp/$HOST/22' && echo open`,
+		`cat < /dev/tcp/time.nist.gov/13`,
+		`echo ping >& /dev/tcp/h/80`,
+		`exec 3<>/dev/tcp/h/80; while read line <&3; do echo "$line"; done`,
+	} {
+		if f := CFG008.Check(hookTarget(t, cmd)); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %v", cmd, f)
+		}
 	}
 }
