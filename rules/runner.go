@@ -5,7 +5,9 @@ package rules
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -96,10 +98,16 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 				results[i].Message += "; the agent runs this script when the skill " + skill + " tells it to, not on its own"
 			}
 			if target.SkillHelper != "" && results[i].File == target.InstructionFile {
-				if results[i].Severity == finding.Error {
-					results[i].Severity = finding.Warn
+				switch {
+				case ReferencePageRules[r.ID()] && !target.SkillHelperFollowed:
+					results[i].Severity = finding.Info
+					results[i].Message += "; this file ships with the skill " + target.SkillHelper + " as a reference page, and nothing in the skill tells the agent to follow it"
+				default:
+					if results[i].Severity == finding.Error {
+						results[i].Severity = finding.Warn
+					}
+					results[i].Message += "; this file ships with the skill " + target.SkillHelper + ", and the agent reads it when the skill points it there"
 				}
-				results[i].Message += "; this file ships with the skill " + target.SkillHelper + ", and the agent reads it when the skill points it there"
 			}
 		}
 		out = append(out, results...)
@@ -174,6 +182,43 @@ var SkillHelperRules = map[string]bool{
 	"CFG080": true, // directives in HTML comments
 	"CFG081": true, // surviving context compaction
 	"CFG120": true, // exfiltration directives in prose
+}
+
+// ReferencePageRules are the SkillHelperRules that report a helper file at
+// info unless the skill tells the agent to follow it (#1611). In the
+// pre-release corpus run for v1.21.0 their warn findings on such files were
+// pattern catalogues of scanner skills, security reference pages listing the
+// files an attacker targets, and test inputs with deliberate zero-width
+// characters. CFG036 has its own reference-page case (#1176).
+var ReferencePageRules = map[string]bool{
+	"CFG024": true, // hidden Unicode controls
+	"CFG026": true, // instruction-bypass phrases
+	"CFG031": true, // sensitive file paths
+	"CFG057": true, // encoded payloads
+}
+
+// skillFollowRe matches a line that tells the agent to follow a file rather
+// than consult it: "read references/setup.md and follow it", "apply the
+// steps in", "do what it says", "execute the instructions from".
+var skillFollowRe = regexp.MustCompile(`(?i)\b(?:follow(?:s|ed|ing)?|apply|execute|carry\s+out|obey|comply\s+with|act\s+on|do\s+(?:what|as)\b|(?:instructions?|steps?|procedure|workflow)\s+(?:in|from|of|at)\b)`)
+
+// SkillTellsToFollow reports whether skill, the content of a SKILL.md, tells
+// the agent to follow the helper file at rel (a slash path relative to the
+// skill directory): a line that names the file, or the line before it, holds
+// a follow order (#1611).
+func SkillTellsToFollow(skill, rel string) bool {
+	rel = strings.TrimPrefix(rel, "./")
+	base := path.Base(rel)
+	lines := strings.Split(skill, "\n")
+	for i, l := range lines {
+		if !strings.Contains(l, rel) && !strings.Contains(l, base) {
+			continue
+		}
+		if skillFollowRe.MatchString(l) || (i > 0 && skillFollowRe.MatchString(lines[i-1])) {
+			return true
+		}
+	}
+	return false
 }
 
 // versionSkip returns a non-empty notice message when r is Versioned and
