@@ -78,6 +78,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG056 broad / always-on trigger | AVE-2026-00058 deceptive trigger scope · AVE-2026-00038 unbounded tool use *(partial)* · AVE-2026-00022 scope creep *(partial)* |
 | CFG057 encoded payload | AVE-2026-00057 obfuscated payload evading scanners · AVE-2026-00026 output-encoding exfil *(partial)* |
 | CFG119 payload markers in a script an auto-run hook or task starts | AVE-2026-00057 obfuscated payload evading scanners *(partial)* |
+| CFG141 an auto-run command decodes an embedded base64, base32 or hex payload | AVE-2026-00057 obfuscated payload evading scanners |
 | CFG081 survive compaction | AVE-2026-00027 multi-turn instruction persistence |
 | CFG090 network reconnaissance | AVE-2026-00032 network-reconnaissance instruction |
 | CFG051 / CFG085 delegation & tool grants | AVE-2026-00048 unsafe agent delegation chain |
