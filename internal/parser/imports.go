@@ -185,7 +185,11 @@ func maskCodeSpans(s string) string {
 		}
 		n := backtickRun(s, i)
 		end := -1
+		row := tableRow(s, i)
 		for j := i + n; j < len(s); {
+			if s[j] == '\n' && spanEndsAt(s, j, row) {
+				break
+			}
 			if s[j] != '`' {
 				j++
 				continue
@@ -207,6 +211,28 @@ func maskCodeSpans(s string) string {
 		i = end
 	}
 	return b.String()
+}
+
+// tableRow reports whether the line holding s[i] is a table row (starts with
+// `|` after indentation).
+func tableRow(s string, i int) bool {
+	start := strings.LastIndexByte(s[:i], '\n') + 1
+	return strings.HasPrefix(strings.TrimLeft(s[start:i+1], " \t"), "|")
+}
+
+// spanEndsAt reports whether a code span opened before the line break at
+// s[j] cannot go on past it: the span opened in a table row, or the next line
+// is blank (a paragraph ends) or is a table row (#1663).
+func spanEndsAt(s string, j int, inRow bool) bool {
+	if inRow {
+		return true
+	}
+	next := s[j+1:]
+	if k := strings.IndexByte(next, '\n'); k >= 0 {
+		next = next[:k]
+	}
+	next = strings.TrimLeft(next, " \t")
+	return next == "" || strings.HasPrefix(next, "|")
 }
 
 func backtickRun(s string, i int) int {
