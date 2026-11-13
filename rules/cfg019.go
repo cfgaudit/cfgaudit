@@ -223,15 +223,59 @@ func pwshFirstOperand(args []string) string {
 	return ""
 }
 
-// guardStepRe and execStepRe are the steps of a guarded launch: a test that
-// runs nothing ("[ -f \"$HOME/.sentry/mcp.json\" ]", "command -v x >/dev/null"),
-// "exit N", and exec of one named program with literal arguments.
+// guardStepRe is a step of a guarded launch that runs nothing: a test ("[ -f
+// \"$HOME/.sentry/mcp.json\" ]", "command -v x >/dev/null"), "exit N". The
+// program the launch starts is programStepRe.
 var guardStepRe = regexp.MustCompile(`^(?:\[\s[^\]` + "`" + `]*\s\]|test\s[^` + "`" + `]*|command\s+-v\s+[\w.\-]+(?:\s*>\s*/dev/null(?:\s*2>&1)?)?|exit(?:\s+\d+)?|true|false)$`)
 var guardSplitRe = regexp.MustCompile(`&&|\|\||;`)
-var execStepRe = regexp.MustCompile(`^exec\s+[\w./\-]+(?:\s+[\w./=:@,\-"']+)*$`)
 
 // cdStepRe is a change to a literal directory, which runs nothing (#1183).
 var cdStepRe = regexp.MustCompile(`^cd\s+[\w./~\-]+$`)
+
+// programStepRe is one named program with literal arguments, run with exec,
+// or without it after NAME=value assignments (#1665):
+// "exec sentry-mcp --org x", "LORE_SUPPRESS_DEPRECATIONS='1' lore mcp".
+var programStepRe = regexp.MustCompile(`^(?:[A-Za-z_]\w*=` + envValue + `\s+)*(?:exec\s+)?[\w./\-]+(?:\s+[\w./=:@,\-"'][\w./=:@,\-"'#]*)*$`)
+
+// envValue is a value an assignment gives that runs nothing: literal text,
+// single-quoted text, or double-quoted text whose only expansion is $HOME
+// (#1665): LORE_CONFIG_ROOT="${HOME}"'/.lore'.
+const envValue = `(?:[\w./:@,\-]+|'[^'$` + "`" + `]*'|"(?:[\w./:@,\- ]|\$\{?HOME\}?)*")+`
+
+// launchEnvAssignRe is one NAME=value word of programStepRe.
+var launchEnvAssignRe = regexp.MustCompile(`^[A-Za-z_]\w*=` + envValue + `$`)
+
+// rootAssignRe is a variable set to the repository root, which
+// normalizeRepoRoot has turned into ROOT: workspace=$(git rev-parse
+// --show-toplevel).
+var rootAssignRe = regexp.MustCompile(`^[A-Za-z_]\w*=ROOT$`)
+
+// repoRootRefRe is the repository root or the project directory written in
+// the script, quoted, as a whole word or before a path (#1665):
+// "$(git rev-parse --show-toplevel)", "${CLAUDE_PROJECT_DIR:-.}",
+// "$CLAUDE_PROJECT_DIR/scripts/x", "$PWD". Group 1 is the path after it.
+var repoRootRefRe = regexp.MustCompile(`"?\$(?:\(git rev-parse --show-toplevel\)|\{CLAUDE_PROJECT_DIR(?::?-\.?)?\}|CLAUDE_PROJECT_DIR\b|\{PWD\}|PWD\b)((?:/[\w./\-]*)?)"?`)
+
+// rootVarDefRe finds a variable assigned the repository root.
+var rootVarDefRe = regexp.MustCompile(`(?:^|[;&|]\s*)([A-Za-z_]\w*)="?ROOT"?(?:\s*(?:&&|\|\||;)|$)`)
+
+// normalizeRepoRoot writes the repository root as ROOT, so that the steps
+// that only prepare where the server runs read as literals: cd "$(git
+// rev-parse --show-toplevel)", cd "${CLAUDE_PROJECT_DIR:-.}", exec
+// "$CLAUDE_PROJECT_DIR/scripts/x", and a variable set to the root and used
+// only quoted ("$workspace"). A root variable used unquoted is not one: false.
+func normalizeRepoRoot(script string) (string, bool) {
+	script = repoRootRefRe.ReplaceAllString(script, `ROOT$1`)
+	for _, m := range rootVarDefRe.FindAllStringSubmatch(script, -1) {
+		name := regexp.QuoteMeta(m[1])
+		script = regexp.MustCompile(`="ROOT"`).ReplaceAllString(script, `=ROOT`)
+		script = regexp.MustCompile(`"\$(?:`+name+`\b|\{`+name+`\})((?:/[\w./\-]*)?)"`).ReplaceAllString(script, `ROOT$1`)
+		if regexp.MustCompile(`\$(?:` + name + `\b|\{` + name + `\})`).MatchString(script) {
+			return script, false
+		}
+	}
+	return script, true
+}
 
 // repoRootPrefixRe is `$(git rev-parse --show-toplevel)` as the start of the
 // exec target's path, quoted or not (#1183).
@@ -252,6 +296,15 @@ func guardedExec(script string, login bool) bool {
 		script = repoRootPrefixRe.ReplaceAllString(script, `ROOT/$1`)
 		setup = true
 	}
+	normalized, ok := normalizeRepoRoot(script)
+	if !ok {
+		return false
+	}
+	if normalized != script {
+		// The script moves to or runs from the repository root, as
+		// "$(git rev-parse --show-toplevel)/" does above (#1183, #1665).
+		script, setup = normalized, true
+	}
 	rest := strings.NewReplacer("||", " ", "&&", " ", ">/dev/null", " ", "> /dev/null", " ", "2>&1", " ").Replace(script)
 	if strings.ContainsAny(rest, "|<>`\n") || strings.Contains(script, "$(") {
 		return false
@@ -260,18 +313,34 @@ func guardedExec(script string, login bool) bool {
 	for _, step := range guardSplitRe.Split(script, -1) {
 		step = strings.TrimSpace(step)
 		switch {
-		case execStepRe.MatchString(step):
+		case guardStepRe.MatchString(step):
+			guards++
+		case (cdStepRe.MatchString(step) || rootAssignRe.MatchString(step)) && execs == 0:
+			setup = true
+		case programStepRe.MatchString(step):
 			// exec of another shell, or of an interpreter with inline code, is
-			// still an inline script.
-			f := strings.Fields(step)[1:]
-			if shellInterpreterName(f[0]) != "" || (interpreterBasename(f[0], languageInterpreters) != "" && hasInlineEvalFlag(f[1:])) {
+			// still an inline script. A program run without exec is the last
+			// command of the script, which the shell runs the same way.
+			f := strings.Fields(step)
+			envs, exec := 0, false
+			for len(f) > 0 && (launchEnvAssignRe.MatchString(f[0]) || f[0] == "exec") {
+				if f[0] == "exec" {
+					exec = true
+				} else {
+					envs++
+					setup = true // the environment the program gets (#1665)
+				}
+				f = f[1:]
+			}
+			// Without exec, only a program that gets an environment counts:
+			// "bash -lc 'echo hi'" stays an inline script.
+			if !exec && envs == 0 {
+				return false
+			}
+			if len(f) == 0 || f[0] == "cd" || shellInterpreterName(f[0]) != "" || (interpreterBasename(f[0], languageInterpreters) != "" && hasInlineEvalFlag(f[1:])) {
 				return false
 			}
 			execs++
-		case guardStepRe.MatchString(step):
-			guards++
-		case cdStepRe.MatchString(step) && execs == 0:
-			setup = true
 		default:
 			return false
 		}
