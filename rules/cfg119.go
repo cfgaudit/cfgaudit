@@ -168,36 +168,71 @@ func disguiseKind(ext string) string {
 	return "a file with a non-script extension"
 }
 
-// loaderFlagPaths returns file paths passed through flags that make an
+// loaderFlagHit is one file path named by a loader flag, together with the
+// interpreter that owns that flag.
+type loaderFlagHit struct {
+	interp string
+	path   string
+}
+
+// loaderFlagHits returns file paths passed through flags that make an
 // interpreter load and run a named file, so they are checked like the trailing
 // path (CFG119 review): --import, --require, --loader, --experimental-loader
-// and -r, in both `--flag=value` and `--flag value` forms.
-func loaderFlagPaths(cmd string) []string {
-	var out []string
-	fields := strings.Fields(cmd)
-	for i, tok := range fields {
-		tok = strings.Trim(tok, `"'`)
-		var val string
-		switch {
-		case tok == "-r":
-			if i+1 < len(fields) {
-				val = strings.Trim(fields[i+1], `"'`)
+// and -r, in both `--flag=value` and `--flag value` forms. Loader flags are
+// only meaningful for the node/nodejs/bun/deno interpreters, and only in the
+// same command segment as that interpreter: a `-r` belonging to pip, grep or
+// cp must not be treated as a loader flag.
+func loaderFlagHits(cmd string) []loaderFlagHit {
+	var hits []loaderFlagHit
+	for _, segment := range splitCommandSegments(cmd) {
+		fields := strings.Fields(segment)
+		interp := ""
+		for i, rawTok := range fields {
+			tok := strings.Trim(rawTok, "\"'")
+			lower := strings.ToLower(tok)
+			if lower == "node" || lower == "nodejs" || lower == "bun" || lower == "deno" ||
+				lower == "node.exe" || lower == "nodejs.exe" || lower == "bun.exe" || lower == "deno.exe" {
+				interp = strings.Trim(rawTok, "\"'")
+				continue
 			}
-		case strings.HasPrefix(tok, "-r") && len(tok) > 2:
-			val = strings.Trim(tok[2:], `"'`)
-		}
-		for _, flag := range []string{"--import", "--require", "--loader", "--experimental-loader"} {
+			if interp == "" {
+				continue
+			}
+			var val string
 			switch {
-			case tok == flag:
+			case tok == "-r":
 				if i+1 < len(fields) {
-					val = strings.Trim(fields[i+1], `"'`)
+					val = strings.Trim(fields[i+1], "\"'")
 				}
-			case strings.HasPrefix(tok, flag+"="):
-				val = strings.Trim(strings.TrimPrefix(tok, flag+"="), `"'`)
+			case strings.HasPrefix(tok, "-r") && len(tok) > 2:
+				val = strings.Trim(tok[2:], "\"'")
+			}
+			for _, flag := range []string{"--import", "--require", "--loader", "--experimental-loader"} {
+				switch {
+				case tok == flag:
+					if i+1 < len(fields) {
+						val = strings.Trim(fields[i+1], "\"'")
+					}
+				case strings.HasPrefix(tok, flag+"="):
+					val = strings.Trim(strings.TrimPrefix(tok, flag+"="), "\"'")
+				}
+			}
+			if val != "" {
+				hits = append(hits, loaderFlagHit{interp: interp, path: val})
 			}
 		}
-		if val != "" {
-			out = append(out, val)
+	}
+	return hits
+}
+
+// splitCommandSegments breaks a command on shell separators.
+func splitCommandSegments(cmd string) []string {
+	re := regexp.MustCompile(`;|\|\||&&|\|`)
+	parts := re.Split(cmd, -1)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			out = append(out, p)
 		}
 	}
 	return out
@@ -230,6 +265,16 @@ func reportDisguisedPath(t *Target, lc LaunchCommand, interp, rawPath string, se
 	return append(out, finding.Finding{RuleID: "CFG119", Severity: finding.Error, File: lc.File, Message: msg})
 }
 
+// loaderFlagPaths is retained for callers and tests that only need paths.
+func loaderFlagPaths(cmd string) []string {
+	hits := loaderFlagHits(cmd)
+	out := make([]string, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, h.path)
+	}
+	return out
+}
+
 // disguisedRuns reports each auto-run command of t that starts an
 // interpreter on a non-script file. An obfuscated file that cfgaudit could
 // read is named as such.
@@ -259,8 +304,8 @@ func disguisedRuns(t *Target) []finding.Finding {
 			out = reportDisguisedPath(t, lc, m[1], m[4], seen, out)
 		}
 		// Loader flags can themselves name a payload file (CFG119 review).
-		for _, lp := range loaderFlagPaths(lc.Command) {
-			out = reportDisguisedPath(t, lc, "node", lp, seen, out)
+		for _, hit := range loaderFlagHits(lc.Command) {
+			out = reportDisguisedPath(t, lc, hit.interp, hit.path, seen, out)
 		}
 	}
 	return out
