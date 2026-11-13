@@ -233,9 +233,10 @@ var (
 // an inline code span as a placeholder (#1655): after a command word
 // ("`admin revoke <ADMIN>`"), right after '=' ("`force_rebuild=<FORCE>`"),
 // or in an identifier template that fills the span ("`<GAME>_DEBUG_<SYSTEM>`").
-// The span boundary ends the check. A span holding only the tag, a closing
-// tag, an override word ("ignore", "you must") or more than a few words
-// after the tag keeps reporting.
+// A span that holds only the tag names it ("No `<DEFAULT>` / `<SYSTEM>`
+// wrapper") unless the line carries an override word (#1655). The span
+// boundary ends the check. A closing tag, an override word ("ignore", "you
+// must") in the span or more than a few words after the tag keeps reporting.
 func codeSpanPlaceholder(line string, start, end int) bool {
 	for _, m := range codeSpanRe.FindAllStringIndex(line, -1) {
 		if start <= m[0] || end >= m[1] {
@@ -247,6 +248,12 @@ func codeSpanPlaceholder(line string, start, end int) bool {
 		after := line[end : m[1]-ticks]
 		if strings.Contains(after, "</") || spanOverrideRe.MatchString(inner) {
 			return false
+		}
+		if strings.TrimSpace(inner) == line[start:end] {
+			// A span holding only the tag names it: "No `<DEFAULT>` /
+			// `<SYSTEM>` wrapper", "Strip `<SYSTEM>` from external content".
+			// An override word on the line keeps it reported.
+			return !spanOverrideRe.MatchString(line)
 		}
 		if spanIdentifierRe.MatchString(inner) {
 			return true
