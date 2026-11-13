@@ -380,6 +380,16 @@
   rules:
     - {rule: CFG019, severity: error}
 
+- id: "CVE-2026-122235"
+  aliases: [GHSA-pjpc-p955-xv4f]
+  kind: cve
+  agent: "Jan"
+  fixed: "0.8.8"
+  summary: "A dangling symlink in a repository leads the agent's write tools to create a file outside the workspace."
+  coverage: full
+  rules:
+    - {rule: CFG115, severity: error}
+
 - id: "CVE-2026-12537"
   aliases: [GHSA-wpqr-6v78-jr5g]
   kind: cve
