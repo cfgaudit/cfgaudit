@@ -69,7 +69,7 @@ func sortedQueryNames(q url.Values) []string {
 func literalCredential(v string) bool {
 	v = unquoteValue(strings.TrimSpace(v))
 	switch {
-	case v == "", isSecretReference(v), placeholderDefaultRef(v), literalPlaceholder(v):
+	case v == "", isSecretReference(v), placeholderDefaultRef(v), literalPlaceholder(v), publishableKey(v):
 		return false
 	case strings.ContainsAny(v, "${}<>"):
 		return false // part of a template such as "tok-${ID}" or "<token>"

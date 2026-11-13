@@ -79,7 +79,7 @@ func literalPlaceholder(v string) bool {
 	}
 	return placeholderRe.MatchString(v) || screamingPlaceholderRe.MatchString(v) ||
 		upperPlaceholderRe.MatchString(v) || envNamePlaceholderRe.MatchString(v) ||
-		markedPlaceholderRe.MatchString(v) || weakWordRe.MatchString(v) || fakeMarkerRe.MatchString(v) ||
+		markedPlaceholderRe.MatchString(v) || weakWordRe.MatchString(v) || fakeMarkerRe.MatchString(v) || testWordRe.MatchString(v) ||
 		strings.Contains(strings.ToLower(v), "xxx") || !isASCII(v) // a value in another script is a note to the reader
 }
 
@@ -93,6 +93,11 @@ var tokenPrefixRe = regexp.MustCompile(`^(?:gh[pousr]_|github_pat_|sk-(?:ant-|pr
 // "dummy-key". Narrower than fakeWordRe, which also accepts joke passwords
 // such as "hunter2" in connection strings but not as a value on its own.
 var fakeMarkerRe = regexp.MustCompile(`(?i)fake|dummy|placeholder|redacted|changeme`)
+
+// testWordRe matches a value with test, smoke, fake or dummy as a word of its
+// own, between separators (#1668): "local-test", "smoke-not-a-real-key",
+// "sk-or-test-key". A word inside a token ("latest", "contest") is not one.
+var testWordRe = regexp.MustCompile(`(?i)(?:^|[-_.:])(?:test|tests|smoke|fake|dummy)(?:$|[-_.:])`)
 
 // envNamePlaceholderRe matches a value that is the name of an environment
 // variable written where its value should go: CONTEXT7_API_KEY, GH_TOKEN_2.
