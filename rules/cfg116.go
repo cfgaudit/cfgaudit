@@ -83,10 +83,14 @@ var aliasPathRe = regexp.MustCompile(`^(?:/[A-Za-z0-9_-]+)+(?:/\*?)?$`)
 
 // filesystemRoots are the top-level directories of macOS and Linux that an
 // absolute import names (`@/home/me/notes`); an alias never starts with one.
+// The pseudo-filesystems and runtime directories count too (#1736):
+// `@/proc/self/environ` loads the process environment, `@/run/secrets/x` a
+// Docker secret.
 var filesystemRoots = map[string]bool{
 	"home": true, "Users": true, "root": true, "etc": true, "tmp": true, "var": true,
 	"opt": true, "mnt": true, "media": true, "Volumes": true, "private": true,
 	"srv": true, "usr": true,
+	"proc": true, "sys": true, "dev": true, "run": true, "boot": true, "snap": true, "nix": true,
 }
 
 // isPathAlias reports whether p (the text after `@`) is a TypeScript-style
