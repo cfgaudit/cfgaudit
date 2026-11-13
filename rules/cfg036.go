@@ -51,7 +51,7 @@ var (
 	// and the shell (#1403): "curl … | base64 -d | sh", "wget -qO- … | gunzip
 	// | sh". Only these decoders and filters count; any other stage in between
 	// ends the match, and so does a redirect into a file.
-	pipeTransforms = `(?:\|\s*(?:base64\s+(?:-d|-D|--decode)\b|xxd\s+-r\b|gunzip\b|tr\s)[^|>\n]*)*`
+	pipeTransforms = `(?:\|\s*(?:base64\s+(?:-d|-D|--decode)\b|base32\s+(?:-d|--decode)\b|basenc\s+[^|>\n]*(?:-d|--decode)\b|xxd\s+-r\b|gunzip\b|tr\s)[^|>\n]*)*`
 	// A download piped into a shell or run through one (Part D, #791):
 	// curl … https://… | sh, bash <(curl …), sh -c "$(curl …)", and the same
 	// into python reading its script from stdin (no arguments, or "-"; not
@@ -59,6 +59,10 @@ var (
 	// "no curl|bash installers" and a table naming bash <(curl ...) are not one
 	// (#1370).
 	pipeShellRe = mustFiltered(`(?i)\b(?:curl|wget)\b[^|\n]*\bhttps?://[^|\n]*` + pipeTransforms + `\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh(?:\s|$|[;&)` + "`" + `"'])|python[23]?(?:\s+-(?:\s|$)|\s*(?:$|[;&|)` + "`" + `"'])))|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b[^)\n]*\bhttps?://|\b(?:ba|z)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b[^)\n]*\bhttps?://`)
+	// decoderStage is a pipeline stage that decodes base64 or base32 (#1644):
+	// base64 -d, base32 -d, basenc --base64 -d or --base32 -d, flags in
+	// either order. decodedKind tells which a match decodes.
+	decoderStage = `(?:base64\s+(?:-d|-D|--decode)|base32\s+(?:-d|--decode)|basenc\s+(?:--base(?:32|64)\s+(?:-d|--decode)|(?:-d|--decode)\s+--base(?:32|64)))\b`
 	// A literal base64 string decoded straight into a shell (Part E, #906):
 	// "echo '<base64>' | base64 -D | bash". A reader cannot see what it runs.
 	// A variable or placeholder ($b64, <BASE64>) is not a literal and does
@@ -66,11 +70,11 @@ var (
 	// Any length of blob (#993): "echo aGVsbG8K | base64 -d | bash" hides the
 	// command as well as a long one does, and the decoded text need not match
 	// anything. Interpreters and PowerShell's iex count as the shell.
-	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:['"]?%s['"]?\s+)?['"]?([A-Za-z0-9+/]{2,}={0,2})['"]?\s*\|\s*base64\s+(?:-d|-D|--decode)\b\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
+	decodeShellRe = mustFiltered(`(?i)\b(?:echo|printf)\s+(?:-n\s+)?(?:['"]?%s['"]?\s+)?['"]?([A-Za-z0-9+/]{2,}={0,6})['"]?\s*\|\s*` + decoderStage + `\s*\|\s*(?:sudo\s+)?(?:(?:ba|z|da)?sh|python3?|perl|ruby|node|iex)\b`)
 	// The same decode handed to eval or sh -c through a command substitution
 	// (Part E, #1402): eval $(echo '<base64>' | base64 -d), sh -c "$(...)",
 	// bash -c with backticks.
-	decodeEvalRe = mustFiltered("(?i)\\b(?:eval|(?:ba|z|da)?sh\\s+-c)\\s+[\"']?(?:\\$\\(|`)\\s*(?:echo|printf)\\s+(?:-n\\s+)?(?:['\"]?%s['\"]?\\s+)?['\"]?([A-Za-z0-9+/]{2,}={0,2})['\"]?\\s*\\|\\s*base64\\s+(?:-d|-D|--decode)\\b[^)`|\\n]*(?:\\|\\s*tee\\b[^)`|\\n]*)?(?:\\)|`)")
+	decodeEvalRe = mustFiltered("(?i)\\b(?:eval|(?:ba|z|da)?sh\\s+-c)\\s+[\"']?(?:\\$\\(|`)\\s*(?:echo|printf)\\s+(?:-n\\s+)?(?:['\"]?%s['\"]?\\s+)?['\"]?([A-Za-z0-9+/]{2,}={0,6})['\"]?\\s*\\|\\s*" + decoderStage + "[^)`|\\n]*(?:\\|\\s*tee\\b[^)`|\\n]*)?(?:\\)|`)")
 	// A downloaded password-protected archive whose content the text says to
 	// run (Part F, #908): "Download [x](https://.../x.zip) (extract using
 	// pass: `1234`) and run the executable". The password keeps scanners out
@@ -527,6 +531,94 @@ func base64Literal(s string) bool {
 	return !strings.Contains(s, "/") || strings.ContainsAny(s, "+=0123456789")
 }
 
+// decodedKind says which encoding a decodeShellRe or decodeEvalRe match
+// decodes.
+func decodedKind(match string) string {
+	if strings.Contains(match, "base32") {
+		return "base32"
+	}
+	return "base64"
+}
+
+// base32Literal reports whether the operand of a base32 decode is encoded
+// text (#1644): the base32 alphabet, upper case as base32 -d requires, and it
+// decodes cleanly to mostly printable text. An all-caps word such as
+// "CHANGEME" does not decode to text.
+func base32Literal(s string) bool {
+	if !base32WordRe.MatchString(s) {
+		return false
+	}
+	b, ok := decodeLiteral(s, "base32")
+	return ok && printableText(b)
+}
+
+var base32WordRe = regexp.MustCompile(`^[A-Z2-7]{8,}={0,6}$`)
+
+// printableText reports bytes that are mostly printable ASCII text, the test
+// CFG057 applies to a decoded run.
+func printableText(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	printable := 0
+	for _, c := range b {
+		if c == '\t' || c == '\n' || c == '\r' || (c >= 0x20 && c < 0x7f) {
+			printable++
+		}
+	}
+	return float64(printable)/float64(len(b)) >= 0.85
+}
+
+// shellLinePrefixRe matches what comes before a command on a Markdown line:
+// a list marker, a quote marker, a shell prompt.
+var shellLinePrefixRe = regexp.MustCompile(`^\s*(?:[-*+>]\s+|\d+\.\s+)*(?:\$\s+)?`)
+
+// decodeToFileRun finds a literal decoded into a file that the same line, or
+// next (the next line of the same code block), runs (#1644): `printf %s
+// <base32> | base32 -d > .p.sh && sh .p.sh`. It returns the column of the
+// line's command, the encoding and the file, or -1. The shell reading is
+// CFG141's; the literal must decode to text.
+func decodeToFileRun(line, next string, inFence bool) (int, string, string) {
+	if !strings.Contains(line, "-d") && !strings.Contains(line, "--decode") && !strings.Contains(line, "xxd") {
+		return -1, "", ""
+	}
+	clean := func(s string) string {
+		s = strings.ReplaceAll(s, "`", " ")
+		return s[len(shellLinePrefixRe.FindString(s)):]
+	}
+	// Outside a code block only the inline code spans are commands.
+	cmds := []string{clean(line)}
+	if !inFence && strings.Contains(line, "`") {
+		cmds = nil
+		for _, m := range inlineCodeSpanRe.FindAllString(line, -1) {
+			cmds = append(cmds, strings.Trim(m, "`"))
+		}
+		next = ""
+	}
+	for _, cmd := range cmds {
+		if col, kind, file := decodedFileRun(cmd, clean(next)); col >= 0 {
+			return len(line) - len(strings.TrimLeft(line, " \t")), kind, file
+		}
+	}
+	return -1, "", ""
+}
+
+// decodedFileRun applies decodeToFileRun to one command.
+func decodedFileRun(cmd, next string) (int, string, string) {
+	for _, p := range shellPayloads(cmd, next, "") {
+		file, ok := strings.CutPrefix(p.run, "writes it to ")
+		if !ok || !printableText(p.decoded) {
+			continue
+		}
+		if p.enc == "base64" && !base64Literal(p.literal) {
+			continue
+		}
+		file, _, _ = strings.Cut(file, ",")
+		return 0, p.enc, file
+	}
+	return -1, "", ""
+}
+
 // ruleExpressionRe matches a code span that is a rule-language comparison,
 // a dotted field name and an operator: `open.file.path in ["/etc/shadow"]`
 // in a detection rule's sample output names what the rule watches; it is
@@ -739,8 +831,18 @@ func (r *cfg036) Check(t *Target) []finding.Finding {
 			if loc == nil {
 				loc = decodeEvalRe.FindStringSubmatchIndex(line)
 			}
-			if loc != nil && base64Literal(line[loc[2]:loc[3]]) {
-				add(i, loc[0], finding.Error, "decodes a literal base64 string into a shell (Part E) — nobody reading the file can see the command it runs; documentation has no reason to hide one this way. Write the command out")
+			if loc != nil && decodeLiteralOK(line, loc) {
+				add(i, loc[0], finding.Error, "decodes a literal "+decodedKind(line[loc[0]:loc[1]])+" string into a shell (Part E) — nobody reading the file can see the command it runs; documentation has no reason to hide one this way. Write the command out")
+				continue
+			}
+			// The run may follow on the next two lines of the same block,
+			// after a chmod +x.
+			var next []string
+			for j := i + 1; j < n && j <= i+2 && fenced[i+1] && fenced[j+1] && !isFenceDelimiter(lines[j]); j++ {
+				next = append(next, lines[j])
+			}
+			if col, kind, file := decodeToFileRun(line, strings.Join(next, "\n"), fenced[i+1]); col >= 0 {
+				add(i, col, finding.Error, "decodes a literal "+kind+" string into "+file+" and runs it (Part E) — nobody reading the file can see the command it runs; documentation has no reason to hide one this way. Write the command out")
 			}
 		}
 

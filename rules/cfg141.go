@@ -58,7 +58,7 @@ func (r *cfg141) Check(t *Target) []finding.Finding {
 	var findings []finding.Finding
 	cmds := LaunchCommands(t)
 	for i, lc := range cmds {
-		if strings.HasSuffix(strings.ToLower(lc.File), ".md") && (decodeShellRe.MatchString(lc.Command) || decodeEvalRe.MatchString(lc.Command)) {
+		if strings.HasSuffix(strings.ToLower(lc.File), ".md") && partECovers(lc.Command) {
 			continue // a `!` block in a Markdown file: CFG036 Part E reports it
 		}
 		next := ""
@@ -640,4 +640,26 @@ func inlinePayloads(command string) []embeddedPayload {
 		}
 	}
 	return out
+}
+
+// partECovers reports a command CFG036 Part E reports in an instruction file:
+// a literal decoded into a shell (#906, #1644), or into a file it runs.
+func partECovers(cmd string) bool {
+	if loc := decodeShellRe.FindStringSubmatchIndex(cmd); loc != nil && decodeLiteralOK(cmd, loc) {
+		return true
+	}
+	if loc := decodeEvalRe.FindStringSubmatchIndex(cmd); loc != nil && decodeLiteralOK(cmd, loc) {
+		return true
+	}
+	col, _, _ := decodeToFileRun(cmd, "", true)
+	return col >= 0
+}
+
+// decodeLiteralOK applies Part E's literal check to a decode match.
+func decodeLiteralOK(cmd string, loc []int) bool {
+	lit := cmd[loc[2]:loc[3]]
+	if decodedKind(cmd[loc[0]:loc[1]]) == "base32" {
+		return base32Literal(lit)
+	}
+	return base64Literal(lit)
 }
