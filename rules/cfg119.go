@@ -69,7 +69,41 @@ var (
 	payloadEnvReadRe = regexp.MustCompile(`\bprocess\.env\b`)
 	// payloadNetworkRe matches code that sends data out.
 	payloadNetworkRe = regexp.MustCompile(`https?://|\bfetch\(|https?\.request\(|XMLHttpRequest|\bcurl\b|requests\.post|urllib\.request`)
+	// payloadDecodeRe, payloadXorRe and payloadEncodedCallRe find a string
+	// decoder (#1650): a function that turns a hex or base64 literal into
+	// bytes and XORs them, called on many such literals, so that no path,
+	// host or command shows in the file. The implant that prompted #1650 hid
+	// its file names and commands behind ten lines of this shape, which none
+	// of the obfuscator markers above sees.
+	payloadDecodeRe = regexp.MustCompile(`Buffer\.from\([^)]*,\s*['"](?:hex|base64)['"]|\batob\(|bytes\.fromhex\(|\bb64decode\(|\bunhexlify\(`)
+	payloadXorRe    = regexp.MustCompile(`[\w\]]\s*\^=|[\w\])]\s*\^\s*(?:0x[0-9a-fA-F]+|\d+|[A-Za-z_$][\w$]*\s*[\[(])`)
+	// payloadEncodedCallRe matches a call with one hex literal of at least
+	// eight digits (group 1 is the function).
+	payloadEncodedCallRe = regexp.MustCompile(`\b([A-Za-z_$][\w$]*)\(\s*['"](?:[0-9a-fA-F]{2}){4,}['"]\s*\)`)
+	// payloadDeadDropRe matches a public page that a payload reads its server
+	// address from (#1650): a Telegram channel preview, a raw paste or a raw
+	// gist. The address can then change without a commit.
+	payloadDeadDropRe = regexp.MustCompile(`https?://(?:t\.me/s/|telegra\.ph/|pastebin\.com/raw/|paste\.ee/r/|rentry\.(?:co|org)/[\w-]+/raw|gist\.githubusercontent\.com/[^\s"'` + "`" + `]+/raw)`)
 )
+
+// payloadMinEncodedCalls is how many calls of one function on a hex literal
+// make a string decoder (#1650).
+const payloadMinEncodedCalls = 5
+
+// xorDecoderCalls returns how often the most used function is called on a hex
+// literal, when the file also decodes hex or base64 and XORs bytes.
+func xorDecoderCalls(content string) int {
+	if !payloadDecodeRe.MatchString(content) || !payloadXorRe.MatchString(content) {
+		return 0
+	}
+	calls := map[string]int{}
+	most := 0
+	for _, m := range payloadEncodedCallRe.FindAllStringSubmatch(content, -1) {
+		calls[m[1]]++
+		most = max(most, calls[m[1]])
+	}
+	return most
+}
 
 // disguisedRunRe matches an interpreter started on a file with an extension.
 // Groups: interpreter, flags, "run", path, extension. disguisedRuns keeps
@@ -143,8 +177,8 @@ func disguisedRuns(t *Target) []finding.Finding {
 
 // payloadMarkers are what CFG119 found in one script.
 type payloadMarkers struct {
-	obfuscated, fetchRun, credentials, credRead, envDump bool
-	idents, envReads                                     int
+	obfuscated, fetchRun, credentials, credRead, envDump, deadDrop bool
+	idents, envReads                                               int
 	// obfShape names the obfuscation that was found, for the message.
 	obfShape string
 }
@@ -217,7 +251,12 @@ func scanPayload(content string) payloadMarkers {
 		m.obfuscated, m.obfShape = true, "code kept as an array of character codes and run with eval"
 	case hexLits >= payloadMinHexLits && hexLits*1000 >= payloadHexDensity*len(content) && longestLine(content) >= payloadLongLine:
 		m.obfuscated, m.obfShape = true, strconv.Itoa(hexLits)+" hex literals in a line of "+strconv.Itoa(longestLine(content))+" characters"
+	default:
+		if n := xorDecoderCalls(content); n >= payloadMinEncodedCalls {
+			m.obfuscated, m.obfShape = true, "a XOR string decoder called on "+strconv.Itoa(n)+" hex literals"
+		}
 	}
+	m.deadDrop = payloadDeadDropRe.MatchString(content)
 	m.fetchRun = payloadDownloadRe.MatchString(content) && payloadRunRe.MatchString(content)
 	network := payloadNetworkRe.MatchString(content)
 	m.credentials = network && (payloadTokenRe.MatchString(content) || payloadCredFileRe.MatchString(content))
@@ -235,11 +274,17 @@ func (m payloadMarkers) describe() string {
 	if m.fetchRun {
 		parts = append(parts, "it downloads a release asset, archive, binary or runtime and runs code")
 	}
-	if m.credentials {
+	switch {
+	case m.credRead:
+		parts = append(parts, "it opens credential files and talks to the network")
+	case m.credentials:
 		parts = append(parts, "it looks for access tokens or credential files and talks to the network")
 	}
 	if m.envDump {
 		parts = append(parts, "it reads the whole environment and talks to the network")
+	}
+	if m.deadDrop {
+		parts = append(parts, "it reads its server address from a public channel or paste (a dead drop), so the address can change without a commit")
 	}
 	return strings.Join(parts, "; ")
 }
@@ -259,11 +304,14 @@ func toolsOf(launchers []string) int {
 }
 
 // Check reports at error a script with obfuscation and any other marker, an
-// obfuscated script that several tools start, or one with a download-and-run
-// step and a credential hunt; at warn a script with one other marker that
-// several tools start, since starting the same script from a
-// VS Code task and an agent hook is rare in a legitimate repository and the
-// usual way an implant makes sure it runs.
+// obfuscated script that several tools start, one with a download-and-run
+// step or a dead drop and a credential hunt, one that a session start or
+// folder open launches and that opens credential files and talks to the
+// network, and one with any marker that an agent ignore file hides; at warn
+// a script with one other marker that several tools start, since starting
+// the same script from a VS Code task and an agent hook is rare in a
+// legitimate repository and the usual way an implant makes sure it runs, or
+// that a session start or folder open launches.
 func (r *cfg119) Check(t *Target) []finding.Finding {
 	if t == nil {
 		return nil
@@ -271,7 +319,7 @@ func (r *cfg119) Check(t *Target) []finding.Finding {
 	findings := disguisedRuns(t)
 	for _, s := range t.LaunchedScripts {
 		m := scanPayload(s.Content)
-		other := m.fetchRun || m.credentials || m.envDump
+		other := m.fetchRun || m.credentials || m.envDump || m.deadDrop
 		if s.Skill != "" {
 			// One marker is not enough here: a skill's scripts name tokens,
 			// credential files and release URLs for good reasons, which gave
@@ -283,15 +331,22 @@ func (r *cfg119) Check(t *Target) []finding.Finding {
 			}
 			continue
 		}
+		tools := toolsOf(s.Launchers)
+		hidden := s.HiddenBy != "" && (m.obfuscated || other)
 		var sev finding.Severity
 		switch {
-		case m.obfuscated && other, m.fetchRun && m.credentials:
+		case m.obfuscated && other, (m.fetchRun || m.deadDrop) && (m.credentials || m.envDump):
 			sev = finding.Error
-		case m.obfuscated && toolsOf(s.Launchers) >= 2:
+		case m.obfuscated && tools >= 2:
 			// Hidden code that several tools start: a payload whose strings
 			// are all encoded shows no other marker (#1270).
 			sev = finding.Error
-		case (m.obfuscated || other) && toolsOf(s.Launchers) >= 2:
+		case s.ZeroClick && m.credRead, hidden:
+			// A script that runs when the repository is opened and reads
+			// the user's credentials, or that the repository hides from the
+			// agent asked to review it (#1650).
+			sev = finding.Error
+		case (m.obfuscated || other) && tools >= 2, s.ZeroClick && (m.credentials || m.envDump):
 			sev = finding.Warn
 		default:
 			continue
@@ -300,8 +355,14 @@ func (r *cfg119) Check(t *Target) []finding.Finding {
 		if s.Partial {
 			msg += " (the file is " + strconv.FormatInt(s.Size>>20, 10) + " MB, over the read limit, so only its first and last 64 KB were read)"
 		}
-		if n := toolsOf(s.Launchers); n >= 2 {
-			msg += "; it is started from " + strconv.Itoa(n) + " tools' configuration (" + strings.Join(s.Launchers, ", ") + ")"
+		if tools >= 2 {
+			msg += "; it is started from " + strconv.Itoa(tools) + " tools' configuration (" + strings.Join(s.Launchers, ", ") + ")"
+		}
+		if s.ZeroClick {
+			msg += "; it runs as soon as the repository is opened or a session starts"
+		}
+		if hidden {
+			msg += "; " + s.HiddenBy + " keeps the agent from reading it or its launcher, so an agent asked to review the repository does not see it"
 		}
 		msg += ". A committed script that runs when the repository is opened must not hide what it does; read it before you open the repository with an agent or editor, and if nobody in the project added it, treat the repository as compromised"
 		findings = append(findings, finding.Finding{RuleID: "CFG119", Severity: sev, File: s.File, Message: msg})
