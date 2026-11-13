@@ -5,12 +5,15 @@ package main
 
 import (
 	"bytes"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/cfgaudit/cfgaudit/internal/parser"
 	"github.com/cfgaudit/cfgaudit/internal/scanroot"
 	"github.com/cfgaudit/cfgaudit/rules"
 )
@@ -185,6 +188,7 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 		labels    []string
 		launchers map[string]bool
 		via       string
+		zeroClick bool
 	}
 	byPath := map[string]*script{}
 	var order []string
@@ -200,7 +204,7 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 		}
 		return string(data), false, int64(len(data)), true
 	}
-	add := func(owner *rules.Target, rel, label, launcher, via string) {
+	add := func(owner *rules.Target, rel, label, launcher, via string, zeroClick bool) {
 		s, ok := byPath[rel]
 		if !ok {
 			content, partial, size, ok := read(rel)
@@ -211,6 +215,7 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 			byPath[rel] = s
 			order = append(order, rel)
 		}
+		s.zeroClick = s.zeroClick || zeroClick
 		if label != "" && !slices.Contains(s.labels, label) {
 			s.labels = append(s.labels, label)
 		}
@@ -224,7 +229,7 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 	for _, t := range targets {
 		for _, lc := range rules.LaunchCommands(t) {
 			for _, rel := range launchedPaths(lc.Command) {
-				add(t, rel, "the "+lc.Label, lc.File, "")
+				add(t, rel, "the "+lc.Label, lc.File, "", rules.ZeroClickLaunch(lc.Label))
 			}
 		}
 	}
@@ -232,7 +237,7 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 	for _, t := range targets {
 		for _, h := range t.ClineHooks {
 			hooks[h.Path] = true
-			add(t, h.Path, "Cline as its "+h.Event+" hook", filepath.Join(root, filepath.FromSlash(h.Path)), "")
+			add(t, h.Path, "Cline as its "+h.Event+" hook", filepath.Join(root, filepath.FromSlash(h.Path)), "", false)
 		}
 	}
 	for _, rel := range append([]string(nil), order...) {
@@ -245,14 +250,16 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 			if sib == rel {
 				continue
 			}
-			add(s.owner, sib, "", "", rel)
+			add(s.owner, sib, "", "", rel, false)
 			if t := byPath[sib]; t != nil && t.via == rel {
 				for l := range s.launchers {
 					t.launchers[l] = true
 				}
+				t.zeroClick = t.zeroClick || s.zeroClick
 			}
 		}
 	}
+	ignores := readAgentIgnores(root)
 	for _, rel := range order {
 		s := byPath[rel]
 		launchers := make([]string, 0, len(s.launchers))
@@ -267,6 +274,113 @@ func attachLaunchedScripts(dir string, targets []*rules.Target) {
 		s.owner.LaunchedScripts = append(s.owner.LaunchedScripts, rules.LaunchedScript{
 			Label: label, File: filepath.Join(dir, filepath.FromSlash(rel)), Content: s.content, Launchers: launchers, Via: s.via,
 			Partial: s.partial, Size: s.size, Shell: hooks[rel] && shellHook(rel, s.content),
+			ZeroClick: s.zeroClick, HiddenBy: hiddenBy(ignores, rel, launchers),
 		})
 	}
+}
+
+// agentIgnoreFiles are the files that keep an agent from reading the paths
+// they list (#1650).
+var agentIgnoreFiles = []string{".claudeignore", ".cursorignore", ".geminiignore", ".aiexclude"}
+
+// agentIgnoreLine is one pattern of an agent ignore file.
+type agentIgnoreLine struct {
+	file, pattern string
+	line          int
+}
+
+// readAgentIgnores reads the agent ignore files at the repository root.
+func readAgentIgnores(root string) []agentIgnoreLine {
+	var out []agentIgnoreLine
+	for _, name := range agentIgnoreFiles {
+		lines, err := parser.ParseIgnore(filepath.Join(root, name))
+		if err != nil {
+			continue
+		}
+		for _, l := range lines {
+			if strings.HasPrefix(l.Pattern, "!") {
+				continue
+			}
+			out = append(out, agentIgnoreLine{file: name, pattern: l.Pattern, line: l.Line})
+		}
+	}
+	return out
+}
+
+// hiddenBy returns the ignore line that hides the launched script rel from
+// the agent, or that names one of its launcher files outright, as
+// "file:line (pattern)"; "" when none does (#1650). A launcher counts only
+// when the line names the file itself: a directory such as .vscode/ in an
+// ignore file is common and says nothing about intent.
+func hiddenBy(ignores []agentIgnoreLine, rel string, launchers []string) string {
+	at := func(ig agentIgnoreLine) string {
+		return ig.file + ":" + strconv.Itoa(ig.line) + " (" + ig.pattern + ")"
+	}
+	for _, ig := range ignores {
+		if ignoreHides(ig.pattern, rel) {
+			return at(ig)
+		}
+	}
+	for _, ig := range ignores {
+		if !strings.ContainsAny(ig.pattern, "*?[") && !strings.HasSuffix(ig.pattern, "/") &&
+			slices.Contains(launchers, strings.TrimPrefix(ig.pattern, "/")) {
+			return at(ig)
+		}
+	}
+	return ""
+}
+
+// ignoreHides reports whether an ignore pattern covers rel or a directory
+// above it, with gitignore's rules: a pattern without a slash (other than a
+// trailing one) matches a name at any depth, one with a slash is anchored at
+// the root, and ** spans directories.
+func ignoreHides(pattern, rel string) bool {
+	dirOnly := strings.HasSuffix(pattern, "/")
+	pat := strings.TrimSuffix(pattern, "/")
+	pat = strings.TrimPrefix(pat, "./")
+	anchored := strings.Contains(pat, "/")
+	pat = strings.TrimPrefix(pat, "/")
+	pat = strings.TrimPrefix(pat, "**/")
+	if pat == "" {
+		return false
+	}
+	parts := strings.Split(rel, "/")
+	for i := range parts {
+		if dirOnly && i == len(parts)-1 {
+			break
+		}
+		if anchored && !strings.HasPrefix(pattern, "**/") {
+			if globMatch(pat, strings.Join(parts[:i+1], "/")) {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(pat, "/") {
+			for j := 0; j <= i; j++ {
+				if globMatch(pat, strings.Join(parts[j:i+1], "/")) {
+					return true
+				}
+			}
+			continue
+		}
+		if globMatch(pat, parts[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// globMatch is path.Match with ** matching any number of directories.
+func globMatch(pat, name string) bool {
+	if !strings.Contains(pat, "**") {
+		ok, _ := path.Match(pat, name)
+		return ok
+	}
+	re := regexp.QuoteMeta(pat)
+	re = strings.ReplaceAll(re, `\*\*/`, `(?:.*/)?`)
+	re = strings.ReplaceAll(re, `\*\*`, `.*`)
+	re = strings.ReplaceAll(re, `\*`, `[^/]*`)
+	re = strings.ReplaceAll(re, `\?`, `[^/]`)
+	ok, _ := regexp.MatchString("^"+re+"$", name)
+	return ok
 }
