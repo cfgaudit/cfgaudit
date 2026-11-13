@@ -30,6 +30,14 @@ Homebrew (macOS / Linux):
 brew install cfgaudit/tap/cfgaudit
 ```
 
+With [aqua](https://aquaproj.github.io/):
+
+```sh
+aqua g -i cfgaudit/cfgaudit && aqua i
+```
+
+cfgaudit is in the aqua standard registry from v4.585.0 on. aqua checks each download against `checksums.txt` and the attestation of cfgaudit's release workflow ([Verifying a release](#verifying-a-release)).
+
 With Python tooling (the wheel carries the prebuilt binary, no Python code):
 
 ```sh
