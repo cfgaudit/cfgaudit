@@ -45,6 +45,10 @@ var (
 	// length floor only bounds decode attempts; the malicious-content gate (not
 	// length) is what keeps false positives low, so a modest floor is fine.
 	base64RunRe = regexp.MustCompile(`[A-Za-z0-9+/]{24,}={0,2}`)
+	// base32RunRe matches a base32 run (#1644), upper case as base32 -d needs,
+	// with the same floor as base64RunRe. All-caps words are common, so the
+	// run has to decode cleanly to text and then look malicious, as for base64.
+	base32RunRe = regexp.MustCompile(`\b[A-Z2-7]{24,}={0,6}`)
 	// suspiciousDecodedRe matches command/exfiltration indicators in decoded text,
 	// complementing the CFG026 injection-phrase patterns reused below.
 	suspiciousDecodedRe = regexp.MustCompile(`(?i)(system prompt|\bexfiltrat|curl\s+[^|]*\|\s*(?:sh|bash)|\bwget\s|/etc/(?:passwd|shadow)|~/\.(?:ssh|aws)|\beval\(|\brm\s+-rf\b|base64\s+-d)`)
@@ -74,9 +78,20 @@ func (r *cfg057) Check(t *Target) []finding.Finding {
 				add(lineNo, "contains a data: URI — a trusted instruction file should not embed an inline data payload; it can smuggle hidden/encoded content. Remove it")
 				continue
 			}
+			reported := false
 			for _, b64 := range base64RunRe.FindAllString(line, -1) {
 				if decoded, ok := decodeBase64(b64); ok && decodedLooksMalicious(decoded) {
 					add(lineNo, "contains a base64 payload that decodes to instruction/command content — an encoded prompt-injection or command that evades plaintext scanning. Remove it")
+					reported = true
+					break
+				}
+			}
+			if reported {
+				continue
+			}
+			for _, b32 := range base32RunRe.FindAllString(line, -1) {
+				if decoded, ok := decodeBase32Text(b32); ok && decodedLooksMalicious(decoded) {
+					add(lineNo, "contains a base32 payload that decodes to instruction/command content — an encoded prompt-injection or command that evades plaintext scanning. Remove it")
 					break
 				}
 			}
@@ -130,4 +145,14 @@ func decodedLooksMalicious(s string) bool {
 		}
 	}
 	return suspiciousDecodedRe.MatchString(s)
+}
+
+// decodeBase32Text decodes a base32 run and returns it when it is mostly
+// printable text of 12 bytes or more, like decodeBase64.
+func decodeBase32Text(s string) (string, bool) {
+	b, ok := decodeLiteral(s, "base32")
+	if !ok || len(b) < 12 || !printableText(b) {
+		return "", false
+	}
+	return string(b), true
 }

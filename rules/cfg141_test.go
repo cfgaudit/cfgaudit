@@ -231,9 +231,15 @@ func TestCFG141_SkillBlocks(t *testing.T) {
 	if f := CFG141.Check(part); len(f) != 0 {
 		t.Errorf("CFG036 Part E case: %+v", f)
 	}
-	b32cmd := &Target{InstructionFile: ".claude/skills/x/SKILL.md", SkillShellCommands: []string{"printf %s " + b32("echo hi") + " | base32 -d | bash"}}
-	if f := CFG141.Check(b32cmd); cfg141Sev(f) != finding.Error {
-		t.Errorf("base32 block: %+v", f)
+	// Since #1644 Part E covers base32 and decode-then-run too.
+	for _, cmd := range []string{"printf %s " + b32("echo hi") + " | base32 -d | bash", "echo " + b64("echo hi") + " | base64 -d > .p.sh && sh .p.sh"} {
+		if f := CFG141.Check(&Target{InstructionFile: ".claude/skills/x/SKILL.md", SkillShellCommands: []string{cmd}}); len(f) != 0 {
+			t.Errorf("%q: left to CFG036, got %+v", cmd, f)
+		}
+	}
+	inline := &Target{InstructionFile: ".claude/skills/x/SKILL.md", SkillShellCommands: []string{`node -e "eval(Buffer.from('` + b64("console.log(1)") + `','base64').toString())"`}}
+	if f := CFG141.Check(inline); cfg141Sev(f) != finding.Error {
+		t.Errorf("inline eval block: %+v", f)
 	}
 	for _, cmd := range []string{"cat f.b64 | base64 -d | sh", "echo | base64 -d | sh", "base64 -d <<<"} {
 		if f := cfg141Hook(t, cmd); len(f) != 0 {
