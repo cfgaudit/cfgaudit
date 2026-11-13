@@ -102,3 +102,59 @@ func TestSilentHomeRoute_NoPermissions(t *testing.T) {
 		t.Error("no permissions block reported as a silent route")
 	}
 }
+
+// #1661: a pinned interpreter grant is no route to the home directory, and
+// Read(//tmp/**) is not either. Open interpreter grants still are.
+func TestSilentHomeRoute_PinnedInterpreters1661(t *testing.T) {
+	deny := `"deny":["Read(./.env)","Read(./secrets/**)"]`
+	sev := func(allow string) (finding.Severity, finding.Severity) {
+		tg := settingsTarget(t, `{"permissions":{"allow":[`+allow+`],`+deny+`}}`)
+		var s43, s44 finding.Severity
+		for _, f := range CFG043.Check(tg) {
+			s43 = f.Severity
+		}
+		for _, f := range CFG044.Check(tg) {
+			s44 = f.Severity
+		}
+		return s43, s44
+	}
+	for _, allow := range []string{
+		`"Bash(node scripts/check.js:*)","Bash(php -v)"`,
+		`"Bash(python3 -m pytest:*)"`,
+		`"Bash(python -V:*)"`,
+		`"Bash(node --version:*)"`,
+		`"Bash(bash scripts/build.sh:*)"`,
+		`"Bash(bun -v:*)"`,
+		`"Bash(php --version)"`,
+		`"Read(//tmp/**)"`,
+		`"Read(//etc/hosts)"`,
+	} {
+		if a, b := sev(allow); a != finding.Warn || b != finding.Warn {
+			t.Errorf("%s: CFG043 %q, CFG044 %q, want warn", allow, a, b)
+		}
+	}
+	for _, allow := range []string{
+		`"Bash(python:*)"`,
+		`"Bash(node -e:*)"`,
+		`"Bash(python3.12:*)"`,
+		`"Bash(php:*)"`,
+		`"Bash(bun:*)"`,
+		`"Bash(nodejs *)"`,
+		`"Bash(py -c:*)"`,
+		`"Bash(python -v:*)"`,
+		`"Bash(ruby -v:*)"`,
+		`"Bash(bash -c:*)"`,
+		`"Bash(python -m pip:*)"`,
+		`"Read(//**)"`,
+		`"Read(//home/**)"`,
+		`"Read(//Users/me/**)"`,
+		`"Read(//root/.ssh/id_rsa)"`,
+	} {
+		if a, b := sev(allow); a != finding.Error || b != finding.Error {
+			t.Errorf("%s: CFG043 %q, CFG044 %q, want error", allow, a, b)
+		}
+	}
+	if !interpreterRunsAnyCode("node:*") {
+		t.Error("an entry that is not Bash(...) counts as open")
+	}
+}
