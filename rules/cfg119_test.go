@@ -275,7 +275,4 @@ func TestCFG119_CoverageLoaderAndVersionPaths(t *testing.T) {
 			t.Errorf("%q: got %v (%d findings), want %q", tc.cmd, got, len(f), tc.want)
 		}
 	}
-	seen := map[string]bool{}
-	lc := LaunchCommand{File: "settings.json", Label: "x"}
-	_ = reportDisguisedPath(&Target{}, lc, "node", "'3.9'", seen, nil)
 }

@@ -265,16 +265,6 @@ func reportDisguisedPath(t *Target, lc LaunchCommand, interp, rawPath string, se
 	return append(out, finding.Finding{RuleID: "CFG119", Severity: finding.Error, File: lc.File, Message: msg})
 }
 
-// loaderFlagPaths is retained for callers and tests that only need paths.
-func loaderFlagPaths(cmd string) []string {
-	hits := loaderFlagHits(cmd)
-	out := make([]string, 0, len(hits))
-	for _, h := range hits {
-		out = append(out, h.path)
-	}
-	return out
-}
-
 // disguisedRuns reports each auto-run command of t that starts an
 // interpreter on a non-script file. An obfuscated file that cfgaudit could
 // read is named as such.
