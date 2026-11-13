@@ -3561,8 +3561,9 @@ func TestBuildPluginTargets_ExplicitRootNestedBrokenFile(t *testing.T) {
 		}
 	}
 
+	// The plugin's own hooks file stops the scan. Its marketplace.json is the
+	// marketplace document, not the plugin's, and is CFG109 since #1648.
 	for _, own := range []string{
-		filepath.Join(".claude-plugin", "marketplace.json"),
 		filepath.Join("hooks", "hooks.json"),
 	} {
 		r := t.TempDir()
@@ -3571,6 +3572,12 @@ func TestBuildPluginTargets_ExplicitRootNestedBrokenFile(t *testing.T) {
 		if _, err := buildPluginTargets(r, r, false); err == nil {
 			t.Errorf("a broken %s of the named plugin must stop the scan", own)
 		}
+	}
+	r := t.TempDir()
+	mustWrite(t, filepath.Join(r, ".claude-plugin", "plugin.json"), `{"name":"p","version":"1.0.0"}`)
+	mustWrite(t, filepath.Join(r, ".claude-plugin", "marketplace.json"), "{ not json\n")
+	if _, err := buildPluginTargets(r, r, false); err != nil {
+		t.Errorf("a broken marketplace.json must not stop the scan (#1648): %v", err)
 	}
 }
 
