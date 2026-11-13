@@ -96,6 +96,10 @@ func Run(target *Target, detected *version.Version, accept func(Rule) bool) []fi
 					results[i].Severity = finding.Warn
 				}
 				results[i].Message += "; the agent runs this script when the skill " + skill + " tells it to, not on its own"
+				if r.ID() == "CFG050" && skillTestScript(skill, results[i].File) {
+					results[i].Severity = finding.Info
+					results[i].Message += ", and it is a test script, where a credential is usually a fixture"
+				}
 			}
 			if target.SkillHelper != "" && results[i].File == target.InstructionFile {
 				switch {
@@ -256,4 +260,20 @@ func nestedDirNote(t *Target) string {
 		return "; this CLAUDE.md applies to work under " + t.NestedDir + "/ (Claude Code loads it when it works in that folder)"
 	}
 	return "; this AGENTS.md applies to work under " + t.NestedDir + "/ (Cursor loads it as soon as its agent edits a file there)"
+}
+
+// skillTestScriptRe matches the path of a test script inside a skill: under
+// tests/ or test/, or named test_*, *_test.* or smoke* (#1668).
+var skillTestScriptRe = regexp.MustCompile(`(?i)(?:^|/)(?:tests?/|test_[^/]*$|[^/]*_test\.[^/]*$|smoke[^/]*$)`)
+
+// skillTestScript reports whether file is a test script of the skill whose
+// SKILL.md is skill. On the corpus run of 2026-11-10, 28 of the 36 CFG050
+// findings in skill scripts sat under test or smoke paths, and every one
+// sampled was a fixture.
+func skillTestScript(skill, file string) bool {
+	rel, err := filepath.Rel(filepath.Dir(skill), file)
+	if err != nil {
+		return false
+	}
+	return skillTestScriptRe.MatchString(filepath.ToSlash(rel))
 }

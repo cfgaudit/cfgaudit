@@ -25,14 +25,14 @@ func TestCFG007_AnthropicKey(t *testing.T) {
 }
 
 func TestCFG007_GitHubToken(t *testing.T) {
-	f := CFG007.Check(settingsTarget(t, `{"env":{"DEPLOY_TOKEN":"ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}`))
+	f := CFG007.Check(settingsTarget(t, `{"env":{"DEPLOY_TOKEN":"ghp_Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8Qr"}}`))
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
 	}
 }
 
 func TestCFG007_GitLabToken(t *testing.T) {
-	f := CFG007.Check(settingsTarget(t, `{"env":{"CI_TOKEN":"glpat-xxxxxxxxxxxxxxxxxxxx"}}`))
+	f := CFG007.Check(settingsTarget(t, `{"env":{"CI_TOKEN":"glpat-aB3dE5fG7hJ9kL2mN4pQ"}}`))
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding for GitLab PAT, got %d", len(f))
 	}
@@ -74,7 +74,7 @@ func TestCFG007_BenignValue_NoFinding(t *testing.T) {
 }
 
 func TestCFG007_MultipleSecrets(t *testing.T) {
-	f := CFG007.Check(settingsTarget(t, `{"env":{"ANTHROPIC_API_KEY":"sk-ant-api03-AAAAAAAAAAAAAAAAAAAA","DEPLOY_TOKEN":"glpat-xxxxxxxxxxxxxxxxxxxx"}}`))
+	f := CFG007.Check(settingsTarget(t, `{"env":{"ANTHROPIC_API_KEY":"sk-ant-api03-AAAAAAAAAAAAAAAAAAAA","DEPLOY_TOKEN":"glpat-aB3dE5fG7hJ9kL2mN4pQ"}}`))
 	if len(f) != 2 {
 		t.Fatalf("expected 2 findings, got %d", len(f))
 	}
@@ -170,7 +170,7 @@ func TestMatchSecretPattern_VendorFormats(t *testing.T) {
 		{fakeToken("h"+"f_", "abcdefghABCDEFGH", 34), "Hugging Face token"},
 		{fakeToken("np"+"m_", alnum, 36), "npm token"},
 		{fakeToken("pypi-"+"AgEIcHlwaS5vcmc", alnum, 70), "PyPI token"},
-		{fakeToken("S"+"G.", alnum, 22) + "." + strings.Repeat("x", 43), "SendGrid API key"},
+		{fakeToken("S"+"G.", alnum, 22) + "." + strings.Repeat("aB3", 15)[:43], "SendGrid API key"},
 		{fakeToken("S"+"K", hex, 32), "Twilio API key"},
 		{fakeToken("da"+"pi", hex, 32), "Databricks token"},
 		{fakeToken("hv"+"s.", alnum, 95), "HashiCorp Vault token"},

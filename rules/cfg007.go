@@ -95,10 +95,11 @@ var pathValueRe = regexp.MustCompile(`^(?:/|~/|\./|\.\./|[A-Za-z]:[\\/]|%[A-Za-z
 // GOOGLE_APPLICATION_CREDENTIALS and its kind hold the path of a key file by
 // convention, and the file is not in the config (#852). Nor is a relative
 // path with a directory and a file extension (".codex/credentials/dev.json"),
-// or a boolean switch ("BRIDGE_PERSISTENT_SECRET": "true") (#891).
+// or a boolean switch ("BRIDGE_PERSISTENT_SECRET": "true") (#891), or a
+// key its vendor issues for public clients ("POSTHOG_API_KEY": "phc_…", #1668).
 func literalUnderSecretName(k, v string) bool {
 	v = strings.TrimSpace(v)
-	return secretKeyName(k) && !pathValueRe.MatchString(v) && !relativeFileValueRe.MatchString(v) && !booleanValueRe.MatchString(v) && !literalPlaceholder(v)
+	return secretKeyName(k) && !pathValueRe.MatchString(v) && !relativeFileValueRe.MatchString(v) && !booleanValueRe.MatchString(v) && !literalPlaceholder(v) && !publishableKey(v)
 }
 
 // relativeFileValueRe matches a relative file path with at least one directory
@@ -274,6 +275,11 @@ func envSecrets(t *Target) []finding.Finding {
 }
 
 func matchSecretPattern(v string) (string, bool) {
+	// A vendor prefix followed by a placeholder ("xoxb-your-token",
+	// "sk-or-test-key") is the shape of a token, not one (#1668).
+	if literalPlaceholder(v) {
+		return "", false
+	}
 	for _, p := range secretValuePatterns {
 		if p.re.MatchString(v) {
 			return p.label, true

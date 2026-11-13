@@ -371,8 +371,9 @@ func headerSecretsAt(prefix string, headers map[string]string, file string, t *T
 // clients: Supabase's publishable key ("safe to expose") and Stripe's
 // publishable keys. A Claude Code http hook posting to a Supabase REST endpoint
 // sends one as apikey and Authorization, which is how the 101-file sample for
-// #745 had it.
-var publishableKeyPrefixes = []string{"sb_publishable_", "pk_live_", "pk_test_"}
+// #745 had it. PostHog's project token (phc_) is the same kind of key, sent
+// from every browser that loads the site (#1668).
+var publishableKeyPrefixes = []string{"sb_publishable_", "pk_live_", "pk_test_", "phc_"}
 
 func publishableKey(cred string) bool {
 	for _, p := range publishableKeyPrefixes {
