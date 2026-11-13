@@ -43,6 +43,63 @@ func guardsSecrets(deny []string) bool {
 // whose code can read any path without the path showing in the command.
 var interpreterAllowRe = regexp.MustCompile(`(?i)^Bash\(\s*(?:python[0-9.]*|py|node|nodejs|bun|deno|ruby|perl|php|sh|bash|zsh|dash|pwsh|powershell)\b`)
 
+// interpreterRunsAnyCode reports whether an interpreter allow lets the agent
+// run code of its own choosing, which can read any path without the path
+// showing in the command (#1661). The exemptions are CFG023's: an exact
+// command with no wildcard (Bash(php -v)), a version flag (Bash(node
+// --version:*), #1204), a named script or a `-m` module that does not run
+// other code (Bash(node scripts/check.js:*), #1205), and a shell given a
+// script (Bash(bash build.sh:*), #874). Interpreters CFG023 does not list
+// (php, bun, nodejs, py, python3.12) get the same reading.
+func interpreterRunsAnyCode(entry string) bool {
+	m := bashAllowRe.FindStringSubmatch(strings.TrimSpace(entry))
+	if m == nil {
+		return true
+	}
+	inner := strings.TrimSpace(m[1])
+	if !strings.Contains(inner, "*") {
+		return false
+	}
+	tok := strings.ToLower(strings.Fields(strings.ReplaceAll(inner, ":", " "))[0])
+	switch {
+	case shellInterpreters[tok]:
+		return !shellScriptPinned(inner)
+	case interpreterVersionFlag(tok, inner):
+		return false
+	}
+	return !interpreterOperandPinned(inner)
+}
+
+// interpreterVersionFlag reports an interpreter entry whose first argument
+// is a version flag that exits before running any code: --version, -V for
+// Python, -v for the others. Python's -v is verbose mode and Ruby's -v goes
+// on to run a program, so neither counts.
+func interpreterVersionFlag(tok, inner string) bool {
+	fields := strings.Fields(inner)
+	if len(fields) < 2 {
+		return false
+	}
+	switch flag := strings.TrimSuffix(fields[1], ":*"); {
+	case flag == "--version":
+		return true
+	case strings.HasPrefix(tok, "py"):
+		return flag == "-V"
+	case tok == "ruby":
+		return false
+	default:
+		return flag == "-v"
+	}
+}
+
+// readHomeRe matches a Read allow on an absolute path that reaches the home
+// directory: the whole file system or a home root (#1661). Read(//tmp/**)
+// does not.
+var readHomeRe = regexp.MustCompile(`^Read\(//(?:\*\*?|(?:home|Users|root)(?:/.*)?)\)$`)
+
+func readReachesHome(entry string) bool {
+	return readHomeRe.MatchString(entry)
+}
+
 // silentHomeRoute reports whether the allow list or additionalDirectories let
 // the agent read a file in the home directory without asking (#1172).
 // Measured on Claude Code 2.1.316: a Read of a path outside the project is
@@ -59,9 +116,9 @@ func silentHomeRoute(t *Target) bool {
 	for _, a := range p.Allow {
 		a = strings.TrimSpace(a)
 		switch {
-		case a == "Read", a == "Bash", a == "Bash(*)", interpreterAllowRe.MatchString(a):
+		case a == "Read", a == "Bash", a == "Bash(*)", interpreterAllowRe.MatchString(a) && interpreterRunsAnyCode(a):
 			return true
-		case strings.HasPrefix(a, "Read(") && (strings.HasPrefix(a, "Read(//") || strings.HasPrefix(a, "Read(~") || a == "Read(*)" || a == "Read(**)"):
+		case strings.HasPrefix(a, "Read(") && (readReachesHome(a) || strings.HasPrefix(a, "Read(~") || a == "Read(*)" || a == "Read(**)"):
 			return true
 		}
 	}
