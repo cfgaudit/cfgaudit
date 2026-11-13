@@ -28,6 +28,14 @@ func TestCFG116_PathAliases1663(t *testing.T) {
 		{"/lib/utils.md", true},
 		{"/config/secrets", true},
 		{"~/notes.md", true},
+		// #1736: pseudo-filesystems and runtime directories are roots too.
+		{"/proc/self/environ", true},
+		{"/run/secrets/db_password", true},
+		{"/sys/kernel/notes", true},
+		{"/dev/shm/notes", true},
+		{"/boot/grub/grub", true},
+		{"/snap/bin/notes", true},
+		{"/nix/store/notes", true},
 	} {
 		t.Run(tt.path, func(t *testing.T) {
 			got := CFG116.Check(&Target{Scope: finding.ScopeProject, InstructionFile: "CLAUDE.md", ExternalImports: []string{tt.path}})
