@@ -200,6 +200,12 @@ func permissionSecrets(t *Target) []finding.Finding {
 					}
 				}
 			}
+			noun := "key"
+			if what == "" {
+				if where, ok := permissionPassword(entry); ok {
+					what, noun = "a literal password ("+where+")", "password"
+				}
+			}
 			if what == "" {
 				continue
 			}
@@ -208,7 +214,7 @@ func permissionSecrets(t *Target) []finding.Finding {
 				Severity: finding.Error,
 				File:     t.SettingsFile,
 				Message: "permissions." + list.name + "[" + strconv.Itoa(i) + "] contains " + what +
-					" — the entry was probably recorded when a command that used the key was approved. Rotate the key: deleting the entry is not enough, since it stays in git history" + userScopeNote(t),
+					" — the entry was probably recorded when a command that used the " + noun + " was approved. Rotate the " + noun + ": deleting the entry is not enough, since it stays in git history" + userScopeNote(t),
 			})
 		}
 	}
@@ -284,4 +290,88 @@ func hasSecretSuffix(key string) bool {
 		}
 	}
 	return false
+}
+
+// Patterns for a password typed on a command line (#1633). Each has the
+// password as its last group.
+var (
+	// permissionPasswordNameRe matches an environment name that holds a
+	// password without one of secretSuffixes: PGPASSWORD, MYSQL_PWD.
+	// PWD and OLDPWD are the working directory.
+	permissionPasswordNameRe = regexp.MustCompile(`(?i)(?:PASSWORD|PASSWD|PASSPHRASE|_PWD|_SECRET)$`)
+	// mysqlPasswordRe matches the MySQL and MariaDB clients' password
+	// option: -p with the value attached (a bare -p prompts) or --password=.
+	// -P is the port.
+	mysqlPasswordRe = regexp.MustCompile(`(?:^|[\s(;&|])(?i:mysql|mariadb|mysqldump|mysqladmin|mysqlsh|mariadb-dump)(?:\s+[^\s;&|)]+)*?\s(?:-p|--password=)([^\s"';&|)]+)`)
+	// sqlServerPasswordRe matches the SQL Server tools' -P password option
+	// (sqlcmd, bcp, osql, isql, mssql-cli); -p is something else there.
+	sqlServerPasswordRe = regexp.MustCompile(`(?:^|[\s(;&|])(?i:sqlcmd|bcp|osql|isql|mssql-cli)(?:\.exe)?(?:\s+[^\s;&|)]+)*?\s-P\s*([^\s"';&|)]+)`)
+	// invokeSqlcmdRe matches PowerShell's Invoke-Sqlcmd -Password.
+	invokeSqlcmdRe = regexp.MustCompile(`(?i)\bInvoke-Sqlcmd\b[^;&|]*?\s-Password\s+([^\s"';&|)]+|"[^"]*"|'[^']*')`)
+	// puttyPasswordRe matches PuTTY's -pw option (plink, pscp, psftp), also
+	// when the program is a quoted Windows path.
+	puttyPasswordRe = regexp.MustCompile(`(?i)\b(?:plink|pscp|psftp)(?:\.exe)?["']?(?:\s+[^\s;&|)]+)*?\s-pw\s+([^\s"';&|)]+)`)
+	// sshpassRe matches sshpass -p with the password, attached or not.
+	sshpassRe = regexp.MustCompile(`(?:^|[\s(;&|])sshpass(?:\s+-[A-Za-oq-z]\S*)*\s+-p\s*([^\s"';&|)]+)`)
+	// curlUserRe matches curl -u or --user with user:password.
+	curlUserRe = regexp.MustCompile(`(?:^|[\s(;&|])curl(?:\s+[^\s;&|)]+)*?\s(?:-u\s*|--user[\s=]+)["']?[^\s:"']*:([^\s"';&|)]+)`)
+	// urlUserinfoRe matches a URL with user:password before the host.
+	urlUserinfoRe = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.\-]*://[^\s/:@"']+:[^\s/@"']+@[^\s/:?#"')]+`)
+)
+
+// permissionPassword reports a literal password on the command line of a
+// permission entry and names where it is: a password variable or keyword
+// (PGPASSWORD=, a psql conninfo password=, an ADO.NET Password= or ODBC Pwd=),
+// the MySQL -p option, the SQL Server -P option, Invoke-Sqlcmd -Password,
+// sshpass -p, PuTTY -pw, curl -u or a URL (postgres://user:password@host). A reference ($PGPASSWORD, ${X}),
+// a placeholder (<password>, ***, xxx), a permission wildcard and a local
+// default (root, postgres) are not reported, as for connection strings.
+func permissionPassword(entry string) (string, bool) {
+	for _, ix := range permissionAssignRe.FindAllStringSubmatchIndex(entry, -1) {
+		if ix[0] > 0 && entry[ix[0]-1] == '-' {
+			continue // an option (--password=), read below
+		}
+		name := entry[ix[2]:ix[3]]
+		var v string
+		for g := 4; g < len(ix); g += 2 {
+			if ix[g] >= 0 {
+				v += entry[ix[g]:ix[g+1]]
+			}
+		}
+		// Pwd= is ODBC's password keyword, inside a connection string after
+		// a semicolon; PWD= elsewhere is the working directory.
+		odbc := strings.EqualFold(name, "pwd") && ix[0] > 0 && entry[ix[0]-1] == ';'
+		if (permissionPasswordNameRe.MatchString(name) || odbc) && literalPassword(v) && !pathValueRe.MatchString(v) {
+			return name + "=", true
+		}
+	}
+	for _, p := range []struct {
+		re    *regexp.Regexp
+		where string
+	}{{mysqlPasswordRe, "the mysql -p option"}, {sqlServerPasswordRe, "the sqlcmd -P option"}, {invokeSqlcmdRe, "Invoke-Sqlcmd -Password"}, {sshpassRe, "sshpass -p"}, {puttyPasswordRe, "the PuTTY -pw option"}, {curlUserRe, "curl -u user:password"}} {
+		for _, m := range p.re.FindAllStringSubmatch(entry, -1) {
+			if literalPassword(m[1]) {
+				return p.where, true
+			}
+		}
+	}
+	for _, u := range urlUserinfoRe.FindAllString(entry, -1) {
+		if connectionStringSecret(u) {
+			return "a URL with user:password", true
+		}
+	}
+	return "", false
+}
+
+// literalPassword reports whether v is a password written out, by the rules
+// connectionStringSecret applies to a URL's password.
+func literalPassword(v string) bool {
+	v = strings.Trim(v, `"'`)
+	switch {
+	case v == "", isSecretReference(v), strings.ContainsAny(v, "${}<>%*"), literalPlaceholder(v), fakeWordRe.MatchString(v):
+		return false
+	case defaultPasswords[strings.ToLower(v)]:
+		return false
+	}
+	return true
 }

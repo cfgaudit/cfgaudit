@@ -312,3 +312,85 @@ func TestCFG007_PermissionEntries1168(t *testing.T) {
 		}
 	}
 }
+
+// A password typed on a command line that Claude Code saved as a permission
+// entry (#1633). The values are made up.
+func TestCFG007_PermissionPasswords1633(t *testing.T) {
+	entry := func(e string) string {
+		b, _ := json.Marshal(map[string]any{"permissions": map[string]any{"allow": []string{e}}})
+		return string(b)
+	}
+	for e, where := range map[string]string{ // #nosec G101 -- made-up test passwords
+		`Bash(PGPASSWORD=Qm7vTz2pLw psql -h db -U app)`:                                                  "PGPASSWORD=",
+		`Bash(MYSQL_PWD='Kp4!xR9w' mysql -u app)`:                                                        "MYSQL_PWD=",
+		`Bash(mysql -u root -pS3cretPass99 app)`:                                                         "the mysql -p option",
+		`Bash(mariadb -h db.internal --password=Zr8qW3nB app)`:                                           "the mysql -p option",
+		`Bash(sshpass -p Tr0ub4dor ssh deploy@host)`:                                                     "sshpass -p",
+		`Bash(sshpass -pTr0ub4dor ssh deploy@host)`:                                                      "sshpass -p",
+		`Bash(curl -u admin:Pa55w0rdX https://api.example.com/x)`:                                        "curl -u user:password",
+		`Bash(curl -s --user "deploy:Vb6nM2qT" https://ci.corp.net/api)`:                                 "curl -u user:password",
+		`Bash(git clone https://deploy:Hq5wX8zP@git.corp.net/team/repo)`:                                 "a URL with user:password",
+		`Bash(psql "host=db.corp.net user=app password=Wn3kR7vQ dbname=app")`:                            "password=",
+		`Bash(pg_dump postgresql://app:Lx9cV4bN@db.corp.net:5432/app)`:                                   "a URL with user:password",
+		`Bash(sqlcmd -S db.corp.net -U sa -P Jd6tY2mK -Q "SELECT 1")`:                                    "the sqlcmd -P option",
+		`Bash(bcp dbo.t out t.dat -S db -U sa -PJd6tY2mK)`:                                               "the sqlcmd -P option",
+		`Bash(SQLCMDPASSWORD=Jd6tY2mK sqlcmd -S db -U sa)`:                                               "SQLCMDPASSWORD=",
+		`PowerShell(Invoke-Sqlcmd -ServerInstance db -Username sa -Password Jd6tY2mK)`:                   "Invoke-Sqlcmd -Password",
+		`Bash(dotnet run -- "Server=db.corp.net;User Id=sa;Password=Jd6tY2mK;")`:                         "Password=",
+		`Bash(isql -v dsn "Driver={ODBC Driver 18};Server=db;Uid=sa;Pwd=Jd6tY2mK;")`:                     "Pwd=",
+		`Bash("C:\\Program Files\\PuTTY\\plink.exe" -ssh -l deploy -pw Jd6tY2mK deploy@10.0.0.5 uptime)`: "the PuTTY -pw option",
+	} {
+		f := CFG007.Check(settingsTarget(t, entry(e)))
+		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "a literal password ("+where+")") || !strings.Contains(f[0].Message, "Rotate the password") {
+			t.Errorf("%q: got %+v", e, f)
+			continue
+		}
+		for _, secret := range []string{"Wn3kR7vQ", "Lx9cV4bN", "Jd6tY2mK", "Qm7vTz2pLw", "Kp4!xR9w", "S3cretPass99", "Zr8qW3nB", "Tr0ub4dor", "Pa55w0rdX", "Vb6nM2qT", "Hq5wX8zP"} {
+			if strings.Contains(f[0].Message, secret) {
+				t.Errorf("message quotes the password: %s", f[0].Message)
+			}
+		}
+	}
+	for _, e := range []string{
+		`Bash(PGPASSWORD=$PGPASSWORD psql)`,
+		`Bash(PGPASSWORD="${DB_PASS}" psql)`,
+		`Bash(PGPASSWORD=<password> psql)`,
+		`Bash(PGPASSWORD=*** psql)`,
+		`Bash(PGPASSWORD=xxx psql)`,
+		`Bash(PGPASSWORD=* psql:*)`,
+		`Bash(PGPASSWORD=postgres psql -h localhost)`,
+		`Bash(mysql -u root -p app)`,
+		`Bash(mysql -u root -P 3306 -p app)`,
+		`Bash(mysql -u root --port=3306 app)`,
+		`Bash(mysql -u root -p$MYSQL_ROOT_PASSWORD app)`,
+		`Bash(sshpass -e ssh deploy@host)`,
+		`Bash(sshpass -f ~/.pw ssh deploy@host)`,
+		`Bash(curl -u $USER:$TOKEN https://api.example.com)`,
+		`Bash(curl -u admin: https://api.example.com)`,
+		`Bash(git clone https://user:pass@github.com/x/y)`,
+		`Bash(psql postgres://app:app@localhost/app)`,
+		`Bash(cd $OLDPWD)`,
+		`Bash(PWD=/tmp ls)`,
+		`Bash(grep -p foo mysql.log)`,
+		`Bash(psql -h db -U app -W)`,
+		`Bash(psql "host=localhost user=app password=$PGPASS")`,
+		`Bash(sqlcmd -S db -U sa -P $SA_PASSWORD)`,
+		`Bash(sqlcmd -S db -E -p)`,
+		`Bash(plink -ssh -i key.ppk deploy@host uptime)`,
+		`Bash(dotnet run -- "Server=db;User Id=sa;Password=${DB_PASSWORD};")`,
+		`PowerShell(Invoke-Sqlcmd -ServerInstance db -Password $env:SQL_PW)`,
+	} {
+		if f := CFG007.Check(settingsTarget(t, entry(e))); len(f) != 0 {
+			t.Errorf("%q: want no finding, got %+v", e, f)
+		}
+	}
+}
+
+// SA_PASSWORD, the SQL Server container's variable, ends in _PASSWORD and was
+// reported before #1633 as a literal value under a secret name.
+func TestCFG007_SQLServerContainerPassword1633(t *testing.T) {
+	f := CFG007.Check(settingsTarget(t, `{"permissions":{"allow":["Bash(SA_PASSWORD=Jd6tY2mK docker run mcr.microsoft.com/mssql/server)"]}}`))
+	if len(f) != 1 || !strings.Contains(f[0].Message, "a literal value for SA_PASSWORD") {
+		t.Errorf("got %+v", f)
+	}
+}
