@@ -28,12 +28,23 @@ var sensitiveLinkTargetRe = regexp.MustCompile(`(?i)(?:^|/)(?:` +
 	`\.ssh|\.aws|\.gnupg|` +
 	`\.npmrc|` +
 	`\.bashrc|\.bash_profile|\.bash_login|\.zshrc|\.zprofile|\.profile|` +
-	`\.claude|\.codex|\.gemini|\.cursor|` +
 	`\.config/(?:claude|codex|gemini|cursor|git)|` +
 	`\.gitconfig|\.git/(?:config|hooks)|` +
 	`crontab|cron\.d|spool/cron|LaunchAgents|LaunchDaemons|` +
 	`\.local/bin|windows/system32|windowsapps` +
 	`)(?:/|$)`)
+
+// agentHomeLinkTargetRe matches an agent's home folder (.claude, .codex,
+// .gemini, .cursor) only right after a home root (~/, $HOME/, %USERPROFILE%/,
+// /root/, /home/<u>/, /Users/<u>/, C:/Users/<u>/) or after nothing but "../"
+// steps, which can climb to the home of whoever checked the repository out.
+// The same folder name inside another checkout, such as
+// /Users/<u>/repos/<project>/.claude/skills, is that project's configuration
+// and stays a plain link out of the repository (#1667).
+var agentHomeLinkTargetRe = regexp.MustCompile(`(?i)^(?:` +
+	`(?:~|\$home|\$\{home\}|%userprofile%|/root|/home/[^/]+|/users/[^/]+|[a-z]:/users/[^/]+)/|` +
+	`(?:\.\./)+` +
+	`)(?:\.claude|\.codex|\.gemini|\.cursor)(?:/|$)`)
 
 var executableLinkTargetRe = regexp.MustCompile(`(?i)^(?:` +
 	`/(?:s?bin|usr/(?:local/)?s?bin)|` +
@@ -46,7 +57,8 @@ func normalizedLinkTarget(target string) string {
 
 func sensitiveLinkTarget(target string) bool {
 	normalized := normalizedLinkTarget(target)
-	return sensitiveLinkTargetRe.MatchString(normalized) || executableLinkTargetRe.MatchString(normalized)
+	return sensitiveLinkTargetRe.MatchString(normalized) || agentHomeLinkTargetRe.MatchString(normalized) ||
+		executableLinkTargetRe.MatchString(normalized)
 }
 
 // Check reports a path in the scanned repository that is, or passes through, a

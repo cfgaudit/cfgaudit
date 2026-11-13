@@ -159,3 +159,38 @@ func TestCFG056_PromptFile_NoFinding(t *testing.T) {
 		t.Errorf("skill: got %+v, want one finding", f)
 	}
 }
+
+// The trigger is narrowed by the text after it: a participle, a conditional or
+// a preference names the task the file is for (#1658).
+func TestCFG056_NarrowedTail1658(t *testing.T) {
+	for _, description := range []string{
+		"Use for any task touching the deployment pipeline.",
+		"Use for any task needing a database migration.",
+		"Use for any task requiring a Terraform change.",
+		"Use for any request naming `ccmux last`.",
+		"Always use this skill instead of the built-in deploy script.",
+		"Always use this skill BEFORE calling the deploy script.",
+		"Always use this skill whenever you work with Firebase.",
+	} {
+		if f := CFG056.Check(fmTarget(".claude/skills/x/SKILL.md", description, "")); len(f) != 0 {
+			t.Errorf("narrowed trigger reported %q: %+v", description, f)
+		}
+	}
+	// The same shapes without a narrowing tail stay reported.
+	for _, description := range []string{
+		"Use for any task.",
+		"Use for any request.",
+		"Always use this skill.",
+		"Always use this skill before each task.",
+		"Always use this skill instead.",
+	} {
+		if f := CFG056.Check(fmTarget(".claude/skills/x/SKILL.md", description, "")); len(f) != 1 {
+			t.Errorf("universal trigger not reported: %q: %+v", description, f)
+		}
+	}
+	// The triggers field is read the same way.
+	if f := CFG056.Check(fmTarget(".claude/skills/x/SKILL.md", "Deploy the app",
+		"triggers:\n  - for any request naming the deploy command\n")); len(f) != 0 {
+		t.Errorf("narrowed triggers entry reported: %+v", f)
+	}
+}

@@ -815,11 +815,12 @@ func (a noPermissionFile) marker(dir string) (string, bool) {
 // .clineignore is documented as no security boundary, but it runs a PreToolUse
 // hook from the workspace.
 var noPermissionFileAgents = map[string]noPermissionFile{
-	"zed":       {"Zed", userSettingsOnly, []string{".zed"}},
-	"continue":  {"Continue", userSettingsOnly, []string{".continue"}},
-	"goose":     {"goose", userSettingsOnly, []string{".goose", ".goosehints"}},
-	"kimi-cli":  {"Kimi CLI", userSettingsOnly, []string{".kimi"}},
-	"kimi-code": {"Kimi Code", userSettingsOnly, []string{".kimi-code"}},
+	"zed":      {"Zed", userSettingsOnly, []string{".zed"}},
+	"continue": {"Continue", userSettingsOnly, []string{".continue"}},
+	"goose":    {"goose", userSettingsOnly, []string{".goose", ".goosehints"}},
+	"kimi-cli": {"Kimi CLI", userSettingsOnly, []string{".kimi"}},
+	"kimi-code": {"Kimi Code", "reads its permission rules from user settings, and from .kimi-code/local.toml since 2.6.0, a file meant to stay out of Git that cfgaudit does not check the policy against yet",
+		[]string{".kimi-code"}},
 	"junie": {"Junie", "keeps its allowlist in the user's ~/.junie/allowlist.json, and its rules allow or ask but never deny",
 		[]string{".junie"}},
 	"copilot": {"Copilot CLI", "takes --deny-tool per session, and .github/copilot/settings.json has no tool rules",
@@ -4138,6 +4139,18 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				GrokFile: grokPath,
 			})
 		}
+	}
+
+	// Kimi Code .kimi-code/local.toml (#1638): project permission rules, loaded
+	// for a trusted local workspace since 2.6.0, and the legacy
+	// workspace.additional_dir. Read by CFG139.
+	kimiLocalPath := filepath.Join(dir, ".kimi-code", "local.toml")
+	if kl, err := parser.ParseKimiLocalConfig(kimiLocalPath); err != nil {
+		if !scanroot.IsAbsent(err) {
+			skipUnreadable(kimiLocalPath, err)
+		}
+	} else if len(kl.Permission.Rules) > 0 || len(kl.Workspace.AdditionalDir) > 0 {
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, KimiLocal: kl, KimiLocalFile: kimiLocalPath})
 	}
 
 	// OpenCode project config: opencode.json and its siblings (#612). The project

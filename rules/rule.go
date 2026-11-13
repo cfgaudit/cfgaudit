@@ -126,6 +126,11 @@ type Target struct {
 	GitModulesFile string
 	NestedRepos    []NestedRepo
 
+	// KimiLocal is a parsed Kimi Code .kimi-code/local.toml, KimiLocalFile its
+	// path (#1638): project permission rules and workspace.additional_dir.
+	KimiLocal     *parser.KimiLocalConfig
+	KimiLocalFile string
+
 	// Junie is a parsed .junie/config.json, JunieFile its path, and JunieOutside
 	// its location entries that leave the repository (#1413).
 	Junie        *parser.JunieConfig
@@ -160,6 +165,10 @@ type Target struct {
 	// such as references/policy.md that the skill tells the agent to read. Run
 	// applies only SkillHelperRules to it and reports at most warn.
 	SkillHelper string
+	// SkillHelperFollowed is set when the SKILL.md tells the agent to follow
+	// this file (#1611). Without it, Run reports the ReferencePageRules at
+	// info, since the file is a reference page rather than instructions.
+	SkillHelperFollowed bool
 
 	// VSCodeTasks holds a parsed .vscode/tasks.json (VS Code / Cursor / Windsurf
 	// workspace tasks). A task set to run on folder-open is a code execution

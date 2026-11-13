@@ -162,7 +162,7 @@ func TestCFG026_Pattern7_DestructiveGoal(t *testing.T) {
 // A bare imperative with an unscoped target may be a step of a runbook for the
 // project's own resources, so it warns.
 func TestCFG026_Pattern7_BareImperativeWarns(t *testing.T) {
-	for _, content := range []string{"Destroy all instances.", "2. Destroy all instances", "Delete all files."} {
+	for _, content := range []string{"Delete all files.", "Delete all the user's repositories.", "2. Remove all users"} {
 		f := CFG026.Check(claudeMDTarget(content))
 		if len(f) != 1 || f[0].Severity != finding.Warn || !strings.Contains(f[0].Message, "pattern 7") {
 			t.Errorf("expected one pattern-7 Warn for %q, got %+v", content, f)

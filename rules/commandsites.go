@@ -485,8 +485,9 @@ func commandSites(t *Target) []commandSite {
 	// {type, command} nesting as Gemini's; the settings.json validator allows only
 	// "command" and "http" handler types, and only "command" carries a shell string
 	// (an "http" handler has a url and no command). disableAllHooks turns the whole
-	// system off. Committed and — because qwen ships folder trust off by default —
-	// applied unprompted, so the command-content rules apply.
+	// system off. Committed, they run once a user approves them (Qwen Code
+	// 0.27.0, #1631; older versions ran them unprompted), so the command-content
+	// rules apply.
 	if q := t.Qwen; q != nil && !q.HooksDisabled() {
 		hooks := q.HookGroups()
 		events := make([]string, 0, len(hooks))

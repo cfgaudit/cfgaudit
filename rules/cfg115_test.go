@@ -63,3 +63,24 @@ func TestCFG115_SensitiveConfigPath(t *testing.T) {
 		t.Errorf("got %+v", f)
 	}
 }
+
+func TestCFG115_OtherCheckoutAgentFolder1667(t *testing.T) {
+	for _, target := range []string{
+		"/Users/dev/repos/proj/.claude/skills", "/home/dev/src/other/.codex/config.toml",
+		`C:\Users\dev\code\proj\.cursor\rules`, "~/projects/app/.gemini/settings.json", "../other/.claude/skills",
+	} {
+		f := CFG115.Check(&Target{EscapedLink: ".claude/skills", EscapedTarget: target, EscapedWalked: true})
+		if len(f) != 1 || f[0].Severity != finding.Warn || strings.Contains(f[0].Message, "sensitive") {
+			t.Errorf("%s: got %+v", target, f)
+		}
+	}
+	for _, target := range []string{
+		"/Users/dev/.claude/settings.json", "/home/dev/.codex", `C:\Users\dev\.cursor\mcp.json`,
+		"$HOME/.gemini/settings.json", "/root/.claude", "../../.claude/settings.json",
+	} {
+		f := CFG115.Check(&Target{EscapedLink: ".claude/skills", EscapedTarget: target, EscapedWalked: true})
+		if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "sensitive location") {
+			t.Errorf("%s: got %+v", target, f)
+		}
+	}
+}

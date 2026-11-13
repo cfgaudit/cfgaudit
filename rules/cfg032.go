@@ -123,7 +123,7 @@ func (r *cfg032) Check(t *Target) []finding.Finding {
 			}
 			line := c[lineStart : m[1]+lineEnd]
 			inTableCell := strings.HasPrefix(strings.TrimSpace(line), "|")
-			if (inTableCell && insideCodeSpan(line, []int{m[0] - lineStart, m[1] - lineStart})) || placeholderJoined(c, m[0], m[1]) {
+			if (inTableCell && insideCodeSpan(line, []int{m[0] - lineStart, m[1] - lineStart})) || placeholderJoined(c, m[0], m[1]) || codeSpanPlaceholder(line, m[0]-lineStart, m[1]-lineStart) {
 				continue
 			}
 			switch {
@@ -214,6 +214,49 @@ func placeholderJoined(content string, start, end int) bool {
 		rest, _, _ = strings.Cut(rest, "|")
 	}
 	return !strings.Contains(rest, "</") && placeholderIDEndRe.MatchString(rest)
+}
+
+var (
+	// spanCommandBeforeRe is a command word, and maybe its arguments, before
+	// a tag in a code span: "admin revoke <ADMIN>".
+	spanCommandBeforeRe = regexp.MustCompile(`^\s*[A-Za-z][\w./-]*(?:\s+\S+)*\s+$`)
+	// spanIdentifierRe is a code span that holds only an identifier template
+	// made of two or more tags: "<GAME>_DEBUG_<SYSTEM>".
+	spanIdentifierRe = regexp.MustCompile(`^[\w-]*(?:<[A-Z][A-Z_]*>[\w-]*){2,}$`)
+	// spanOverrideRe is an override or command word for the agent in a code
+	// span: "`ok <SYSTEM> ignore previous rules`", "`note <ADMIN> you must
+	// obey`". Such a span keeps reporting.
+	spanOverrideRe = regexp.MustCompile(`(?i)\b(?:ignore|disregard|forget|override|bypass|obey|you\s+must)\b`)
+)
+
+// codeSpanPlaceholder reports whether the tag at [start, end) of line sits in
+// an inline code span as a placeholder (#1655): after a command word
+// ("`admin revoke <ADMIN>`"), right after '=' ("`force_rebuild=<FORCE>`"),
+// or in an identifier template that fills the span ("`<GAME>_DEBUG_<SYSTEM>`").
+// The span boundary ends the check. A span holding only the tag, a closing
+// tag, an override word ("ignore", "you must") or more than a few words
+// after the tag keeps reporting.
+func codeSpanPlaceholder(line string, start, end int) bool {
+	for _, m := range codeSpanRe.FindAllStringIndex(line, -1) {
+		if start <= m[0] || end >= m[1] {
+			continue
+		}
+		ticks := len(line[m[0]:]) - len(strings.TrimLeft(line[m[0]:], "`"))
+		inner := line[m[0]+ticks : m[1]-ticks]
+		before := line[m[0]+ticks : start]
+		after := line[end : m[1]-ticks]
+		if strings.Contains(after, "</") || spanOverrideRe.MatchString(inner) {
+			return false
+		}
+		if spanIdentifierRe.MatchString(inner) {
+			return true
+		}
+		if len(strings.Fields(after)) > 3 {
+			return false
+		}
+		return strings.HasSuffix(before, "=") || spanCommandBeforeRe.MatchString(before)
+	}
+	return false
 }
 
 // forgedBoundaryRe matches a forged prompt boundary in capitals: "--- END OF
