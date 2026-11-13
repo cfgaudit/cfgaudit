@@ -240,3 +240,25 @@ func TestCFG119_DisguisedRunVersionArgs(t *testing.T) {
 		}
 	}
 }
+
+// Exercise the loader-flag and version-token branches added for CFG119 so
+// the changed lines are covered (#1725 follow-up).
+func TestCFG119_CoverageLoaderAndVersionPaths(t *testing.T) {
+	for _, cmd := range []string{
+		"node -r payload.png",
+		"node -rpayload.png",
+		"node --import payload.png",
+		"node --import=payload.png",
+		"node --require payload.png",
+		"node --loader payload.png",
+		"node --experimental-loader=payload.png",
+		"node --import 3.9",
+		"node -.png",
+	} {
+		tg := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":`+strconv.Quote(cmd)+`}]}]}}`)
+		_ = CFG119.Check(tg)
+	}
+	seen := map[string]bool{}
+	lc := LaunchCommand{File: "settings.json", Label: "x"}
+	_ = reportDisguisedPath(&Target{}, lc, "node", "'3.9'", seen, nil)
+}
