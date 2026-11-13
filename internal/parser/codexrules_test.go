@@ -30,10 +30,10 @@ prefix_rule(pattern=["esc\"aped"])
 host_executable(name="git", paths=["/usr/bin/git"])
 `)
 	want := []CodexRule{
-		{Pattern: [][]string{{"git"}, {"push"}}, Decision: "forbidden"},
-		{Pattern: [][]string{{"gh"}, {"pr", "issue"}, {"close"}}, Decision: "prompt"},
-		{Pattern: [][]string{{"curl"}}, Decision: "allow"},
-		{Pattern: [][]string{{`esc"aped`}}, Decision: "allow"},
+		{Pattern: [][]string{{"git"}, {"push"}}, Decision: "forbidden", Line: 2},
+		{Pattern: [][]string{{"gh"}, {"pr", "issue"}, {"close"}}, Decision: "prompt", Line: 3},
+		{Pattern: [][]string{{"curl"}}, Decision: "allow", Line: 9},
+		{Pattern: [][]string{{`esc"aped`}}, Decision: "allow", Line: 17},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v", got)
@@ -63,5 +63,29 @@ func TestCodexRule_Matching(t *testing.T) {
 		if got := r.Under(strings.Fields(prefix)); got != want {
 			t.Errorf("Under %q: got %v", prefix, got)
 		}
+	}
+}
+
+// canonical_matching (Codex 0.167.0, #1642): read True and False, and make
+// every token of a canonical rule compare caseless.
+func TestParseCodexRules_Canonical1642(t *testing.T) {
+	got := ParseCodexRules(`prefix_rule(pattern=["git", ["push", "fetch"]], decision="forbidden", canonical_matching=True)
+prefix_rule(pattern=["rm"], canonical_matching = False, decision="forbidden")
+prefix_rule(pattern=["ls"])
+`)
+	if len(got) != 3 || !got[0].Canonical || !got[0].HasCanonical || got[1].Canonical || !got[1].HasCanonical || got[1].Decision != "forbidden" || got[2].HasCanonical {
+		t.Fatalf("got %+v", got)
+	}
+	for cmd, want := range map[string]bool{"git push": true, "GIT push --force": true, "git FETCH": true, "bAſh": false, "gIt PuSh": true, "git pull": false} {
+		if got[0].MatchesPrefix(strings.Fields(cmd)) != want {
+			t.Errorf("canonical MatchesPrefix %q != %v", cmd, want)
+		}
+	}
+	if !got[0].Under([]string{"GIT"}) || got[1].MatchesPrefix([]string{"RM", "-rf"}) {
+		t.Error("Under or exact match")
+	}
+	bash := CodexRule{Pattern: [][]string{{"bash"}, {"run"}}, Canonical: true}
+	if !bash.MatchesPrefix([]string{"bAſh", "RUN"}) {
+		t.Error("long s should fold to s, as in the Codex README")
 	}
 }

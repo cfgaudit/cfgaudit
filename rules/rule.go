@@ -514,6 +514,9 @@ type Target struct {
 	// the file a finding names (#1516).
 	CodexRules     []parser.CodexRule
 	CodexRulesFile string
+	// CodexRuleFiles are the project .codex/rules/*.rules files with their
+	// literal prefix rules, one entry per file, for CFG140 (#1642).
+	CodexRuleFiles []CodexRulesFile
 
 	// PolicyMCP holds the servers of .agents/mcp_config.json for Antigravity, which
 	// cfgaudit reads for the policy only until #1057 (#1520).
@@ -705,4 +708,11 @@ type AgentCodeFile struct {
 	// SHA256 is the content hash for the lock, empty when the file could not
 	// be read. CFG114 needs only its presence.
 	SHA256 string
+}
+
+// CodexRulesFile is one .codex/rules/*.rules file and the prefix rules cfgaudit
+// could read from it.
+type CodexRulesFile struct {
+	File  string
+	Rules []parser.CodexRule
 }
