@@ -45,6 +45,26 @@ type LaunchedScript struct {
 	// Shell marks a shell script that its name does not show: a Cline hook
 	// is named after its event, with no extension (#1523).
 	Shell bool
+	// ZeroClick is set when a command that runs as soon as the repository is
+	// opened or a session starts launches the script (#1650): a SessionStart
+	// hook or a VS Code folderOpen task. See ZeroClickLaunch.
+	ZeroClick bool
+	// HiddenBy names the agent ignore file line (.claudeignore, .cursorignore,
+	// .geminiignore, .aiexclude) that keeps the agent from reading the script
+	// or one of its launcher files, as "file:line (pattern)" (#1650).
+	HiddenBy string
+}
+
+// zeroClickLabelRe matches the label of a launch command that runs as soon as
+// the repository is opened or a session starts, before the user asks for
+// anything: a SessionStart hook of any agent and a VS Code folderOpen task.
+var zeroClickLabelRe = regexp.MustCompile(`(?i)(?:^|\s)hooks\.session_?start\s|^VS Code folderOpen task `)
+
+// ZeroClickLaunch reports whether the launch command with this label runs
+// when the repository is opened or a session starts (#1650). A frontmatter
+// hook runs only once the agent picks that skill or subagent.
+func ZeroClickLaunch(label string) bool {
+	return zeroClickLabelRe.MatchString(label) && !strings.Contains(label, "frontmatter")
 }
 
 // isShell reports whether the script is a shell script.
