@@ -52,7 +52,7 @@ func (r *cfg006) Check(t *Target) []finding.Finding {
 		// allow list does not name still prompts, so a missing deny list
 		// changes nothing (#1193: 341 of 405 corpus findings were of that
 		// kind).
-		if !broadGrant(t.Settings.Permissions.Allow) && !permissiveDenyMode(t.Settings.Permissions.DefaultMode) {
+		if !broadGrant(t.Settings.Permissions.Allow) && !permissiveDenyMode(effectiveDefaultMode(t)) {
 			return nil
 		}
 	}

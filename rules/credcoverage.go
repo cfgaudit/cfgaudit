@@ -139,10 +139,7 @@ func credentialCoverage(t *Target, deny []string, partial bool) (finding.Severit
 // home directory (CFG043, CFG044): there a gap is an error only when a silent
 // route to the file exists (#1172).
 func credentialCoverageAt(t *Target, deny []string, partial, home bool) (finding.Severity, string) {
-	mode := ""
-	if t.Settings != nil && t.Settings.Permissions != nil {
-		mode = t.Settings.Permissions.DefaultMode
-	}
+	mode := effectiveDefaultMode(t)
 	switch {
 	case mode == "bypassPermissions" || mode == "auto":
 		return finding.Error, ""
