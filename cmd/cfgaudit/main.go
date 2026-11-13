@@ -752,26 +752,36 @@ var orderedPolicyFiles = map[string][]string{
 
 // codexRules reads the prefix rules of .codex/rules, the *.rules files directly
 // in it, as load_exec_policy does, and names the file a finding should point at:
-// the first one, or the default a new rule would go in.
-func codexRules(dir string) ([]parser.CodexRule, string) {
+// codexRuleFiles reads each .codex/rules/*.rules file of the project in
+// directory order.
+func codexRuleFiles(dir string) []rules.CodexRulesFile {
 	rulesDir := filepath.Join(dir, ".codex", "rules")
-	out, file := []parser.CodexRule(nil), filepath.Join(rulesDir, "default.rules")
 	entries, err := scanroot.ReadDir(rulesDir)
 	if err != nil {
-		return nil, file
+		return nil
 	}
-	first := true
+	var out []rules.CodexRulesFile
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".rules") || e.IsDir() {
 			continue
 		}
 		path := filepath.Join(rulesDir, e.Name())
 		if data, err := scanroot.ReadFile(path); err == nil {
-			out = append(out, parser.ParseCodexRules(string(data))...)
-			if first {
-				file, first = path, false
-			}
+			out = append(out, rules.CodexRulesFile{File: path, Rules: parser.ParseCodexRules(string(data))})
 		}
+	}
+	return out
+}
+
+// the first one, or the default a new rule would go in.
+func codexRules(dir string) ([]parser.CodexRule, string) {
+	file := filepath.Join(dir, ".codex", "rules", "default.rules")
+	var out []parser.CodexRule
+	for i, f := range codexRuleFiles(dir) {
+		if i == 0 {
+			file = f.File
+		}
+		out = append(out, f.Rules...)
 	}
 	return out, file
 }
@@ -1557,6 +1567,11 @@ func codexTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			CodexHooks:     codexHooks,
 			CodexHooksFile: hooksPath,
 		})
+	}
+
+	// .codex/rules/*.rules, the command rules of the project layer (#1642).
+	if files := codexRuleFiles(dir); len(files) > 0 {
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, CodexRuleFiles: files})
 	}
 
 	if !includeUser {

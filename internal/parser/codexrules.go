@@ -9,10 +9,17 @@ import (
 
 // CodexRule is one prefix_rule of a Codex .rules file. Pattern is a list of
 // token positions, each with its alternatives. Decision is allow, prompt or
-// forbidden, allow by default.
+// forbidden, allow by default. Canonical is canonical_matching=True (Codex
+// 0.167.0, #1642): every token compares caseless. Line is the line of the
+// prefix_rule call, from 1.
 type CodexRule struct {
-	Pattern  [][]string
-	Decision string
+	Pattern   [][]string
+	Decision  string
+	Canonical bool
+	// HasCanonical is set when the rule names canonical_matching at all,
+	// whatever its value: Codex 0.166.0 and older reject the keyword.
+	HasCanonical bool
+	Line         int
 }
 
 // starlarkScanner walks the literal part of a .rules file. The files are
@@ -190,6 +197,11 @@ func (p *starlarkScanner) rule() (CodexRule, bool) {
 				return r, false
 			}
 			r.Decision = d
+		case "canonical_matching":
+			r.HasCanonical = true
+			start := p.i
+			p.skipValue()
+			r.Canonical = strings.TrimSpace(p.s[start:p.i]) == "True"
 		default:
 			p.skipValue()
 		}
@@ -207,8 +219,10 @@ func ParseCodexRules(content string) []CodexRule {
 			return out
 		}
 		if strings.HasPrefix(p.s[p.i:], "prefix_rule(") {
+			line := strings.Count(p.s[:p.i], "\n") + 1
 			p.i += len("prefix_rule(")
 			if r, ok := p.rule(); ok {
+				r.Line = line
 				out = append(out, r)
 			}
 			continue
@@ -231,7 +245,7 @@ func (r CodexRule) MatchesPrefix(command []string) bool {
 	for i, alts := range r.Pattern {
 		found := false
 		for _, a := range alts {
-			found = found || a == command[i]
+			found = found || r.tokenEqual(a, command[i])
 		}
 		if !found {
 			return false
@@ -249,11 +263,23 @@ func (r CodexRule) Under(prefix []string) bool {
 	for i, tok := range prefix {
 		found := false
 		for _, a := range r.Pattern[i] {
-			found = found || a == tok
+			found = found || r.tokenEqual(a, tok)
 		}
 		if !found {
 			return false
 		}
 	}
 	return true
+}
+
+// tokenEqual compares a pattern token with a command token: exactly, or
+// caseless for a canonical rule. Codex compares NFD, full case folding, NFD;
+// strings.EqualFold is simple case folding without normalization, which
+// covers GIT, PUSH and bAſh but not ß against ss or a combining accent, none
+// of which occur in command names.
+func (r CodexRule) tokenEqual(pattern, token string) bool {
+	if r.Canonical {
+		return strings.EqualFold(pattern, token)
+	}
+	return pattern == token
 }
