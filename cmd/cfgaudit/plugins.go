@@ -72,13 +72,16 @@ func buildPluginTargets(dir, explicit string, includeUser bool) ([]*rules.Target
 			// goes on. A path named with --plugins still stops the scan when one
 			// of that plugin's own files is broken (#825), but not for a file
 			// deeper in its tree, such as a deliberately malformed test fixture
-			// (#848).
+			// (#848), and not for its marketplace.json (#1648): that is the
+			// marketplace document, not the plugin's manifest, and Claude Code
+			// rejects a malformed one ("plugins: Invalid input: expected array,
+			// received object" on 2.1.322) while the plugin itself still loads.
 			var fatal error
 			unreadable := func(path string, err error) {
 				if scanroot.IsDanglingLink(path) {
 					return // a dangling link reads as absent (#1363)
 				}
-				if root == explicit && fatal == nil && ownPluginFile(root, path) {
+				if root == explicit && fatal == nil && ownPluginFile(root, path) && filepath.Base(path) != "marketplace.json" {
 					fatal = err
 					return
 				}
