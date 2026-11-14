@@ -82,6 +82,27 @@ var sensitivePathRe = mustFiltered(`(?i)(` +
 // (a skill may legitimately name a credential path in prose).
 var pathActionRe = regexp.MustCompile(`(?i)\b(read|cat|open|less|head|tail|view|print|echo|dump|copy|cp|scp|move|mv|send|upload|post|put|curl|wget|fetch|exfiltrat\w*|leak|transmit|mail|base64|gpg|tar|zip|attach|load|source|contents of|paste)\b`)
 
+// placeholderWordRe matches a placeholder standing in for a name: "<source>",
+// "{host}". The words inside a placeholder are not prose, so none of them is a
+// verb that acts on the path (#1654).
+var placeholderWordRe = regexp.MustCompile(`<[^>\s]*>|\{[^}\s]*\}`)
+
+// urlPlaceholderHostRe matches a request whose authority is a placeholder
+// rather than a host name: http://<t>/, http://{host}/, http://$TARGET/. The
+// path is read on whatever the placeholder stands for, never on this machine,
+// so the finding stays a warning (#1654).
+var urlPlaceholderHostRe = regexp.MustCompile(`(?i)https?://(?:<[^>\s]*>|\{[^}\s]*\}|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?)[^\s'"` + "`" + `]*$`)
+
+// echoedMessageBeforeRe matches an echo or printf whose quoted message is still
+// open before the path: the path is text the program prints, not an argument
+// (#1654). A command separator between the echo and the quote ends the message,
+// so `echo done && cp '~/.aws/credentials' /tmp/c` is a read, not a mention.
+var echoedMessageBeforeRe = regexp.MustCompile(`(?i)\b(?:echo|printf)\b[^"'` + "`" + `;|&\n]*["'` + "`" + `][^"'` + "`" + `]*$`)
+
+// permissionRuleBeforeRe matches the permission-rule call a path is an argument
+// of: "Read(~/.aws/credentials)" in a settings file or a deny list (#1654).
+var permissionRuleBeforeRe = regexp.MustCompile(`(?i)\b(?:read|edit|write|glob|notebookedit|web_?fetch)\(\s*['"` + "`" + `]?$`)
+
 // readOnlyRe matches "read-only" / "read only" / "readonly", where "read"
 // describes a mount or a permission, not an action.
 var readOnlyRe = regexp.MustCompile(`(?i)\bread[- ]?only\b`)
@@ -216,6 +237,10 @@ func notASecretFile(line string, loc []int, full string) bool {
 	if strings.Contains(full, "../") && baseURLPathRe.MatchString(full) {
 		return true
 	}
+	// gpg.conf holds trust model, keyserver and UI settings, not key material (#1654).
+	if strings.HasSuffix(strings.ToLower(full), "gpg.conf") || strings.HasPrefix(strings.ToLower(line[loc[1]:]), "gpg.conf") {
+		return true
+	}
 	return publicCertRe.MatchString(full) || publicPEMName(full) || placeholderPathRe.MatchString(full)
 }
 
@@ -258,8 +283,11 @@ var writeOrTestBeforeRe = regexp.MustCompile(`(?:>>?\s*['"]?|\b(?:test|\[)\s+-[e
 var copyCommandRe = regexp.MustCompile(`(?:^|[;&|(` + "`" + `]\s*|^\s*(?:[-*+]|\d+\.)\s+)(?:sudo\s+(?:-\S+\s+)*)?(?:cp|mv|install|ln|docker\s+cp|kubectl\s+cp|scp)\s+(?:\S+\s+)+['"]?$`)
 
 // copyToRe matches prose that names the path as where a file goes: "Copy the
-// user's PEM to `instance/secrets/app.pem`".
-var copyToRe = regexp.MustCompile(`(?i)\b(?:copy|move|write|save|place|put|store)\b[^.;|]*\bto\s+[` + "`" + `'"]?$`)
+// user's PEM to `instance/secrets/app.pem`". "to" and "into" always introduce
+// the destination. "at" and "in" only do when they name a position inside the
+// file ("at the start of"), because on their own they just as often introduce
+// the source: "Copy the key at `~/.ssh/id_rsa` to the server" (#1654 review).
+var copyToRe = regexp.MustCompile(`(?i)\b(?:copy|move|write|save|place|put|store)\b[^.;|]*\b(?:(?:to|into)(?:\s+the\s+(?:start|end|top|bottom)\s+of)?|(?:at|in)\s+the\s+(?:start|end|top|bottom)\s+of)\s+[` + "`" + `'"]?$`)
 
 // listCommandRe matches a command that checks a path without printing its
 // content: "ls \"/etc/sudoers.d/...\"", "stat x.pem".
@@ -307,7 +335,7 @@ var (
 // XML entity in an XXE payload. The machine running the agent reads nothing.
 func remoteProbe(line string, start int) bool {
 	before := line[:start]
-	if fileReadFlagRe.MatchString(before) || xmlEntityRe.MatchString(before) {
+	if fileReadFlagRe.MatchString(before) || xmlEntityRe.MatchString(before) || urlPlaceholderHostRe.MatchString(before) {
 		return true
 	}
 	tok := before[strings.LastIndexAny(before, " \t\"'`(<[")+1:]
@@ -322,6 +350,22 @@ var npmrcWriteRe = regexp.MustCompile(`>\s*\S*\.npmrc[\w.\-]*`)
 // blockListHeadRe matches the head of a list of things refused or detected:
 // "**106 patterns covering:**", "Never:", "Blocked paths:".
 var blockListHeadRe = regexp.MustCompile(`(?i)\b(?:patterns?|detect\w*|block\w*|den(?:y|ied|ies)|forbid\w*|prohibit\w*|red\s+flags?|dangerous)\b`)
+
+// messageRunsACommand reports whether the quoted message still open before the
+// path runs something: echo "$(cat ~/.aws/credentials)" holds "$(", and a
+// backtick-opened message is itself a command substitution. The path is read
+// there, not printed, so the echo carve-out does not apply (#1654 review).
+func messageRunsACommand(before string) bool {
+	open := strings.LastIndexAny(before, "\"'`")
+	if open < 0 {
+		return false
+	}
+	if before[open] == '`' {
+		return true
+	}
+	message := before[open+1:]
+	return strings.Contains(message, "$(") || strings.ContainsRune(message, '`')
+}
 
 // notARead reports whether a verb near the path does not read it (#869): a
 // negation before the path in its clause or a refusing list above it, a
@@ -356,6 +400,15 @@ func notARead(lines []string, i int, loc []int, full string) bool {
 	}
 	if strings.HasPrefix(strings.ToLower(line[loc[0]:loc[1]]), ":_authtoken") && npmrcWriteRe.MatchString(line[loc[1]:]) {
 		return true
+	}
+	// A message the program prints quotes the path as prose: echo "ERROR:
+	// credentials.json not found" (#1654). The message has to end there: a
+	// quoted token on its way to a channel is still a read (#854), and so is a
+	// command substitution inside the message.
+	if echoedMessageBeforeRe.MatchString(line[:start]) && !messageRunsACommand(line[:start]) {
+		if q := strings.IndexAny(line[loc[1]:], "\"'`"); q < 0 || !pathActionRe.MatchString(line[loc[1]+q+1:]) {
+			return true
+		}
 	}
 	// The path written into .gitignore names a file to keep out of the
 	// repository (#1173): echo "/deploy.key" >> .gitignore.
@@ -489,6 +542,11 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 			if acts {
 				sev = finding.Warn
 				switch {
+				case permissionRuleBeforeRe.MatchString(line[:loc[1]-len(full)]):
+					// A permission rule names the path it applies to: the
+					// settings entry is not an instruction to read it (#1654).
+					msg = src.Name + " line " + strconv.Itoa(lineNo) + " names \"" + path +
+						"\" inside a permission rule: a rule that grants or denies access, not an instruction to read the file; confirm the rule is the intended one"
 				case remoteProbe(line, loc[1]-len(full)):
 					msg = src.Name + " line " + strconv.Itoa(lineNo) + " sends a request that reads \"" + path +
 						"\" on a remote target (a URL parameter, --file-read or an XML entity) — a probe of another host, not a read of this machine; confirm the target is one the user is authorised to test"
@@ -536,6 +594,7 @@ var thirdPersonReadRe = regexp.MustCompile(`(?i)\b(?:commands?|tests?|clis?|serv
 // are the ones that tell the agent to act on the path.
 func readsInThirdPerson(scope string) string {
 	blank := func(m string) string { return strings.Repeat(" ", len(m)) }
+	scope = placeholderWordRe.ReplaceAllStringFunc(scope, blank)
 	scope = actionNounRe.ReplaceAllStringFunc(thirdPersonReadRe.ReplaceAllStringFunc(scope, blank), blank)
 	return verbAsNameRe.ReplaceAllStringFunc(scope, blank)
 }
