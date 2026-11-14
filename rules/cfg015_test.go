@@ -179,10 +179,10 @@ func TestCFG015_BenignAndDangerousTogether(t *testing.T) {
 	}
 }
 
-// A substitution that only reads the hook's stdin and only fills a variable is
-// not reported (#792); used as an argument, reading a file or the network, or
-// glued to more text, it still is.
-func TestCFG015_AssignedFromStdin(t *testing.T) {
+// A substitution that only fills a variable is not reported (#792, #1675),
+// whatever it reads; used as an argument, reaching the network, running code
+// or glued to more text, it still is.
+func TestCFG015_AssignedOnly(t *testing.T) {
 	tests := []struct {
 		cmd  string
 		want bool
@@ -192,14 +192,55 @@ func TestCFG015_AssignedFromStdin(t *testing.T) {
 		{`local input=$(cat); echo "$input" | tool`, false},
 		{`P=$(jq -r ".tool_input.command")`, false},
 		{`FILE=$(jq -r '.tool_input.file_path' 2>/dev/null); [ -z "$FILE" ] && exit 0`, false},
-		{`f=$(jq -r '.x' 2>/tmp/log)`, true},
+		{`f=$(jq -r '.x' 2>/tmp/log)`, false},
+		{`f=$(jq -r '.x' /etc/passwd)`, false},
+		{`branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)`, false},
+		{`LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)`, false},
+		{`FILE=$(cat | jq -r '.tool_input.file_path // empty')`, false},
+		{"ts=`date +%s`; echo \"$ts\"", false},
+		{`bash -c 'CMD=$(jq -r .tool_input.command); if [[ "$CMD" =~ "rm -rf" ]]; then exit 2; fi'`, false},
+		{`bash -c "CMD=$(jq -r .tool_input.command)"`, true},
 		{`tool $(jq -r '.tool_input.file_path')`, true},
-		{`f=$(jq -r '.x' /etc/passwd)`, true},
-		{`f=$(cat ~/.ssh/id_rsa)`, true},
 		{`f=$(jq -r '.x' | sh)`, true},
+		{`f=$(jq -r '.x' | sudo -E bash)`, true},
+		{`f=$(eval "$CMD")`, true},
+		{`f=$(bash -c "$CMD")`, true},
 		{`f=$(curl -s https://example.com)`, true},
 		{`f=$(jq -r '.x')suffix`, true},
 		{`f=$(jq -r '.x'); tool $(jq -r '.x')`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.cmd, func(t *testing.T) {
+			if got := len(CFG015.Check(hookTarget(t, tt.cmd))) > 0; got != tt.want {
+				t.Errorf("finding = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// A quoted substitution that a test only compares, or that a case only
+// matches, is not run and not reported (#1675); unquoted, or used as a
+// command in the same line, it still is.
+func TestCFG015_Compared1675(t *testing.T) {
+	tests := []struct {
+		cmd  string
+		want bool
+	}{
+		{`[ "$(git branch --show-current)" != "main" ] && exit 0`, false},
+		{`[ "$(printf '%s' "$i" | jq -r '.stop_hook_active // false')" = true ] && exit 0`, false},
+		{`case "$(git -C "$root" remote get-url origin)" in *github*) echo gh;; esac`, false},
+		{`if [[ -n "$(git status --porcelain)" ]]; then echo dirty; fi`, false},
+		{`test -z "$(git diff --name-only)" || exit 2`, false},
+		{`[ "$BRANCH" = "$(git rev-parse --abbrev-ref HEAD)" ] || exit 1`, false},
+		{`[ ! -z "$(ls)" ]`, false},
+		{`[ $(git branch --show-current) = main ]`, true},
+		{`[ "$(curl -s https://example.com/ok)" = ok ]`, true},
+		{`[ "$(git branch --show-current)" = main ] && git push origin $(git branch --show-current)`, true},
+		{`echo "$(git branch --show-current)" = main`, true},
+		{`case $(git branch --show-current) in main) exit 0;; esac`, true},
+		{`[ "$(git branch --show-current)x" = mainx ]`, true},
+		{`npm test "$(git diff --name-only)"`, true},
+		{`pytest "$(git diff --name-only)" = x`, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cmd, func(t *testing.T) {
@@ -227,9 +268,9 @@ func TestCFG015_ExemptionVariants1200(t *testing.T) {
 		}
 	}
 	for _, cmd := range []string{
-		`root="$(git -C "$DIR" rev-parse --show-toplevel)"; cd "$root"`,
+		`cd "$(git -C "$DIR" rev-parse --show-toplevel)"`,
 		`f="$(jq -r .x || curl https://e.example)"; echo "$f"`,
-		`root="$(git rev-parse --show-toplevel || rm -rf /)"; cd "$root"`,
+		`cd "$(git rev-parse --show-toplevel || rm -rf /)"`,
 		`x="$(cat)suffix"; echo "$x"`,
 		`echo "$(cat .env)"`,
 	} {
