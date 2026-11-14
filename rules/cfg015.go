@@ -70,19 +70,17 @@ func isBenignSubstitution(s string) bool {
 	return benignSubstRe.MatchString(inner)
 }
 
-// stdinReaderRe matches a substituted command that only reads the hook's own
-// stdin, the event JSON Claude Code pipes in: jq with options and one filter
-// and no file argument, or a bare cat, optionally with stderr sent to
-// /dev/null and a `|| true` fallback (#1200). That is how the docs of this
-// rule tell a hook to get its input (#792).
-var stdinReaderRe = regexp.MustCompile(`^\s*(?:jq(?:\s+-[A-Za-z-]+)*\s+(?:'[^']*'|"[^"]*"|\.[A-Za-z0-9_.\[\]]*)|cat)` + substFallback + `$`)
-
-// assignedFromStdin reports whether the substitution s appears in cmd only as
-// the whole value of a variable assignment (NAME=$(...), local NAME=$(...))
-// and its command only reads stdin. The output is stored, not spliced into a
-// command line; where the variable is used is CFG009's question.
-func assignedFromStdin(cmd, s string) bool {
-	if !strings.HasPrefix(s, "$(") || !stdinReaderRe.MatchString(s[2:len(s)-1]) {
+// storedOnly reports whether the substitution s appears in cmd only where its
+// output is never run: as the whole value of a variable assignment
+// (NAME=$(...), local NAME="$(...)"), as a quoted operand of a test
+// ([ "$(...)" = main ], [[ -n "$(...)" ]]), or as the quoted subject of a case
+// (#792, #1675). An assignment value is not split into words or run, a test
+// only compares it, and how a stored variable is used later is CFG009's
+// question. A substitution that reaches the network or runs code itself is
+// still reported, and so is the same substitution used as an argument
+// elsewhere in the command.
+func storedOnly(cmd, s string) bool {
+	if hookNetworkCmdRe.MatchString(s) || substRunsCodeRe.MatchString(s) {
 		return false
 	}
 	found := false
@@ -92,26 +90,65 @@ func assignedFromStdin(cmd, s string) bool {
 			return found
 		}
 		j += i
-		if !assignedBeforeRe.MatchString(cmd[:j]) {
-			return false
-		}
 		end := j + len(s)
-		if strings.HasSuffix(cmd[:j], `"`) {
-			if end >= len(cmd) || cmd[end] != '"' {
-				return false // the quoted value goes on
-			}
+		before := cmd[:j]
+		quoted := strings.HasSuffix(before, `"`) && end < len(cmd) && cmd[end] == '"'
+		if quoted {
 			end++
 		}
-		if end < len(cmd) && !strings.ContainsRune(" \t;&|)\n", rune(cmd[end])) {
-			return false // more text glued to the value
+		after := cmd[end:]
+		switch {
+		case assignedBeforeRe.MatchString(before):
+			if strings.HasSuffix(before, `"`) && !quoted {
+				return false // the quoted value goes on
+			}
+			if after != "" && !strings.ContainsRune(" \t;&|)\n", rune(after[0])) {
+				return false // more text glued to the value
+			}
+		case !quoted:
+			return false
+		case testLeftOperandRe.MatchString(before) && testAfterLeftRe.MatchString(after),
+			testRightOperandRe.MatchString(before) && testCloseRe.MatchString(after),
+			caseSubjectRe.MatchString(before) && caseInRe.MatchString(after):
+		default:
+			return false
 		}
 		found = true
 		i = end
 	}
 }
 
-// The value may be double-quoted: input="$(cat)" (#1200).
-var assignedBeforeRe = regexp.MustCompile(`(?:^|[\s;&|(])[A-Za-z_][A-Za-z0-9_]*="?$`)
+// The value may be double-quoted: input="$(cat)" (#1200). A single quote may
+// open the script of a bash -c: bash -c 'CMD=$(jq -r .x); …' (#1675); outside
+// one, a single-quoted substitution is never extracted.
+var assignedBeforeRe = regexp.MustCompile(`(?:^|[\s;&|('])[A-Za-z_][A-Za-z0-9_]*="?$`)
+
+// substRunsCodeRe matches a substitution that runs code it is given rather
+// than a fixed command: eval, a shell with -c, source, or text piped into a
+// shell or an interpreter.
+var substRunsCodeRe = regexp.MustCompile(`\beval\b|\b(?:ba|z|da|k)?sh\s+(?:-\w+\s+)*-\w*c\b|\bsource\b|(?:^|[\s;&|(])\.\s|\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:(?:ba|z|da|k)?sh|python[0-9.]*|node|perl|ruby|php)\b`)
+
+// testStart is a test in command position: [, [[ or test at the start of the
+// line, after a separator or a keyword. `npm test "$(...)"` is no test.
+const testStart = `(?:^|[;&|(!{]|\b(?:if|then|elif|else|while|until|do))\s*(?:\[\[?|test)`
+
+// The quoted substitution opens a test: [ "$(...)", [[ ! -n "$(...)", test -z "$(...)".
+var testLeftOperandRe = regexp.MustCompile(testStart + `\s+(?:!\s+)?(?:-[nz]\s+)?"$`)
+
+// What may follow the first operand of a test: a comparison, the closing
+// bracket, or the end of a test command.
+var testAfterLeftRe = regexp.MustCompile(`^\s*(?:\]\]?(?:$|[\s;&|)])|(?:==?|!=|-eq|-ne|-lt|-le|-gt|-ge)\s|$|[;&|)])`)
+
+// The quoted substitution is the second operand of a comparison inside a test.
+var testRightOperandRe = regexp.MustCompile(testStart + `\s+[^;&|]*?\s(?:==?|!=|-eq|-ne|-lt|-le|-gt|-ge)\s+"$`)
+
+// The test closes after its second operand.
+var testCloseRe = regexp.MustCompile(`^\s*(?:\]\]?)?(?:$|[\s;&|)])`)
+
+var (
+	caseSubjectRe = regexp.MustCompile(`(?:^|[\s;&|(])case\s+"$`)
+	caseInRe      = regexp.MustCompile(`^\s+in(?:$|\s)`)
+)
 
 func (r *cfg015) Check(t *Target) []finding.Finding {
 	if t == nil {
@@ -122,7 +159,7 @@ func (r *cfg015) Check(t *Target) []finding.Finding {
 	for _, site := range commandSites(t) {
 		substs := extractHookSubstitutions(site.Command)
 		substs = slices.DeleteFunc(substs, isBenignSubstitution)
-		substs = slices.DeleteFunc(substs, func(s string) bool { return assignedFromStdin(site.Command, s) })
+		substs = slices.DeleteFunc(substs, func(s string) bool { return storedOnly(site.Command, s) })
 		if len(substs) == 0 {
 			continue
 		}

@@ -17,16 +17,16 @@ func TestCFG015_Severity1201(t *testing.T) {
 		cmd  string
 		want finding.Severity
 	}{
-		{`ts="$(date -u +%FT%TZ)"; echo $ts`, finding.Info},
-		{`py="$(command -v python3)"; $py x.py`, finding.Info},
-		{`latest="$(ls -d "$HOME/.cache/tool"/*/ | sort -V | tail -n1)"`, finding.Info},
-		{`d="$CLAUDE_PROJECT_DIR"; p="$(dirname "$d")"`, finding.Info},
-		{`msg="$(git log --oneline -1)"; curl -d "{\"m\": \"$msg\"}" https://example.com`, finding.Warn},
-		{`b="$(git rev-parse --abbrev-ref HEAD)"`, finding.Warn},
+		{`echo $(date -u +%FT%TZ)`, finding.Info},
+		{`$(command -v python3) x.py`, finding.Info},
+		{`cd "$(ls -d "$HOME/.cache/tool"/*/ | sort -V | tail -n1)"`, finding.Info},
+		{`d="$CLAUDE_PROJECT_DIR"; cd "$(dirname "$d")"`, finding.Info},
+		{`curl -d "{\"m\": \"$(git log --oneline -1)\"}" https://example.com`, finding.Warn},
+		{`git push origin $(git rev-parse --abbrev-ref HEAD)`, finding.Warn},
 		{`tool $(jq -r .tool_input.command)`, finding.Warn},
-		{`x="$(cat README.md)"`, finding.Warn},
+		{`tool "$(cat README.md)"`, finding.Warn},
 		{"!`echo $ARGUMENTS | wc -w`", finding.Warn},
-		{`f=$(jq -r .tool_input.file_path); n="$(basename $f)"`, finding.Warn},
+		{`f=$(jq -r .tool_input.file_path); tool "$(basename $f)"`, finding.Warn},
 		{`$(curl -s https://example.com)`, finding.Error},
 	} {
 		f := CFG015.Check(hookTarget(t, tc.cmd))
