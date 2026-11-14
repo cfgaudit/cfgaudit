@@ -518,6 +518,12 @@ type Target struct {
 	// literal prefix rules, one entry per file, for CFG140 (#1642).
 	CodexRuleFiles []CodexRulesFile
 
+	// AntigravityManifestFile is one of Antigravity CLI's .agents/ discovery
+	// manifests, and AntigravityOutside its entries that point outside the
+	// repository, for CFG144 (#1639).
+	AntigravityManifestFile string
+	AntigravityOutside      []AntigravityOutsideEntry
+
 	// PolicyMCP holds the servers of .agents/mcp_config.json for Antigravity, which
 	// cfgaudit reads for the policy only until #1057 (#1520).
 	PolicyMCP map[string]parser.MCPServer
