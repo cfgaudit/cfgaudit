@@ -725,6 +725,13 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 			}
 			grok.PolicyAgent, grok.PolicyDeny, grok.PolicyForbid = agent, p.Deny, p.ForbidAllow.PolicyRules
 			grok.PolicyInheritedAllow, grok.PolicyInheritedDeny = claudeAllow, claudeDeny
+		case "kimi-code":
+			if t, reason := kimiPolicyTarget(dir, p); t != nil {
+				targets = append(targets, t)
+			} else {
+				path, _ := noPermissionFileAgents[agent].marker(dir)
+				unenforceable = append(unenforceable, rules.UnenforceableAgent{Agent: agent, Name: "Kimi Code", Path: path, Reason: reason})
+			}
 		default:
 			a := noPermissionFileAgents[agent]
 			path, _ := a.marker(dir)
@@ -735,6 +742,27 @@ func attachPolicy(dir string, targets []*rules.Target, cfg *config.Config) []*ru
 		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, PolicyDeny: p.Deny, PolicyUnenforceable: unenforceable})
 	}
 	return targets
+}
+
+// kimiNoLocalReason completes "Kimi Code ..." when the repository commits no
+// .kimi-code/local.toml.
+const kimiNoLocalReason = "keeps its permission rules in the user's ~/.kimi-code/config.toml, and the repository commits no .kimi-code/local.toml to carry a deny"
+
+// kimiPolicyTarget returns the policy target for a committed
+// .kimi-code/local.toml (#1731), or nil and why the policy cannot be
+// carried: there is no such file, or .gitignore keeps it out of Git, which
+// makes it the scanning user's own file.
+func kimiPolicyTarget(dir string, p config.Policy) (*rules.Target, string) {
+	path := filepath.Join(dir, ".kimi-code", "local.toml")
+	kl, err := parser.ParseKimiLocalConfig(path)
+	if err != nil || kl == nil {
+		return nil, kimiNoLocalReason
+	}
+	if data, err := scanroot.ReadFile(filepath.Join(dir, ".gitignore")); err == nil && rules.KimiLocalIgnored(data) {
+		return nil, "keeps its permission rules in the user's ~/.kimi-code/config.toml, and .gitignore keeps .kimi-code/local.toml out of Git, so a deny there is the scanning user's own"
+	}
+	return &rules.Target{Scope: finding.ScopeProject, PolicyAgent: "kimi-code", PolicyDeny: p.Deny, PolicyForbid: p.ForbidAllow.PolicyRules,
+		PolicyFile: path, PolicyKimiRules: kl.Permission.Rules}, ""
 }
 
 // orderedPolicyFiles are the project files of the agents that resolve rules by
@@ -829,7 +857,7 @@ var noPermissionFileAgents = map[string]noPermissionFile{
 	"continue": {"Continue", userSettingsOnly, []string{".continue"}},
 	"goose":    {"goose", userSettingsOnly, []string{".goose", ".goosehints"}},
 	"kimi-cli": {"Kimi CLI", userSettingsOnly, []string{".kimi"}},
-	"kimi-code": {"Kimi Code", "reads its permission rules from user settings, and from .kimi-code/local.toml since 2.6.0, a file meant to stay out of Git that cfgaudit does not check the policy against yet",
+	"kimi-code": {"Kimi Code", kimiNoLocalReason,
 		[]string{".kimi-code"}},
 	"junie": {"Junie", "keeps its allowlist in the user's ~/.junie/allowlist.json, and its rules allow or ask but never deny",
 		[]string{".junie"}},

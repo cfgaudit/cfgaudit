@@ -65,6 +65,7 @@ var policySpellings = map[string]policySpelling{
 	"gemini-cli":  {name: "Gemini CLI"},
 	"opencode":    {name: "OpenCode", unenforced: "fetch"},
 	"kilo-code":   {name: "Kilo Code"},
+	"kimi-code":   {name: "Kimi Code"},
 }
 
 // claudeCovers follows Claude Code's permission syntax: Bash(prefix *) or
