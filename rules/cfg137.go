@@ -85,7 +85,7 @@ func (r *cfg137) Check(t *Target) []finding.Finding {
 								File:     src.File,
 								Line:     lineNo + 1,
 								Col:      j + 1,
-								Message:  fmt.Sprintf("%s line %d hides text behind %d blank characters: %q", src.Name, lineNo+1, runLen, quote),
+								Message:  fmt.Sprintf("%s line %d hides text behind %d blank characters: %q. An editor without soft wrap and a pull request diff show only the text before the gap, while the agent reads the whole line. Move the text into its own paragraph or remove it", src.Name, lineNo+1, runLen, quote),
 							})
 							break
 						}
@@ -96,7 +96,6 @@ func (r *cfg137) Check(t *Target) []finding.Finding {
 					i++
 				}
 			}
-			// one finding per line is enough (handled by break above)
 		}
 	}
 	return out
