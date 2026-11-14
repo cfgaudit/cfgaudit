@@ -54,7 +54,6 @@ func (r *cfg137) Check(t *Target) []finding.Finding {
 			runes := []rune(line)
 			seenVisible := false
 			i := 0
-			reported := false
 			for i < len(runes) {
 				if isSpaceSeparator(runes[i]) {
 					j := i
@@ -85,7 +84,6 @@ func (r *cfg137) Check(t *Target) []finding.Finding {
 								Col:      j + 1,
 								Message:  fmt.Sprintf("%s line %d hides text behind %d blank characters: %q", src.Name, lineNo+1, runLen, quote),
 							})
-							reported = true
 							break
 						}
 					}
@@ -95,9 +93,7 @@ func (r *cfg137) Check(t *Target) []finding.Finding {
 					i++
 				}
 			}
-			if reported {
-				// one finding per line is enough
-			}
+			// one finding per line is enough (handled by break above)
 		}
 	}
 	return out
