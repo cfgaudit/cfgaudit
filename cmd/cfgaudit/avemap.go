@@ -151,6 +151,7 @@ var aveByRule = map[string]string{
 	"CFG089": "AVE-2026-00062", // this class; the enabledPlugins half is supply chain more broadly.
 	"CFG098": "AVE-2026-00062", // marketplace.json archive source with no sha256, npm source at a
 	//                             non-default registry: nothing pins what the entry installs.
+	"CFG143": "AVE-2026-00062", // a registry or index the repository chooses: the package is substituted at its source
 
 	// TLS verification disabled in component configuration (AVE-2026-00061).
 	"CFG075": "AVE-2026-00061", // MCP env/args TLS-verify killswitch
