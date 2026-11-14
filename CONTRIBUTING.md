@@ -345,7 +345,7 @@ The reverse-consistency test fails if you mention `CFGNNN` in the rule index wit
 
 - **Branch names**: `<type>/<short-slug>`, e.g. `feat/cfg013-…`, `docs/contributing`, `chore/dependabot`, `ci/<name>`. No issue number required, but include it in the PR body via `Closes #N`.
 - **Commit messages**: one short imperative line (`feat: add CFG013 rule (...)`), signed off (see [Developer Certificate of Origin](#developer-certificate-of-origin)). No `Co-Authored-By` trailer.
-- **PR body**: the [pull request template](.github/pull_request_template.md) fills it in: short Summary section, Test plan, a checklist and a field for AI use. Note deviations from the issue's acceptance criteria.
+- **PR body**: the [pull request template](.github/pull_request_template.md) fills it in: short Summary section, Approach (what you ruled out and the scope boundary), Test plan, a checklist and a field for AI use. Note deviations from the issue's acceptance criteria.
 - **Merging**: squash-merge, delete branch.
 - **License headers**: new `.go` files, scripts, workflows and the `Dockerfile` start with `Copyright the cfgaudit contributors` and `SPDX-License-Identifier: Apache-2.0` (after the `#!` line in a script); `TestSourceHeaders` checks that. Every other file, such as Markdown, fixtures and images, gets the same license from `REUSE.toml`, so the repository follows the [REUSE specification](https://reuse.software/) and CI runs `reuse lint`. That rule assumes the file was written for cfgaudit: a file copied from another project keeps its own license and needs its own entry in `REUSE.toml`, with the license text in `LICENSES/`.
 
@@ -392,6 +392,24 @@ Every change, including the maintainer's own, lands through a pull request; noth
 **Allow edits by maintainers.** Open a pull request from a fork with "Allow edits by maintainers" enabled; the checkbox is on the pull request page, and you can turn it on later in the right sidebar. A branch has to be up to date with `main` before it can be merged, and when several pull requests land in a row, yours falls behind after each one. With the option on, the maintainer brings your branch up to date right before the squash merge, so you do not have to rebase after every other merge. The maintainer only updates the branch with `main`; a change to your code is asked for in the pull request, not pushed. GitHub does not offer the option for a fork owned by an organization; there you rebase when asked.
 
 **New contributors** can start with an issue labelled [`good first issue`](https://github.com/cfgaudit/cfgaudit/labels/good%20first%20issue): small, self-contained changes with the expected result spelled out.
+
+---
+
+## Engage with the problem, not just the ticket
+
+An issue is a hypothesis about a problem, not a specification to fill in. The most useful contributions test that hypothesis before writing code, and say what they found. We would rather merge a smaller change with a clear argument behind it than a larger one that only does what the title said. This matters more now that most contributions involve an AI tool, because [confidence in a tool tends to come at the cost of your own scrutiny](https://advait.org/files/lee_2025_ai_critical_thinking_survey.pdf).
+
+Before and while you work on an issue:
+
+- **Check the premise against the primary source.** cfgaudit's value is precision. Confirm that the agent really loads the file, reads the key or runs the command the way the issue says: check its changelog, its source, or run the agent, and name the version. That the JSON parses or the regular expression matches is not enough. A rule that matches "as documented" but not "as the agent really behaves" is a bug, green tests and all. Link what you checked.
+- **Bring the edge cases yourself.** State the realistic benign configuration that would trip your change, and show it stays clean. For a false-positive fix, list the cases that must stay reported, so the fix does not quietly drop real findings. Make the scope boundary explicit: what the change deliberately does not report, and why.
+- **Measure, don't assume.** Run a new or changed rule against real configurations and put the finding delta in the pull request. Say how many findings it adds, how many it removes, and whether each is a true or a false positive. Green unit tests do not mean corpus-clean.
+- **Propose the better approach, and show your working.** If you see a cleaner design, a helper that already exists (the command sites in `rules/commandsites.go`, the shell word splitting, the instruction sources), an adjacent gap the issue misses, or a scope that is too narrow or too broad, say so. Name the alternative you ruled out and why, and the main drawback of the approach you picked. Argue the tradeoff in the open rather than deciding it silently.
+- **Disagreeing is welcome.** If the issue's framing, threat model or scope seems wrong or incomplete, comment on the issue before you build it. A comment that sharpens the problem is worth as much as the code that follows, and we won't read it as overstepping. Bring the evidence and we'll talk it through.
+
+You don't need an open issue to contribute an idea. If you see an agent configuration that cfgaudit should catch, or a rule that could be sharper, open one and make the case: show the file, say why it is a risk for the agent that reads it, and check first whether an existing rule already covers it ([Check whether an existing rule fits](#0-check-whether-an-existing-rule-fits) explains when a new `CFGNNN` is worth it). A sharp proposal with a real example is worth more than a long list of maybes, and we would rather hear a good idea and decide against it than never hear it.
+
+This applies to your AI tool as much as to you. A tool's output reads as plausible whether or not it is right, so [verify it against the source yourself](https://arxiv.org/abs/2211.03622) rather than trusting it because it looks correct. If you used one, it should have done this thinking with you: a pull request that restates the issue title with no sign that the premise was tested reads as unreviewed, whoever or whatever wrote it.
 
 ---
 

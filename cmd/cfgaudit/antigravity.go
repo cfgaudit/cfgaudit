@@ -5,7 +5,9 @@ package main
 
 import (
 	"io/fs"
+	"maps"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
@@ -16,19 +18,57 @@ import (
 
 // antigravityRoots are the folders whose mcp_config.json and hooks.json
 // Antigravity CLI reads (#1057): the workspace .agents/, and each workspace
-// plugin under .agents/plugins/<name>/ (docs/plugins, docs/build-plugins).
+// plugin under .agents/plugins/<name>/ (docs/plugins, docs/build-plugins),
+// and each plugin folder inside the repository that .agents/plugins.json
+// names (#1639).
 func antigravityRoots(dir string) []string {
 	roots := []string{filepath.Join(dir, ".agents")}
-	entries, err := scanroot.ReadDir(filepath.Join(dir, ".agents", "plugins"))
-	if err != nil {
-		return roots
-	}
+	entries, _ := scanroot.ReadDir(filepath.Join(dir, ".agents", "plugins"))
 	for _, e := range entries {
 		if e.IsDir() {
 			roots = append(roots, filepath.Join(dir, ".agents", "plugins", e.Name()))
 		}
 	}
+	for _, p := range antigravityManifest(dir, "plugins").Items {
+		if !slices.Contains(roots, p) {
+			roots = append(roots, p)
+		}
+	}
 	return roots
+}
+
+// antigravityManifestFiles returns the skill, rule and agent files that
+// .agents/skills.json, rules.json and agents.json add inside the repository
+// (#1639).
+func antigravityManifestFiles(dir string) []string {
+	var out []string
+	for _, kind := range []string{"skills", "rules", "agents"} {
+		out = append(out, antigravityManifest(dir, kind).Items...)
+	}
+	return out
+}
+
+// antigravityManifestTargets reports the manifests that do not parse and
+// returns a target per manifest read, with the entries in it that point
+// outside the repository for CFG144 (#1639).
+func antigravityManifestTargets(dir string) []*rules.Target {
+	var targets []*rules.Target
+	for _, kind := range antigravityManifestKinds {
+		res := antigravityManifest(dir, kind)
+		for _, path := range slices.Sorted(maps.Keys(res.Broken)) {
+			skipUnreadable(path, res.Broken[path])
+		}
+		for _, path := range res.Read {
+			t := &rules.Target{Scope: finding.ScopeProject, AntigravityManifestFile: path}
+			for _, e := range res.Outside {
+				if e.File == path {
+					t.AntigravityOutside = append(t.AntigravityOutside, e)
+				}
+			}
+			targets = append(targets, t)
+		}
+	}
+	return targets
 }
 
 // antigravityTargets returns the MCP and hook targets of a workspace's
@@ -36,7 +76,7 @@ func antigravityRoots(dir string) []string {
 // commands the command-content rules, with SessionStart as the zero-click
 // event CFG086 reports.
 func antigravityTargets(dir string) []*rules.Target {
-	var targets []*rules.Target
+	targets := antigravityManifestTargets(dir)
 	for i, root := range antigravityRoots(dir) {
 		mcp := filepath.Join(root, "mcp_config.json")
 		if servers, err := parser.ParseAntigravityMCP(mcp); err == nil {
