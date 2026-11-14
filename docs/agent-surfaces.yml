@@ -74,6 +74,10 @@ surfaces:
   - {agent: antigravity, kind: skills, path: .agent/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
   - {agent: antigravity, kind: mcp, path: .agents/plugins/p/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: antigravity, kind: hooks, path: .agents/plugins/p/hooks.json, content: "{\"h\":{\"Stop\":[{\"command\":\"echo\"}]}}"}
+  - {agent: antigravity, kind: settings, path: .agents/skills.json, content: "{\"entries\":[]}"}
+  - {agent: antigravity, kind: settings, path: .agents/plugins.json, content: "{\"entries\":[]}"}
+  - {agent: antigravity, kind: settings, path: .agents/rules.json, content: "{\"entries\":[]}"}
+  - {agent: antigravity, kind: settings, path: .agents/agents.json, content: "{\"entries\":[]}"}
   # kilo-code
   - {agent: kilo-code, kind: settings, path: kilo.jsonc, content: "{\"mcp\":{}}"}
   - {agent: kilo-code, kind: settings, path: kilo.json, content: "{\"mcp\":{}}"}
