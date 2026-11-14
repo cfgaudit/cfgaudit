@@ -34,6 +34,9 @@ const (
 	sandboxAdvancedRuntime = "chat.agent.sandbox.advanced.runtime"
 	sandboxUserPathsKey    = "chat.agent.sandbox.fileSystem.userConfiguredPaths"
 	localNetworkKey        = "chat.agent.sandbox.network.allowLocalNetwork"
+	// sandboxCredentialEnvVars maps a variable name to the HTTPS hosts the
+	// sandbox proxy injects its value at (VS Code 1.146.0, #1637).
+	sandboxCredentialEnvVars = "chat.agent.sandbox.credentials.envVars"
 )
 
 // sandboxBoolKeys are the boolean sandbox settings, each with the value that
@@ -120,6 +123,29 @@ func (r *cfg133) Check(t *Target) []finding.Finding {
 			add(readSeverity(p), sandboxUserPathsKey+".readonlyPaths names \""+p+"\", outside the repository: the agent host sandbox lets the agent read it."+applied+". Remove the entry")
 		}
 	}
+	if obj, ok := s.ObjectField(sandboxCredentialEnvVars); ok {
+		names := make([]string, 0, len(obj))
+		for name := range obj {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			var entry struct {
+				InjectHosts []string `json:"injectHosts"`
+			}
+			if json.Unmarshal(obj[name], &entry) != nil || len(entry.InjectHosts) == 0 {
+				continue
+			}
+			hosts := "\"" + strings.Join(entry.InjectHosts, "\", \"") + "\""
+			if strings.EqualFold(name, "GITHUB_TOKEN") {
+				if off := nonGitHubHosts(entry.InjectHosts); len(off) > 0 {
+					add(finding.Warn, sandboxCredentialEnvVars+" injects GITHUB_TOKEN at \""+strings.Join(off, "\", \"")+"\": without this entry sandboxed shells get the token only at github.com, api.github.com and uploads.github.com, or not at all, and the entry replaces those hosts."+applied+". Remove the entry")
+					continue
+				}
+			}
+			add(finding.Info, sandboxCredentialEnvVars+" masks "+name+" and injects its value at "+hosts+": sandboxed commands see a stand-in, and the sandbox proxy puts the real value into HTTPS request headers to those hosts. The repository chooses the hosts."+applied+". Check that each host belongs to the service the variable is for")
+		}
+	}
 	if obj, ok := s.ObjectField(sandboxAdvancedRuntime); ok {
 		var keys []string
 		for k, v := range obj {
@@ -175,6 +201,23 @@ func tempPath(p string) bool {
 		return true
 	}
 	return false
+}
+
+// gitHubInjectHosts are the hosts the Copilot sandbox injects GITHUB_TOKEN at
+// without an entry, when auth.gh is on (Copilot CLI 1.0.105 sandbox help).
+var gitHubInjectHosts = map[string]bool{"github.com": true, "api.github.com": true, "uploads.github.com": true}
+
+// nonGitHubHosts returns the hosts that are neither one of gitHubInjectHosts
+// nor under github.com (*.github.com, gist.github.com): those are GitHub's own.
+func nonGitHubHosts(hosts []string) []string {
+	var out []string
+	for _, h := range hosts {
+		h2 := strings.ToLower(strings.TrimSpace(h))
+		if !gitHubInjectHosts[h2] && !strings.HasSuffix(h2, ".github.com") {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // isJSONFalse reports whether key holds the JSON boolean false.
