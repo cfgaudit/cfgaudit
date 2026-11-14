@@ -26,7 +26,7 @@ Several findings that are tolerable one by one can add up to an attack: a broad 
 
 ### 4. Project resilience
 
-- Add a second maintainer with review and merge rights, so that pull requests get a review by someone other than their author and the project continues if one person is unavailable ([GOVERNANCE.md](GOVERNANCE.md#granting-access) says how access is granted).
+- Have every pull request reviewed by a maintainer other than its author, through required approvals in branch protection. cfgaudit has two maintainers since 2026-11 ([GOVERNANCE.md](GOVERNANCE.md)), so the project continues if one of them is unavailable.
 - Keep the release pipeline at SLSA Build Level 3 with reproducible binaries, and keep the OpenSSF Scorecard and Best Practices results.
 
 ## Not planned
