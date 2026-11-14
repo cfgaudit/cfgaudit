@@ -53,6 +53,7 @@ var safeShellVars = map[string]bool{
 	// Other agent-provided install and project paths (#1198).
 	"CURSOR_PROJECT_DIR":  true,
 	"GEMINI_PROJECT_DIR":  true,
+	"QWEN_PROJECT_DIR":    true, // cmd/cfgaudit/launched.go reads it as the project directory (#1674)
 	"DROID_PLUGIN_ROOT":   true,
 	"ZCODE_PLUGIN_ROOT":   true,
 	"GROK_WORKSPACE_ROOT": true,
@@ -163,16 +164,39 @@ func extractShellVars(cmd string, hookStdin bool) []string {
 	outerCmd, bodies := splitSingleQuotedSh(cmd)
 	outerTaint := commandTaint(outerCmd, nil, hookStdin)
 	check := func(text string, st, outer shellTaint) {
-		reparse := shellReparseRe.MatchString(text)
+		reparse := reparses(text)
 		printed := printSafe(text)
-		for _, u := range shellVarUses(text) {
-			// A variable Claude Code never sets keeps its info finding even when
-			// it is only printed (#1558).
+		uses := shellVarUses(text)
+		// A variable Claude Code never sets keeps its info finding even when
+		// it is only printed or assigned (#1558).
+		harmless := func(u shellVarUse) bool {
 			printedOnly := u.printed && printed && !undefinedClaudeHookVars["$"+u.name]
-			if !st.untrusted(u.name, outer) || (!reparse && (u.safe || u.literal || printedOnly)) {
-				continue
+			return !reparse && (u.safe || u.literal || printedOnly)
+		}
+		// The value of an assignment is not split or globbed (#1674); it
+		// counts only when the assigned variable is used unsafely, directly or
+		// through further assignments (#1376), so follow that to a fixpoint.
+		unsafeNames := map[string]bool{}
+		counts := func(u shellVarUse) bool {
+			if harmless(u) {
+				return false
 			}
-			addKey("$" + u.name)
+			return u.assignTo == "" || reparse || unsafeNames[u.assignTo] || undefinedClaudeHookVars["$"+u.name]
+		}
+		for changed := true; changed; {
+			changed = false
+			for _, u := range uses {
+				if !unsafeNames[u.name] && counts(u) {
+					unsafeNames[u.name] = true
+					changed = true
+				}
+			}
+		}
+		// Report in the order of the uses that count, as before #1674.
+		for _, u := range uses {
+			if st.untrusted(u.name, outer) && counts(u) {
+				addKey("$" + u.name)
+			}
 		}
 	}
 	check(outerCmd, outerTaint, nil)

@@ -21,6 +21,10 @@ type shellVarUse struct {
 	// printed is true for an argument of echo, or of printf after its format:
 	// the shell splits and globs the value but does not run it (#1558).
 	printed bool
+	// assignTo names the variable whose assignment this reference is the
+	// value of (NAME=$x, NAME="$x"). The shell neither splits nor globs it
+	// there, so it matters only where NAME itself is used unsafely (#1674).
+	assignTo string
 }
 
 // printSafeRe matches what makes a printed value reach a parser or a program
@@ -37,12 +41,84 @@ func printSafe(cmd string) bool {
 }
 
 // shellReparseRe matches a command that hands text to a shell or another
-// interpreter to parse again, which undoes any quoting around a variable.
-var shellReparseRe = regexp.MustCompile(`\beval\b|\b(?:ba|da|k|z)?sh\s+(?:-[a-z]*\s+)*-[a-z]*c\b|\bxargs\b[^|;&]*\b(?:ba|da|k|z)?sh\b|\bsource\b|(?:^|[;&|(]\s*|\s)\.\s`)
+// interpreter to parse again, which undoes any quoting around a variable. The
+// dot builtin counts only in command position: jq's `.` program is an
+// argument (#1674).
+var shellReparseRe = regexp.MustCompile(`\beval\b|\b(?:ba|da|k|z)?sh\s+(?:-[a-z]*\s+)*-[a-z]*c\b|\bxargs\b[^|;&]*\b(?:ba|da|k|z)?sh\b|\bsource\b|(?:^|[;&|(]\s*|\b(?:then|do|else)\s+)\.\s`)
+
+// reparses reports whether cmd hands text to be parsed again, judged on its
+// unquoted words only: "source" in a quoted message or a jq program is text,
+// not the source builtin (#1674).
+func reparses(cmd string) bool {
+	return shellReparseRe.MatchString(unquotedText(cmd))
+}
+
+// unquotedText is cmd with the content of every single- and double-quoted
+// string, and every backslash-escaped character, replaced by "Q". The quotes
+// stay, so "bash -c "$CMD"" still reads as a shell given a script.
+func unquotedText(cmd string) string {
+	var b strings.Builder
+	var inSingle, inDouble bool
+	for i := 0; i < len(cmd); i++ {
+		c := cmd[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+				b.WriteByte(c)
+			} else {
+				b.WriteByte('Q')
+			}
+		case inDouble:
+			switch c {
+			case '\\':
+				i++
+				b.WriteByte('Q')
+			case '"':
+				inDouble = false
+				b.WriteByte(c)
+			case '$':
+				// "$(...)" runs a command of its own, quoting and all.
+				if end := substEnd(cmd, i); end > 0 {
+					b.WriteString("$(" + unquotedText(cmd[i+2:end]) + ")")
+					i = end
+					continue
+				}
+				b.WriteByte('Q')
+			default:
+				b.WriteByte('Q')
+			}
+		case c == '\\':
+			i++
+			b.WriteByte('Q')
+		case c == '\'':
+			inSingle = true
+			b.WriteByte(c)
+		case c == '"':
+			inDouble = true
+			b.WriteByte(c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
 
 // quotedVarWordRe is the content of a double-quoted string that is a single
 // variable reference, optionally with path characters around it.
 var quotedVarWordRe = regexp.MustCompile(`^[A-Za-z0-9_./:@+=-]*\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)[A-Za-z0-9_./:@+=-]*$`)
+
+// plainParamExpRe matches ${NAME:-word}, ${NAME:+word}, ${NAME-word} and
+// ${NAME:?word} whose word holds only path characters and other references
+// (#1674). Quoted, such an expansion is one argument, like "${NAME}".
+var plainParamExpRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::[-+?]|-)(?:[A-Za-z0-9_./:@+=-]|\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)*\}`)
+
+// quotedOneWord reports whether the content of a double-quoted string is one
+// reference with path characters around it, counting a plain parameter
+// expansion with a default or alternative word as the reference it is.
+func quotedOneWord(content string) bool {
+	return quotedVarWordRe.MatchString(plainParamExpRe.ReplaceAllString(content, "$${$1}"))
+}
 
 // shellVarUses returns every variable reference in cmd with its quoting. It
 // follows single and double quotes, backslash escapes and command position
@@ -75,8 +151,10 @@ func shellVarUses(cmd string) []shellVarUse {
 				printfV = printfV || (cmdName == "printf" && w == "-v")
 			}
 			redir = strings.Trim(w, "0123456789&") == ">" || strings.Trim(w, "0123456789&") == ">>" || w == "<"
-			// NAME=value before a command keeps the next word in command position.
-			cmdPos = assignmentRe.MatchString(w)
+			// NAME=value before a command keeps the next word in command
+			// position, and so does a reserved word: in `then p="$x"` the
+			// assignment is the command (#1674).
+			cmdPos = assignmentRe.MatchString(w) || (cmdPos && shellReservedWords[w])
 		}
 		word.Reset()
 	}
@@ -107,9 +185,14 @@ func shellVarUses(cmd string) []shellVarUse {
 			case '\\':
 				i++
 			case '"':
-				safe := !cmdPos && quotedVarWordRe.MatchString(cmd[dqStart:i]) && len(dqUses) == 1
+				safe := !cmdPos && quotedOneWord(cmd[dqStart:i])
+				assign := ""
+				if cmdPos {
+					assign = assignedName(word.String())
+				}
 				for _, k := range dqUses {
 					out[k].safe = safe
+					out[k].assignTo = assign
 				}
 				dqStart, dqUses = -1, nil
 			case '$':
@@ -159,7 +242,11 @@ func shellVarUses(cmd string) []shellVarUse {
 				cmdPos, cmdName, redir = true, "", false
 			case '$':
 				if name, n := varRefAt(cmd, i); n > 0 {
-					out = append(out, shellVarUse{name: name, printed: printing()})
+					assign := ""
+					if cmdPos {
+						assign = assignedName(word.String())
+					}
+					out = append(out, shellVarUse{name: name, printed: printing(), assignTo: assign})
 					i += n - 1
 				}
 				word.WriteByte(c)
@@ -214,6 +301,20 @@ func substEnd(cmd string, i int) int {
 }
 
 var assignmentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
+
+// assignedName returns NAME when word starts an assignment NAME=..., or "".
+func assignedName(word string) string {
+	if m := assignmentRe.FindString(word); m != "" {
+		return strings.TrimSuffix(m, "=")
+	}
+	return ""
+}
+
+// shellReservedWords are the words after which the next word starts a command.
+var shellReservedWords = map[string]bool{
+	"if": true, "then": true, "else": true, "elif": true, "do": true,
+	"while": true, "until": true, "!": true, "{": true, "time": true,
+}
 
 // varRefAt returns the name of the $NAME or ${NAME} reference at cmd[i] and
 // its length, or 0 when there is none ($(, $1, $@ and the like).
