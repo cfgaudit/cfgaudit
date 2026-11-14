@@ -22,7 +22,10 @@ import (
 // subagentStatusLine is undocumented in the settings reference; the client's own
 // diagnostics are what put it on this list ("Skipping subagentStatusLine
 // execution - workspace trust not accepted", plus its exit and output-schema
-// errors). Same value shape and same trust gate as statusLine.
+// errors). Same value shape and same trust gate as statusLine. Claude Code
+// removed it in 2.1.323 ("no longer has any effect"); the site stays because
+// an installation on 2.1.322 or older still runs it from a committed
+// settings.json (#1759).
 type commandSite struct {
 	// Label is the finding-friendly origin of the command, already phrased as a
 	// noun ending in "command" (e.g. "hooks.SessionStart command", "apiKeyHelper
