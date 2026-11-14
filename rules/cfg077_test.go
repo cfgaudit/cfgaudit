@@ -23,6 +23,10 @@ func TestCFG077_ClearsTraces(t *testing.T) {
 		": > /var/log/wtmp",
 		"shred -u secret.txt",
 		"srm -r /tmp/loot",
+		// command position still fires after the flag-bundle fix (#1678)
+		"srm -f ~/.bash_history",
+		"shred -u ~/.zsh_history",
+		"/usr/bin/srm -f loot.db",
 	} {
 		f := CFG077.Check(hookTarget(t, cmd))
 		if len(f) != 1 || f[0].Severity != finding.Error {
@@ -41,6 +45,9 @@ func TestCFG077_BenignLogAndHistory_NoFinding(t *testing.T) {
 		"history | tail -20",
 		// legitimate app logging to /var/log
 		"echo starting >> /var/log/myapp.log",
+		// `srm` inside a flag bundle, not the shred binary (#1678)
+		`echo "- OS: $(uname -srm)"`,
+		`printf '[info] kernel=%s\n' "$(uname -srm)"`,
 	} {
 		if f := CFG077.Check(hookTarget(t, cmd)); len(f) != 0 {
 			t.Errorf("expected no finding for %q, got %+v", cmd, f)

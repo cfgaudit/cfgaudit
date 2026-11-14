@@ -38,8 +38,11 @@ var antiForensicsPatterns = []struct {
 	{regexp.MustCompile(`(?i)\bjournalctl\b[^|;&\n]*--(?:vacuum|rotate)`), "purges the systemd journal (journalctl --vacuum/--rotate)"},
 	{regexp.MustCompile(`(?i)(?:\brm\b|\btruncate\b|\bshred\b|\bdd\b)[^|;&\n]*/var/log\b`), "deletes or truncates system logs (/var/log)"},
 	{regexp.MustCompile(`(?i)(?:>|\brm\b|\btruncate\b|\bshred\b)[^|;&\n]*\b(?:wtmp|btmp|lastlog)\b`), "clears login/audit logs (wtmp/btmp/lastlog)"},
-	// Secure file wiping (anti-recovery).
-	{regexp.MustCompile(`(?i)\b(?:shred|srm)\b`), "shreds files to prevent recovery (shred/srm)"},
+	// Secure file wiping (anti-recovery). Require command position so a bare
+	// word boundary does not match `srm` inside a flag bundle such as
+	// `uname -srm` (#1678): the verb has to start the command or follow a
+	// separator or a path prefix, not a `-`.
+	{regexp.MustCompile(`(?i)(?:^|[\s;&|(` + "`" + `/])(?:shred|srm)\b`), "shreds files to prevent recovery (shred/srm)"},
 }
 
 // Check flags command sites whose command destroys an audit trail — clearing
