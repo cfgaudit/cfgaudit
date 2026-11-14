@@ -212,3 +212,67 @@ func TestZeroClickLaunch1650(t *testing.T) {
 		}
 	}
 }
+
+// CFG119 does not treat interpreter version arguments or supported flags with
+// values as the file being run (#1649).
+func TestCFG119_DisguisedRunVersionArgs(t *testing.T) {
+	for _, cmd := range []string{
+		"node --env-file=.env server.js",
+		"node --env-file-if-exists=.env server.js",
+		"py -3.14 tools/run.py",
+		"py -3.13 tools/run.py",
+		"py -3.11 tools/run.py",
+		"Python 3.9",
+		"Node 22.18",
+	} {
+		tg := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":`+strconv.Quote(cmd)+`}]}]}}`)
+		if f := CFG119.Check(tg); len(f) != 0 {
+			t.Errorf("%q: want no finding, got %+v", cmd, f)
+		}
+	}
+	for _, cmd := range []string{
+		"node ./public/fonts/fa-brands-400.ttf",
+		"node --no-warnings ./x/fa-solid-900.woff2",
+	} {
+		tg := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":`+strconv.Quote(cmd)+`}]}]}}`)
+		if f := CFG119.Check(tg); len(f) == 0 || f[0].Severity != finding.Error {
+			t.Errorf("%q: want one error, got %+v", cmd, f)
+		}
+	}
+}
+
+// Exercise the loader-flag and version-token branches added for CFG119 so
+// the changed lines are covered (#1725 follow-up).
+func TestCFG119_CoverageLoaderAndVersionPaths(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want finding.Severity
+	}{
+		{"node -r payload.png", finding.Error},
+		{"node -rpayload.png", finding.Error},
+		{"node --import payload.png", finding.Error},
+		{"node --import=payload.png", finding.Error},
+		{"node --require payload.png", finding.Error},
+		{"node --loader payload.png", finding.Error},
+		{"node --experimental-loader=payload.png", finding.Error},
+		{"node --import 3.9", ""},
+		{"node --import=./x/fa-solid-900.woff2 server.js", finding.Error},
+		{"node --require=./fonts/a.ttf app.js", finding.Error},
+		{"py -3.14 ./fonts/a.ttf", finding.Error},
+		{"Node 22.18 ./x/fa-solid-900.woff2", finding.Error},
+		{"node --env-file=.env ./public/fonts/fa-brands-400.ttf", finding.Error},
+		{"pip install -r requirements.txt", ""},
+		{"grep -r TODO notes.md", ""},
+	}
+	for _, tc := range cases {
+		tg := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":`+strconv.Quote(tc.cmd)+`}]}]}}`)
+		f := CFG119.Check(tg)
+		var got finding.Severity
+		if len(f) == 1 {
+			got = f[0].Severity
+		}
+		if got != tc.want || len(f) > 1 {
+			t.Errorf("%q: got %v (%d findings), want %q", tc.cmd, got, len(f), tc.want)
+		}
+	}
+}
