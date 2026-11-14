@@ -98,8 +98,10 @@ func (r *cfg028) Check(t *Target) []finding.Finding {
 }
 
 // agentLogRe matches a log file under an agent's folder, which the agent never
-// reads as configuration: "echo '...' >>~/.claude/worktree-hook.log" (#874).
-var agentLogRe = regexp.MustCompile(`(?i)^\.[\w\-/.]*\.log$`)
+// reads as configuration: "echo '...' >>~/.claude/worktree-hook.log" (#874),
+// and the .txt logs some hooks write: "~/.claude/bash-command-log.txt",
+// "hook.log.txt" (#1673).
+var agentLogRe = regexp.MustCompile(`(?i)^\.[\w\-/.]*(?:\.log|[-.]log\.txt)$`)
 
 // startsPathPart reports whether a name found at start begins a path component,
 // so that "my.rules" and "MY_AGENTS.md" are not read as ".rules" and "AGENTS.md".

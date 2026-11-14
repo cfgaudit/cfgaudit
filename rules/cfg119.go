@@ -63,7 +63,10 @@ var (
 	// scripts need it because payloadCredFileRe alone is mostly a name in a
 	// list: on 13,559 corpus scripts, 2 of the 27 findings on such a name came
 	// from a file that opens it (#1409).
-	payloadCredReadRe = regexp.MustCompile(`(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()[^\n]*(?:` + payloadCredFiles + `)|(?:` + payloadCredFiles + `)[^\n]*(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()`)
+	// The call and the name have to be close, within 200 characters, and a
+	// name whose dot is escaped (`\.npmrc`) is a regular expression, as in a
+	// redaction pattern list, not a file the line opens (#1680).
+	payloadCredReadRe = regexp.MustCompile(`(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()[^\n]{0,200}[^\\\n](?:` + payloadCredFiles + `)|(?:^|[^\\])(?:` + payloadCredFiles + `)[^\n]{0,200}(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()`)
 	// payloadEnvDumpRe matches code that reads the whole environment at once.
 	payloadEnvDumpRe = regexp.MustCompile(`JSON\.stringify\(\s*process\.env\s*\)|Object\.(?:keys|entries|values)\(\s*process\.env\s*\)|dict\(\s*os\.environ\s*\)|os\.environ\.items\(\)`)
 	payloadEnvReadRe = regexp.MustCompile(`\bprocess\.env\b`)
@@ -85,6 +88,23 @@ var (
 	// gist. The address can then change without a commit.
 	payloadDeadDropRe = regexp.MustCompile(`https?://(?:t\.me/s/|telegra\.ph/|pastebin\.com/raw/|paste\.ee/r/|rentry\.(?:co|org)/[\w-]+/raw|gist\.githubusercontent\.com/[^\s"'` + "`" + `]+/raw)`)
 )
+
+// payloadMaxCredReadLine is the longest line read for a credential file
+// opened on it. A minified bundle is one line for the whole library, so a
+// read call and a credential name anywhere in it meet on "the same line"
+// (#1680: four of four sampled warnings were bundles and a pattern list).
+const payloadMaxCredReadLine = 2048
+
+// opensCredentialFile reports a line, of at most payloadMaxCredReadLine
+// characters, that opens a credential file.
+func opensCredentialFile(content string) bool {
+	for line := range strings.SplitSeq(content, "\n") {
+		if len(line) <= payloadMaxCredReadLine && payloadCredReadRe.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
 
 // payloadMinEncodedCalls is how many calls of one function on a hex literal
 // make a string decoder (#1650).
@@ -108,7 +128,18 @@ func xorDecoderCalls(content string) int {
 // disguisedRunRe matches an interpreter started on a file with an extension.
 // Groups: interpreter, flags, "run", path, extension. disguisedRuns keeps
 // the ones whose extension is not a script's.
-var disguisedRunRe = regexp.MustCompile(`(?i)(?:^|[\s;&|(])(node|nodejs|bun|deno|python[0-9.]*|py|ruby|perl|php|bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?((?:\s+--?[A-Za-z][\w-]*)*)(\s+run)?\s+["']?([^\s"';&|<>]*?[^\s"';&|<>/]\.([A-Za-z0-9]{1,10}))["']?(?:[\s;&|)]|$)`)
+var disguisedRunRe = regexp.MustCompile(`(?i)(?:^|[\s;&|(])(node|nodejs|bun|deno|python[0-9.]*|py|ruby|perl|php|bash|sh|zsh|dash|pwsh|powershell)(?:\.exe)?((?:\s+(?:--?[A-Za-z][\w-]*(?:=\S*)?|-?\d+(?:\.\d+)*))*)(\s+run)?\s+["']?([^\s"';&|<>]*?[^\s"';&|<>/]\.([A-Za-z0-9]{1,10}))["']?(?:[\s;&|)]|$)`)
+
+// interpreterVersionTokenRe is compiled once; interpreterVersionToken is called
+// per token in disguisedRuns.
+var interpreterVersionTokenRe = regexp.MustCompile(`^-?\d+(?:\.\d+)*$`)
+
+// interpreterVersionToken reports whether s is a bare interpreter version
+// argument such as 3.9, 22.18 or -3.14, which is not a file to run.
+func interpreterVersionToken(s string) bool {
+	s = strings.Trim(s, `"'`)
+	return interpreterVersionTokenRe.MatchString(s)
+}
 
 // scriptExts are the extensions an interpreter runs for a legitimate reason.
 // An interpreter started on anything else (a font, an image, a document, or
@@ -137,6 +168,105 @@ func disguiseKind(ext string) string {
 	return "a file with a non-script extension"
 }
 
+// loaderFlagHit is one file path named by a loader flag, together with the
+// interpreter that owns that flag.
+type loaderFlagHit struct {
+	interp string
+	path   string
+}
+
+// loaderFlagHits returns file paths passed through flags that make an
+// interpreter load and run a named file, so they are checked like the trailing
+// path (CFG119 review): --import, --require, --loader, --experimental-loader
+// and -r, in both `--flag=value` and `--flag value` forms. Loader flags are
+// only meaningful for the node/nodejs/bun/deno interpreters, and only in the
+// same command segment as that interpreter: a `-r` belonging to pip, grep or
+// cp must not be treated as a loader flag.
+func loaderFlagHits(cmd string) []loaderFlagHit {
+	var hits []loaderFlagHit
+	for _, segment := range splitCommandSegments(cmd) {
+		fields := strings.Fields(segment)
+		interp := ""
+		for i, rawTok := range fields {
+			tok := strings.Trim(rawTok, "\"'")
+			lower := strings.ToLower(tok)
+			if lower == "node" || lower == "nodejs" || lower == "bun" || lower == "deno" ||
+				lower == "node.exe" || lower == "nodejs.exe" || lower == "bun.exe" || lower == "deno.exe" {
+				interp = strings.Trim(rawTok, "\"'")
+				continue
+			}
+			if interp == "" {
+				continue
+			}
+			var val string
+			switch {
+			case tok == "-r":
+				if i+1 < len(fields) {
+					val = strings.Trim(fields[i+1], "\"'")
+				}
+			case strings.HasPrefix(tok, "-r") && len(tok) > 2:
+				val = strings.Trim(tok[2:], "\"'")
+			}
+			for _, flag := range []string{"--import", "--require", "--loader", "--experimental-loader"} {
+				switch {
+				case tok == flag:
+					if i+1 < len(fields) {
+						val = strings.Trim(fields[i+1], "\"'")
+					}
+				case strings.HasPrefix(tok, flag+"="):
+					val = strings.Trim(strings.TrimPrefix(tok, flag+"="), "\"'")
+				}
+			}
+			if val != "" {
+				hits = append(hits, loaderFlagHit{interp: interp, path: val})
+			}
+		}
+	}
+	return hits
+}
+
+// commandSegmentSepRe splits a command on shell separators.
+var commandSegmentSepRe = regexp.MustCompile(`;|\|\||&&|\|`)
+
+// splitCommandSegments breaks a command on shell separators.
+func splitCommandSegments(cmd string) []string {
+	parts := commandSegmentSepRe.Split(cmd, -1)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// reportDisguisedPath adds a finding for rawPath if it is a non-script file run
+// by an interpreter, deduplicating against seen.
+func reportDisguisedPath(t *Target, lc LaunchCommand, interp, rawPath string, seen map[string]bool, out []finding.Finding) []finding.Finding {
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(rawPath)), ".")
+	if ext == "" || scriptExts[ext] {
+		return out
+	}
+	if interpreterVersionToken(rawPath) {
+		return out
+	}
+	path := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(rawPath)), "./")
+	if seen[lc.File+"\x00"+path] {
+		return out
+	}
+	seen[lc.File+"\x00"+path] = true
+	msg := lc.Label + " starts " + interp + " on " + path + ", a file whose extension (." + strings.ToLower(ext) + ") is not a script: a payload disguised as " + disguiseKind(ext)
+	for _, s := range t.LaunchedScripts {
+		if f := filepath.ToSlash(s.File); f == path || strings.HasSuffix(f, "/"+path) {
+			if sm := scanPayload(s.Content); sm.obfuscated {
+				msg += "; the file is obfuscated (" + sm.obfShape + ")"
+			}
+		}
+	}
+	msg += ". No interpreter runs " + disguiseKind(ext) + " for a legitimate reason; do not open the repository with an agent or editor until you have read the file, and if nobody in the project added it, treat the repository as compromised"
+	return append(out, finding.Finding{RuleID: "CFG119", Severity: finding.Error, File: lc.File, Message: msg})
+}
+
 // disguisedRuns reports each auto-run command of t that starts an
 // interpreter on a non-script file. An obfuscated file that cfgaudit could
 // read is named as such.
@@ -155,21 +285,19 @@ func disguisedRuns(t *Target) []finding.Finding {
 			if slices.ContainsFunc(flags, func(f string) bool { return f == "-e" || f == "-c" || f == "-m" || f == "--eval" }) {
 				continue // inline code or a module, not the file
 			}
-			path := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(m[4])), "./")
-			if seen[lc.File+"\x00"+path] {
+			// Skip interpreter version arguments misread as the file
+			// (CFG119 #1649): `py -3.14`, `Python 3.9`, `Node 22.18`.
+			if interpreterVersionToken(m[4]) {
 				continue
 			}
-			seen[lc.File+"\x00"+path] = true
-			msg := lc.Label + " starts " + m[1] + " on " + path + ", a file whose extension (." + strings.ToLower(m[5]) + ") is not a script: a payload disguised as " + disguiseKind(m[5])
-			for _, s := range t.LaunchedScripts {
-				if f := filepath.ToSlash(s.File); f == path || strings.HasSuffix(f, "/"+path) {
-					if sm := scanPayload(s.Content); sm.obfuscated {
-						msg += "; the file is obfuscated (" + sm.obfShape + ")"
-					}
-				}
+			if strings.HasPrefix(m[4], "-") {
+				continue // a flag token, not a file path
 			}
-			msg += ". No interpreter runs " + disguiseKind(m[5]) + " for a legitimate reason; do not open the repository with an agent or editor until you have read the file, and if nobody in the project added it, treat the repository as compromised"
-			out = append(out, finding.Finding{RuleID: "CFG119", Severity: finding.Error, File: lc.File, Message: msg})
+			out = reportDisguisedPath(t, lc, m[1], m[4], seen, out)
+		}
+		// Loader flags can themselves name a payload file (CFG119 review).
+		for _, hit := range loaderFlagHits(lc.Command) {
+			out = reportDisguisedPath(t, lc, hit.interp, hit.path, seen, out)
 		}
 	}
 	return out
@@ -260,7 +388,7 @@ func scanPayload(content string) payloadMarkers {
 	m.fetchRun = payloadDownloadRe.MatchString(content) && payloadRunRe.MatchString(content)
 	network := payloadNetworkRe.MatchString(content)
 	m.credentials = network && (payloadTokenRe.MatchString(content) || payloadCredFileRe.MatchString(content))
-	m.credRead = network && payloadCredReadRe.MatchString(content)
+	m.credRead = network && opensCredentialFile(content)
 	m.envReads = len(payloadEnvReadRe.FindAllStringIndex(content, -1))
 	m.envDump = network && (payloadEnvDumpRe.MatchString(content) || m.envReads >= 50)
 	return m
