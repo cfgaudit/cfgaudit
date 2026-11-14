@@ -153,13 +153,13 @@ var aveByRule = map[string]string{
 	//                             non-default registry: nothing pins what the entry installs.
 	"CFG143": "AVE-2026-00062", // a registry or index the repository chooses: the package is substituted at its source
 
-	// TLS verification disabled in component configuration (AVE-2026-00061).
-	"CFG075": "AVE-2026-00061", // MCP env/args TLS-verify killswitch
+	// CFG075 (an MCP server's env or args turn TLS verification off) maps no
+	// class: AVE v1.3.0 rejected AVE-2026-00061, a conventional weakness
+	// (CWE-295) with no agentic mechanism of its own (#1768).
 
 	// Hardcoded credentials (AVE-2026-00047), continued.
 	"CFG097": "AVE-2026-00047", // Gemini remote-agent auth literal. Only that half maps: the rule's
-	//                             cleartext agent_card_url has no AVE class (00061 is TLS-verify
-	//                             disabled, which is a different failure from no TLS at all).
+	//                             cleartext agent_card_url has no AVE class.
 
 	// Endpoint redirect via a static configuration value (AVE-2026-00073). The
 	// record names OTEL_EXPORTER_OTLP_ENDPOINT among its manifestations and is

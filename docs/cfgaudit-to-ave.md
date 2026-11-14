@@ -31,6 +31,8 @@ Rechecked 2026-09-17 for the v1.14.0 release: the AVE record set is unchanged at
 
 Rechecked 2026-09-25 against **AVE-2026-00081 through AVE-2026-00083**, the three records added since. 00081 (a task-scoped capability outliving its episode) and 00083 (a guardrail that executes but never evaluates its verdict) are both `runtime_observed`. **00082 is static and lands on a shape this crosswalk reports as a gap**: a local skill name collision resolved by load order, which is CFG102's subject. It is still not taken, for a narrower reason than before — see Direction 3. The rule added since v1.14.0, CFG109, is reported as a gap: no record covers a declared configuration that does not load.
 
+Rechecked 2026-11-14 against **AVE v1.3.0** (tag `647e1ce`), the first release that rejects records: AVE-2026-00052, 00053, 00060 and 00061 are `rejected` (aveproject/ave#455), the other 85 stay `active`. Only 00061 was mapped. CFG075 carried it and now carries no AVE id, and the class moves to Direction 3 with a pointer to CWE-295 ([#1768](https://github.com/cfgaudit/cfgaudit/issues/1768)). 00052 and 00053 were already listed below as needing server-side source. 00060 was never mapped. The bucket counts above predate the release and are not recounted here.
+
 Rechecked 2026-11-10 for the v1.21.0 release (#1616): the record set is unchanged at **AVE-2026-00089**. Of the rules added since v1.20.0:
 
 - **Mapped to AVE-2026-00063:** CFG125, a command line that turns off a child agent's approval controls.
@@ -114,7 +116,6 @@ Added in the 2026-08-04 refresh, against the records AVE shipped from [aveprojec
 | CFG003 `enableAllProjectMcpServers` · CFG004 `defaultMode` · CFG048 VS Code `chat.permissions.default` · CFG053 blanket MCP-trust keys · CFG063 Codex `approval_policy` / `approvals_reviewer` · CFG079 `autoMode` classifier · CFG087 hook answers a permission gate · CFG091 qwen `approvalMode: yolo` · CFG093 `.cursor/permissions.json` allowlist · CFG096 Gemini MCP `trust` · CFG104 Devin `permissions.allow` · CFG105 OpenCode `permission` block · CFG125 a command line that turns off a child agent's approval controls | AVE-2026-00063 approval gate bypassed via declarative configuration |
 | CFG047 `.vscode/tasks.json` `folderOpen` + Zed `create_worktree` · CFG086 zero-click hook event · CFG067 committed project hooks · CFG114 committed OpenCode plugin/tool code · CFG134 pi project packages and extensions · CFG136 Claude Code plugin hooks module | AVE-2026-00064 zero-click code execution via project-load auto-run configuration (CFG114: measured on opencode 1.18.18, the loader runs the files at startup with no prompt, the condition the CFG100 row below names) |
 | CFG010 unpinned `@latest`/`:latest` · CFG074 `skills-lock.json` with no integrity pin · CFG055 / CFG089 unpinned marketplace source · CFG098 `marketplace.json` archive with no `sha256` · CFG143 a registry or index the repository chooses | AVE-2026-00062 unpinned dependency, supply-chain substitution |
-| CFG075 MCP `env`/`args` TLS-verify killswitch | AVE-2026-00061 TLS certificate verification disabled in component configuration |
 | CFG097 Gemini remote-agent `auth` literal | AVE-2026-00047 hardcoded credentials in component |
 | CFG024 / CFG026 / CFG030–CFG033 / CFG036 / CFG057 / CFG080 / CFG113 / CFG120 on inline Gemini Agent Card descriptions and skills | AVE-2026-00065 A2A Agent Card poisoning via embedded adversarial instructions |
 
@@ -175,7 +176,7 @@ Status as of 2026-08-14: **seven of these eight have shipped** as AVE records, t
 | Proposed class | cfgaudit rules | Status |
 |---|---|---|
 | Zero-click IDE / workspace auto-run | CFG047 (`.vscode/tasks.json` folderOpen), CFG067 (committed `.claude` hooks), CFG086 (Cursor/Copilot zero-click hooks) | **shipped** → AVE-2026-00064 |
-| TLS verification disabled in config | CFG075 | **shipped** → AVE-2026-00061 |
+| TLS verification disabled in config | CFG075 | **shipped, then rejected.** AVE-2026-00061 was rejected in AVE v1.3.0 as a conventional weakness with no agentic mechanism: turning TLS verification off works the same whether a model or a program makes the connection. CFG075 carries no AVE id since then ([#1768](https://github.com/cfgaudit/cfgaudit/issues/1768)); the class is [CWE-295](https://cwe.mitre.org/data/definitions/295.html), improper certificate validation |
 | Supply-chain pinning / auto-install | CFG010, CFG055, CFG089, CFG062, CFG074, CFG143 | **shipped** → AVE-2026-00062 |
 | Committed hook auto-approves tool calls | CFG087, CFG088 | **shipped** → AVE-2026-00063 (as the wider "approval gate bypassed by config") |
 | Telemetry / context redirect via config | CFG046 (OTEL), CFG005 (base URL), CFG071 (cleartext base URL), CFG099 (qwen `proxy`) | **shipped** → AVE-2026-00073, which names `OTEL_EXPORTER_OTLP_ENDPOINT` itself and states the distinction this row asked for: nothing is injected into the model's context, so detection is a value comparison rather than content analysis. CFG071 is in it too: the record's third named manifestation is "a model or provider base URL reachable only over cleartext `http://` to a remote host, so the API key travels in plaintext" |
@@ -212,11 +213,11 @@ Six records carry `detection_stage: static_detection` but are not auditable from
 | AVE-2026-00024 content-type mismatch (Magika) | file magic-byte analysis of binaries |
 | AVE-2026-00040 insecure output handling | runtime output escaping (OWASP LLM10) |
 | AVE-2026-00051 OAuth discovery rebinding | runtime auth-flow redirect |
-| AVE-2026-00052 command injection via tool-call parameter | **server-side source** (SAST of the MCP implementation) |
-| AVE-2026-00053 path traversal via path parameter | **server-side source** (SAST) |
+| AVE-2026-00052 command injection via tool-call parameter | **server-side source** (SAST of the MCP implementation); rejected in AVE v1.3.0 |
+| AVE-2026-00053 path traversal via path parameter | **server-side source** (SAST); rejected in AVE v1.3.0 |
 | AVE-2026-00077 cross-origin tool and resource declaration in one MCP server manifest | the **live tool list**: a committed config says how to start or reach a server, and the tools and resources arrive through `tools/list` at run time |
 
-AVE-2026-00052 / AVE-2026-00053 are server *implementation* flaws, a distinct layer from the rest of AVE. A finer `detection_layer` value (e.g. `server_source`) would let consumers tell config-auditable from SAST-required.
+AVE-2026-00052 / AVE-2026-00053 are server *implementation* flaws, a distinct layer from the rest of AVE. AVE v1.3.0 rejected both, with 00060 and 00061, as conventional weaknesses whose mechanism does not change when the model is replaced by a deterministic program. A finer `detection_layer` value (e.g. `server_source`) would let consumers tell config-auditable from SAST-required.
 
 ---
 
