@@ -2298,6 +2298,14 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			paths = append(paths, scopedPath{m, finding.ScopeProject})
 		}
 	}
+	// Antigravity CLI's discovery manifests add skill, rule and agent files
+	// from other folders of the repository (#1639).
+	for _, m := range antigravityManifestFiles(dir) {
+		if !listed[m] {
+			listed[m] = true
+			paths = append(paths, scopedPath{m, finding.ScopeProject})
+		}
+	}
 	// AGENTS.md and CLAUDE.md files and rule folders in subfolders (#975). A
 	// path read above already, such as .claude/AGENTS.md, is read once, under
 	// its own role.

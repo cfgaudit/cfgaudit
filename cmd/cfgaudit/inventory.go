@@ -63,6 +63,7 @@ var pathAgents = []struct{ prefix, agent string }{
 	{".goose/", "goose"}, {".junie/", "junie"}, {".goosehints", "goose"}, {".agents/recipes/", "goose"}, {".agents/plugins/", "goose"},
 	{".agents/mcp_config.json", "antigravity"}, {".agents/hooks.json", "antigravity"}, {".agents/AGENTS.md", "antigravity"},
 	{".agents/GEMINI.md", "antigravity"}, {".agents/rules/", "antigravity"}, {".agent/", "antigravity"},
+	{".agents/skills.json", "antigravity"}, {".agents/plugins.json", "antigravity"}, {".agents/rules.json", "antigravity"}, {".agents/agents.json", "antigravity"},
 	// Only read with --user, from the home directory.
 	{".codeium/windsurf/", "devin-desktop"}, {".config/Claude/", "claude-desktop"},
 	{"Library/Application Support/Claude/", "claude-desktop"}, {"AppData/Roaming/Claude/", "claude-desktop"},
