@@ -225,10 +225,12 @@ func loaderFlagHits(cmd string) []loaderFlagHit {
 	return hits
 }
 
+// commandSegmentSepRe splits a command on shell separators.
+var commandSegmentSepRe = regexp.MustCompile(`;|\|\||&&|\|`)
+
 // splitCommandSegments breaks a command on shell separators.
 func splitCommandSegments(cmd string) []string {
-	re := regexp.MustCompile(`;|\|\||&&|\|`)
-	parts := re.Split(cmd, -1)
+	parts := commandSegmentSepRe.Split(cmd, -1)
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		if strings.TrimSpace(p) != "" {
