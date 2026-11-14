@@ -71,6 +71,21 @@ func (r *cfg142) Check(t *Target) []finding.Finding {
 // sites (hooks, helpers, status lines, `!` blocks), every VS Code task and
 // every MCP server launch. A Codex mcp_tool input is a value, not a command.
 func containerSites(t *Target) []containerSite {
+	sites := commandWordSites(t)
+	for _, ref := range t.mcpServerRefs() {
+		if ref.Server.Command == "" {
+			continue
+		}
+		// The args are already words; a mount spec with a space stays one.
+		words := append(shellWords(ref.Server.Command), ref.Server.Args...)
+		sites = append(sites, containerSite{label: "mcpServers." + ref.Name + " command", file: ref.File, words: words})
+	}
+	return sites
+}
+
+// commandWordSites returns the command sites and VS Code tasks of t, each
+// command of a line as words.
+func commandWordSites(t *Target) []containerSite {
 	var sites []containerSite
 	for _, s := range commandSites(t) {
 		if s.HookInput {
@@ -92,14 +107,6 @@ func containerSites(t *Target) []containerSite {
 				}
 			}
 		}
-	}
-	for _, ref := range t.mcpServerRefs() {
-		if ref.Server.Command == "" {
-			continue
-		}
-		// The args are already words; a mount spec with a space stays one.
-		words := append(shellWords(ref.Server.Command), ref.Server.Args...)
-		sites = append(sites, containerSite{label: "mcpServers." + ref.Name + " command", file: ref.File, words: words})
 	}
 	return sites
 }
