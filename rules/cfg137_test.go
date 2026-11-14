@@ -16,8 +16,10 @@ func TestCFG137_HiddenBehindSpaces(t *testing.T) {
 	if len(f) != 1 || f[0].Severity != finding.Warn {
 		t.Fatalf("want 1 warn, got %+v", f)
 	}
-	if !strings.Contains(f[0].Message, "hides text behind 150 blank characters") {
-		t.Errorf("message: %s", f[0].Message)
+	for _, want := range []string{`hides text behind 150 blank characters: "secret instruction"`, "show only the text before the gap", "Move the text into its own paragraph or remove it"} {
+		if !strings.Contains(f[0].Message, want) {
+			t.Errorf("message lacks %q: %s", want, f[0].Message)
+		}
 	}
 	// 149 spaces is not enough.
 	if f := CFG137.Check(claudeMDTarget("visible text" + strings.Repeat(" ", 149) + "secret")); len(f) != 0 {
