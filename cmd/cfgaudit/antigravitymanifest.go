@@ -114,28 +114,38 @@ func antigravityEntryPath(dir, base, p string) (abs, reason string, ok bool) {
 		if linkLeaves(dir, joined) {
 			return "", "a symbolic link that leads out of the repository", false
 		}
-		if _, err := scanroot.Stat(joined); err != nil {
-			continue
-		}
 		return joined, "", true
 	}
 	return "", "", false
 }
 
-// linkLeaves reports whether a path under dir is a symbolic link, or lies
-// below one, whose target is outside dir. Antigravity CLI 1.5.2 skips such an
-// entry, and scanroot does not read through it.
+// linkLeaves reports whether a path under dir runs through a symbolic link
+// whose text leads outside dir. The link text is read, not the machine's file
+// system behind it, so a link to a folder that only exists elsewhere counts
+// as well. Antigravity CLI 1.5.2 skips such an entry, and scanroot does not
+// read through it.
 func linkLeaves(dir, path string) bool {
-	real, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return scanroot.IsDanglingLink(path)
-	}
-	root, err := filepath.EvalSymlinks(dir)
+	rel, err := filepath.Rel(dir, path)
 	if err != nil {
 		return false
 	}
-	rel, err := filepath.Rel(root, real)
-	return err != nil || rel == ".." || strings.HasPrefix(filepath.ToSlash(rel), "../")
+	cur := dir
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		target, err := os.Readlink(cur) // #nosec G703 -- cur stays under dir until a link leaves it, which ends the walk
+		if err != nil {
+			continue // not a link
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(cur), target)
+		}
+		r, err := filepath.Rel(dir, target)
+		if err != nil || r == ".." || strings.HasPrefix(filepath.ToSlash(r), "../") {
+			return true
+		}
+		cur = target
+	}
+	return false
 }
 
 // antigravityEntryItems returns what one entry adds: the folder or file of a
