@@ -13,6 +13,8 @@ import (
 
 type cfg137 struct{}
 
+// CFG137 reports instruction text hidden behind 150 or more blank
+// characters (#1718).
 var CFG137 = &cfg137{}
 
 func init() { All = append(All, CFG137) }
@@ -39,6 +41,7 @@ func (r *cfg137) Check(t *Target) []finding.Finding {
 	for _, src := range t.instructionSources(r.ID()) {
 		inFence := false
 		for lineNo, line := range strings.Split(src.Content, "\n") {
+			line = strings.TrimSuffix(line, "\r")
 			if isFenceDelimiter(line) {
 				inFence = !inFence
 				continue

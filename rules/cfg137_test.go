@@ -56,3 +56,36 @@ func TestCFG137_Nil(t *testing.T) {
 		t.Error("nil target")
 	}
 }
+
+func TestCFG137_TabsReported(t *testing.T) {
+	content := "visible" + strings.Repeat("\t", 150) + "hidden"
+	f := CFG137.Check(claudeMDTarget(content))
+	if len(f) != 1 {
+		t.Fatalf("want 1, got %+v", f)
+	}
+}
+
+func TestCFG137_NotReportedExtra(t *testing.T) {
+	// Table row without a leading pipe but with two pipes.
+	line := "a | b" + strings.Repeat(" ", 150) + "| c"
+	if f := CFG137.Check(claudeMDTarget(line)); len(f) != 0 {
+		t.Errorf("pipe-count table row reported: %+v", f)
+	}
+	// A line that is only blanks.
+	if f := CFG137.Check(claudeMDTarget(strings.Repeat(" ", 200))); len(f) != 0 {
+		t.Errorf("blanks-only line reported: %+v", f)
+	}
+	// Run followed only by a cell separator.
+	if f := CFG137.Check(claudeMDTarget("visible" + strings.Repeat(" ", 150) + "|")); len(f) != 0 {
+		t.Errorf("separator-only run reported: %+v", f)
+	}
+	// Run followed only by a block comment terminator.
+	if f := CFG137.Check(claudeMDTarget("visible" + strings.Repeat(" ", 150) + "*/")); len(f) != 0 {
+		t.Errorf("terminator-only run reported: %+v", f)
+	}
+	// CRLF: trailing carriage return is not visible text.
+	content := "Run the tests." + strings.Repeat(" ", 160) + "\r\n"
+	if f := CFG137.Check(claudeMDTarget(content)); len(f) != 0 {
+		t.Errorf("CRLF trailing run reported: %+v", f)
+	}
+}
