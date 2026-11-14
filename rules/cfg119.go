@@ -63,7 +63,10 @@ var (
 	// scripts need it because payloadCredFileRe alone is mostly a name in a
 	// list: on 13,559 corpus scripts, 2 of the 27 findings on such a name came
 	// from a file that opens it (#1409).
-	payloadCredReadRe = regexp.MustCompile(`(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()[^\n]*(?:` + payloadCredFiles + `)|(?:` + payloadCredFiles + `)[^\n]*(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()`)
+	// The call and the name have to be close, within 200 characters, and a
+	// name whose dot is escaped (`\.npmrc`) is a regular expression, as in a
+	// redaction pattern list, not a file the line opens (#1680).
+	payloadCredReadRe = regexp.MustCompile(`(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()[^\n]{0,200}[^\\\n](?:` + payloadCredFiles + `)|(?:^|[^\\])(?:` + payloadCredFiles + `)[^\n]{0,200}(?:\bopen\(|\breadFile(?:Sync)?\(|\.read_(?:text|bytes)\()`)
 	// payloadEnvDumpRe matches code that reads the whole environment at once.
 	payloadEnvDumpRe = regexp.MustCompile(`JSON\.stringify\(\s*process\.env\s*\)|Object\.(?:keys|entries|values)\(\s*process\.env\s*\)|dict\(\s*os\.environ\s*\)|os\.environ\.items\(\)`)
 	payloadEnvReadRe = regexp.MustCompile(`\bprocess\.env\b`)
@@ -85,6 +88,23 @@ var (
 	// gist. The address can then change without a commit.
 	payloadDeadDropRe = regexp.MustCompile(`https?://(?:t\.me/s/|telegra\.ph/|pastebin\.com/raw/|paste\.ee/r/|rentry\.(?:co|org)/[\w-]+/raw|gist\.githubusercontent\.com/[^\s"'` + "`" + `]+/raw)`)
 )
+
+// payloadMaxCredReadLine is the longest line read for a credential file
+// opened on it. A minified bundle is one line for the whole library, so a
+// read call and a credential name anywhere in it meet on "the same line"
+// (#1680: four of four sampled warnings were bundles and a pattern list).
+const payloadMaxCredReadLine = 2048
+
+// opensCredentialFile reports a line, of at most payloadMaxCredReadLine
+// characters, that opens a credential file.
+func opensCredentialFile(content string) bool {
+	for line := range strings.SplitSeq(content, "\n") {
+		if len(line) <= payloadMaxCredReadLine && payloadCredReadRe.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
 
 // payloadMinEncodedCalls is how many calls of one function on a hex literal
 // make a string decoder (#1650).
@@ -260,7 +280,7 @@ func scanPayload(content string) payloadMarkers {
 	m.fetchRun = payloadDownloadRe.MatchString(content) && payloadRunRe.MatchString(content)
 	network := payloadNetworkRe.MatchString(content)
 	m.credentials = network && (payloadTokenRe.MatchString(content) || payloadCredFileRe.MatchString(content))
-	m.credRead = network && payloadCredReadRe.MatchString(content)
+	m.credRead = network && opensCredentialFile(content)
 	m.envReads = len(payloadEnvReadRe.FindAllStringIndex(content, -1))
 	m.envDump = network && (payloadEnvDumpRe.MatchString(content) || m.envReads >= 50)
 	return m
