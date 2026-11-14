@@ -92,3 +92,27 @@ func (r *cfg004) report(t *Target, sev finding.Severity, msg string) finding.Fin
 func modeIgnoredHere(t *Target, from version.Version) (bool, string) {
 	return repoScopeIgnoredFrom(t, from)
 }
+
+// effectiveDefaultMode is the file's permissions.defaultMode as the detected
+// Claude Code applies it: empty when that release ignores the mode in this
+// scope (bypassPermissions and auto in a project file, see above). Rules that
+// escalate on a permissive mode read this, so a mode CFG004 already calls
+// inert does not raise them to error either (#1660). An undetected version
+// keeps the mode, as modeIgnoredHere does.
+func effectiveDefaultMode(t *Target) string {
+	if t == nil || t.Settings == nil || t.Settings.Permissions == nil {
+		return ""
+	}
+	mode := t.Settings.Permissions.DefaultMode
+	switch mode {
+	case "bypassPermissions":
+		if inert, _ := modeIgnoredHere(t, bypassIgnoredFromScope); inert {
+			return ""
+		}
+	case "auto":
+		if inert, _ := modeIgnoredHere(t, autoIgnoredFromScope); inert {
+			return ""
+		}
+	}
+	return mode
+}
