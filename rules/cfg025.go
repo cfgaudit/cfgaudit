@@ -96,6 +96,8 @@ func checkNeutralPolicy(t *Target) []finding.Finding {
 	switch t.PolicyAgent {
 	case "codex":
 		return checkCodexPolicy(t, sp)
+	case "kimi-code":
+		return checkKimiPolicy(t, sp)
 	case "roo-code":
 		return checkRooPolicy(t, sp)
 	case "antigravity":
