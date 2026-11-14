@@ -27,13 +27,7 @@ Release signing uses no long-lived key: archives and the image are signed keyles
 
 ## Granting access
 
-Write access, merge rights, release rights or access to a secret are granted only to someone who:
-
-- has contributed to cfgaudit for at least three months, with merged pull requests and reviews that show judgement on security-relevant changes;
-- is known by a stable identity: a GitHub account with history beyond this project, and a confirmed real name or long-standing public handle;
-- has two-factor authentication on, which the organization enforces.
-
-Access is granted in steps, starting with triage, then review and merge, and only then release or secrets, each through a pull request to this file that the existing maintainers approve. Access that is no longer used is removed, and all access is removed when someone steps down.
+Write or admin access is given only to a person who has contributed to cfgaudit over a period of time and whom a maintainer knows to work carefully, and only the access the role needs. Every new member must have two-factor authentication on GitHub and GitLab; GitHub enforces it for the organization, on GitLab it is checked before access is given. Access that is no longer used is removed, and all access is removed when someone steps down. Changes to the list of maintainers are made in this file, in a pull request.
 
 ## Secrets and credentials
 
