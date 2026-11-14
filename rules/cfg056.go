@@ -116,7 +116,16 @@ func (r *cfg056) Check(t *Target) []finding.Finding {
 				// pattern matched it.
 				rest := tf.text[strings.Index(strings.ToLower(tf.text), strings.ToLower(loc))+len(loc):]
 				isAlways := strings.HasPrefix(strings.ToLower(loc), "always ")
-				narrowed := (narrowedTriggerTailRe.MatchString(rest) && !quantifierTailRe.MatchString(rest)) ||
+				// narrowedTriggerTailRe's generic \\w+ing arm also catches words
+				// that do not narrow the trigger, such as "including" and the
+				// "-thing" nouns. Those must not read as a narrowing participle.
+				narrowedTail := strings.ToLower(strings.TrimSpace(narrowedTriggerTailRe.FindString(rest)))
+				nonNarrowingWord := narrowedTail == "including" ||
+					narrowedTail == "anything" ||
+					narrowedTail == "everything" ||
+					narrowedTail == "nothing" ||
+					narrowedTail == "something"
+				narrowed := (narrowedTriggerTailRe.MatchString(rest) && !nonNarrowingWord && !quantifierTailRe.MatchString(rest)) ||
 					(isAlways && scopedTriggerTailRe.MatchString(rest))
 				if narrowed {
 					continue

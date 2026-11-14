@@ -194,3 +194,26 @@ func TestCFG056_NarrowedTail1658(t *testing.T) {
 		t.Errorf("narrowed triggers entry reported: %+v", f)
 	}
 }
+
+// Issue #1716: "including" and "-thing" nouns must not read as a narrowing
+// participle, so the greedy trigger stays reported.
+func TestCFG056_IncludingAndThingNouns(t *testing.T) {
+	for _, description := range []string{
+		"Use for any task including trivial ones.",
+		"Use for any request or anything else.",
+		"Always use this skill for everything.",
+	} {
+		if f := CFG056.Check(fmTarget(".claude/skills/x/SKILL.md", description, "")); len(f) == 0 {
+			t.Errorf("universal trigger not reported: %q", description)
+		}
+	}
+	// The #1658 narrowing shapes must still be scoped.
+	for _, description := range []string{
+		"Use for any task touching the deployment pipeline.",
+		"Use for any task needing a database migration.",
+	} {
+		if f := CFG056.Check(fmTarget(".claude/skills/x/SKILL.md", description, "")); len(f) != 0 {
+			t.Errorf("narrowed trigger reported %q: %+v", description, f)
+		}
+	}
+}
