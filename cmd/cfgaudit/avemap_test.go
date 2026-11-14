@@ -101,3 +101,17 @@ func TestAVEMap_V121(t *testing.T) {
 		}
 	}
 }
+
+// AVE v1.3.0 rejected AVE-2026-00052, 00053, 00060 and 00061. No rule emits
+// them; CFG075, which carried 00061, maps no class (#1768).
+func TestAVEMap_RejectedV130(t *testing.T) {
+	rejected := map[string]bool{"AVE-2026-00052": true, "AVE-2026-00053": true, "AVE-2026-00060": true, "AVE-2026-00061": true}
+	for id, ave := range aveByRule {
+		if rejected[ave] {
+			t.Errorf("%s maps to %s, which AVE v1.3.0 rejected", id, ave)
+		}
+	}
+	if ave, ok := aveByRule["CFG075"]; ok {
+		t.Errorf("CFG075 maps to %s", ave)
+	}
+}
