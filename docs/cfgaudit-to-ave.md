@@ -69,6 +69,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG026 override / persona / authority · CFG092 Kimi agent file `override: true` (replaces the whole system prompt) | AVE-2026-00007 goal hijack · AVE-2026-00009 jailbreak · AVE-2026-00014 false authority |
 | CFG029 bypass permission prompts · CFG091 qwen `approvalMode: yolo` (auto-approves every tool call) | AVE-2026-00012 false permission grant · AVE-2026-00021 autonomous action without confirmation |
 | CFG030 conceal behavior | AVE-2026-00010 covert instruction concealment |
+| CFG137 text hidden behind a long run of blanks | AVE-2026-00010 covert instruction concealment |
 | CFG032 pseudo-system / role injection | AVE-2026-00025 conversation-history injection · AVE-2026-00030 false role claim |
 | CFG035 configure/trust MCP from instructions | AVE-2026-00011 dynamic tool call *(partial)* · AVE-2026-00034 dynamic skill import *(partial)* |
 | CFG113 fetch remote instructions and follow them | AVE-2026-00001 metamorphic payload via external config fetch (#621; this record was missing from the coverage buckets, which summed to 58 of the 59) |
