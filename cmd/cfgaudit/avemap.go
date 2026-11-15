@@ -131,6 +131,8 @@ var aveByRule = map[string]string{
 	//                             with no instruction text. Same shape as CFG093.
 	"CFG105": "AVE-2026-00063", // committed OpenCode permission block: both reported cases
 	//                             (external_directory, reading .env) are prompts the file removes.
+	"CFG139": "AVE-2026-00063", // committed Kimi Code local.toml allow rules remove an approval prompt
+	//                             (not the additional_dir info finding) (#1793).
 	"CFG125": "AVE-2026-00063", // a command line that turns off a child agent's approval controls
 	//                             (--dangerously-skip-permissions, --yolo): no instruction text.
 
