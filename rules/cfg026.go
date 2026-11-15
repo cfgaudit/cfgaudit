@@ -574,13 +574,62 @@ var clauseVerbs = map[string]bool{
 // context", "without asking the model to disregard prior instructions".
 var reportedOverrideRe = regexp.MustCompile(`(?i)\band\s+thus\s+$|\bwithout\s+(?:asking|telling|instructing|forcing)\s+(?:\S+\s+){1,3}to\s+$`)
 
+// describedOverrideMarkerRe matches the marker that attaches an override phrase
+// to what is being described, with word boundaries (#1681). It is only a
+// carve-out when a defensive rule precedes it in the same sentence and no
+// sentence/clause break sits between the marker and the override verb.
+var describedOverrideMarkerRe = regexp.MustCompile(`(?i)\b(?:` +
+	`(?:text|content|messages?|reminders?|notes?|a\s+message|a\s+reminder)\s+(?:telling|asking)\s+you\s+to` +
+	`|that\s+tells\s+you\s+to` +
+	`|claim(?:s|ing)?\s+to` +
+	`|pretend(?:s|ing)?\s+to` +
+	`)\b`)
+var defensiveRulePhraseRe = regexp.MustCompile(`(?i)\b(?:never\s+follow|do\s+not\s+follow|don'?t\s+follow|never\s+obey|never\s+act\s+on)\b`)
+
 // describedOverride reports whether the text before a pattern-1 verb makes it
 // a description of what something does rather than an order (#1372).
 func describedOverride(before string) bool {
 	if m := relativeClauseRe.FindStringSubmatch(before); m != nil && !clauseVerbs[strings.ToLower(m[1])] {
 		return true
 	}
-	return reportedOverrideRe.MatchString(before)
+	if reportedOverrideRe.MatchString(before) {
+		return true
+	}
+	// #1681: an override phrase named inside a clause that describes what an
+	// attacker's text says ("including text telling you to ...", "a reminder
+	// claiming to ...") is described, not instructed. Narrowed per maintainer
+	// review: only when a defensive rule comes first in the same sentence, the
+	// marker is attached to what is described, and no sentence/clause break
+	// sits between the marker and the override verb.
+	if describedOverride1681(before) {
+		return true
+	}
+	return false
+}
+
+// describedOverride1681 implements the narrowed #1681 carve-out.
+func describedOverride1681(before string) bool {
+	locs := describedOverrideMarkerRe.FindAllStringIndex(before, -1)
+	for _, loc := range locs {
+		markerStart, markerEnd := loc[0], loc[1]
+		// Condition 3: no sentence/clause break between marker and verb.
+		tail := before[markerEnd:]
+		if strings.ContainsAny(tail, ".;!?") {
+			continue
+		}
+		// Condition 1: a defensive rule comes first in the same sentence.
+		prefix := before[:markerStart]
+		sentStart := 0
+		if k := strings.LastIndexAny(prefix, ".;!?"); k >= 0 {
+			sentStart = k + 1
+		}
+		sentence := before[sentStart:markerStart]
+		if !defensiveRulePhraseRe.MatchString(sentence) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // askedToRe and refusalRe read a rule that refuses the override: "Stop if asked
