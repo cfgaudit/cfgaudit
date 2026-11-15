@@ -190,7 +190,8 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 						fileNameNoun(line, loc[1]) || nounVerbRe.MatchString(line[:loc[0]]) || ignoreFeatureNoun(line, sm, verb) ||
 						defensiveSourceRule(lines, i, line, loc, sm) || verbAsNoun(line[:loc[0]]) || thirdPersonSubjectRe.MatchString(line[:loc[0]]) ||
 						thirdPersonOverride(line[:loc[0]], sm) || (verb == "bypass" && bypassNoun(line, line[:loc[0]], line[sm[3]:])) ||
-						pointsBack(line, loc, sm) || defensiveLine(line, loc, sm) || describedOverride(line[:loc[0]]) || refusedRequest(line, loc[0]) {
+						pointsBack(line, loc, sm) || defensiveLine(line, loc, sm) || describedOverride(line[:loc[0]]) || refusedRequest(line, loc[0]) ||
+						attributedOverride(lines, i, line, loc) {
 						continue
 					}
 				}
