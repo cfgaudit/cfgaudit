@@ -241,6 +241,7 @@ func concealNegated(line string, loc []int) bool {
 	if m := strings.ToLower(line[loc[0]:loc[1]]); strings.Contains(m, "tell") {
 		after := line[loc[1]:]
 		if tellClaimRe.MatchString(after) || tellQuotedClaimRe.MatchString(after) || tellBareClaimRe.MatchString(after) ||
+			tellNegatedClaimRe.MatchString(after) || tellRedirectRe.MatchString(after) ||
 			tellConditionalClaimRe.MatchString(clauseRest(after)) ||
 			tellUntilRe.MatchString(clauseRest(after)) || concealModalRe.MatchString(line[:loc[0]]) {
 			return true
@@ -394,7 +395,25 @@ var concealDescriptiveRe = regexp.MustCompile(`(?i)\b(?:does\s+not|doesn'?t|did\
 var tellClaimRe = regexp.MustCompile(`(?i)^\s+(?:that\s+)?` +
 	`(?:it|this|that|there|they|(?:a|an|the|this|that|these|those|its|their|your|our|any|every)\s+[\w.\-/]+(?:\s+[\w.\-/]+){0,3})` +
 	`(?:'s|'re|\s+(?:is|are|was|were|has\s+been|have\s+been|will\s+be|looks|seems))?\s+(?:not\s+|now\s+|fully\s+)?` +
-	`(?:(?:a|an)\s+)?(?:done|complete|completed|finished|fixed|working|works|worked|healthy|ready|impossible|unavailable|available|possible|broken|successful|succeeded|passed|failed|live|deployed|resolved|supported|unsupported|safe|secure|paid|free|premium|deprecated)\b`)
+	`(?:(?:a|an)\s+)?(?:done|complete|completed|finished|fixed|working|works|worked|healthy|ready|impossible|unavailable|available|possible|broken|successful|succeeded|passed|failed|live|deployed|resolved|supported|unsupported|safe|secure|paid|free|premium|deprecated|accessible|compatible|compliant|correct|valid|stable)\b`)
+
+// tellSubject is the subject of a claim after "tell the user": a pronoun, or
+// a noun phrase with an article or determiner.
+const tellSubject = `(?:it|this|that|there|they|(?:a|an|the|this|that|these|those|its|their|your|our|any|every)\s+[\w.\-/]+(?:\s+[\w.\-/]+){0,3})`
+
+// tellNegatedClaimRe is a claim that something cannot or does not do
+// something: "Never tell the user a test doesn't run locally" (#1653).
+// Forbidding it is an honesty rule.
+var tellNegatedClaimRe = regexp.MustCompile(`(?i)^\s+(?:that\s+)?` + tellSubject +
+	`\s+(?:doesn'?t|does\s+not|don'?t|do\s+not|cannot|can'?t|won'?t|will\s+not)\s+[a-z]`)
+
+// tellRedirectRe is a completed-work claim followed by what to say instead,
+// naming the actual facts: "Never tell the user a Wiki page has been updated
+// - say which files changed" (#1653). Only "which" or "what" counts, since
+// "- say the upload failed" could be the lie itself; "has been <participle>"
+// alone stays reported, as "the file was modified" does (#853, #1179).
+var tellRedirectRe = regexp.MustCompile(`(?i)^\s+(?:that\s+)?` + tellSubject +
+	`\s+(?:has|have)\s+been\s+\w+ed\b[^.;:]{0,40}?\s[-:;\x{2013}]\s*(?:instead,?\s+)?(?:say|tell\s+them|list|explain|report)\s+(?:which|what)\b`)
 
 // tellQuotedClaimRe matches a subject followed by the quoted words the agent
 // must not use: "Don't tell the user a build \"submitted to Play\"", "Never tell
