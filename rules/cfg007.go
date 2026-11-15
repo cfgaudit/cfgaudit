@@ -96,10 +96,18 @@ var pathValueRe = regexp.MustCompile(`^(?:/|~/|\./|\.\./|[A-Za-z]:[\\/]|%[A-Za-z
 // convention, and the file is not in the config (#852). Nor is a relative
 // path with a directory and a file extension (".codex/credentials/dev.json"),
 // or a boolean switch ("BRIDGE_PERSISTENT_SECRET": "true") (#891), or a
-// key its vendor issues for public clients ("POSTHOG_API_KEY": "phc_…", #1668).
+// key its vendor issues for public clients ("POSTHOG_API_KEY": "phc_…", #1668),
+// or a vendor prefix alone ("sk-", #1664).
 func literalUnderSecretName(k, v string) bool {
 	v = strings.TrimSpace(v)
-	return secretKeyName(k) && !pathValueRe.MatchString(v) && !relativeFileValueRe.MatchString(v) && !booleanValueRe.MatchString(v) && !literalPlaceholder(v) && !publishableKey(v)
+	return secretKeyName(k) && !pathValueRe.MatchString(v) && !relativeFileValueRe.MatchString(v) && !booleanValueRe.MatchString(v) && !literalPlaceholder(v) && !publishableKey(v) && !barePrefix(v)
+}
+
+// barePrefix reports whether v is only the fixed prefix of a vendor token,
+// with no key after it ("ANTHROPIC_AUTH_TOKEN": "sk-", #1664). It grants
+// nothing, so it is not a committed secret.
+func barePrefix(v string) bool {
+	return v != "" && tokenPrefixRe.FindString(v) == v
 }
 
 // relativeFileValueRe matches a relative file path with at least one directory
@@ -170,6 +178,19 @@ var permissionTokenSplitRe = regexp.MustCompile("[\\s\"'=:(),;|&<>`]+")
 // quoted or bare.
 var permissionAssignRe = regexp.MustCompile(`\b([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|'([^']*)'|([^\s"';&|)]+))`)
 
+// permissionGlobValue reports whether the value of a NAME=value assignment in
+// a permission entry is a glob that stands for any value: `GH_TOKEN=*`, or a
+// vendor prefix and then `*` (`GH_TOKEN=ghp_*`). A permission rule matches
+// commands, so the entry commits no token (#1664). A `*` inside a value, or
+// after more than the prefix, is part of the value and still read as one.
+func permissionGlobValue(v string) bool {
+	if v == "*" {
+		return true
+	}
+	p, ok := strings.CutSuffix(v, "*")
+	return ok && barePrefix(p)
+}
+
 // permissionSecrets reports a credential in a permissions.allow, ask or deny
 // entry (#1168). Claude Code writes an approved command into the allow list
 // as it was typed, so a token exported or sent in a session ends up there,
@@ -195,7 +216,7 @@ func permissionSecrets(t *Target) []finding.Finding {
 			if what == "" {
 				for _, m := range permissionAssignRe.FindAllStringSubmatch(entry, -1) {
 					v := m[2] + m[3] + m[4]
-					if v != "" && !isSecretReference(v) && literalUnderSecretName(m[1], v) {
+					if v != "" && !isSecretReference(v) && !permissionGlobValue(v) && literalUnderSecretName(m[1], v) {
 						what = "a literal value for " + m[1]
 						break
 					}

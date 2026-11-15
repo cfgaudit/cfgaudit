@@ -394,3 +394,37 @@ func TestCFG007_SQLServerContainerPassword1633(t *testing.T) {
 		t.Errorf("got %+v", f)
 	}
 }
+
+// A permission glob in place of the value (GH_TOKEN=*, GH_TOKEN=ghp_*) and a
+// value that is only a vendor prefix ("sk-") are placeholders, not committed
+// secrets. A full token, a value with an inner `*` and a short weak password
+// under a secret name are still reported (#1664).
+func TestCFG007_GlobAndBarePrefix1664(t *testing.T) {
+	ghp := "ghp_" + strings.Repeat("Ab1Cd2Ef3G", 4)[:36]
+	for _, js := range []string{
+		`{"permissions":{"allow":["Bash(GH_TOKEN=* gh pr *)"]}}`,
+		`{"permissions":{"allow":["Bash(GH_TOKEN=* GH_HOST=* gh pr *)"]}}`,
+		`{"permissions":{"allow":["Bash(GH_TOKEN=ghp_* gh api *)"]}}`,
+		`{"permissions":{"allow":["Bash(GITHUB_TOKEN=\"*\" gh pr *)"]}}`,
+		`{"permissions":{"allow":["Bash(GH_TOKEN=*)"]}}`,
+		`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-"}}`,
+		`{"env":{"GITHUB_TOKEN":"github_pat_"}}`,
+	} {
+		if f := CFG007.Check(settingsTarget(t, js)); len(f) != 0 {
+			t.Errorf("%s: want no finding, got %+v", js, f)
+		}
+	}
+	for _, js := range []string{
+		`{"permissions":{"allow":["Bash(GH_TOKEN=` + ghp + ` gh pr *)"]}}`,
+		`{"permissions":{"allow":["Bash(DB_PASSWORD=Pa*ss-w0rd-1234 psql *)"]}}`,
+		`{"permissions":{"allow":["Bash(GH_TOKEN=k9Xq2*mZ7Ab gh pr *)"]}}`,
+		`{"permissions":{"allow":["Bash(GH_TOKEN=` + ghp[:12] + `* gh pr *)"]}}`,
+		`{"env":{"DB_PASSWORD":"Pa*ss-w0rd-1234"}}`,
+		`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-a1B2c3D4e5F6g7"}}`,
+		`{"env":{"DB_PASSWORD":"hunter7"}}`,
+	} {
+		if f := CFG007.Check(settingsTarget(t, js)); len(f) != 1 {
+			t.Errorf("%s: want 1 finding, got %+v", js, f)
+		}
+	}
+}
