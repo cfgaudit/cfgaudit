@@ -614,7 +614,7 @@ func describedOverride1681(before string) bool {
 		markerStart, markerEnd := loc[0], loc[1]
 		// Condition 3: no sentence/clause break between marker and verb.
 		tail := before[markerEnd:]
-		if strings.IndexAny(tail, ".;!?") >= 0 {
+		if strings.ContainsAny(tail, ".;!?") {
 			continue
 		}
 		// Condition 1: a defensive rule comes first in the same sentence.
