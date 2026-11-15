@@ -107,3 +107,68 @@ func TestCFG145_Scripts1685(t *testing.T) {
 		}
 	}
 }
+
+// #1780: the other agents, per event, from their source or docs. A shell
+// script a hook starts carries the agent and event in its label.
+func TestCFG145_Agents1780(t *testing.T) {
+	run := func(launcher, line string) []finding.Finding {
+		label := "script x.sh, started by " + launcher + ","
+		return CFG145.Check(&Target{LaunchedScripts: []LaunchedScript{{Label: label, File: "x.sh", Content: line + "\n", Shell: true}}})
+	}
+	for _, tc := range []struct {
+		launcher, line string
+		sev            finding.Severity
+		agent          string
+	}{
+		{"the Codex hooks.SessionStart command", "printenv", finding.Error, "Codex adds the stdout of a SessionStart hook"},
+		{"the Codex hooks.UserPromptSubmit command", `echo "$OPENAI_API_KEY"`, finding.Error, "Codex"},
+		{"the Codex hooks.PostToolUse command", `jq -n --arg c "$(env)" '{hookSpecificOutput:{additionalContext:$c}}'`, finding.Error, "Codex adds a hook's additionalContext"},
+		{"the qwen hooks.UserPromptSubmit command", `echo "$API_KEY"`, finding.Error, "Qwen Code adds the stdout"},
+		{"the qwen hooks.PostToolUse command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Qwen Code"},
+		{"the Gemini hooks.SessionStart command", `jq -n --arg c "$(printenv)" '{hookSpecificOutput:{additionalContext:$c}}'`, finding.Error, "Gemini CLI"},
+		{"the Cursor hooks.sessionStart command", `echo "{\"additional_context\": \"$NPM_TOKEN\"}"`, finding.Error, "Cursor adds a hook's additional_context"},
+		{"the Copilot hooks.sessionStart command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Copilot"},
+		{"the Devin hooks.UserPromptSubmit command", `echo "{\"hookSpecificOutput\":{\"additionalContext\":\"$GITHUB_TOKEN\"}}"`, finding.Error, "Devin CLI"},
+		{"the Antigravity hooks.SessionStart command", `echo "{\"injectSteps\":[{\"systemMessage\":\"$GITHUB_TOKEN\"}]}"`, finding.Error, "Antigravity adds a hook's systemMessage"},
+		{"the Antigravity plugin p hooks.Stop command", `echo "{\"decision\":\"continue\",\"reason\":\"$GITHUB_TOKEN\"}"`, finding.Error, "Antigravity"},
+		{"the goose plugin hooks.PreToolUse command", `echo "{\"decision\":\"block\",\"reason\":\"$DEPLOY_TOKEN\"}"`, finding.Error, "goose"},
+		{"the Grok hooks.post_tool_use command", `echo "{\"hookSpecificOutput\":{\"additionalContext\":\"$GITHUB_TOKEN\"}}"`, finding.Error, "Grok"},
+		{"Cline as its TaskStart hook", `echo "{\"contextModification\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Cline adds a hook's contextModification"},
+	} {
+		f := run(tc.launcher, tc.line)
+		if len(f) != 1 || f[0].Severity != tc.sev || !strings.Contains(f[0].Message, tc.agent) {
+			t.Errorf("%s: %s: want one %s naming %q, got %+v", tc.launcher, tc.line, tc.sev, tc.agent, f)
+		}
+	}
+	for _, tc := range []struct{ launcher, line string }{
+		// Plain stdout that the agent does not pass to the model.
+		{"the Gemini hooks.SessionStart command", "printenv"},
+		{"the Cursor hooks.sessionStart command", "printenv"},
+		{"the Copilot hooks.sessionStart command", `echo "$GITHUB_TOKEN"`},
+		{"the Devin hooks.SessionStart command", "env"},
+		{"the Antigravity hooks.SessionStart command", "printenv"},
+		{"the goose plugin hooks.SessionStart command", "printenv"},
+		{"the Grok hooks.SessionStart command", "printenv"},
+		{"Cline as its TaskStart hook", "printenv"},
+		{"the qwen hooks.PreToolUse command", "printenv"},
+		{"the Codex hooks.PreToolUse command", "printenv"},
+		// A field in an event that does not pass it on.
+		{"Cline as its TaskComplete hook", `echo "{\"contextModification\": \"$GITHUB_TOKEN\"}"`},
+		{"the Cursor hooks.sessionEnd command", `echo "{\"additional_context\": \"$NPM_TOKEN\"}"`},
+		{"the Grok hooks.SessionStart command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`},
+		// Agents whose hook output does not reach the model.
+		{"the Devin Desktop hooks.pre_user_prompt command", "printenv"},
+		{"the Continue hooks.SessionStart command", "printenv"},
+		// A field name only as part of another word.
+		{"the goose plugin hooks.PreToolUse command", `deploy --reason="$DEPLOY_TOKEN" && echo "--reason=$DEPLOY_TOKEN"`},
+	} {
+		if f := run(tc.launcher, tc.line); len(f) != 0 {
+			t.Errorf("%s: %s: want no finding, got %+v", tc.launcher, tc.line, f)
+		}
+	}
+	// A script two agents start counts at the worse of the two.
+	f := run("the Gemini hooks.SessionStart command and the Codex hooks.SessionStart command", "printenv")
+	if len(f) != 1 || f[0].Severity != finding.Error || !strings.Contains(f[0].Message, "Codex") {
+		t.Errorf("two launchers: %+v", f)
+	}
+}

@@ -5,7 +5,9 @@ package rules
 
 import (
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -20,21 +22,207 @@ func init() { All = append(All, CFG145) }
 
 func (r *cfg145) ID() string { return "CFG145" }
 
-// Where Claude Code 2.1.325 sends a hook's stdout on exit code 0, from the
-// event descriptions in its binary.
+// hookOutputAgent is where one agent sends a hook's output.
+type hookOutputAgent struct {
+	// name is the agent as a message names it.
+	name string
+	// context are the events whose stdout on success enters the model's
+	// context; transcript those whose stdout only the user sees on request.
+	context, transcript map[string]bool
+	// transcriptWhere says where the user sees a transcript event's stdout.
+	transcriptWhere string
+	// json maps an output field that enters the context to the events it
+	// does so in; nil events means any event.
+	json map[string]map[string]bool
+	// xtraceShown says how a failing hook's stderr reaches the user, for
+	// the set -x finding; "" leaves set -x unreported for this agent.
+	xtraceShown string
+}
+
+// hookOutputAgents are the agents whose hook output CFG145 judges, keyed by
+// the prefix of their hook sites' labels ("" is Claude Code).
+var hookOutputAgents = map[string]hookOutputAgent{
+	// Claude Code 2.1.325, from the event descriptions in its binary:
+	// "stdout shown to Claude" (PostModelSwitch: "on the next request"),
+	// "stdout shown in transcript mode (ctrl+o)".
+	"": {
+		name:            "Claude Code",
+		context:         events("SessionStart", "UserPromptSubmit", "UserPromptExpansion", "PostModelSwitch"),
+		transcript:      events("PostToolUse", "PostToolUseFailure", "PermissionDenied"),
+		transcriptWhere: "to anyone who opens transcript mode (Ctrl+O)",
+		json:            map[string]map[string]bool{"additionalContext": nil},
+		xtraceShown:     "shows to the user when the hook fails",
+	},
+	// Cline v4.1.26 (apps/vscode/src/sdk/hooks-adapter.ts, hook-factory.ts):
+	// stdout that is not JSON is dropped; contextModification is appended as a
+	// <hook_context> message for TaskStart, UserPromptSubmit, PreToolUse and
+	// PostToolUse. stderr goes to the log only.
+	"Cline": {
+		name: "Cline",
+		json: map[string]map[string]bool{"contextModification": events("TaskStart", "UserPromptSubmit", "PreToolUse", "PostToolUse")},
+	},
+	// Cursor (cursor.com/docs/agent/hooks): only JSON output fields reach
+	// the agent.
+	"Cursor": {
+		name: "Cursor",
+		json: map[string]map[string]bool{
+			"additional_context":      events("sessionStart", "postToolUse", "postToolUseFailure"),
+			"agent_message":           events("preToolUse", "beforeShellExecution", "beforeMCPExecution"),
+			"followup_message":        events("stop", "subagentStop"),
+			"updated_mcp_tool_output": events("postToolUse"),
+		},
+	},
+	// Copilot CLI and VS Code (.github/hooks): docs.github.com hooks
+	// configuration reference, and the CLI changelog (1.0.11 sessionStart,
+	// 1.0.65 userPromptSubmitted additionalContext).
+	"Copilot": {
+		name: "Copilot",
+		json: map[string]map[string]bool{
+			"additionalContext":        events("sessionStart", "userPromptSubmitted", "postToolUse", "postToolUseFailure", "notification", "subagentStart"),
+			"modifiedResult":           events("postToolUse"),
+			"permissionDecisionReason": events("preToolUse"),
+			"reason":                   events("agentStop", "subagentStop"),
+		},
+	},
+	// Devin CLI (docs.devin.ai/cli/extensibility/hooks): a JSON object on
+	// stdout controls the outcome.
+	"Devin": {
+		name: "Devin CLI",
+		json: map[string]map[string]bool{
+			"additionalContext": events("SessionStart", "UserPromptSubmit", "PostToolUse"),
+			"reason":            events("PreToolUse"),
+		},
+	},
+	// Antigravity (antigravity.google/docs/hooks): output is JSON on stdout.
+	"Antigravity": {
+		name: "Antigravity",
+		json: map[string]map[string]bool{
+			"systemMessage":    events("SessionStart", "PreInvocation"),
+			"userMessage":      events("SessionStart", "PreInvocation"),
+			"ephemeralMessage": events("SessionStart", "PreInvocation"),
+			"reason":           events("PreToolUse", "Stop"),
+		},
+	},
+	// Gemini CLI v0.68.0 (packages/core/src/hooks/hookRunner.ts): plain
+	// stdout becomes a systemMessage, which reaches the user only; the model
+	// gets additionalContext as <hook_context> and a blocking reason.
+	"Gemini": {
+		name: "Gemini CLI",
+		json: map[string]map[string]bool{
+			"additionalContext": events("SessionStart", "BeforeAgent", "AfterTool"),
+			"reason":            events("AfterAgent", "BeforeTool", "AfterTool"),
+		},
+	},
+	// Qwen Code v0.27.4 (hookRunner.ts PLAIN_TEXT_CONTEXT_EVENTS): plain
+	// stdout becomes context for three events.
+	"qwen": {
+		name:    "Qwen Code",
+		context: events("SessionStart", "UserPromptSubmit", "UserPromptExpansion"),
+		json: map[string]map[string]bool{
+			"additionalContext": events("PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch", "SubagentStart", "PreCompact"),
+			"reason":            events("UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolBatch", "Stop", "SubagentStop", "TodoCreated", "TodoCompleted"),
+		},
+	},
+	// Codex rust-v0.169.0 (codex-rs/hooks/src/events): "plain stdout becomes
+	// model context" for SessionStart, SubagentStart and UserPromptSubmit.
+	"Codex": {
+		name:    "Codex",
+		context: events("SessionStart", "SubagentStart", "UserPromptSubmit"),
+		json: map[string]map[string]bool{
+			"additionalContext": events("PreToolUse", "PostToolUse"),
+			"reason":            events("PreToolUse", "PostToolUse", "Stop", "SubagentStop"),
+		},
+	},
+	// goose v1.59.1 (crates/goose/src/hooks/mod.rs, stop_hook.rs): most
+	// events are observation-only; a block reason of PreToolUse and Stop
+	// goes to the model.
+	"goose plugin": {
+		name: "goose",
+		json: map[string]map[string]bool{"reason": events("PreToolUse", "Stop")},
+	},
+	// Grok Build (xai-org/grok-build, xai-grok-hooks): systemMessage goes to
+	// the UI; gate events pass additionalContext, a block reason and
+	// replacement tool output to the model.
+	"Grok": {
+		name: "Grok",
+		json: map[string]map[string]bool{
+			"additionalContext":        events("PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SubagentStop"),
+			"reason":                   events("PreToolUse", "PostToolUse", "Stop", "SubagentStop"),
+			"permissionDecisionReason": events("PreToolUse"),
+			"updatedToolOutput":        events("PostToolUse"),
+			"updatedMCPToolOutput":     events("PostToolUse"),
+		},
+	},
+}
+
+// events is a set of event names.
+func events(names ...string) map[string]bool {
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[eventKey(n)] = true
+	}
+	return m
+}
+
+// eventKey is an event name compared without case or underscores, since
+// Grok accepts SessionStart, sessionStart and session_start alike.
+func eventKey(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, "_", ""))
+}
+
+// sortedFieldNames returns the keys of json in order.
+func sortedFieldNames(json map[string]map[string]bool) []string {
+	names := make([]string, 0, len(json))
+	for n := range json {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
 var (
-	// hookContextEvents put stdout into the model's context: "stdout shown
-	// to Claude" (PostModelSwitch: "on the next request").
-	hookContextEvents = map[string]bool{"SessionStart": true, "UserPromptSubmit": true, "UserPromptExpansion": true, "PostModelSwitch": true}
-	// hookTranscriptEvents show stdout in transcript mode (Ctrl+O) only.
-	hookTranscriptEvents = map[string]bool{"PostToolUse": true, "PostToolUseFailure": true, "PermissionDenied": true}
+	hookFieldMu  sync.Mutex
+	hookFieldRes = map[string]*regexp.Regexp{}
 )
 
-// claudeHookEventRe reads the event of a Claude Code hook site from its label:
-// "hooks.SessionStart command", "skill frontmatter hooks.Stop command", and a
-// script's "script x.sh, started by the hooks.SessionStart command,". Other
-// agents' hook labels carry their name ("Gemini hooks.…") and do not match.
-var claudeHookEventRe = regexp.MustCompile(`(?:^|started by the |frontmatter )hooks\.([A-Za-z]+) command`)
+// hookFieldRe matches an output field name used as a JSON or jq object key:
+// "reason": …, {additionalContext: $c}; not --reason=….
+func hookFieldRe(field string) *regexp.Regexp {
+	hookFieldMu.Lock()
+	defer hookFieldMu.Unlock()
+	re, ok := hookFieldRes[field]
+	if !ok {
+		re = regexp.MustCompile(`(?:^|[^\w-])\\?["']?` + regexp.QuoteMeta(field) + `\\?["']?\s*:`)
+		hookFieldRes[field] = re
+	}
+	return re
+}
+
+// hookSiteRe reads the agent and event of a hook site from its label:
+// "hooks.SessionStart command" (Claude Code), "Gemini hooks.BeforeAgent
+// command", "skill frontmatter hooks.Stop command", and a script's
+// "script x.sh, started by the hooks.SessionStart command,".
+var hookSiteRe = regexp.MustCompile(`(?:^|started by the |and the |frontmatter )(?:(Gemini|qwen|Codex|Cursor|Copilot|Devin Desktop|Devin|Antigravity(?: plugin \S+)?|Continue|Grok|goose plugin) )?hooks\.([A-Za-z_]+) command`)
+
+// clineHookRe is a script Cline runs as a hook: "started by Cline as its
+// TaskStart hook".
+var clineHookRe = regexp.MustCompile(`started by Cline as its ([A-Za-z_]+) hook`)
+
+// hookSiteEvents returns each agent and event a site's label names.
+func hookSiteEvents(label string) [][2]string {
+	var out [][2]string
+	for _, m := range hookSiteRe.FindAllStringSubmatch(label, -1) {
+		agent := m[1]
+		if strings.HasPrefix(agent, "Antigravity") {
+			agent = "Antigravity"
+		}
+		out = append(out, [2]string{agent, m[2]})
+	}
+	for _, m := range clineHookRe.FindAllStringSubmatch(label, -1) {
+		out = append(out, [2]string{"Cline", m[1]})
+	}
+	return out
+}
 
 func (r *cfg145) Check(t *Target) []finding.Finding {
 	if t == nil {
@@ -43,31 +231,43 @@ func (r *cfg145) Check(t *Target) []finding.Finding {
 	var out []finding.Finding
 	seen := map[string]bool{}
 	for _, site := range commandSitesWithScripts(t) {
-		m := claudeHookEventRe.FindStringSubmatch(site.Label)
-		if m == nil || site.PowerShell {
+		if site.PowerShell || site.HookInput {
 			continue
 		}
-		event := m[1]
 		raw := site.raw()
-		what, ok := hookOutputLeak(raw)
-		xtrace := site.Line > 0 && hookContextEvents[event] && xtraceRe.MatchString(raw)
+		what, leaks := hookOutputLeak(raw)
 		var sev finding.Severity
 		var msg string
-		switch {
-		case ok && (hookContextEvents[event] || strings.Contains(raw, "additionalContext")):
-			sev = finding.Error
-			via := "the stdout of a " + event + " hook"
-			if !hookContextEvents[event] {
-				via = "a hook's additionalContext"
+		for _, ae := range hookSiteEvents(site.Label) {
+			a, ok := hookOutputAgents[ae[0]]
+			if !ok {
+				continue
 			}
-			msg = site.Label + " prints " + what + ": Claude Code adds " + via + " to the model's context, so the value goes to the model provider and into the session transcript. Print only what the session needs, never the environment or a secret"
-		case ok && hookTranscriptEvents[event]:
-			sev = finding.Warn
-			msg = site.Label + " prints " + what + ": Claude Code shows the stdout of a " + event + " hook to anyone who opens transcript mode (Ctrl+O). Print only what the session needs, never the environment or a secret"
-		case xtrace:
-			sev = finding.Warn
-			msg = site.Label + " turns on xtrace (set -x): the shell prints every command with its variables expanded to stderr, which Claude Code shows to the user when a " + event + " hook fails, secrets included. Remove set -x, or turn it off around commands that use a secret"
-		default:
+			event, key := ae[1], eventKey(ae[1])
+			field := ""
+			for _, f := range sortedFieldNames(a.json) {
+				if events := a.json[f]; (events == nil || events[key]) && hookFieldRe(f).MatchString(raw) {
+					field = f
+					break
+				}
+			}
+			switch {
+			case leaks && (a.context[key] || field != ""):
+				via := "the stdout of a " + event + " hook"
+				if !a.context[key] {
+					via = "a hook's " + field
+				}
+				sev, msg = finding.Error, site.Label+" prints "+what+": "+a.name+" adds "+via+" to the model's context, so the value goes to the model provider and into the session transcript. Print only what the session needs, never the environment or a secret"
+			case sev == "" && leaks && a.transcript[key]:
+				sev, msg = finding.Warn, site.Label+" prints "+what+": "+a.name+" shows the stdout of a "+event+" hook "+a.transcriptWhere+". Print only what the session needs, never the environment or a secret"
+			case sev == "" && site.Line > 0 && a.context[key] && a.xtraceShown != "" && xtraceRe.MatchString(raw):
+				sev, msg = finding.Warn, site.Label+" turns on xtrace (set -x): the shell prints every command with its variables expanded to stderr, which "+a.name+" "+a.xtraceShown+", secrets included. Remove set -x, or turn it off around commands that use a secret"
+			}
+			if sev == finding.Error {
+				break
+			}
+		}
+		if sev == "" {
 			continue
 		}
 		key := site.File + "\x00" + msg
