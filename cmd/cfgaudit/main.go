@@ -2381,6 +2381,7 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 				Scope:              finding.ScopeProject,
 				SkillCollisions:    collisions,
 				SkillCollisionRoot: rel,
+				SkillCollisionDir:  dir,
 			})
 		}
 	}
