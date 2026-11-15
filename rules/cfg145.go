@@ -202,7 +202,7 @@ func hookFieldRe(field string) *regexp.Regexp {
 // "hooks.SessionStart command" (Claude Code), "Gemini hooks.BeforeAgent
 // command", "skill frontmatter hooks.Stop command", and a script's
 // "script x.sh, started by the hooks.SessionStart command,".
-var hookSiteRe = regexp.MustCompile(`(?:^|started by the |and the |frontmatter )(?:(Gemini|qwen|Codex|Cursor|Copilot|Devin Desktop|Devin|Antigravity(?: plugin \S+)?|Continue|Grok|goose plugin) )?hooks\.([A-Za-z_]+) command`)
+var hookSiteRe = regexp.MustCompile(`(?:^|started by the |and the |(?:(qwen) (?:skill|subagent) )?frontmatter )(?:(Gemini|qwen|Codex|Cursor|Copilot|Devin Desktop|Devin|Antigravity(?: plugin \S+)?|Continue|Grok|goose plugin) )?hooks\.([A-Za-z_]+) command`)
 
 // clineHookRe is a script Cline runs as a hook: "started by Cline as its
 // TaskStart hook".
@@ -212,11 +212,11 @@ var clineHookRe = regexp.MustCompile(`started by Cline as its ([A-Za-z_]+) hook`
 func hookSiteEvents(label string) [][2]string {
 	var out [][2]string
 	for _, m := range hookSiteRe.FindAllStringSubmatch(label, -1) {
-		agent := m[1]
+		agent := m[1] + m[2] // "qwen skill frontmatter …" or "Gemini hooks…"
 		if strings.HasPrefix(agent, "Antigravity") {
 			agent = "Antigravity"
 		}
-		out = append(out, [2]string{agent, m[2]})
+		out = append(out, [2]string{agent, m[3]})
 	}
 	for _, m := range clineHookRe.FindAllStringSubmatch(label, -1) {
 		out = append(out, [2]string{"Cline", m[1]})
