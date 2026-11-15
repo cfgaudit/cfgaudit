@@ -44,8 +44,9 @@ The scanner makes no network connections.
    - run with an egress allowlist (harden-runner `block`), so a compromised build tool cannot send the job's tokens elsewhere;
    - build the archives with GoReleaser and the image with Buildx, with SBOMs from syft;
    - sign SLSA provenance for every archive, `checksums.txt` and the image through GitHub's OIDC token and Sigstore. Because the signer is the reusable workflow and not the tag-triggered one, this is SLSA Build Level 3;
-   - publish the GitHub release (with the Sigstore bundle as an asset), the image to ghcr.io (signed with cosign, provenance and SBOM attached as attestations) and the Homebrew cask.
-4. The maintainer pushes `main` and the tags to the GitLab copy, whose pipeline publishes the CI/CD Catalog components.
+   - publish the GitHub release (with the Sigstore bundle as an asset), and the image to ghcr.io (signed with cosign, provenance and SBOM attached as attestations).
+4. The Homebrew tap pulls the release on its own schedule or when run by hand, checks each archive's provenance and commits its formula; nothing in this pipeline writes to it (#1646).
+5. The maintainer pushes `main` and the tags to the GitLab copy, whose pipeline publishes the CI/CD Catalog components.
 
 How to verify a download is in the README under [Verifying a release](../README.md#verifying-a-release).
 
@@ -95,7 +96,7 @@ The claim: scanning a hostile repository with cfgaudit does not execute its cont
 | **Economy of mechanism** | One static binary with two dependencies (`gopkg.in/yaml.v3`, `github.com/BurntSushi/toml`). Rules are plain functions from a parsed target to findings; there is no plugin loading, scripting or network code. |
 | **Fail-safe defaults** | A file the agent would refuse to load is a finding (CFG109), not a silent skip. A link leaving the scan directory is not followed (CFG115). The exit code is 1 when an error finding remains; turning that off takes an explicit `no-exit-codes`. |
 | **Complete mediation** | Every read of repository content goes through `internal/scanroot`, which checks the file's real location on each read, not once per scan. |
-| **Open design** | The source, rules, threat model and release pipeline are public; nothing depends on a secret except the Homebrew tap token, which only publishes the cask. |
+| **Open design** | The source, rules, threat model and release pipeline are public; nothing depends on a stored secret: the Homebrew tap pulls each release and checks its provenance itself (#1646). |
 | **Separation of privilege** | Releases need a tag, signed by a listed maintainer key, on a commit whose CI passed on `main`, and `main` accepts only pull requests that passed the required checks. The build runs in a reusable workflow separate from the tag-triggered one, which is what makes the provenance SLSA Build Level 3. |
 | **Least privilege** | The scanner only reads files and writes to stdout. Each workflow job gets the narrowest `GITHUB_TOKEN` permissions it needs, pull request jobs run without secrets, and release jobs can reach only an allowlist of hosts. |
 | **Least common mechanism** | Scans share no state: no cache, no daemon, no files written outside the explicit `init` and `policy` subcommands. |

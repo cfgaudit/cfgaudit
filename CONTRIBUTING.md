@@ -446,7 +446,7 @@ The project lives in three repositories. Only the first takes contributions; the
 | Repository | What it is | How it is updated |
 |---|---|---|
 | [github.com/cfgaudit/cfgaudit](https://github.com/cfgaudit/cfgaudit) | The source, issues, pull requests, releases and the container image. Authoritative. | Pull requests. |
-| [github.com/cfgaudit/homebrew-tap](https://github.com/cfgaudit/homebrew-tap) | The Homebrew cask behind `brew install cfgaudit/tap/cfgaudit`. | GoReleaser writes the cask on each release. |
+| [github.com/cfgaudit/homebrew-tap](https://github.com/cfgaudit/homebrew-tap) | The Homebrew formula behind `brew install cfgaudit/tap/cfgaudit`. | Its own workflow pulls each release, checks the provenance and writes the formula (#1646). |
 | [gitlab.com/cfgaudit/cfgaudit](https://gitlab.com/cfgaudit/cfgaudit) | A copy of this repository that publishes the GitLab CI/CD Catalog components. | The maintainer pushes `main` and the release tags after each release. |
 
 The steps of a release, including the ones done by hand, are in [RELEASING.md](RELEASING.md).

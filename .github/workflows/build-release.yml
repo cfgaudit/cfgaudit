@@ -16,10 +16,6 @@ name: Build release
 
 on:
   workflow_call:
-    secrets:
-      HOMEBREW_TAP_TOKEN:
-        description: PAT with contents:write on cfgaudit/homebrew-tap
-        required: true
 
 # Default-deny; the job grants only what it needs.
 permissions: {}
@@ -37,8 +33,8 @@ jobs:
       attestations: write # write the attestation to the GitHub attestations API
     steps:
       # Allows only the hosts this job needs; anything else is blocked, so a
-      # compromised dependency or tool cannot send the job's write tokens or
-      # HOMEBREW_TAP_TOKEN elsewhere (#672). The list is what the v1.17.0
+      # compromised dependency or tool cannot send the job's write tokens
+      # elsewhere (#672). The list is what the v1.17.0
       # release run connected to in audit mode. A release that needs a new host
       # fails here: add the host, then re-run.
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
@@ -106,9 +102,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # PAT with contents:write on cfgaudit/homebrew-tap so the cask can be
-          # pushed there (the default GITHUB_TOKEN is scoped to this repo only).
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       # Provenance for the release archives — proves each archive was built by
       # this workflow from this repo at this commit. Runs after GoReleaser so
