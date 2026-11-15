@@ -67,7 +67,7 @@ func (r *cfg102) Check(t *Target) []finding.Finding {
 			RuleID:   "CFG102",
 			Severity: finding.Warn,
 			Scope:    t.Scope,
-			File:     filepath.Join(t.SkillCollisionRoot, winner.Dir, "SKILL.md"),
+			File:     filepath.Join(t.SkillCollisionDir, t.SkillCollisionRoot, winner.Dir, "SKILL.md"),
 			Message: "two or more committed skills in " + t.SkillCollisionRoot + " declare the same frontmatter name \"" + name +
 				"\": " + quoteList(append([]string{winner.Dir}, losers...)) +
 				". Only one is loaded, the one whose directory sorts first, so " + quoteList(losers) +

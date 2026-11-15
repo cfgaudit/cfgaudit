@@ -44,7 +44,9 @@ type Target struct {
 	ProjectMCPFile string
 
 	// SkillCollisions groups the SKILL.md files under one skills root by a name
-	// more than one of them claims, and SkillCollisionRoot is that root.
+	// more than one of them claims, and SkillCollisionRoot is that root,
+	// relative to SkillCollisionDir, the scanned directory. A finding's File
+	// joins the two, like every other rule's path (#1671).
 	//
 	// Measured against Copilot CLI 1.0.80: two .github/skills/<dir>/SKILL.md
 	// declaring the same frontmatter name produce exactly one listed skill. The
@@ -52,6 +54,7 @@ type Target struct {
 	// and no listing. Read by CFG102.
 	SkillCollisions    map[string][]parser.SkillFileEntry
 	SkillCollisionRoot string
+	SkillCollisionDir  string
 
 	// Marketplace holds a parsed .claude-plugin/marketplace.json, the manifest
 	// declaring where each published plugin's code is fetched from. Author-side
