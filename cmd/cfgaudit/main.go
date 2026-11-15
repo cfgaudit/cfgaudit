@@ -2461,6 +2461,13 @@ func clineDisabledFile(dir, path, content string) bool {
 // (.claude/skills/<name>/SKILL.md) or slash command (.claude/commands/*.md),
 // the two file kinds whose `!` blocks Claude Code runs (#643). Agent files are
 // not: a `!` command in a .claude/agents body did not run on 2.1.296.
+// isQwenSkillFile reports whether path is a Qwen Code project skill,
+// .qwen/skills/<name>/SKILL.md.
+func isQwenSkillFile(path string) bool {
+	slash := filepath.ToSlash(path)
+	return filepath.Base(path) == "SKILL.md" && (strings.Contains(slash, "/.qwen/skills/") || strings.HasPrefix(slash, ".qwen/skills/"))
+}
+
 func isClaudeSkillOrCommandFile(path string) bool {
 	slash := filepath.ToSlash(path)
 	switch {
@@ -2514,7 +2521,16 @@ func attachSkillShellToPluginSkills(targets []*rules.Target, dir string) {
 // `claude -p`, in a workspace whose trust dialog had not been accepted. The
 // cross-agent skill roots are left alone, since no other agent is known to run
 // such a block.
+//
+// Qwen Code 0.27 reads the same block in a project skill (#1720,
+// registerSkillHooks.ts): the hooks register while the skill is active and
+// only in an explicitly trusted folder. They are command sites under the kind
+// "qwen skill", so their findings name Qwen.
 func attachSkillHooks(t *rules.Target) {
+	if isQwenSkillFile(t.InstructionFile) {
+		attachFrontmatterHooks(t, "qwen skill")
+		return
+	}
 	if !isClaudeSkillOrCommandFile(t.InstructionFile) {
 		return
 	}
@@ -2623,6 +2639,11 @@ func attachSubagentBlocks(t *rules.Target) {
 	if len(blocks.Hooks) > 0 {
 		t.SubagentHooks = blocks.Hooks
 		t.SubagentHooksFile = t.InstructionFile
+		if qwen {
+			// Findings name Qwen, which runs these hooks only in an
+			// explicitly trusted folder (#1720, subagent-manager.ts).
+			t.SubagentHooksKind = "qwen subagent"
+		}
 	}
 	if len(blocks.MCPServers) > 0 {
 		t.ProjectMCP = blocks.MCPServers
