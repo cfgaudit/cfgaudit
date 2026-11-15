@@ -56,6 +56,10 @@ var KnownButUnschemaed = map[string]bool{
 	"enableWorkflows":          true,
 	"bashOutputMaxChars":       true,
 	"skipAutoPermissionPrompt": true,
+	// proxyAuthHelper: a credential helper in the Claude Code 2.1.321+
+	// settings schema ("Shell command that outputs a Proxy-Authorization
+	// header value (EAP)"), not yet in SchemaStore (#1765).
+	"proxyAuthHelper": true,
 }
 
 // NestedProperties returns the property names the schema defines under the
