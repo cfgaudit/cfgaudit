@@ -328,9 +328,6 @@ func hookPipelines(s string) []hookPipeline {
 // writes neither, or sends the output somewhere other than stdout.
 func hookOutputLeak(cmd string) (string, bool) {
 	for _, p := range hookPipelines(cmd) {
-		if len(p) == 0 {
-			continue
-		}
 		if !pipelineReachesStdout(p) {
 			continue
 		}

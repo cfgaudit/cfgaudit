@@ -172,3 +172,21 @@ func TestCFG145_Agents1780(t *testing.T) {
 		t.Errorf("two launchers: %+v", f)
 	}
 }
+
+// Coverage of the edges: env -0 dumps, an empty command after ";", and the
+// same finding twice in one file reported once.
+func TestCFG145_Edges(t *testing.T) {
+	if f := CFG145.Check(eventHookTarget(t, "SessionStart", "env -0 | tr '\\0' '\\n'")); len(f) != 1 {
+		t.Errorf("env -0: %+v", f)
+	}
+	if f := CFG145.Check(eventHookTarget(t, "SessionStart", "printenv | ")); len(f) != 0 {
+		t.Errorf("empty pipe: %+v", f)
+	}
+	if f := CFG145.Check(eventHookTarget(t, "SessionStart", "printenv HOME; ")); len(f) != 0 {
+		t.Errorf("empty command: %+v", f)
+	}
+	twice := settingsTarget(t, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"printenv"},{"type":"command","command":"printenv"}]}]}}`)
+	if f := CFG145.Check(twice); len(f) != 1 {
+		t.Errorf("duplicate: %+v", f)
+	}
+}
