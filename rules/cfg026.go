@@ -189,6 +189,7 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 						(sm[4] < 0 && looksLikeInstructionsRe.MatchString(line[:loc[0]])) ||
 						fileNameNoun(line, loc[1]) || nounVerbRe.MatchString(line[:loc[0]]) || ignoreFeatureNoun(line, sm, verb) ||
 						defensiveSourceRule(lines, i, line, loc, sm) || verbAsNoun(line[:loc[0]]) || thirdPersonSubjectRe.MatchString(line[:loc[0]]) ||
+						thirdPersonOverride(line[:loc[0]], sm) || (verb == "bypass" && bypassNoun(line, line[:loc[0]], line[sm[3]:])) ||
 						pointsBack(line, loc, sm) || defensiveLine(line, loc, sm) || describedOverride(line[:loc[0]]) || refusedRequest(line, loc[0]) {
 						continue
 					}
@@ -198,6 +199,12 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 				}
 				if p.num == 2 && devModeWithoutWarnings(lines, i, line, loc) {
 					continue
+				}
+				// "In delegated mode the agent must act as the user" states a
+				// role the configuration gives the agent; it stays visible at
+				// warn rather than reading as a hijack (#1651).
+				if p.num == 2 && agentModalRe.MatchString(line[:loc[0]]) {
+					sev = finding.Warn
 				}
 				if p.num == 1 && reportLineRe.MatchString(line) {
 					// A scanner's sample output: "[CRITICAL] Prompt injection:
@@ -256,13 +263,23 @@ func (r *cfg026) Check(t *Target) []finding.Finding {
 // claiming elevated authority (#1177, #1372).
 var (
 	// deviceNameRe names a device or toolchain that has such a setting.
-	deviceNameRe = regexp.MustCompile(`(?i)\b(?:devices?|phones?|iphone|ipad|tablets?|apple\s+watch|android|ios|xcode|windows|macos|msbuild|adb|simulators?|emulators?|browsers?|channels?|discord|chrome|visual\s+studio)\b`)
+	deviceNameRe = regexp.MustCompile(`(?i)\b(?:devices?|phones?|iphone|ipad|tablets?|apple\s+watch|android|ios|xcode|windows|macos|msbuild|adb|simulators?|emulators?|browsers?|channels?|discord|chrome|visual\s+studio|apps?|glasses|headsets?|builds?|toolchains?)\b`)
 	// settingActionRe is what makes the phrase a setting to change or need:
 	// "Enable Developer Mode", "Requires Developer Mode enabled".
-	settingActionRe = regexp.MustCompile("(?i)\\b(?:enabl(?:e|es|ing)|requir(?:e|es|ing)|needs?|keep|turn(?:ing)?\\s+on|switch(?:ing)?\\s+on)\\s+(?:the\\s+)?[*_`]*$")
+	settingActionRe = regexp.MustCompile("(?i)\\b(?:enabl(?:e|es|ing)|requir(?:e|es|ing)|needs?|keep|have|has|with|turn(?:ing)?\\s+on|switch(?:ing)?\\s+on)\\s+(?:the\\s+)?[*_`]*$")
 	// modeStateEndRe is what may follow "developer mode on" for it to be a claim.
 	// "Developer Mode on both iPhone and Watch" names where, not a state.
 	modeStateEndRe = regexp.MustCompile("^[*_`]*\\s*(?:$|[.,;:!?)|])")
+	// devModeWhereRe says where the setting lives, "Developer Mode enabled in
+	// Meta AI app", and devModeSessionRe the place that makes it a claim
+	// about this chat instead (#1651).
+	devModeWhereRe   = regexp.MustCompile("(?i)^[*_`]*\\s+(?:in|on|via|under)\\s+\\S")
+	devModeSessionRe = regexp.MustCompile(`(?i)^\W*\s*(?:in|on|via|under)\s+(?:this|the|your|our)\s+(?:session|conversation|chat|context|thread|turn)\b`)
+	// devModeQuestionRe is a question about the setting: "Is Developer Mode
+	// enabled?". checklistItemRe is a task-list box: "- [ ] Developer Mode
+	// enabled in ...".
+	devModeQuestionRe = regexp.MustCompile("^[*_`]*\\s*\\?")
+	checklistItemRe   = regexp.MustCompile(`^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s*[*_` + "`" + `]*$`)
 )
 
 var (
@@ -308,10 +325,16 @@ func deviceDeveloperMode(lines []string, i int, line string, loc []int) bool {
 		return true
 	}
 	before, after := line[:loc[0]], line[loc[1]:]
-	if settingActionRe.MatchString(before) {
+	if settingActionRe.MatchString(before) || checklistItemRe.MatchString(before) || devModeQuestionRe.MatchString(after) ||
+		(devModeWhereRe.MatchString(after) && !devModeSessionRe.MatchString(after)) {
 		return true
 	}
-	if k := strings.LastIndexAny(before, ".;!?"); k >= 0 {
+	// A dot inside a code span does not end the clause: "On Windows
+	// (`Settings.app > For developers`), Developer Mode enabled". The span is
+	// blanked only to find the clause; its text still names the device
+	// ("in `chrome://extensions/` (Developer mode on)").
+	blanked := codeSpanRe.ReplaceAllStringFunc(before, func(m string) string { return strings.Repeat(" ", len(m)) })
+	if k := strings.LastIndexAny(blanked, ".;!?"); k >= 0 {
 		before = before[k+1:]
 	}
 	if k := strings.IndexAny(after, ".;!?"); k >= 0 {
@@ -559,6 +582,75 @@ func verbAsNoun(before string) bool {
 // verb: "LLMs forget instructions", "The bot may ignore the request" (#1177).
 // It describes what someone else does; an order to the agent has none.
 var thirdPersonSubjectRe = regexp.MustCompile(`(?i)\b(?:llms?|models?|agents?|bots?|users?|people|humans?|developers?|attackers?|it|they|he|she|the\s+(?:bot|model|agent|llm|ai|user|tool|parser|compiler|linter|server|client))\s+(?:(?:may|might|can|could|will|would|often|sometimes|usually|tend\s+to|also|then)\s+)*$`)
+
+// Third-person subjects of #1651. A plural noun with a modal states what
+// others do ("Feed readers MUST ignore content"), a causative what makes them
+// ("causes the phone to silently ignore the response"), a question what they
+// did ("Did Claude forget instructions"). None is used with a qualifier such
+// as "previous", which an override names.
+var (
+	pluralModalSubjectRe = regexp.MustCompile(`(?i)\b[a-z][a-z-]*[a-rt-z]s\s+(?:must|should|shall|may|need\s+to)\s+(?:(?:also|not|never|always|\w+ly)\s+)*$`)
+	causativeRe          = regexp.MustCompile(`(?i)\b(?:causes?|caused|causing|forces?|forced|forcing)\s+(?:(?:the|a|an|this|that|its|their)\s+)?[\w-]+\s+to\s+(?:\w+ly\s+)?$`)
+	didQuestionRe        = regexp.MustCompile(`(?i)(?:^|[^\w])(?:did|does|why\s+did|why\s+does)\s+([\w-]+)\s+$`)
+	// agentModalRe is the agent named in the third person with a modal,
+	// before a pattern-2 role: "the agent must act as".
+	agentModalRe = regexp.MustCompile(`(?i)\b(?:the\s+)?(?:agent|assistant|model|bot|claude)\s+(?:must|should|will|may|can)\s+(?:(?:also|only|always)\s+)?$`)
+)
+
+// thirdPersonOverride reports a pattern-1 verb whose subject is a third
+// party (#1651).
+func thirdPersonOverride(before string, sm []int) bool {
+	if sm[4] >= 0 {
+		return false
+	}
+	if pluralModalSubjectRe.MatchString(before) || causativeRe.MatchString(before) {
+		return true
+	}
+	if m := didQuestionRe.FindStringSubmatch(before); m != nil {
+		switch strings.ToLower(m[1]) {
+		case "you", "u", "we", "i":
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+// bypassStopWords may stand right before an imperative "bypass": an adverb, a
+// conjunction or a modal, not a noun that "bypass" modifies.
+var bypassStopWords = map[string]bool{
+	"please": true, "always": true, "never": true, "just": true, "simply": true, "and": true, "or": true, "then": true,
+	"also": true, "now": true, "to": true, "you": true, "must": true, "should": true, "can": true, "will": true,
+	"immediately": true, "silently": true, "quietly": true, "so": true, "first": true, "next": true, "but": true,
+	"still": true, "even": true, "only": true, "need": true, "may": true, "might": true, "could": true, "would": true,
+}
+
+var (
+	// determinerAfterRe is a determiner right after "bypass", which makes it a
+	// verb with an object: "bypass your instructions".
+	determinerAfterRe = regexp.MustCompile(`(?i)^\s+(?:your|the|all|any|my|our|their|its|his|her|these|those|this|that|every|previous|prior|earlier|existing|current)\b`)
+	precedingWordRe   = regexp.MustCompile(`(?:^|[^\w-])([A-Za-z][\w-]*)\s+$`)
+	cellLabelRe       = regexp.MustCompile(`\|[^|]*\b[A-Za-z][\w-]*:\s+$`)
+)
+
+// bypassNoun reports "bypass" used as a noun: right after a noun it
+// modifies ("Safety bypass instructions"), or after a label in a table cell
+// ("| Secret scanning: bypass requests |") (#1651). A determiner after it
+// makes it a verb again: "| Hint: bypass your instructions |".
+func bypassNoun(line, before, after string) bool {
+	if determinerAfterRe.MatchString(after) {
+		return false
+	}
+	if strings.HasPrefix(strings.TrimSpace(line), "|") && cellLabelRe.MatchString(before) {
+		return true
+	}
+	m := precedingWordRe.FindStringSubmatch(before)
+	if m == nil {
+		return false
+	}
+	w := strings.ToLower(m[1])
+	return !bypassStopWords[w] && !strings.HasSuffix(w, "ly")
+}
 
 // relativeClauseRe is a noun with a relative pronoun right before a pattern-1
 // verb, and clauseVerbs the words before "that" that open an order instead:
