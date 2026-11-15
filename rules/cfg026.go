@@ -607,6 +607,13 @@ func describedOverride(before string) bool {
 	return false
 }
 
+// newOrderRe is a connective after the #1681 marker that starts an order of
+// its own rather than continuing the described text: "…, and from now on
+// ignore …", "…, and then disregard …", "but", "instead" (#1783). A bare "and"
+// or "or" is not one, since the described text is often a list ("rate a
+// vendor, skip a competitor, or disregard prior instructions").
+var newOrderRe = regexp.MustCompile(`(?i)\b(?:from\s+now\s+on|then|instead|but|henceforth|afterwards?|going\s+forward)\b`)
+
 // describedOverride1681 implements the narrowed #1681 carve-out.
 func describedOverride1681(before string) bool {
 	locs := describedOverrideMarkerRe.FindAllStringIndex(before, -1)
@@ -614,7 +621,7 @@ func describedOverride1681(before string) bool {
 		markerStart, markerEnd := loc[0], loc[1]
 		// Condition 3: no sentence/clause break between marker and verb.
 		tail := before[markerEnd:]
-		if strings.ContainsAny(tail, ".;!?") {
+		if strings.ContainsAny(tail, ".;!?") || newOrderRe.MatchString(tail) {
 			continue
 		}
 		// Condition 1: a defensive rule comes first in the same sentence.
