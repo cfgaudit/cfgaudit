@@ -23,6 +23,20 @@ func TestCFG077_ClearsTraces(t *testing.T) {
 		": > /var/log/wtmp",
 		"shred -u secret.txt",
 		"srm -r /tmp/loot",
+		// command position still counts after the dash guard (#1678)
+		"srm -f ~/.bash_history",
+		"shred -u ~/.zsh_history",
+		"/usr/bin/srm -f loot.db",
+		"sudo truncate -s0 /var/log/syslog",
+		"sudo shred -n 3 /var/log/auth.log",
+		"(shred -u x)",
+		"echo $(srm -f x)",
+		`bash -c "shred -u ~/.bash_history"`,
+		"sh -c 'srm -f loot.db'",
+		"{ shred -u x;}",
+		"docker run --rm alpine true; rm -rf /var/log/*",
+		"cat /dev/null > /var/log/wtmp",
+		"rm -f /var/log/btmp",
 	} {
 		f := CFG077.Check(hookTarget(t, cmd))
 		if len(f) != 1 || f[0].Severity != finding.Error {
@@ -41,6 +55,14 @@ func TestCFG077_BenignLogAndHistory_NoFinding(t *testing.T) {
 		"history | tail -20",
 		// legitimate app logging to /var/log
 		"echo starting >> /var/log/myapp.log",
+		// `srm` in a flag bundle and `rm` in a long flag are not the commands (#1678)
+		"uname -srm",
+		`echo "- OS: $(uname -srm)"`,
+		`printf '[info] kernel=%s\n' "$(uname -srm)"`,
+		"git-shred x",
+		"docker run --rm -v /var/log:/logs alpine ls /logs",
+		"docker run --rm -v ~/.bash_history:/h:ro alpine wc -l /h",
+		"podman run --rm -v /var/log/wtmp:/w:ro alpine ls /w",
 	} {
 		if f := CFG077.Check(hookTarget(t, cmd)); len(f) != 0 {
 			t.Errorf("expected no finding for %q, got %+v", cmd, f)

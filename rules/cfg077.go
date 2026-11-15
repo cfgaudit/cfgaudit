@@ -22,6 +22,13 @@ func (r *cfg077) ID() string { return "CFG077" }
 // payload and then clears the trace is "covering tracks": the cleanup is the
 // tell even when the payload itself is obfuscated. Distinct from CFG039
 // (a broad `rm -rf`) and CFG027 (persistence) — these commands delete evidence.
+// cmdVerb starts a destructive verb: the start of the command or any character
+// but a letter, digit, underscore or `-`. A plain `\b` also matches after a
+// `-`, so `srm` in the flag bundle `uname -srm` and `rm` in `docker run --rm`
+// read as the commands (#1678). A quote, brace, space or separator still
+// counts, so `bash -c "shred -u x"` and `{ srm x; }` stay reported.
+const cmdVerb = `(?:^|[^-\w])`
+
 // Each regex is scoped to a destructive verb acting on a log/history target so a
 // bare read (`journalctl -u foo`, `cat ~/.bash_history`) does not match.
 var antiForensicsPatterns = []struct {
@@ -33,13 +40,13 @@ var antiForensicsPatterns = []struct {
 	{regexp.MustCompile(`(?i)\bunset\s+HISTFILE\b`), "disables shell history (unset HISTFILE)"},
 	{regexp.MustCompile(`(?i)\bHISTFILE\s*=\s*/dev/null\b`), "redirects shell history to /dev/null (HISTFILE=/dev/null)"},
 	{regexp.MustCompile(`(?i)\bset\s+\+o\s+history\b`), "disables shell history logging (set +o history)"},
-	{regexp.MustCompile(`(?i)(?:>|\brm\b|\btruncate\b|\bshred\b)[^|;&\n]*\.(?:bash|zsh)_history\b`), "deletes or truncates the shell history file"},
+	{regexp.MustCompile(`(?i)(?:>|` + cmdVerb + `(?:rm|truncate|shred)\b)[^|;&\n]*\.(?:bash|zsh)_history\b`), "deletes or truncates the shell history file"},
 	// System / audit logs.
 	{regexp.MustCompile(`(?i)\bjournalctl\b[^|;&\n]*--(?:vacuum|rotate)`), "purges the systemd journal (journalctl --vacuum/--rotate)"},
-	{regexp.MustCompile(`(?i)(?:\brm\b|\btruncate\b|\bshred\b|\bdd\b)[^|;&\n]*/var/log\b`), "deletes or truncates system logs (/var/log)"},
-	{regexp.MustCompile(`(?i)(?:>|\brm\b|\btruncate\b|\bshred\b)[^|;&\n]*\b(?:wtmp|btmp|lastlog)\b`), "clears login/audit logs (wtmp/btmp/lastlog)"},
+	{regexp.MustCompile(`(?i)` + cmdVerb + `(?:rm|truncate|shred|dd)\b[^|;&\n]*/var/log\b`), "deletes or truncates system logs (/var/log)"},
+	{regexp.MustCompile(`(?i)(?:>|` + cmdVerb + `(?:rm|truncate|shred)\b)[^|;&\n]*\b(?:wtmp|btmp|lastlog)\b`), "clears login/audit logs (wtmp/btmp/lastlog)"},
 	// Secure file wiping (anti-recovery).
-	{regexp.MustCompile(`(?i)\b(?:shred|srm)\b`), "shreds files to prevent recovery (shred/srm)"},
+	{regexp.MustCompile(`(?i)` + cmdVerb + `(?:shred|srm)\b`), "shreds files to prevent recovery (shred/srm)"},
 }
 
 // Check flags command sites whose command destroys an audit trail — clearing
