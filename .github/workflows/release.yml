@@ -108,5 +108,3 @@ jobs:
       id-token: write # keyless signing of the provenance via Sigstore
       attestations: write # write the attestation to the GitHub attestations API
     uses: $/.github/workflows/build-release.yml
-    secrets:
-      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

@@ -47,7 +47,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
 
    The tag must be signed with a key listed in `.github/allowed_signers` on `main`. For an SSH key, set it up once in the clone with `git config gpg.format ssh` and `git config user.signingkey ~/.ssh/<key>.pub`; a key used only for cfgaudit releases keeps a key of another project out of this list. Check the tag locally with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`. A new maintainer's key goes into `.github/allowed_signers` through a pull request before their first release.
 
-   The Release and Docker workflows refuse a commit that is not on `main` or whose CI did not pass, and a tag that is not signed by a listed key; the gate reads its script and the key list from `main`, never from the tagged commit. Before anything is published, the Release workflow runs every archive on its platform and the Docker workflow runs the image, both checking the version and a fixture scan. They then build the archives, checksums, SBOMs and the container image, sign them with build provenance, create the GitHub release and update the Homebrew cask in `cfgaudit/homebrew-tap`. Check that exactly one run of each workflow ran for the tag and that both succeeded.
+   The Release and Docker workflows refuse a commit that is not on `main` or whose CI did not pass, and a tag that is not signed by a listed key; the gate reads its script and the key list from `main`, never from the tagged commit. Before anything is published, the Release workflow runs every archive on its platform and the Docker workflow runs the image, both checking the version and a fixture scan. They then build the archives, checksums, SBOMs and the container image, sign them with build provenance, and create the GitHub release. The Homebrew tap picks the release up by itself (step 12). Check that exactly one run of each workflow ran for the tag and that both succeeded.
 11. **Release notes.** Above the generated changelog, write the hand-written part:
     - **Can turn a passing pipeline red**: new rules at `error`, stricter checks, new exit-code cases.
     - **Output changes**: changed messages, paths, fingerprints or report fields that make existing findings show up as new.
@@ -59,7 +59,7 @@ The steps a maintainer follows for a release `vX.Y.Z`, in order. The build and p
 
 ## After the release
 
-12. **Check what was published.** The release has all assets and `checksums.txt` matches them; `ghcr.io/cfgaudit/cfgaudit` carries `X.Y.Z`, `X.Y` and `latest` on the same digest; the downloaded binary prints `cfgaudit X.Y.Z`; the Homebrew cask is at `X.Y.Z`. The verification commands are in [Verifying a release](docs/verifying-releases.md).
+12. **Check what was published.** The release has all assets and `checksums.txt` matches them; `ghcr.io/cfgaudit/cfgaudit` carries `X.Y.Z`, `X.Y` and `latest` on the same digest; the downloaded binary prints `cfgaudit X.Y.Z`. Run the tap's [Update formula](https://github.com/cfgaudit/homebrew-tap/actions/workflows/update.yml) workflow by hand (or wait for its daily run): it checks the release's provenance and moves `Formula/cfgaudit.rb` to `X.Y.Z`. Check that it succeeded and that the formula names `X.Y.Z`. The verification commands are in [Verifying a release](docs/verifying-releases.md).
 13. **Move the Action tag.** Point the floating `v1` tag at the release commit and force-push it, so `uses: cfgaudit/cfgaudit@v1` picks up the release:
 
     ```sh

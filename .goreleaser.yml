@@ -1,7 +1,7 @@
 # Copyright the cfgaudit contributors
 # SPDX-License-Identifier: Apache-2.0
 
-# GoReleaser configuration — cross-platform release binaries + Homebrew tap.
+# GoReleaser configuration: cross-platform release binaries.
 # Validate locally with `goreleaser check`; dry-run with `goreleaser release --snapshot --clean`.
 version: 2
 
@@ -97,25 +97,8 @@ changelog:
     - title: Other changes
       order: 999
 
-# Homebrew tap (cask — the supported form for pre-built binaries; `brews` is
-# deprecated). Installs the same way: `brew install cfgaudit/tap/cfgaudit`.
-homebrew_casks:
-  - name: cfgaudit
-    binaries:
-      - cfgaudit
-    repository:
-      owner: cfgaudit
-      name: homebrew-tap
-      # A PAT with contents:write on cfgaudit/homebrew-tap, set as the
-      # HOMEBREW_TAP_TOKEN secret on this repo (the default GITHUB_TOKEN cannot
-      # push to a different repository).
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: "https://github.com/cfgaudit/cfgaudit"
-    description: "Security auditor for AI-agent configuration files"
-    license: "Apache-2.0"
-    commit_author:
-      name: goreleaser-bot
-      email: goreleaser@cfgaudit.dev
+# The Homebrew tap is not written from here: cfgaudit/homebrew-tap pulls each
+# release, checks its provenance and writes its formula itself (#1646).
 
 release:
   prerelease: auto

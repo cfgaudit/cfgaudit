@@ -6,7 +6,7 @@ cfgaudit has two maintainers. This page says who holds which access, what the ro
 
 | Maintainer | GitHub | Access |
 |---|---|---|
-| Nicolai Ehrhardt | [@predictor2718](https://github.com/predictor2718) | Owner of the `cfgaudit` GitHub organization: admin on [cfgaudit/cfgaudit](https://github.com/cfgaudit/cfgaudit) and [cfgaudit/homebrew-tap](https://github.com/cfgaudit/homebrew-tap), the repository secrets (`HOMEBREW_TAP_TOKEN`), the `ghcr.io/cfgaudit/cfgaudit` container package and the GitHub Marketplace listing. Owner of the [gitlab.com/cfgaudit](https://gitlab.com/cfgaudit) group, which publishes the GitLab CI/CD Catalog components. Maintainer of the OpenSSF Best Practices entry and the Codecov project. |
+| Nicolai Ehrhardt | [@predictor2718](https://github.com/predictor2718) | Owner of the `cfgaudit` GitHub organization: admin on [cfgaudit/cfgaudit](https://github.com/cfgaudit/cfgaudit) and [cfgaudit/homebrew-tap](https://github.com/cfgaudit/homebrew-tap), the `ghcr.io/cfgaudit/cfgaudit` container package and the GitHub Marketplace listing. Owner of the [gitlab.com/cfgaudit](https://gitlab.com/cfgaudit) group, which publishes the GitLab CI/CD Catalog components. Maintainer of the OpenSSF Best Practices entry and the Codecov project. |
 | | [@luma434](https://github.com/luma434) | Owner of the `cfgaudit` GitHub organization, with the same GitHub access as above. |
 
 Nobody else has write access to any of these. The organization requires two-factor authentication, and new members get read access by default.
@@ -32,9 +32,9 @@ Write or admin access is given only to a person who has contributed to cfgaudit 
 ## Secrets and credentials
 
 - **Prefer no secret.** Signing, provenance and the Codecov upload use GitHub's short-lived OIDC tokens, and workflows use the per-run `GITHUB_TOKEN` with the least permissions each job needs. No signing key exists.
-- **The one stored secret** is `HOMEBREW_TAP_TOKEN`, a GitHub Actions repository secret scoped to writing the cask in `cfgaudit/homebrew-tap`. Only the release build job reads it, and that job runs with an egress allowlist. Only the maintainers can read or change repository secrets.
+- **No stored secret in CI.** The release does not push anywhere outside this repository: `cfgaudit/homebrew-tap` pulls each release, checks its provenance, and commits its formula with its own `GITHUB_TOKEN` (#1646). If a stored secret is ever needed, only the maintainers can read or change repository secrets.
 - **The GitLab push token** is created by the maintainer when needed, with the narrowest scope that pushes to `gitlab.com/cfgaudit/cfgaudit`, and is not stored in either repository, in CI, or in git configuration.
-- **Rotation.** Stored tokens are given an expiry of at most one year and are rotated before it, and at once when a token may have been exposed (pasted somewhere, a compromised machine, a maintainer leaving). A rotation replaces the secret, then revokes the old token.
+- **Rotation.** Tokens are given an expiry of at most one year and are rotated before it, and at once when a token may have been exposed (pasted somewhere, a compromised machine, a maintainer leaving). A rotation replaces the secret, then revokes the old token.
 - **Never in the repository.** Secrets are not committed; GitHub secret scanning with push protection blocks the common formats. The fake secrets under `testdata/` exist to test the rules that find real ones.
 
 ## Changes to this document
