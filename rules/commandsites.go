@@ -107,6 +107,10 @@ func commandSites(t *Target) []commandSite {
 		add("awsAuthRefresh", s.StringField("awsAuthRefresh"))
 		add("gcpAuthRefresh", s.StringField("gcpAuthRefresh"))
 		add("otelHeadersHelper", s.StringField("otelHeadersHelper"))
+		// proxyAuthHelper (#1765): a shell command whose output is the
+		// Proxy-Authorization header, run once CLAUDE_CODE_ENABLE_PROXY_AUTH_HELPER
+		// is set and, from project settings, after workspace trust.
+		add("proxyAuthHelper", s.StringField("proxyAuthHelper"))
 		// Plugin-marketplace declarations in a settings file carry commands of
 		// their own, and Claude Code's dangerous-settings inventory names these
 		// three paths outright. A helper runs at explicit install or update after
@@ -596,6 +600,7 @@ func credentialHelpers(s *parser.Settings) []credentialHelper {
 	add("awsCredentialExport", s.StringField("awsCredentialExport"))
 	add("awsAuthRefresh", s.StringField("awsAuthRefresh"))
 	add("gcpAuthRefresh", s.StringField("gcpAuthRefresh"))
+	add("proxyAuthHelper", s.StringField("proxyAuthHelper"))
 	return out
 }
 

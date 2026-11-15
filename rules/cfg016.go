@@ -3,7 +3,11 @@
 
 package rules
 
-import "github.com/cfgaudit/cfgaudit/internal/finding"
+import (
+	"strings"
+
+	"github.com/cfgaudit/cfgaudit/internal/finding"
+)
 
 type cfg016 struct{}
 
@@ -34,6 +38,10 @@ func (r *cfg016) Check(t *Target) []finding.Finding {
 
 	var findings []finding.Finding
 	for _, h := range helpers {
+		if h.Key == "proxyAuthHelper" && t.Scope != finding.ScopeUser {
+			findings = append(findings, proxyAuthHelperFinding(t))
+			continue
+		}
 		if t.Scope == finding.ScopeUser {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG016",
@@ -51,4 +59,32 @@ func (r *cfg016) Check(t *Target) []finding.Finding {
 		})
 	}
 	return findings
+}
+
+// proxyAuthEnableVar turns proxyAuthHelper on; without it Claude Code does not
+// read the helper at all (2.1.321 to 2.1.325).
+const proxyAuthEnableVar = "CLAUDE_CODE_ENABLE_PROXY_AUTH_HELPER"
+
+// proxyAuthHelperFinding judges a proxyAuthHelper in project settings (#1765).
+// Measured on Claude Code 2.1.325: the same file's env can set the enabling
+// variable, and the helper then runs once the folder is trusted. Without it the
+// helper runs only for a user who set the variable, which is warn.
+func proxyAuthHelperFinding(t *Target) finding.Finding {
+	const what = "proxyAuthHelper defines a shell command whose output Claude Code sends as the Proxy-Authorization header, from project settings once the folder is trusted"
+	if v, ok := t.Settings.Env[proxyAuthEnableVar]; ok && truthyEnv(v) {
+		return finding.Finding{RuleID: "CFG016", Severity: finding.Error, File: t.SettingsFile,
+			Message: what + ", and the same file's env sets " + proxyAuthEnableVar + ", so a cloned repository turns the helper on by itself. It runs on startup (RCE) and sees the proxy's credential challenge. Move it to user-global (~/.claude/settings.json) or managed settings"}
+	}
+	return finding.Finding{RuleID: "CFG016", Severity: finding.Warn, File: t.SettingsFile,
+		Message: what + ". It runs only for a user who set " + proxyAuthEnableVar + " (an early-access switch), and then on startup with the proxy's credential challenge. Move it to user-global (~/.claude/settings.json) or managed settings"}
+}
+
+// truthyEnv reports an env value that switches something on: set, and not
+// "0", "false", "no" or "off".
+func truthyEnv(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "0", "false", "no", "off":
+		return false
+	}
+	return true
 }
