@@ -115,3 +115,61 @@ func TestAVEMap_RejectedV130(t *testing.T) {
 		t.Errorf("CFG075 maps to %s", ave)
 	}
 }
+
+// The other direction (#1793): a Direction 1 row that names one rule and an
+// AVE id says the output carries that id, so aveByRule has to map the rule to
+// one of the ids the row names. Rows naming several rules are left out: the
+// rules in them can map to different ids. CFG137 sat in the crosswalk with an
+// id that its findings never carried.
+func TestAVEMap_CrosswalkRowsAreMapped(t *testing.T) {
+	crosswalk, err := os.ReadFile(filepath.Join("..", "..", "docs", "cfgaudit-to-ave.md"))
+	if err != nil {
+		t.Fatalf("read crosswalk: %v", err)
+	}
+	for _, row := range direction1Rows(string(crosswalk)) {
+		cfgs := cfgIDRe.FindAllString(row[0], -1)
+		aves := aveRefRe.FindAllString(row[1], -1)
+		if len(cfgs) != 1 || len(aves) == 0 {
+			continue
+		}
+		got, ok := aveByRule[cfgs[0]]
+		if !ok {
+			t.Errorf("crosswalk maps %s to %s, but aveByRule has no %s", cfgs[0], strings.Join(aves, ", "), cfgs[0])
+			continue
+		}
+		found := false
+		for _, a := range aves {
+			found = found || a == got
+		}
+		if !found {
+			t.Errorf("crosswalk maps %s to %s, but aveByRule maps it to %s", cfgs[0], strings.Join(aves, ", "), got)
+		}
+	}
+}
+
+var (
+	cfgIDRe  = regexp.MustCompile(`CFG\d{3}`)
+	aveRefRe = regexp.MustCompile(`AVE-2026-\d{5}`)
+)
+
+// direction1Rows returns the two cells of each table row under "Direction 1",
+// up to the table of rules deliberately left unmapped.
+func direction1Rows(doc string) [][2]string {
+	start := strings.Index(doc, "## Direction 1")
+	if start < 0 {
+		return nil
+	}
+	doc = doc[start:]
+	if end := strings.Index(doc, "**Deliberately left unmapped**"); end >= 0 {
+		doc = doc[:end]
+	}
+	var rows [][2]string
+	for _, line := range strings.Split(doc, "\n") {
+		cells := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
+		if !strings.HasPrefix(line, "|") || len(cells) < 2 {
+			continue
+		}
+		rows = append(rows, [2]string{cells[0], cells[1]})
+	}
+	return rows
+}

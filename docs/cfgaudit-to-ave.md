@@ -33,6 +33,12 @@ Rechecked 2026-09-25 against **AVE-2026-00081 through AVE-2026-00083**, the thre
 
 Rechecked 2026-11-14 against **AVE v1.3.0** (tag `647e1ce`), the first release that rejects records: AVE-2026-00052, 00053, 00060 and 00061 are `rejected` (aveproject/ave#455), the other 85 stay `active`. Only 00061 was mapped. CFG075 carried it and now carries no AVE id, and the class moves to Direction 3 with a pointer to CWE-295 ([#1768](https://github.com/cfgaudit/cfgaudit/issues/1768)). 00052 and 00053 were already listed below as needing server-side source. 00060 was never mapped. The bucket counts above predate the release and are not recounted here.
 
+Rechecked 2026-11-15 for the v1.22.0 release ([#1793](https://github.com/cfgaudit/cfgaudit/issues/1793)): the record set is unchanged since AVE v1.3.0 (89 records, four rejected). Of the rules added since v1.21.0:
+
+- **Mapped to AVE-2026-00063:** CFG139, a committed Kimi Code `local.toml` allow rule that removes an approval prompt. Its `info` finding for an `additional_dir` outside the repository is not part of that class.
+- **Already recorded:** CFG141 maps to AVE-2026-00057 and CFG143 to AVE-2026-00062.
+- **Left unmapped, each with its reason in the table below:** CFG137, CFG138, CFG140, CFG142, CFG144 and CFG145. CFG137 was listed under AVE-2026-00010 without carrying it in the output; that row was the wrong class and is removed.
+
 Rechecked 2026-11-10 for the v1.21.0 release (#1616): the record set is unchanged at **AVE-2026-00089**. Of the rules added since v1.20.0:
 
 - **Mapped to AVE-2026-00063:** CFG125, a command line that turns off a child agent's approval controls.
@@ -71,7 +77,6 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG026 override / persona / authority · CFG092 Kimi agent file `override: true` (replaces the whole system prompt) | AVE-2026-00007 goal hijack · AVE-2026-00009 jailbreak · AVE-2026-00014 false authority |
 | CFG029 bypass permission prompts · CFG091 qwen `approvalMode: yolo` (auto-approves every tool call) | AVE-2026-00012 false permission grant · AVE-2026-00021 autonomous action without confirmation |
 | CFG030 conceal behavior | AVE-2026-00010 covert instruction concealment |
-| CFG137 text hidden behind a long run of blanks | AVE-2026-00010 covert instruction concealment |
 | CFG032 pseudo-system / role injection | AVE-2026-00025 conversation-history injection · AVE-2026-00030 false role claim |
 | CFG035 configure/trust MCP from instructions | AVE-2026-00011 dynamic tool call *(partial)* · AVE-2026-00034 dynamic skill import *(partial)* |
 | CFG113 fetch remote instructions and follow them | AVE-2026-00001 metamorphic payload via external config fetch (#621; this record was missing from the coverage buckets, which summed to 58 of the 59) |
@@ -113,7 +118,7 @@ Added in the 2026-08-04 refresh, against the records AVE shipped from [aveprojec
 
 | CFG | AVE |
 |---|---|
-| CFG003 `enableAllProjectMcpServers` · CFG004 `defaultMode` · CFG048 VS Code `chat.permissions.default` · CFG053 blanket MCP-trust keys · CFG063 Codex `approval_policy` / `approvals_reviewer` · CFG079 `autoMode` classifier · CFG087 hook answers a permission gate · CFG091 qwen `approvalMode: yolo` · CFG093 `.cursor/permissions.json` allowlist · CFG096 Gemini MCP `trust` · CFG104 Devin `permissions.allow` · CFG105 OpenCode `permission` block · CFG125 a command line that turns off a child agent's approval controls | AVE-2026-00063 approval gate bypassed via declarative configuration |
+| CFG003 `enableAllProjectMcpServers` · CFG004 `defaultMode` · CFG048 VS Code `chat.permissions.default` · CFG053 blanket MCP-trust keys · CFG063 Codex `approval_policy` / `approvals_reviewer` · CFG079 `autoMode` classifier · CFG087 hook answers a permission gate · CFG091 qwen `approvalMode: yolo` · CFG093 `.cursor/permissions.json` allowlist · CFG096 Gemini MCP `trust` · CFG104 Devin `permissions.allow` · CFG105 OpenCode `permission` block · CFG125 a command line that turns off a child agent's approval controls · CFG139 Kimi Code `local.toml` allow rules (not its `additional_dir` finding) | AVE-2026-00063 approval gate bypassed via declarative configuration |
 | CFG047 `.vscode/tasks.json` `folderOpen` + Zed `create_worktree` · CFG086 zero-click hook event · CFG067 committed project hooks · CFG114 committed OpenCode plugin/tool code · CFG134 pi project packages and extensions · CFG136 Claude Code plugin hooks module | AVE-2026-00064 zero-click code execution via project-load auto-run configuration (CFG114: measured on opencode 1.18.18, the loader runs the files at startup with no prompt, the condition the CFG100 row below names) |
 | CFG010 unpinned `@latest`/`:latest` · CFG074 `skills-lock.json` with no integrity pin · CFG055 / CFG089 unpinned marketplace source · CFG098 `marketplace.json` archive with no `sha256` · CFG143 a registry or index the repository chooses | AVE-2026-00062 unpinned dependency, supply-chain substitution |
 | CFG097 Gemini remote-agent `auth` literal | AVE-2026-00047 hardcoded credentials in component |
@@ -152,6 +157,12 @@ Added in the 2026-08-14 refresh, against AVE-2026-00071 through AVE-2026-00077. 
 | CFG107 Codex `shell_environment_policy.set` code injection | The mechanism is CFG020's exactly, but AVE-2026-00055 is bound to an untrusted *MCP launch config*. No record covers a configuration-declared process environment that loads code into every shell the agent spawns, so it is reported as a gap rather than stretched onto 00055 |
 | CFG110 Claude Code settings `env` code injection | The same gap as CFG107 on the Claude Code settings file: CFG020's mechanism, but no record covers a configuration-declared environment that loads code into every hook and shell command the agent runs, and AVE-2026-00055 is bound to an MCP launch config |
 | CFG108 committed `.claude/scheduled_tasks.json` fires a prompt on a timer | The closest record, AVE-2026-00063, is a bypassed *human* approval gate. CFG108 bypasses no gate: the file's presence self-enables the otherwise-off cron scheduler and enqueues a repository-authored prompt on a schedule, a new autonomous channel. No record covers a config-declared scheduler that fires prompts, so it is a gap |
+| CFG137 text hidden behind a long run of blanks | Text a reviewer does not see because of the layout, with no directive in it. AVE-2026-00010 is an instruction that tells the agent to keep its directives secret, and AVE-2026-00029 is Unicode obfuscation; blanks are neither |
+| CFG138 browser MCP server attached to the user's own browser or profile | The same gap as the browser and desktop access row in Direction 3: no record covers a repository that hands the agent the reader's logged-in browser |
+| CFG140 Codex `.codex/rules` blocks commands case-sensitively, or uses `canonical_matching` | An ineffective guardrail, the same reason as CFG101: the rule is present and does not match what it is meant to block |
+| CFG142 MCP server, hook or task starts a container that reaches the host | Containment, the same reason as CFG133: the flags widen what a container can reach, and no record covers a weakened sandbox or container boundary |
+| CFG144 Antigravity CLI discovery manifest points outside the repository | The same reason as CFG115 and CFG116: no record covers a repository making the agent load a file from the reader's machine |
+| CFG145 agent hook prints the environment or a secret into the model's context | A leak to the model provider and the transcript with no instruction behind it. AVE-2026-00003 is credential exfiltration through an agent instruction, and AVE-2026-00047 a credential committed in the component |
 
 ---
 
