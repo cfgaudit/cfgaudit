@@ -4,7 +4,7 @@
     {
       "agent": "gemini-cli",
       "repo": "google-gemini/gemini-cli",
-      "reviewed_tag": "v0.67.0",
+      "reviewed_tag": "v0.68.0",
       "files": [
         "packages/cli/src/config/extension-manager.ts",
         "packages/cli/src/config/settings.ts",
@@ -23,7 +23,7 @@
     {
       "agent": "codex",
       "repo": "openai/codex",
-      "reviewed_tag": "rust-v0.167.0",
+      "reviewed_tag": "rust-v0.169.0",
       "files": [
         "codex-rs/config/src/config_requirements.rs",
         "codex-rs/config/src/loader/layer_io.rs",
@@ -94,7 +94,7 @@
     {
       "agent": "qwen-code",
       "repo": "QwenLM/qwen-code",
-      "reviewed_tag": "v0.26.8",
+      "reviewed_tag": "v0.27.4",
       "tag_pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
       "files": [
         "packages/cli/src/config/settings.ts",
