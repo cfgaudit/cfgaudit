@@ -353,6 +353,29 @@ func (s *VSCodeSettings) Nested(key string) bool {
 	return !jsonEqual(flat, val)
 }
 
+// DottedBelow reports whether part of key's effective value comes from a
+// top-level key written below it as one flat dotted name, such as
+// "terminal.integrated.profiles.linux.x.path" under the setting
+// "terminal.integrated.profiles.linux". VS Code 1.145.2 and earlier did not
+// match such a key to the setting above it, so the setting's restricted flag
+// and scope did not apply to it (CVE-2026-121661, fixed in 1.145.3). A key a
+// later spelling replaced does not count.
+func (s *VSCodeSettings) DottedBelow(key string) bool {
+	if s == nil {
+		return false
+	}
+	prefix := key + "."
+	for k, raw := range s.Raw {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		if val, ok := s.lookup(k); ok && jsonEqual(raw, val) {
+			return true
+		}
+	}
+	return false
+}
+
 func jsonEqual(a, b json.RawMessage) bool {
 	var x, y interface{}
 	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {

@@ -187,9 +187,31 @@ const terminalTrustNote = " These terminal keys are `restricted`, so the value i
 // ones whose mitigation is one of those two filters.
 const nestedFilterNote = " This value is written in nested-object form, which VS Code 1.136.1 and earlier did not run through the workspace scope and Restricted Mode filters (CVE-2026-70334, CVE-2026-81376, fixed in 1.136.2), so on those releases it applies from the committed file without trust."
 
-// nestedNote returns nestedFilterNote when key takes its value from the nested
-// form, and nothing otherwise, so callers can append it unconditionally.
+// endNote appends note to a message that ends without a full stop, adding the
+// full stop when there is a note.
+func endNote(msg, note string) string {
+	if note == "" {
+		return msg
+	}
+	return msg + "." + note
+}
+
+// dottedBelowNote qualifies the same statements for a value written as a flat
+// dotted key below the registered setting, such as
+// "terminal.integrated.profiles.linux.x.path". VS Code 1.145.2 and earlier did
+// not match such a key to the setting above it, so neither filter applied
+// (CVE-2026-121661; fixed by 7a1a8e4 in 1.145.3). The 1.136.2 fix covered only
+// the nested-object form.
+const dottedBelowNote = " This value is written as a flat dotted key below the setting, which VS Code 1.145.2 and earlier did not run through the workspace scope and Restricted Mode filters (CVE-2026-121661, fixed in 1.145.3), so on those releases it applies from the committed file without trust."
+
+// nestedNote returns dottedBelowNote when part of key's value comes from a
+// flat dotted key below it, nestedFilterNote when it comes from the nested
+// form, and nothing otherwise, so callers can append it unconditionally. The
+// dotted note wins: it covers every release the nested one does, and more.
 func nestedNote(t *Target, key string) string {
+	if t.VSCodeSettings.DottedBelow(key) {
+		return dottedBelowNote
+	}
 	if t.VSCodeSettings.Nested(key) {
 		return nestedFilterNote
 	}
