@@ -289,7 +289,7 @@ func negated(lines []string, i int, loc []int) bool {
 	// as a wrapper around the tool's `execute`:" introduces a to-do list, and
 	// reading its "do not" as a prohibition header suppressed a real finding in
 	// the list below it.
-	return introducesList(g) && prohibitionRe.MatchString(g[clauseStart(g, len(g)):])
+	return introducesList(g) && (prohibitionRe.MatchString(g[clauseStart(g, len(g)):]) || notKeyRe.MatchString(g))
 }
 
 // cliFlagRe finds a command-line flag in a line: `--fix`, `-y`, --yes. The
@@ -326,6 +326,15 @@ var confirmingPermissionRe = regexp.MustCompile(`(?i)^\s*(?:$|[.,;:!)]|with\s+(?
 // have no such object.
 var confirmObjectRe = regexp.MustCompile(`(?i)^\s+(?:a|an|the|any|that|this|these|those|its|their|your)\b`)
 
+// confirmPronounRe is "it" or "them" after "never confirm": "Agents may
+// propose resolution, never confirm it" (#1652). With a person after it the
+// pronoun is the user's approval, so confirmWithPersonRe keeps "Never confirm
+// it with the user" reported.
+var (
+	confirmPronounRe    = regexp.MustCompile(`(?i)^\s+(?:it|them)\b`)
+	confirmWithPersonRe = regexp.MustCompile(`(?i)^\s+(?:it|them)\s+with\s+(?:the\s+(?:user|operator|owner|maintainer|human|team)|them|you|me|us|anyone|a\s+human)\b`)
+)
+
 // neverPromptObjectRe is the object that makes "never prompt"/"never confirm"
 // about permission: never prompt for permission, approval or confirmation, or
 // before running something.
@@ -358,7 +367,39 @@ var programRunsRe = regexp.MustCompile("`[^`]+`[*_]*\\s+(?:[^.;`]{0,60}?\\s)?(?:
 // programExitsRe matches a program as the subject of "exits ... without
 // prompting": "If it exits successfully without prompting" (#914). "it" counts
 // only with the verbs a process has.
-var programExitsRe = regexp.MustCompile(`(?i)\b(?:it|the\s+(?:command|script|cli|tool|installer|program|binary|process))\s+(?:\w+\s+){0,2}?(?:exits|completes|succeeds|finishes|returns)\b[^.;]*$`)
+var programExitsRe = regexp.MustCompile(`(?i)\b(?:it|the\s+(?:command|script|cli|tool|installer|program|binary|process)|(?:hooks?|gates?|commands?|tools?|programs?|scripts?))\s+(?:\w+\s+){0,2}?(?:exits|completes|succeeds|finishes|returns)\b[^.;]*$`)
+
+// promptProgramSubjectRe is a hook, gate, command or mode as the subject of
+// "never prompt": "commands never prompt" (#1652). The subject is a program or
+// mode, so the clause describes it, not the agent, unless an order follows in
+// the same sentence (orderFollowsRe).
+var promptProgramSubjectRe = regexp.MustCompile(`(?i)\b(?:hooks?|gates?|commands?|tools?|modes?|programs?|scripts?|cli)\s+$`)
+
+// promptAdverbRe matches an adverb that makes "never prompt" a limit on how
+// often a program asks, not a bypass: "Never prompt twice inside the window"
+// (#1652). "again" and "once" are not limits: "Never prompt again" stops
+// prompting altogether, and in "Never prompt once you have started" "once" is
+// a conjunction.
+var promptAdverbRe = regexp.MustCompile(`(?i)^\s+(?:twice|more\s+than\s+once)\b`)
+
+// orderFollowsRe is an order joined to a described clause in the same
+// sentence: "Tools never prompt, so run everything without asking" (#1652).
+var orderFollowsRe = regexp.MustCompile(`(?i)^[^.!?]*?(?:[,;:]\s*(?:so|just|then|thus|therefore|and\s+so)\b|;\s*(?:run|proceed|execute|act|go|do|apply|continue)\b)`)
+
+// stateParticipleRe matches "is/are" and a past participle that ends the text
+// before "without": "dependent work is unblocked without approval" (#1652).
+// Agent verbs are excluded by the caller: "Changes are applied without
+// approval" says how the agent behaves.
+var stateParticipleRe = regexp.MustCompile(`(?i)\b(?:is|are)\s+(\w+(?:ed|en|ne|un))\s+$`)
+
+// permissionParticipleRe is a participle that grants the agent leave to act,
+// so "is/are" before it is a permission, not a state: "Read-only database
+// queries are allowed without asking for permission" (#1652).
+var permissionParticipleRe = regexp.MustCompile(`(?i)^(?:allowed|permitted|authori[sz]ed|enabled|granted|cleared|sanctioned)$`)
+
+// notKeyRe matches a YAML key that holds a prohibition: "do_not_create_pr_when:"
+// or "never_auto_*:" over the list it introduces (#1652).
+var notKeyRe = regexp.MustCompile(`(?i)^\s*(?:[-*+]\s+)?\w*_not_\w*\s*:\s*$`)
 
 // nonInteractiveRe matches a mode in which a program must not prompt: "In
 // non-interactive or JSON mode, never prompt or open a browser" (#914).
@@ -414,6 +455,9 @@ func notAPermissionBypass(line string, loc []int) bool {
 	if strings.HasPrefix(match, "never prompt") && nonInteractiveRe.MatchString(scope) {
 		return true
 	}
+	if strings.HasPrefix(match, "never prompt") && promptAdverbRe.MatchString(after) {
+		return true
+	}
 	if strings.HasPrefix(match, "skip approval") && prApprovalRe.MatchString(line) {
 		return true
 	}
@@ -447,7 +491,8 @@ func notAPermissionBypass(line string, loc []int) bool {
 			return true // a program's design too: "Never prompt in JSON, quiet or non-TTY runs" (#1568)
 		}
 		rest := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(after)), "the user ")
-		if strings.HasPrefix(match, "never confirm") && (confirmObjectRe.MatchString(after) || verbListAfterRe.MatchString(after)) {
+		if strings.HasPrefix(match, "never confirm") && (confirmObjectRe.MatchString(after) || verbListAfterRe.MatchString(after) ||
+			(confirmPronounRe.MatchString(after) && !confirmWithPersonRe.MatchString(after))) {
 			return true // "Never confirm a root cause without ..." (#855), "never confirm, negotiate, or alter payment terms" (#953)
 		}
 		return !neverPromptObjectRe.MatchString(after) && strings.HasPrefix(rest, "for")
@@ -585,6 +630,9 @@ func describesState(line string, loc []int) bool {
 		if stateBeforeRe.MatchString(before) || questionWhatRe.MatchString(before) {
 			return true
 		}
+		if m := stateParticipleRe.FindStringSubmatch(before); m != nil && !agentActionRe.MatchString(m[1]) && !permissionParticipleRe.MatchString(m[1]) {
+			return true
+		}
 		if statusMarkRe.MatchString(line) && participleStateRe.MatchString(before) && !auxiliaryRe.MatchString(before) {
 			return true
 		}
@@ -607,7 +655,8 @@ func describesState(line string, loc []int) bool {
 			}
 		}
 	case strings.HasPrefix(match, "never prompt"):
-		return strings.HasPrefix(after, "-") || codeSubjectRe.MatchString(before)
+		return strings.HasPrefix(after, "-") || codeSubjectRe.MatchString(before) ||
+			(promptProgramSubjectRe.MatchString(before) && !orderFollowsRe.MatchString(after))
 	case strings.HasPrefix(match, "always approve"), strings.HasPrefix(match, "automatically approve"):
 		return userSubjectRe.MatchString(before)
 	case strings.HasPrefix(match, "bypass permission"):
