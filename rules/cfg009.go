@@ -51,11 +51,15 @@ var safeShellVars = map[string]bool{
 	"CLAUDE_ENV_FILE":    true,
 	"CLAUDE_PLUGIN_DATA": true,
 	// Other agent-provided install and project paths (#1198).
-	"CURSOR_PROJECT_DIR":  true,
-	"GEMINI_PROJECT_DIR":  true,
-	"QWEN_PROJECT_DIR":    true, // cmd/cfgaudit/launched.go reads it as the project directory (#1674)
-	"DROID_PLUGIN_ROOT":   true,
-	"ZCODE_PLUGIN_ROOT":   true,
+	"CURSOR_PROJECT_DIR": true,
+	"GEMINI_PROJECT_DIR": true,
+	"QWEN_PROJECT_DIR":   true, // cmd/cfgaudit/launched.go reads it as the project directory (#1674)
+	"DROID_PLUGIN_ROOT":  true,
+	"ZCODE_PLUGIN_ROOT":  true,
+	// Copilot CLI 1.0.111 expands ${COPILOT_PLUGIN_ROOT} in plugin hook working
+	// directories and environment values, so it is the plugin's own trusted path
+	// rather than agent-controlled data (#1805).
+	"COPILOT_PLUGIN_ROOT": true,
 	"GROK_WORKSPACE_ROOT": true,
 	// Zed task variables (crates/task/src/task_template.rs VariableName)
 	"ZED_WORKTREE_ROOT":     true,

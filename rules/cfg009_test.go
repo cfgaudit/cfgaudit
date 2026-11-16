@@ -124,6 +124,36 @@ func TestCFG009_Issue1198_FrameworkPaths(t *testing.T) {
 	}
 }
 
+// Copilot CLI 1.0.111 expands ${COPILOT_PLUGIN_ROOT} in plugin hook working
+// directories and environment values. It is the plugin's own trusted install
+// path, the same role CLAUDE_PLUGIN_ROOT plays for Claude Code, so a hook that
+// uses it alone is not an interpolation finding (#1805).
+func TestCFG009_CopilotPluginRoot1805(t *testing.T) {
+	for _, cmd := range []string{
+		`bash ${COPILOT_PLUGIN_ROOT}/scripts/check.sh`,
+		`"${COPILOT_PLUGIN_ROOT}/scripts/check.sh"`,
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			tgt := agentHooksTarget("Copilot", map[string][]parser.AgentHook{
+				"preToolUse": {{Bash: cmd}},
+			}, false)
+			if f := CFG009.Check(tgt); len(f) != 0 {
+				t.Errorf("trusted Copilot plugin root must not be reported: %+v", f)
+			}
+		})
+	}
+	// A real untrusted value next to a trusted plugin root still gets reported,
+	// and only that value is named.
+	mixed := agentHooksTarget("Copilot", map[string][]parser.AgentHook{
+		"preToolUse": {{Bash: `"${COPILOT_PLUGIN_ROOT}/scripts/check.sh" $USER_INPUT`}},
+	}, false)
+	f := CFG009.Check(mixed)
+	if len(f) != 1 || !strings.Contains(f[0].Message, "$USER_INPUT") ||
+		strings.Contains(f[0].Message, "COPILOT_PLUGIN_ROOT") {
+		t.Errorf("only the untrusted value must be reported: %+v", f)
+	}
+}
+
 func TestCFG009_CommandSubstitution_NoFinding(t *testing.T) {
 	// $(...) is command substitution, a separate concern (issue #38) — not flagged here.
 	json := `{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"echo $(date)"}]}]}}`
