@@ -380,6 +380,17 @@
   rules:
     - {rule: CFG019, severity: error}
 
+- id: "CVE-2026-121661"
+  aliases: [GHSA-g69c-c2mc-6h4j]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.145.3"
+  summary: "Restricted settings written as a flat dotted key below the setting applied in Restricted Mode."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: error}
+
 - id: "CVE-2026-122235"
   aliases: [GHSA-pjpc-p955-xv4f]
   kind: cve
@@ -400,6 +411,27 @@
   rules:
     - {rule: CFG060, severity: error}
     - {rule: CFG110, severity: error}
+
+- id: "CVE-2026-126758"
+  aliases: [GHSA-75pq-p477-6h9c]
+  kind: cve
+  agent: "Kimi Code"
+  fixed: "2.1.0"
+  summary: "A committed local.toml added folders outside the repository to the workspace before the workspace was trusted."
+  coverage: full
+  rules:
+    - {rule: CFG139, severity: info}
+
+- id: "CVE-2026-129128"
+  aliases: [GHSA-m867-2v3c-r239]
+  kind: cve
+  agent: "goose"
+  fixed: "1.53.0"
+  summary: "goose review ran git diff without --no-ext-diff, so a diff.external in the folder's own .git/config ran a command."
+  coverage: none
+  related: [CFG121]
+  reason: by-design
+  note: "CFG121 reads the folder's own .git/config but leaves diff.external out, a key developers set for their own diff tool, and a clone cannot carry the file."
 
 - id: "CVE-2026-12958"
   kind: cve

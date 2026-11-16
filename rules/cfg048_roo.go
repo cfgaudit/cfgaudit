@@ -46,6 +46,6 @@ func (r *cfg048) checkRooAllowedCommands(t *Target) []finding.Finding {
 		Scope:    t.Scope,
 		File:     t.VSCodeSettingsFile,
 		Key:      rooAllowedCommandsKey,
-		Message:  rooAllowedCommandsKey + " approves " + quoteList(broad) + " — Roo Code matches the list by prefix, so this runs any command (an interpreter prefix runs any script it is given) without a prompt once its auto-approval of allowed commands is on. Committed to a repo, the list applies to everyone who opens it with Roo Code. List the specific commands the project needs" + nestedNote(t, rooAllowedCommandsKey),
+		Message:  endNote(rooAllowedCommandsKey+" approves "+quoteList(broad)+" — Roo Code matches the list by prefix, so this runs any command (an interpreter prefix runs any script it is given) without a prompt once its auto-approval of allowed commands is on. Committed to a repo, the list applies to everyone who opens it with Roo Code. List the specific commands the project needs", nestedNote(t, rooAllowedCommandsKey)),
 	}}
 }

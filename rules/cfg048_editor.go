@@ -47,7 +47,7 @@ func (r *cfg048) checkEditorSurfaces(t *Target) []finding.Finding {
 	s := t.VSCodeSettings
 	var out []finding.Finding
 	add := func(sev finding.Severity, key, msg string) {
-		out = append(out, finding.Finding{RuleID: "CFG048", Severity: sev, Scope: t.Scope, File: t.VSCodeSettingsFile, Key: key, Message: msg + nestedNote(t, key)})
+		out = append(out, finding.Finding{RuleID: "CFG048", Severity: sev, Scope: t.Scope, File: t.VSCodeSettingsFile, Key: key, Message: endNote(msg, nestedNote(t, key))})
 	}
 	for _, key := range executablePathKeys {
 		for _, v := range stringOrList(s, key) {
@@ -300,7 +300,7 @@ func terminalEnvFindings(t *Target) []finding.Finding {
 				File:     t.VSCodeSettingsFile,
 				Key:      key,
 				Message: key + " sets " + h.name + ": " + h.mechanism + tail +
-					". VS Code reads the key only after the workspace is trusted, forks without workspace trust apply it on open. Remove it" + nestedNote(t, key),
+					endNote(". VS Code reads the key only after the workspace is trusted, forks without workspace trust apply it on open. Remove it", nestedNote(t, key)),
 			})
 		}
 	}
