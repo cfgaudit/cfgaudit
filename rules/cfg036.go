@@ -184,7 +184,7 @@ func passwordArchiveRun(lines []string, i int) bool {
 // literal, not a shell expansion, whose variable names cannot hold a dot:
 // `Bearer ${Deno.env.get("OPENAI_API_KEY")}` (#885), `Bearer
 // ${c.env.AI_GATEWAY_TOKEN}` in a Cloudflare Worker (#955).
-var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?|schema)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\bssh-keygen\b[^|;&)]*\s-f\s+\S+|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b|\S*\.ssh/[\w.\-]+\.pub\b`)
+var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|dist|defaults?|schema)\b|\$\{[A-Za-z_$][\w$]*(?:\.[\w$]+)+(?:\([^}]*\))?\}|\b(?:process|import\.meta|os|Deno|globalThis|self)\.env\b|\b(?:cp|mv|copy|copy-item)\s+\S+\s+\S*\.env\b|\bchmod\s+\S+\s+\S*\.env\b|\bssh-keygen\b[^|;&)]*\s-f\s+\S+|\S*id_(?:rsa|ed25519|ecdsa|dsa)\.pub\b|\S*\.ssh/(?:[\w.\-]+|<[^>\s]+>|\{[^}\s]+\}|\$\{?\w+\}?)\.pub\b`)
 
 // inlineCodeSpanRe matches a Markdown inline-code span: a pair of backticks
 // around text with no backtick in it.
