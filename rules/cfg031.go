@@ -229,9 +229,18 @@ func publicPEMName(full string) bool {
 // exempt either.
 func publicKeyFileName(full string) bool {
 	name := strings.ToLower(full[strings.LastIndexByte(full, '/')+1:])
-	for _, part := range strings.FieldsFunc(name, func(r rune) bool {
+	parts := strings.FieldsFunc(name, func(r rune) bool {
 		return r == '-' || r == '_' || r == '.'
-	}) {
+	})
+	// A name that also says private is a private key despite a "public"
+	// component (e.g. "public-private-key.pem", #1818 review): it stays reported.
+	for _, part := range parts {
+		switch part {
+		case "private", "priv", "privkey", "secret":
+			return false
+		}
+	}
+	for _, part := range parts {
 		switch part {
 		case "public", "pubkey", "publickey":
 			return true

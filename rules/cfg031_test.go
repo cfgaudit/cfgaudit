@@ -469,6 +469,8 @@ func TestCFG031_Issue1814_PublicKeyFileNames(t *testing.T) {
 		{"```bash\ncat /etc/wireguard/server_private.key\n```\n", finding.Error, ""},
 		{"```bash\ncat /etc/wireguard/private.key\n```\n", finding.Error, ""},
 		{"```bash\ncat /etc/wireguard/notapublickey.key\n```\n", finding.Error, ""},
+		{"```bash\ncat docs/did_public/public-private-key.pem\n```\n", finding.Error, ""},
+		{"```bash\ncat certs/public-secret.key\n```\n", finding.Error, ""},
 		{"```bash\ncat key.pem\n```\n", finding.Error, ""},
 		{"```bash\ncat /etc/wireguard/server_public.key /etc/wireguard/server_private.key\n```\n", finding.Error, "server_private.key"},
 	} {
