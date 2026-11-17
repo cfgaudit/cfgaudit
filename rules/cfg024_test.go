@@ -73,6 +73,21 @@ func TestCFG024_MidFileBOM_Flagged(t *testing.T) {
 	}
 }
 
+func TestCFG024_C0ControlCharacter(t *testing.T) {
+	// Raw ESC and NUL in a CLAUDE.md are reported.
+	for _, cp := range []rune{0x001B, 0x0000, 0x0001, 0x007F} {
+		f := CFG024.Check(claudeMDTarget("text" + string(cp) + "more"))
+		if len(f) != 1 {
+			t.Errorf("expected 1 finding for U+%04X, got %+v", cp, f)
+		}
+	}
+	// Tab, LF and CRLF line endings are not reported.
+	f := CFG024.Check(claudeMDTarget("a\tb\nc\rd\n"))
+	if len(f) != 0 {
+		t.Errorf("expected no finding for tabs/LF/CRLF, got %+v", f)
+	}
+}
+
 func TestCFG024_CleanText_NoFinding(t *testing.T) {
 	f := CFG024.Check(claudeMDTarget("# Project memory\n\nRun `make test` before committing. Use UTF-8 like café, naïve, 日本語.\n"))
 	if len(f) != 0 {

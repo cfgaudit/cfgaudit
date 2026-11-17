@@ -413,6 +413,15 @@ func fenceAt(runes []rune, i int) bool {
 // smuggle hidden text, returning a short human-readable category.
 func suspiciousUnicode(r rune) (string, bool) {
 	switch {
+	// C0 control characters (U+0000–U+001F, excluding tab U+0009 and
+	// line feed U+000A) and DEL (U+007F) have no place in a text
+	// instruction file. A raw ESC (U+001B) can hide text via ANSI
+	// escape sequences when the file is viewed with cat or in a terminal
+	// diff; raw NUL and the other C0 controls are never legitimate
+	// Markdown/text content. Carriage return (U+000D) is deliberately
+	// excluded so CRLF line endings are not flagged.
+	case r <= 0x0008 || r == 0x000B || r == 0x000C || (r >= 0x000E && r <= 0x001F) || r == 0x007F:
+		return "C0 control character", true
 	case r >= 0xE0000 && r <= 0xE007F:
 		return "Tags block — ASCII smuggling", true
 	case r >= 0x200B && r <= 0x200F:
