@@ -454,6 +454,42 @@ func TestCFG031_Issue1173_CopyDestinations(t *testing.T) {
 	}
 }
 
+// #1814: a key file whose name says it is public is meant to be shared, like
+// the ".pub" suffix (#952) is; a private key later on the same line still is
+// reported.
+func TestCFG031_Issue1814_PublicKeyFileNames(t *testing.T) {
+	for _, tc := range []struct {
+		content string
+		want    finding.Severity // "" for no finding
+		inMsg   string           // a path the finding's message must name
+	}{
+		{"```bash\ncat /etc/wireguard/server_public.key\n```\n", "", ""},
+		{"```bash\ncat /etc/wireguard/publickey\n```\n", "", ""},
+		{"```bash\ncat certs/public.pem\n```\n", "", ""},
+		{"```bash\ncat /etc/wireguard/server_private.key\n```\n", finding.Error, ""},
+		{"```bash\ncat /etc/wireguard/private.key\n```\n", finding.Error, ""},
+		{"```bash\ncat /etc/wireguard/notapublickey.key\n```\n", finding.Error, ""},
+		{"```bash\ncat key.pem\n```\n", finding.Error, ""},
+		{"```bash\ncat /etc/wireguard/server_public.key /etc/wireguard/server_private.key\n```\n", finding.Error, "server_private.key"},
+	} {
+		var got finding.Severity
+		var msg string
+		for _, f := range CFG031.Check(claudeMDTarget(tc.content)) {
+			if got != finding.Error {
+				got = f.Severity
+				msg = f.Message
+			}
+		}
+		if got != tc.want {
+			t.Errorf("%q: severity = %q, want %q", tc.content, got, tc.want)
+			continue
+		}
+		if tc.inMsg != "" && !strings.Contains(msg, tc.inMsg) {
+			t.Errorf("%q: message must name %q, got: %s", tc.content, tc.inMsg, msg)
+		}
+	}
+}
+
 // A path written into .gitignore, a read refused later in the sentence, and a
 // guard that refuses the command are mentions, not reads (#1173).
 func TestCFG031_GitignoreAndRefused1173(t *testing.T) {
