@@ -122,7 +122,7 @@ AI coding agents read their instruction files as trusted system-context every se
 
 | ID | Severity | Description | OWASP |
 |----|----------|-------------|-------|
-| [CFG024](CFG024.md) | error/warn | instruction file contains hidden Unicode control characters (Tags block, zero-width, BiDi/Trojan Source) or hidden text (run of Variation Selectors Supplement, run of invisible times / invisible plus) — prompt injection / ASCII smuggling | LLM01 |
+| [CFG024](CFG024.md) | error/warn | instruction file contains hidden Unicode control characters (Tags block, zero-width, BiDi/Trojan Source) or hidden text (run of Variation Selectors Supplement, run of invisible times / invisible plus), or a visible mixed-script homoglyph word (Latin mixed with Cyrillic look-alikes, `warn`) — prompt injection / ASCII smuggling | LLM01 |
 | [CFG026](CFG026.md) | error/warn/info | instruction file contains instruction-bypass phrases (override / persona hijack / authority impersonation / destructive broad goal → error; permissive fictional framing → warn) | LLM01 |
 | [CFG029](CFG029.md) | error/warn/info | instruction file tells the agent to stop asking for confirmation ("always approve", "without asking", …): error when unbounded, warn for an outward-facing action, info for a named local step | LLM03 |
 | [CFG030](CFG030.md) | error/warn | instruction file instructs the agent to conceal its behavior ("don't tell the user", "silently exfiltrate", …) | LLM01 |
