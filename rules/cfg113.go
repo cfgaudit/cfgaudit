@@ -89,9 +89,11 @@ func loadIsNegated(sentence string, start, pos int) bool {
 	return negatedLoadRe.MatchString(stripEmphasis(sentence[:verb]))
 }
 
-// firstSentence returns s up to its first sentence end.
+// firstSentence returns s up to its first sentence end. The rest of a line
+// after a sentence still starts with that sentence's end mark (". Never run
+// it yourself."), which is dropped first (#1837).
 func firstSentence(s string) string {
-	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(s), ".!?"))
 	if loc := sentenceEndRe.FindStringIndex(s); loc != nil {
 		return s[:loc[1]]
 	}
