@@ -14,6 +14,10 @@ import (
 // sandbox.allowNestedUserNamespaces (#777).
 var nestedUserNamespacesFrom = version.Version{Major: 2, Minor: 1, Patch: 305}
 
+// autoAllowOffByDefaultFrom is the release that stopped auto-approving
+// sandboxed Bash commands unless sandbox.autoAllowBashIfSandboxed is true (#1800).
+var autoAllowOffByDefaultFrom = version.Version{Major: 2, Minor: 1, Patch: 325}
+
 type cfg022 struct{}
 
 var CFG022 = &cfg022{}
@@ -101,6 +105,24 @@ func (r *cfg022) Check(t *Target) []finding.Finding {
 			add(finding.Warn, msg+". The detected Claude Code "+t.ClaudeVersion.String()+" does not read the key yet; it takes effect from 2.1.305")
 		} else {
 			add(finding.Error, msg)
+		}
+	}
+
+	// autoAllowBashIfSandboxed: since 2.1.325 sandboxed Bash commands follow the
+	// normal permission flow unless this is true. A repository's files can set it
+	// (the sandboxing docs list it among the values a repository still supplies
+	// while the sandbox is admin-required), so a committed true turns the prompts
+	// off for every sandboxed command, for everyone who trusts the folder. The
+	// sandbox still bounds what those commands reach, hence warn. Commands run
+	// outside the sandbox (excludedCommands, the unsandboxed retry) still follow
+	// the permission flow. On a detected release before 2.1.325 the key restates
+	// the default, so it is info there.
+	if sb.AutoAllowBashIfSandboxed && (t.Scope == finding.ScopeProject || t.Scope == finding.ScopeProjectLocal) {
+		msg := "sandbox.autoAllowBashIfSandboxed is true in a project settings file: every Bash command that runs in the sandbox is approved without a prompt for everyone who trusts this folder (prompts are on by default since Claude Code 2.1.325). The sandbox still limits what the commands reach; leave the choice to each developer's own settings"
+		if t.ClaudeVersion != nil && !t.ClaudeVersion.AtLeast(autoAllowOffByDefaultFrom) {
+			add(finding.Info, msg+". The detected Claude Code "+t.ClaudeVersion.String()+" already auto-allows sandboxed commands by default, so the key changes nothing until 2.1.325")
+		} else {
+			add(finding.Warn, msg)
 		}
 	}
 

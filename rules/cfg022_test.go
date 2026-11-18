@@ -231,3 +231,44 @@ func TestCFG022_AllowNestedUserNamespaces(t *testing.T) {
 		t.Errorf("false is the default, got %+v", f)
 	}
 }
+
+// #1800: since Claude Code 2.1.325 sandboxed Bash commands prompt unless
+// sandbox.autoAllowBashIfSandboxed is true, and a repository's files can set it.
+func TestCFG022_AutoAllowBashIfSandboxed(t *testing.T) {
+	const cfg = `{"sandbox":{"enabled":true,"autoAllowBashIfSandboxed":true}}`
+	for _, sc := range []finding.Scope{finding.ScopeProject, finding.ScopeProjectLocal} {
+		for _, tc := range []struct {
+			ver  string
+			want finding.Severity
+		}{{"", finding.Warn}, {"2.1.325", finding.Warn}, {"2.1.330", finding.Warn}, {"2.1.324", finding.Info}} {
+			tgt := settingsTarget(t, cfg)
+			tgt.Scope = sc
+			if tc.ver != "" {
+				v, err := version.Parse(tc.ver)
+				if err != nil {
+					t.Fatal(err)
+				}
+				tgt.ClaudeVersion = &v
+			}
+			f := CFG022.Check(tgt)
+			if len(f) != 1 || f[0].Severity != tc.want || !strings.Contains(f[0].Message, "autoAllowBashIfSandboxed") {
+				t.Errorf("scope %q, version %q: expected one %s finding naming the key, got %+v", sc, tc.ver, tc.want, f)
+			}
+		}
+	}
+	// The developer's own choice in user settings is not a repository risk.
+	for _, sc := range []finding.Scope{finding.ScopeUser, ""} {
+		tgt := settingsTarget(t, cfg)
+		tgt.Scope = sc
+		if f := CFG022.Check(tgt); len(f) != 0 {
+			t.Errorf("scope %q: expected no finding, got %+v", sc, f)
+		}
+	}
+	for _, json := range []string{`{"sandbox":{"autoAllowBashIfSandboxed":false}}`, `{"sandbox":{"enabled":true}}`} {
+		tgt := settingsTarget(t, json)
+		tgt.Scope = finding.ScopeProject
+		if f := CFG022.Check(tgt); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %+v", json, f)
+		}
+	}
+}

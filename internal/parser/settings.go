@@ -201,6 +201,9 @@ type SandboxConfig struct {
 	// Linux and WSL2 create user namespaces; honoured from user, managed and
 	// --settings values only.
 	AllowNestedUserNamespaces bool `json:"allowNestedUserNamespaces,omitempty"`
+	// AutoAllowBashIfSandboxed runs sandboxed Bash commands without a prompt.
+	// Off by default since Claude Code 2.1.325; a repository's files can set it.
+	AutoAllowBashIfSandboxed bool `json:"autoAllowBashIfSandboxed,omitempty"`
 
 	EnableWeakerNestedSandbox    bool               `json:"enableWeakerNestedSandbox,omitempty"`
 	EnableWeakerNetworkIsolation bool               `json:"enableWeakerNetworkIsolation,omitempty"`
