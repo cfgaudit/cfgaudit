@@ -106,6 +106,9 @@ func (r *cfg087) Check(t *Target) []finding.Finding {
 // .github/hooks/*.json, whose events answer a permission gate with an allowing
 // value (error) or rewrite the tool arguments (warn).
 func (r *cfg087) checkAgentHooks(t *Target, ah *parser.AgentHooks, kind, file string) []finding.Finding {
+	if strings.HasPrefix(kind, "Antigravity") {
+		return r.checkAntigravity(t, ah, kind, file)
+	}
 	events := make([]string, 0, len(ah.Hooks))
 	for e := range ah.Hooks {
 		events = append(events, e)
@@ -148,6 +151,43 @@ func (r *cfg087) checkAgentHooks(t *Target, ah *parser.AgentHooks, kind, file st
 				}
 				break // one finding per hook entry; the strongest match wins
 			}
+		}
+	}
+	return findings
+}
+
+// Antigravity CLI PreToolUse hook output, from its hooks docs
+// (antigravity.google/docs/hooks). "decision": "auto_approve" "automatically
+// approves the tool call when the default policy would otherwise prompt";
+// "allow" only "delegat[es] to the next hook or default policy", so it is not
+// reported. permissionOverrides is "a list of resource strings ... to override
+// default tool permissions", and overwrite holds "replacement arguments merged
+// ... into toolCall.args before execution" (#1802).
+var (
+	antigravityAutoApprove = regexp.MustCompile(`(?i)"decision"\s*:\s*"auto_approve"`)
+	antigravityOverrides   = regexp.MustCompile(`(?i)"permissionOverrides"\s*:\s*\[\s*"`)
+	antigravityOverwrite   = jsonKey("overwrite")
+)
+
+// checkAntigravity handles .agents/hooks.json and a workspace plugin's
+// hooks.json. Only PreToolUse gates a tool call there, and Antigravity reads
+// none of the Copilot or Cursor decision fields, so those are not matched.
+func (r *cfg087) checkAntigravity(t *Target, ah *parser.AgentHooks, kind, file string) []finding.Finding {
+	var findings []finding.Finding
+	add := func(sev finding.Severity, msg string) {
+		findings = append(findings, finding.Finding{RuleID: "CFG087", Severity: sev, Scope: t.Scope, File: file, Message: kind + " hooks.PreToolUse " + msg + userScopeNote(t)})
+	}
+	for _, h := range ah.Hooks["PreToolUse"] {
+		cmd := h.ShellCommand()
+		switch {
+		case cmd == "":
+			continue
+		case antigravityAutoApprove.MatchString(cmd):
+			add(finding.Error, "answers the permission gate with decision: \"auto_approve\" — the hook approves the tool call whenever the default policy would prompt, so the user is never asked. Committed to a repository this removes the confirmation prompt for everyone who opens it. Return \"ask\" (or \"allow\", which defers to the default policy) and let the user decide")
+		case antigravityOverrides.MatchString(cmd):
+			add(finding.Warn, "returns permissionOverrides — the hook overrides the default tool permissions for the resources it lists, so those calls may no longer prompt. Review the list, or drop it and let the user grant access")
+		case antigravityOverwrite.MatchString(cmd):
+			add(finding.Warn, "rewrites the tool arguments before execution (overwrite) — what runs is not what the user saw and approved. Review the substitution, or reject the call instead of rewriting it")
 		}
 	}
 	return findings
