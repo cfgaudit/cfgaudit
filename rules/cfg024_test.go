@@ -297,3 +297,79 @@ func TestCFG024_SingleVariationSelector_NoFinding(t *testing.T) {
 		}
 	}
 }
+
+// One or two stray C0 controls (BS, ENQ, DC4, VT, etc.) are copy-paste
+// noise like zero-width characters and should warn. NUL and ESC are never
+// benign and stay errors.
+func TestCFG024_C0ControlDowngrade(t *testing.T) {
+	// Stray C0 controls that are not NUL/ESC: one or two -> Warn
+	for _, cp := range []rune{0x0008, 0x000B, 0x000C, 0x000E, 0x0014, 0x0016, 0x007F} {
+		f := CFG024.Check(claudeMDTarget("text" + string(cp) + "more"))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("U+%04X: expected 1 Warn for single stray C0, got %+v", cp, f)
+		}
+		f = CFG024.Check(claudeMDTarget("a" + string(cp) + "b" + string(cp) + "c"))
+		if len(f) != 1 || f[0].Severity != finding.Warn {
+			t.Errorf("U+%04X: expected 1 Warn for two stray C0, got %+v", cp, f)
+		}
+		// Three -> Error
+		f = CFG024.Check(claudeMDTarget("a" + string(cp) + "b" + string(cp) + "c" + string(cp) + "d"))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("U+%04X: expected 1 Error for three stray C0, got %+v", cp, f)
+		}
+	}
+	// NUL and ESC are never benign: even one -> Error
+	for _, cp := range []rune{0x0000, 0x001B} {
+		f := CFG024.Check(claudeMDTarget("text" + string(cp) + "more"))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Errorf("U+%04X: expected 1 Error for single never-benign C0, got %+v", cp, f)
+		}
+	}
+	// Mix: one stray C0 + one NUL -> Error (hasNeverBenignC0)
+	f := CFG024.Check(claudeMDTarget("a\u0008b\u0000c"))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Errorf("mix stray + NUL: expected Error, got %+v", f)
+	}
+}
+
+// Binary or encrypted instruction files (high control character ratio)
+// are skipped entirely — the "ASCII smuggling" message does not fit.
+func TestCFG024_BinaryFile_Skipped(t *testing.T) {
+	// Build a string with >1000 chars and >10% control characters (simulating git-crypt)
+	var b strings.Builder
+	b.WriteString("# Config\n")
+	// 2000 chars, 300 control chars = 15%
+	for i := 0; i < 2000; i++ {
+		if i%7 == 0 {
+			b.WriteRune(0x0001) // C0 control
+		} else {
+			b.WriteRune('x')
+		}
+	}
+	f := CFG024.Check(claudeMDTarget(b.String()))
+	if len(f) != 0 {
+		t.Errorf("expected no finding for binary-like file (>1000 chars, >10%% control chars), got %+v", f)
+	}
+	// Just under threshold (9%) should still report even for long files
+	b.Reset()
+	b.WriteString("# Config\n")
+	// 2000 chars, exactly 2 control chars = 0.1% (well under threshold)
+	for i := 0; i < 2000; i++ {
+		if i == 100 || i == 1100 {
+			b.WriteRune(0x0001)
+		} else {
+			b.WriteRune('x')
+		}
+	}
+	f = CFG024.Check(claudeMDTarget(b.String()))
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Errorf("expected 1 Warn for long file with 2 stray C0 controls, got %+v", f)
+	}
+	// Short file with high control ratio should NOT be skipped (binary detection only for >1000 chars)
+	b.Reset()
+	b.WriteString("x\u0001x\u0001x\u0001x") // 7 chars, 3 controls = 43%
+	f = CFG024.Check(claudeMDTarget(b.String()))
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Errorf("expected 1 Error for short file with high control ratio, got %+v", f)
+	}
+}

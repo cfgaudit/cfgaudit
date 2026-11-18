@@ -242,7 +242,8 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 		vsRun, vsLine, vsCol := 0, 0, 0
 		sbRun, sbLine, sbCol := 0, 0, 0
 		var first *finding.Finding
-		zeroWidth, strong := 0, false
+		zeroWidth, c0Count := 0, 0
+		strong, hasNeverBenignC0 := false, false
 		for i, ch := range runes {
 			if ch == '\n' {
 				line++
@@ -362,8 +363,14 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 			if isZeroWidth(ch) {
 				zeroWidth++
 			}
+			if isC0Control(ch) {
+				c0Count++
+				if isNeverBenignC0(ch) {
+					hasNeverBenignC0 = true
+				}
+			}
 			if name, ok := suspiciousUnicode(ch); ok {
-				if !isZeroWidth(ch) {
+				if !isZeroWidth(ch) && !isC0Control(ch) {
 					strong = true
 				}
 				if first == nil {
@@ -379,12 +386,33 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 			}
 		}
 		if first != nil {
+			// Binary or encrypted file detection: if the content is long
+			// (>1000 characters) and more than 10% are control characters
+			// (C0 + zero-width), treat it as binary/encrypted and skip the
+			// finding. This catches git-crypt encrypted files (500+ control
+			// bytes in a multi-KB file) where the "ASCII smuggling" message
+			// does not fit.
+			totalRunes := len(runes)
+			if totalRunes > 1000 {
+				controlRatio := float64(zeroWidth+c0Count) / float64(totalRunes)
+				if controlRatio > 0.10 {
+					continue // skip this source; likely binary or encrypted
+				}
+			}
 			// One or two zero-width characters in a whole file cannot carry a
 			// payload; they are left behind by copy-paste. In the pre-release
 			// corpus run for v1.20.0, 23 of 35 findings were files like that,
 			// and the one real payload was a run of 34 (#1182). The Tags block,
 			// the bidi controls and the annotation characters stay errors.
-			if !strong && zeroWidth <= 2 {
+			if !strong && zeroWidth > 0 && zeroWidth <= 2 {
+				first.Severity = finding.Warn
+			}
+			// Extend the count-based downgrade to C0 controls: one or two
+			// stray C0 controls (BS, ENQ, DC4, VT, etc.) are copy-paste noise
+			// like zero-width characters. However, NUL and ESC are never
+			// benign — NUL truncates content in C APIs, ESC introduces ANSI
+			// escape sequences — so they stay errors even in isolation.
+			if !strong && c0Count > 0 && c0Count <= 2 && !hasNeverBenignC0 {
 				first.Severity = finding.Warn
 			}
 			findings = append(findings, *first)
@@ -409,18 +437,31 @@ func fenceAt(runes []rune, i int) bool {
 	return s == "```" || s == "~~~"
 }
 
+// isC0Control reports whether r is a C0 control character (U+0000–U+001F
+// excluding tab U+0009 and line feed U+000A) or DEL (U+007F).
+// Carriage return (U+000D) is excluded so CRLF line endings are not flagged.
+func isC0Control(r rune) bool {
+	return r <= 0x0008 || r == 0x000B || r == 0x000C || (r >= 0x000E && r <= 0x001F) || r == 0x007F
+}
+
+// isNeverBenignC0 reports whether r is a C0 control that is categorically
+// never benign in a text instruction file: NUL (U+0000) and ESC (U+001B).
+// NUL terminates strings in C APIs and can truncate content; ESC introduces
+// ANSI escape sequences that can hide or reorder text when viewed in a terminal.
+func isNeverBenignC0(r rune) bool {
+	return r == 0x0000 || r == 0x001B
+}
+
 // suspiciousUnicode reports whether r is an invisible/control codepoint used to
 // smuggle hidden text, returning a short human-readable category.
 func suspiciousUnicode(r rune) (string, bool) {
 	switch {
-	// C0 control characters (U+0000–U+001F, excluding tab U+0009 and
-	// line feed U+000A) and DEL (U+007F) have no place in a text
-	// instruction file. A raw ESC (U+001B) can hide text via ANSI
-	// escape sequences when the file is viewed with cat or in a terminal
-	// diff; raw NUL and the other C0 controls are never legitimate
-	// Markdown/text content. Carriage return (U+000D) is deliberately
-	// excluded so CRLF line endings are not flagged.
-	case r <= 0x0008 || r == 0x000B || r == 0x000C || (r >= 0x000E && r <= 0x001F) || r == 0x007F:
+	// C0 control characters and DEL have no place in a text instruction file.
+	// A raw ESC (U+001B) can hide text via ANSI escape sequences when the
+	// file is viewed with cat or in a terminal diff; raw NUL and the other
+	// C0 controls are never legitimate Markdown/text content. Carriage return
+	// (U+000D) is deliberately excluded so CRLF line endings are not flagged.
+	case isC0Control(r):
 		return "C0 control character", true
 	case r >= 0xE0000 && r <= 0xE007F:
 		return "Tags block — ASCII smuggling", true
