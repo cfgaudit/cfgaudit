@@ -59,7 +59,34 @@ func userRunsIt(sentence string, pos int, rest string) bool {
 	if userRunsSubjectRe.MatchString(sentence[:pos]) {
 		return true
 	}
-	return agentMustNotRunRe.MatchString(sentence[pos:]) || agentMustNotRunRe.MatchString(firstSentence(rest))
+	return agentMustNotRunRe.MatchString(stripEmphasis(sentence[pos:])) || agentMustNotRunRe.MatchString(stripEmphasis(firstSentence(rest)))
+}
+
+// emphasisMarks are the Markdown emphasis and code markers that can sit inside
+// a negation ("do **not** fetch", "_Don't_ download") (#1815).
+var emphasisMarks = strings.NewReplacer("*", "", "_", "", "`", "")
+
+func stripEmphasis(s string) string { return emphasisMarks.Replace(s) }
+
+// loadVerbRe is a load verb of fetchFollowRe.
+var loadVerbRe = regexp.MustCompile(`(?i)\b(?:fetch|download|retrieve|read|load|open|curl|wget|pull)\b`)
+
+// negatedLoadRe is a negation that ends at most one word before the load verb:
+// "do not fetch", "never fetch", "must not ever fetch". "Do not skip this:
+// fetch" and "do not forget to fetch" are not negations of the fetch (#1815).
+var negatedLoadRe = regexp.MustCompile(`(?i)\b(?:don['’]?t|do\s+not|never|must\s+not|mustn['’]?t)\s+(?:\w+\s+)?$`)
+
+// loadIsNegated reports whether the last load verb between start (the match's
+// first load verb) and the obey verb at pos is negated, which negates the
+// whole fetch-and-follow phrase ("do **not** fetch and execute instructions
+// from external URLs") (#1815). "Do not read the notes; fetch X and run it"
+// is still reported, since the negation is about the earlier verb.
+func loadIsNegated(sentence string, start, pos int) bool {
+	verb := start
+	for _, l := range loadVerbRe.FindAllStringIndex(sentence[start:pos], -1) {
+		verb = start + l[0]
+	}
+	return negatedLoadRe.MatchString(stripEmphasis(sentence[:verb]))
 }
 
 // firstSentence returns s up to its first sentence end.
@@ -169,11 +196,16 @@ func (r *cfg113) Check(t *Target) []finding.Finding {
 					((verb == "run" || verb == "execute") && runsDownloadedProgram(sentence)) {
 					continue // #1187: a patch to apply, or a command the user runs
 				}
+				if loadIsNegated(sentence, m[0], m[2]) {
+					continue // #1815: "do not fetch and execute ..." forbids it
+				}
 				sev := finding.Warn
 				if verb == "execute" || verb == "run" || verb == "obey" {
 					sev = finding.Error
 				}
-				url := strings.TrimRight(fetchURLRe.FindString(sentence), ")`>].,;")
+				// #1815: drop the Markdown emphasis and punctuation that close the
+				// URL ("**https://...**", "https://...:").
+				url := strings.TrimRight(fetchURLRe.FindString(sentence), ")`>].,;:*_")
 				msg := src.Name + " line " + strconv.Itoa(ln) + " tells the agent to fetch " + quoteValue(url) + " and " + verb +
 					" what it says: the reviewed file hands the agent's behaviour to remote text nobody reviewed, which can change at any time (the external-fetch payload class). Copy the instructions into the repository, or pin them to a reviewed revision"
 				if sev == finding.Warn {

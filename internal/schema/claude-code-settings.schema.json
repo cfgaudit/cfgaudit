@@ -3170,7 +3170,7 @@
         "autoAllowBashIfSandboxed": {
           "type": "boolean",
           "description": "Automatically allow bash commands without prompting when they run in the sandbox. Only applies to commands that will run sandboxed. See https://code.claude.com/docs/en/sandboxing#sandbox-modes",
-          "default": true
+          "default": false
         },
         "enableWeakerNetworkIsolation": {
           "type": "boolean",
