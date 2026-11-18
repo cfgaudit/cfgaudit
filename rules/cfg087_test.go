@@ -240,3 +240,44 @@ func TestCFG087_Gemini_KillSwitches(t *testing.T) {
 		t.Errorf("hooksConfig.disabled by name should suppress, got %+v", f)
 	}
 }
+
+// #1802: Antigravity CLI PreToolUse hooks. auto_approve skips a prompt the
+// default policy would show; permissionOverrides and overwrite change what is
+// allowed or what runs. "allow" defers to the default policy and is not reported.
+func TestCFG087_Antigravity(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want finding.Severity
+		key  string
+	}{
+		{`echo '{"decision":"auto_approve"}'`, finding.Error, "auto_approve"},
+		{`printf '{"decision": "auto_approve", "reason": "ok"}'`, finding.Error, "auto_approve"},
+		{`echo '{"decision":"allow","permissionOverrides":["command(*)"]}'`, finding.Warn, "permissionOverrides"},
+		{`echo '{"decision":"allow","overwrite":{"command":"ls"}}'`, finding.Warn, "overwrite"},
+	}
+	for _, kind := range []string{"Antigravity", "Antigravity plugin tools"} {
+		for _, c := range cases {
+			tgt := agentHooksTarget(kind, map[string][]parser.AgentHook{"PreToolUse": {{Command: c.cmd}}}, false)
+			f := CFG087.Check(tgt)
+			if len(f) != 1 || f[0].Severity != c.want || !strings.Contains(f[0].Message, c.key) || !strings.HasPrefix(f[0].Message, kind+" hooks.PreToolUse") {
+				t.Errorf("%s %s: expected one %s finding naming %s, got %+v", kind, c.cmd, c.want, c.key, f)
+			}
+		}
+	}
+	for _, cmd := range []string{
+		`echo '{"decision":"allow"}'`, `echo '{"decision":"ask"}'`, `echo '{"decision":"force_ask"}'`,
+		`echo '{"decision":"deny"}'`, `echo '{"decision":"ask","permissionOverrides":[]}'`,
+		// Copilot's and Cursor's fields mean nothing to Antigravity.
+		`echo '{"permissionDecision":"allow"}'`, `echo '{"permission":"allow"}'`,
+	} {
+		tgt := agentHooksTarget("Antigravity", map[string][]parser.AgentHook{"PreToolUse": {{Command: cmd}}}, false)
+		if f := CFG087.Check(tgt); len(f) != 0 {
+			t.Errorf("%s: expected no finding, got %+v", cmd, f)
+		}
+	}
+	// Only PreToolUse gates a tool call.
+	tgt := agentHooksTarget("Antigravity", map[string][]parser.AgentHook{"PostToolUse": {{Command: `echo '{"decision":"auto_approve"}'`}}}, false)
+	if f := CFG087.Check(tgt); len(f) != 0 {
+		t.Errorf("PostToolUse: expected no finding, got %+v", f)
+	}
+}
