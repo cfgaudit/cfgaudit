@@ -129,6 +129,33 @@ func decodeRegionalIndicators(runes []rune) string {
 	return b.String()
 }
 
+// variationSelectorRunMin is how many consecutive codepoints from the
+// variation selector supplement (U+E0100–U+E01EF) count as smuggling. A
+// variation sequence is a base character followed by exactly one selector (an
+// ideographic variation selector picking a CJK glyph variant, for example), so
+// a single selector is legitimate and two in a row never are. Each selector in
+// the supplement stands for one byte, which is how a run of them carries
+// arbitrary text invisibly after a visible character.
+const variationSelectorRunMin = 2
+
+// isVariationSelectorSupplement reports whether r is in the variation selector
+// supplement, U+E0100–U+E01EF (VS17–VS256).
+func isVariationSelectorSupplement(r rune) bool { return r >= 0xE0100 && r <= 0xE01EF }
+
+// decodeVariationSelectors renders the leading run of supplement selectors as
+// the bytes they encode. The published scheme maps bytes 0–15 onto VS1–VS16
+// (U+FE00–U+FE0F) and bytes 16–255 onto VS17–VS256, so U+E0100 is byte 16.
+func decodeVariationSelectors(runes []rune) string {
+	var b []byte
+	for _, r := range runes {
+		if !isVariationSelectorSupplement(r) {
+			break
+		}
+		b = append(b, byte(16+(r-0xE0100))) //nolint:gosec // G115: r is in U+E0100–U+E01EF, so the value is 16–255
+	}
+	return string(b)
+}
+
 // zwjJoinsEmoji reports whether the ZWJ at runes[i] sits between two emoji, i.e.
 // it is building a composed glyph such as 👨‍💻 rather than hiding a break in text.
 // Variation selector U+FE0F and the skin-tone modifiers commonly sit next to the
@@ -175,6 +202,7 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 		runes := []rune(src.Content)
 		line, col := 1, 0
 		riRun, riLine, riCol := 0, 0, 0
+		vsRun, vsLine, vsCol := 0, 0, 0
 		var first *finding.Finding
 		zeroWidth, strong := 0, false
 		for i, ch := range runes {
@@ -182,9 +210,36 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 				line++
 				col = 0
 				riRun = 0
+				vsRun = 0
 				continue
 			}
 			col++
+
+			// Supplement variation selectors are invisible, but one after a
+			// base character is an ordinary variation sequence, so they are
+			// tracked as a run like the regional indicators below.
+			if isVariationSelectorSupplement(ch) && first == nil {
+				if vsRun == 0 {
+					vsLine, vsCol = line, col
+				}
+				vsRun++
+				if vsRun == variationSelectorRunMin {
+					start := i - variationSelectorRunMin + 1
+					decoded := decodeVariationSelectors(runes[start:])
+					findings = append(findings, finding.Finding{
+						RuleID:   "CFG024",
+						Severity: finding.Error,
+						File:     src.File,
+						Line:     vsLine,
+						Col:      vsCol,
+						Message: fmt.Sprintf("%s line %d hides %d byte(s) in a run of variation selectors (U+E0100–U+E01EF) decoding to %q — invisible in editors and review, attached to the visible character before it, but read by the model. Remove it",
+							src.Name, vsLine, len(decoded), decoded),
+					})
+					break
+				}
+				continue
+			}
+			vsRun = 0
 
 			// Regional indicators are *visible*, so they never reach
 			// suspiciousUnicode — but a run of them spells ASCII in flag emoji.

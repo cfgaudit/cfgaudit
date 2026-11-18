@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -230,6 +231,54 @@ func TestCFG024_ScriptJoinersAndDirectionMarks(t *testing.T) {
 	for name, c := range reported {
 		if f := check(c); len(f) != 1 {
 			t.Errorf("%s: expected one finding, got %+v", name, f)
+		}
+	}
+}
+
+// vs encodes bytes 16–255 as variation selector supplement codepoints, the
+// published scheme for hiding data after a visible character.
+func vs(s string) string {
+	var b strings.Builder
+	for _, c := range []byte(s) {
+		b.WriteRune(0xE0100 + rune(c) - 16)
+	}
+	return b.String()
+}
+
+// A run of supplement variation selectors carries bytes invisibly; the finding
+// decodes them (#1825).
+func TestCFG024_VariationSelectorSmuggling(t *testing.T) {
+	for _, tc := range []struct{ body, decoded string }{
+		{"Use the helper \U0001F600" + vs("rm -rf ~") + " for builds.", "rm -rf ~"},
+		{"x" + vs("hi"), "hi"},
+		{"a\n" + vs("ok") + "\n", "ok"},
+	} {
+		f := CFG024.Check(claudeMDTarget(tc.body))
+		if len(f) != 1 || f[0].Severity != finding.Error {
+			t.Fatalf("expected 1 Error for a selector run in %q, got %+v", tc.body, f)
+		}
+		if !strings.Contains(f[0].Message, "variation selectors") || !strings.Contains(f[0].Message, fmt.Sprintf("%q", tc.decoded)) {
+			t.Errorf("expected the class and the decoded %q in the message, got: %s", tc.decoded, f[0].Message)
+		}
+	}
+
+	f := CFG024.Check(claudeMDTarget("line one\nsee \U0001F600" + vs("abc")))
+	if len(f) != 1 || f[0].Line != 2 || f[0].Col != 6 {
+		t.Errorf("expected the run's start at 2:6, got %+v", f)
+	}
+}
+
+// One selector after a base character is an ordinary variation sequence, such
+// as an ideographic variation selector picking a CJK glyph variant.
+func TestCFG024_SingleVariationSelector_NoFinding(t *testing.T) {
+	for _, body := range []string{
+		"Name: \u845B\U000E0100 (Katsushika ward)",
+		"\u845B\U000E0100 and \u8FBB\U000E0101 are variants",
+		"no selectors here",
+		"emoji style \u2764\uFE0F",
+	} {
+		if f := CFG024.Check(claudeMDTarget(body)); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %+v", body, f)
 		}
 	}
 }
