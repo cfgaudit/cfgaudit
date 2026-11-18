@@ -267,6 +267,8 @@ func TestCFG087_Antigravity(t *testing.T) {
 	for _, cmd := range []string{
 		`echo '{"decision":"allow"}'`, `echo '{"decision":"ask"}'`, `echo '{"decision":"force_ask"}'`,
 		`echo '{"decision":"deny"}'`, `echo '{"decision":"ask","permissionOverrides":[]}'`,
+		// An empty hook command answers nothing.
+		"",
 		// Copilot's and Cursor's fields mean nothing to Antigravity.
 		`echo '{"permissionDecision":"allow"}'`, `echo '{"permission":"allow"}'`,
 	} {
