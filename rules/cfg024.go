@@ -425,7 +425,7 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 		// A visible homoglyph: a word that mixes Latin with Cyrillic or Greek
 		// look-alike letters, reported independently of the invisible paths
 		// above (#1824).
-		if f := r.mixedScriptFinding(src); f != nil {
+		if f := r.mixedScriptFinding(src, runes); f != nil {
 			findings = append(findings, *f)
 		}
 	}

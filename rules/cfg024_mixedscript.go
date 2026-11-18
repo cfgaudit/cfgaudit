@@ -43,15 +43,17 @@ func isWordRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.Is(unicode.Mn, r)
 }
 
-// mixedScriptWord reports the first word in content that mixes Latin letters
-// with Cyrillic letters that all look Latin, together with the Latin form it
-// spells and its 1-based line and column. ok is false when there is none.
-func mixedScriptWord(content string) (word, latin string, line, col int, ok bool) {
+// mixedScriptWord reports the first word in runes that mixes Latin letters with
+// Cyrillic letters that all look Latin, together with the Latin form it spells
+// and its 1-based line and column. ok is false when there is none. It takes the
+// caller's rune slice so it does not allocate a second copy, and only a word
+// with a non-ASCII rune is examined, since an all-ASCII word cannot be mixed.
+func mixedScriptWord(runes []rune) (word, latin string, line, col int, ok bool) {
 	ln, cl := 1, 0
 	wordStart, wordCol := -1, 0
-	runes := []rune(content)
-	flush := func(end int) bool {
-		if wordStart < 0 {
+	nonASCII := false
+	check := func(end int) bool {
+		if wordStart < 0 || !nonASCII {
 			return false
 		}
 		w := runes[wordStart:end]
@@ -59,15 +61,14 @@ func mixedScriptWord(content string) (word, latin string, line, col int, ok bool
 			word, latin, line, col, ok = string(w), latinForm, ln, wordCol, true
 			return true
 		}
-		wordStart = -1
 		return false
 	}
 	for i, r := range runes {
 		if r == '\n' {
-			if flush(i) {
+			if check(i) {
 				return
 			}
-			wordStart = -1
+			wordStart, nonASCII = -1, false
 			ln++
 			cl = 0
 			continue
@@ -77,43 +78,43 @@ func mixedScriptWord(content string) (word, latin string, line, col int, ok bool
 			if wordStart < 0 {
 				wordStart, wordCol = i, cl
 			}
+			if r >= 0x80 {
+				nonASCII = true
+			}
 			continue
 		}
-		if flush(i) {
+		if check(i) {
 			return
 		}
-		wordStart = -1
+		wordStart, nonASCII = -1, false
 	}
-	flush(len(runes))
+	check(len(runes))
 	return
 }
 
 // homoglyphWord reports whether w mixes Latin with confusable Cyrillic letters
 // so the whole word reads as Latin, and returns the Latin form. Every non-Latin
 // letter has to be a Cyrillic confusable, or the word does not read as Latin and
-// is ordinary non-English text (or scientific Greek), not a homoglyph.
+// is ordinary non-English text (or scientific Greek), not a homoglyph. The
+// classification does not allocate; the Latin form is built only for a word that
+// is a homoglyph, which is rare.
 func homoglyphWord(w []rune) (string, bool) {
 	var latin, cyr, letters int
-	var b strings.Builder
 	for _, r := range w {
-		// w holds only word runes (letters and combining marks); a mark is kept
-		// in the Latin form and does not count as a letter.
+		// w holds only word runes (letters and combining marks); a mark does not
+		// count as a letter and is kept in the Latin form.
 		if unicode.Is(unicode.Mn, r) {
-			b.WriteRune(r)
 			continue
 		}
 		letters++
 		switch {
 		case unicode.Is(unicode.Latin, r):
 			latin++
-			b.WriteRune(r)
 		case unicode.Is(unicode.Cyrillic, r):
-			sub, isConfusable := latinConfusables[r]
-			if !isConfusable {
+			if _, isConfusable := latinConfusables[r]; !isConfusable {
 				return "", false // a non-confusable letter: ordinary Cyrillic text
 			}
 			cyr++
-			b.WriteRune(sub)
 		default:
 			return "", false // Greek or a third script: not a Cyrillic homoglyph
 		}
@@ -121,14 +122,23 @@ func homoglyphWord(w []rune) (string, bool) {
 	if latin < mixedScriptMinLatin || cyr == 0 || letters < mixedScriptMinLetters {
 		return "", false
 	}
+	var b strings.Builder
+	b.Grow(len(w))
+	for _, r := range w {
+		if sub, ok := latinConfusables[r]; ok {
+			b.WriteRune(sub)
+		} else {
+			b.WriteRune(r)
+		}
+	}
 	return b.String(), true
 }
 
 // mixedScriptFinding returns the finding for the first homoglyph word in src,
 // or nil. The word is visible, so it is reported at warn, with the Latin form
 // it spells named so a reviewer sees what it reads as.
-func (r *cfg024) mixedScriptFinding(src instructionSource) *finding.Finding {
-	word, latin, line, col, ok := mixedScriptWord(src.Content)
+func (r *cfg024) mixedScriptFinding(src instructionSource, runes []rune) *finding.Finding {
+	word, latin, line, col, ok := mixedScriptWord(runes)
 	if !ok {
 		return nil
 	}
