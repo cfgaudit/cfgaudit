@@ -391,6 +391,42 @@
   rules:
     - {rule: CFG048, severity: error}
 
+- id: "CVE-2026-121662"
+  aliases: [GHSA-fp22-hgv9-mq6q]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.145.3"
+  summary: "A __proto__ key in workspace configuration let an untrusted workspace start its own MCP server."
+  coverage: partial
+  rules:
+    - {rule: CFG048, severity: error}
+  reason: no-rule-yet
+  issue: 1799
+  note: "cfgaudit reads the key in .vscode/settings.json and *.code-workspace settings, not yet in .vscode/mcp.json."
+
+- id: "CVE-2026-121663"
+  aliases: [GHSA-x5cm-xmvw-73rv]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.145.3"
+  summary: "A plain value at the key that groups the Workspace Trust settings turned Workspace Trust off."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: error}
+
+- id: "CVE-2026-121665"
+  aliases: [GHSA-c367-h9jc-pjr7]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.145.3"
+  summary: "Experiment override keys in workspace settings changed restricted settings' defaults in Restricted Mode."
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
+
 - id: "CVE-2026-122235"
   aliases: [GHSA-pjpc-p955-xv4f]
   kind: cve
@@ -777,6 +813,18 @@
     - {rule: CFG048, severity: warn}
   reason: not-static
   note: "cfgaudit reports lookalike extension ids. The notification link is built by the editor."
+
+- id: "CVE-2026-70094"
+  aliases: [GHSA-3grj-pfwj-fffm]
+  repo: microsoft/vscode
+  kind: cve
+  agent: "VS Code"
+  fixed: "1.145.3"
+  summary: "JavaScript debugger auto-attach took its executable lookup from workspace settings before trust."
+  coverage: none
+  related: [CFG048]
+  reason: no-rule-yet
+  issue: 1799
 
 - id: "CVE-2026-70334"
   aliases: [GHSA-q2f8-hh8x-wpc2]
