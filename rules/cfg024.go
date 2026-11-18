@@ -156,6 +156,43 @@ func decodeVariationSelectors(runes []rune) string {
 	return string(b)
 }
 
+// sneakyBitsRunMin is how many consecutive invisible-operator characters count
+// as a Sneaky Bits payload. The encoding spends one character per bit (U+2062
+// for a 0, U+2064 for a 1), so eight of them carry one byte of hidden text.
+// No ordinary text puts two of them next to each other, let alone eight.
+const sneakyBitsRunMin = 8
+
+// isSneakyBitsRune reports whether r is one of the two invisible characters
+// the Sneaky Bits encoding uses: U+2062 (invisible times) for a 0 bit and
+// U+2064 (invisible plus) for a 1 bit.
+func isSneakyBitsRune(r rune) bool { return r == 0x2062 || r == 0x2064 }
+
+// decodeSneakyBits renders the bytes a run of invisible operators carries:
+// every eight characters are one byte, most significant bit first.
+func decodeSneakyBits(runes []rune) string {
+	var b strings.Builder
+	var cur byte
+	var n int
+	for _, r := range runes {
+		var bit byte
+		switch r {
+		case 0x2062:
+			bit = 0
+		case 0x2064:
+			bit = 1
+		default:
+			return b.String()
+		}
+		cur = cur<<1 | bit
+		n++
+		if n == 8 {
+			b.WriteByte(cur)
+			cur, n = 0, 0
+		}
+	}
+	return b.String()
+}
+
 // zwjJoinsEmoji reports whether the ZWJ at runes[i] sits between two emoji, i.e.
 // it is building a composed glyph such as 👨‍💻 rather than hiding a break in text.
 // Variation selector U+FE0F and the skin-tone modifiers commonly sit next to the
@@ -203,6 +240,7 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 		line, col := 1, 0
 		riRun, riLine, riCol := 0, 0, 0
 		vsRun, vsLine, vsCol := 0, 0, 0
+		sbRun, sbLine, sbCol := 0, 0, 0
 		var first *finding.Finding
 		zeroWidth, strong := 0, false
 		for i, ch := range runes {
@@ -211,6 +249,7 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 				col = 0
 				riRun = 0
 				vsRun = 0
+				sbRun = 0
 				continue
 			}
 			col++
@@ -264,6 +303,34 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 				continue
 			}
 			riRun = 0
+
+			// A run of invisible times / invisible plus is the Sneaky Bits
+			// encoding: one invisible character per bit, U+2062 for a 0 and
+			// U+2064 for a 1, so eight of them carry a byte of hidden text
+			// (#1843). A single one is a character with no visible shape, but
+			// a run of them spells text the model reads.
+			if isSneakyBitsRune(ch) && first == nil {
+				if sbRun == 0 {
+					sbLine, sbCol = line, col
+				}
+				sbRun++
+				if sbRun == sneakyBitsRunMin {
+					start := i - sneakyBitsRunMin + 1
+					decoded := decodeSneakyBits(runes[start:])
+					findings = append(findings, finding.Finding{
+						RuleID:   "CFG024",
+						Severity: finding.Error,
+						File:     src.File,
+						Line:     sbLine,
+						Col:      sbCol,
+						Message: fmt.Sprintf("%s line %d hides %d byte(s) in a run of invisible times / invisible plus (U+2062 / U+2064) spelling %q — the Sneaky Bits encoding, one invisible character per bit: invisible in editors and review but read by the agent as instructions. Remove it",
+							src.Name, sbLine, len(decoded), decoded),
+					})
+					break
+				}
+			} else {
+				sbRun = 0
+			}
 
 			if ch == bomRune && i == 0 {
 				continue // a single leading BOM is a benign encoding marker
