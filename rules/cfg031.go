@@ -221,6 +221,34 @@ func publicPEMName(full string) bool {
 	return false
 }
 
+// publicKeyFileName reports whether the file name a match ends in says the
+// key is public — the naming convention beside the ".pub" suffix, written
+// "server_public.key", "publickey" or "public.pem" (#1814). As publicPEMName,
+// the name is matched word by word, not by fragment, so "notapublickey.key"
+// stays a secret, and a private key under a directory called "public" is not
+// exempt either.
+func publicKeyFileName(full string) bool {
+	name := strings.ToLower(full[strings.LastIndexByte(full, '/')+1:])
+	parts := strings.FieldsFunc(name, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	})
+	// A name that also says private is a private key despite a "public"
+	// component (e.g. "public-private-key.pem", #1818 review): it stays reported.
+	for _, part := range parts {
+		switch part {
+		case "private", "priv", "privkey", "secret":
+			return false
+		}
+	}
+	for _, part := range parts {
+		switch part {
+		case "public", "pubkey", "publickey":
+			return true
+		}
+	}
+	return false
+}
+
 // placeholderPathRe matches a placeholder for a path the reader fills in:
 // "/path/to/cert.pem", "path-to-cert.pem" (#869).
 var placeholderPathRe = regexp.MustCompile(`(?i)(?:^|/)path[/\-]to[/\-]|^<[^>]*>$|^your[\-_]`)
@@ -467,8 +495,10 @@ func (r *cfg031) Check(t *Target) []finding.Finding {
 		for i, line := range lines {
 			loc := sensitivePathRe.FindStringIndex(line)
 			// A public key is meant to be shared: look past "id_ed25519.pub"
-			// to a private key later on the line (#952).
-			for loc != nil && strings.HasPrefix(line[loc[1]:], ".pub") {
+			// (#952) and past a key file whose name says it is public
+			// ("server_public.key", "publickey"; #1814) to a private key
+			// later on the line.
+			for loc != nil && (strings.HasPrefix(line[loc[1]:], ".pub") || publicKeyFileName(line[loc[0]:loc[1]])) {
 				next := sensitivePathRe.FindStringIndex(line[loc[1]:])
 				if next == nil {
 					loc = nil
