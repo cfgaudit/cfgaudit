@@ -373,3 +373,17 @@ func TestCFG024_BinaryFile_Skipped(t *testing.T) {
 		t.Errorf("expected 1 Error for short file with high control ratio, got %+v", f)
 	}
 }
+
+// Content that is not valid UTF-8 is a binary or encrypted file, not a text
+// instruction file: a stray byte that happens to be a C0 control is not
+// smuggling, so the file is skipped. Valid UTF-8 with the same control is still
+// reported.
+func TestCFG024_SkipInvalidUTF8(t *testing.T) {
+	binary := "config section\x05 more text" + string([]byte{0xff, 0xfe, 0x80})
+	if f := CFG024.Check(claudeMDTarget(binary)); len(f) != 0 {
+		t.Errorf("invalid-UTF-8 content should be skipped, got %+v", f)
+	}
+	if f := CFG024.Check(claudeMDTarget("config section\x05 more text")); len(f) == 0 {
+		t.Error("a C0 control in valid UTF-8 text should still be reported")
+	}
+}

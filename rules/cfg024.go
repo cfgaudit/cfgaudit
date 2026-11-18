@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/cfgaudit/cfgaudit/internal/finding"
 )
@@ -386,12 +387,16 @@ func (r *cfg024) Check(t *Target) []finding.Finding {
 			}
 		}
 		if first != nil {
-			// Binary or encrypted file detection: if the content is long
-			// (>1000 characters) and more than 10% are control characters
-			// (C0 + zero-width), treat it as binary/encrypted and skip the
-			// finding. This catches git-crypt encrypted files (500+ control
-			// bytes in a multi-KB file) where the "ASCII smuggling" message
+			// Binary or encrypted file detection. Content that is not valid
+			// UTF-8 is a binary or encrypted file, not a text instruction file:
+			// its bytes decode to U+FFFD, and a stray byte that happens to be a
+			// C0 control is not smuggling. A git-crypt file that stays valid
+			// UTF-8 is caught by the density check below instead (500+ control
+			// bytes in a multi-KB file), where the "ASCII smuggling" message
 			// does not fit.
+			if !utf8.ValidString(src.Content) {
+				continue // not valid UTF-8 text: binary or encrypted, not instructions
+			}
 			totalRunes := len(runes)
 			if totalRunes > 1000 {
 				controlRatio := float64(zeroWidth+c0Count) / float64(totalRunes)
