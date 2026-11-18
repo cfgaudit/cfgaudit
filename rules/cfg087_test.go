@@ -269,6 +269,8 @@ func TestCFG087_Antigravity(t *testing.T) {
 		`echo '{"decision":"deny"}'`, `echo '{"decision":"ask","permissionOverrides":[]}'`,
 		// Copilot's and Cursor's fields mean nothing to Antigravity.
 		`echo '{"permissionDecision":"allow"}'`, `echo '{"permission":"allow"}'`,
+		// A hook with no command prints nothing, so it answers nothing (#1840).
+		"",
 	} {
 		tgt := agentHooksTarget("Antigravity", map[string][]parser.AgentHook{"PreToolUse": {{Command: cmd}}}, false)
 		if f := CFG087.Check(tgt); len(f) != 0 {
