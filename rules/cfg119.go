@@ -56,7 +56,11 @@ var (
 	// payloadRunRe matches code that starts a process or makes a file executable.
 	payloadRunRe = regexp.MustCompile(`\b(?:execFileSync|execSync|spawnSync|spawn|execFile|subprocess|os\.system|Start-Process|chmodSync|chmod)\b|\|\s*(?:ba|z)?sh\b`)
 	// payloadTokenRe matches the prefixes of access tokens a stealer looks for.
-	payloadTokenRe = regexp.MustCompile(`\b(?:ghp_|ghs_|gho_|ghu_|github_pat_|npm_[A-Za-z0-9]|AKIA[0-9A-Z]|xox[abprs]-)`)
+	// The npm alternative needs the full token shape (`npm_` and 36 base62
+	// characters), not a bare `npm_` prefix, so it does not fire on npm's own
+	// environment convention `npm_config_*`/`npm_package_*`, which a hook helper
+	// reads for the install prefix (#1816).
+	payloadTokenRe = regexp.MustCompile(`\b(?:ghp_|ghs_|gho_|ghu_|github_pat_|npm_[A-Za-z0-9]{36}\b|AKIA[0-9A-Z]|xox[abprs]-)`)
 	// payloadCredFileRe matches a name of such a file.
 	payloadCredFileRe = regexp.MustCompile(payloadCredFiles)
 	// payloadCredReadRe matches a line that opens a credential file. A skill's
@@ -70,8 +74,13 @@ var (
 	// payloadEnvDumpRe matches code that reads the whole environment at once.
 	payloadEnvDumpRe = regexp.MustCompile(`JSON\.stringify\(\s*process\.env\s*\)|Object\.(?:keys|entries|values)\(\s*process\.env\s*\)|dict\(\s*os\.environ\s*\)|os\.environ\.items\(\)`)
 	payloadEnvReadRe = regexp.MustCompile(`\bprocess\.env\b`)
-	// payloadNetworkRe matches code that sends data out.
-	payloadNetworkRe = regexp.MustCompile(`https?://|\bfetch\(|https?\.request\(|XMLHttpRequest|\bcurl\b|requests\.post|urllib\.request`)
+	// payloadNetworkRe matches code that sends data out. `curl` has to be an
+	// invocation (a space and then an argument), not a bare word, so it does not
+	// fire on `curl` inside a secret-redaction regex (`/\b(?:curl|wget)\b.../`)
+	// or a downloader word list (`['curl', 'wget']`), which a defensive hook
+	// helper carries to detect or block such commands (#1816). A real
+	// `curl https://host | sh` still matches on the URL.
+	payloadNetworkRe = regexp.MustCompile(`https?://|\bfetch\(|https?\.request\(|XMLHttpRequest|\bcurl\s+\S|requests\.post|urllib\.request`)
 	// payloadDecodeRe, payloadXorRe and payloadEncodedCallRe find a string
 	// decoder (#1650): a function that turns a hex or base64 literal into
 	// bytes and XORs them, called on many such literals, so that no path,
