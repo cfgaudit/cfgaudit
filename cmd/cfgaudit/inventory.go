@@ -55,7 +55,7 @@ var pathAgents = []struct{ prefix, agent string }{
 	{"CLAUDE.local.md", "claude-code"}, {".mcp.json", "claude-code"}, {".cursor/", "cursor"}, {".cursorrules", "cursor"},
 	{".vscode/", "vscode"}, {".gemini/", "gemini-cli"}, {"GEMINI.md", "gemini-cli"}, {".codex/", "codex"}, {".qwen/", "qwen-code"},
 	{"QWEN.md", "qwen-code"}, {".roo/", "roo-code"}, {".roorules", "roo-code"}, {".roomodes", "roo-code"}, {".continue/", "continue"},
-	{".continuerules", "continue"}, {".devin/", "devin"}, {".windsurf/", "devin-desktop"}, {".windsurfrules", "devin-desktop"},
+	{".continuerules", "continue"}, {".devin/", "devin"}, {".kiro/skills/", "devin"}, {".windsurf/", "devin-desktop"}, {".windsurfrules", "devin-desktop"},
 	{".zed/", "zed"}, {".rules", "zed"}, {".opencode/", "opencode"}, {"opencode.json", "opencode"}, {"opencode.jsonc", "opencode"},
 	{".kimi-code/", "kimi-code"}, {".kimi/", "kimi-cli"}, {".grok/", "grok"}, {".cline/", "cline"}, {".clinerules", "cline"}, {"cline_mcp_settings.json", "cline"},
 	{"AGENT.md", "amp"}, {".gitmodules", "git"}, {".pi/", "pi"}, {"AGENTS.override.md", "pi"},

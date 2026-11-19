@@ -24,16 +24,22 @@ import (
 // config, and mcpServers is set at both levels but lives in the dedicated
 // mcp_config.json files since v3000.3 ("the Local 3.6 release"). The key is
 // still decoded here: older versions read servers from the main config, and
-// newer ones migrate such entries on startup, so both locations are real. The
-// security-relevant keys are modelled and read_config_from is not. read_config_from is deliberately not one of them: its eight keys all
-// default to true when absent, so the only thing a committed value can do is
-// NARROW which other tools' files are imported. It grants a repository no
-// capability it could not get by writing this file directly. What it does affect
-// is documented in the README's Devin section, because it means a repository
-// with no .devin/ directory can still reach a Devin session through the Claude,
-// Cursor, Windsurf, Copilot, VS Code and Zed files cfgaudit already scans (#474). Keys such as `sandbox` are deliberately absent: Devin documents them as
-// user-only, so reading them from a project file would invent a finding on
-// configuration the CLI ignores.
+// newer ones migrate such entries on startup, so both locations are real.
+//
+// read_config_from is modelled for exactly one of its keys: kiro. Its keys all
+// default to true when absent, so a committed value can only NARROW which other
+// tools' files Devin imports; for most keys that changes no finding, because the
+// imported files (Claude, Cursor, Windsurf, Copilot, Codex, OpenCode, Zed and
+// the AGENTS.md family) are scanned on their own account for the in-scope agent
+// that owns them, so a repository with no .devin/ directory can still reach a
+// Devin session through files cfgaudit already scans (#474). Kiro is the one
+// exception (#1819): cfgaudit does not scan Kiro as an agent, so .kiro/skills is
+// read purely because Devin imports it, and `read_config_from.kiro: false`
+// removes the only in-scope reader. ReadsKiroSkills reports that one key; the
+// rest stay unmodelled, as documented in the README's Devin section. Keys such
+// as `sandbox` are deliberately absent: Devin documents them as user-only, so
+// reading them from a project file would invent a finding on configuration the
+// CLI ignores.
 type DevinConfig struct {
 	MCPServers  map[string]MCPServer   `json:"mcpServers,omitempty"`
 	Hooks       map[string][]HookGroup `json:"hooks,omitempty"`
@@ -42,6 +48,28 @@ type DevinConfig struct {
 	// a source, a string ("owner/repo", a git URL, a local path) or an object
 	// ({"source": "github"|"url"|"local", "repo"|"url"|"path": ...}).
 	RequiredPlugins []json.RawMessage `json:"requiredPlugins,omitempty"`
+	// ReadConfigFrom is the read_config_from block (#1819), kept raw. Only the
+	// kiro key is consulted, through ReadsKiroSkills.
+	ReadConfigFrom map[string]json.RawMessage `json:"read_config_from,omitempty"`
+}
+
+// ReadsKiroSkills reports whether this project config leaves Devin's import of
+// Kiro skills (.kiro/skills/**/SKILL.md) on. It is on by default and off only
+// when read_config_from.kiro is the literal false; a missing key, a nil config
+// or a non-boolean value all leave it on (#1819).
+func (c *DevinConfig) ReadsKiroSkills() bool {
+	if c == nil {
+		return true
+	}
+	raw, ok := c.ReadConfigFrom["kiro"]
+	if !ok {
+		return true
+	}
+	var b bool
+	if json.Unmarshal(raw, &b) == nil {
+		return b
+	}
+	return true
 }
 
 // devinTop mirrors the keys DevinConfig reads, with hooks kept raw so each
@@ -52,6 +80,7 @@ type devinTop struct {
 	Hooks           map[string]json.RawMessage `json:"hooks,omitempty"`
 	Permissions     *Permissions               `json:"permissions,omitempty"`
 	RequiredPlugins []json.RawMessage          `json:"requiredPlugins,omitempty"`
+	ReadConfigFrom  map[string]json.RawMessage `json:"read_config_from,omitempty"`
 }
 
 // ParseDevinConfig reads a .devin/config.json. A missing key yields a zero value
@@ -88,7 +117,7 @@ func ParseDevinConfig(path string) (*DevinConfig, error) {
 			top.MCPServers[name] = srv
 		}
 	}
-	return &DevinConfig{MCPServers: top.MCPServers, Hooks: hooks, Permissions: top.Permissions, RequiredPlugins: top.RequiredPlugins}, nil
+	return &DevinConfig{MCPServers: top.MCPServers, Hooks: hooks, Permissions: top.Permissions, RequiredPlugins: top.RequiredPlugins, ReadConfigFrom: top.ReadConfigFrom}, nil
 }
 
 // devinMatcher decodes a Devin hook matcher. Devin loads a matcher as a regex
