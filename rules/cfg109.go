@@ -45,6 +45,7 @@ func (r *cfg109) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	findings := skippedMCPServers(t)
+	findings = append(findings, malformedDevinEntries(t)...)
 	if t.UnreadableFile == "" {
 		return findings
 	}
@@ -61,6 +62,35 @@ func (r *cfg109) Check(t *Target) []finding.Finding {
 		File:     t.UnreadableFile,
 		Message:  msg,
 	})
+}
+
+// malformedDevinEntries reports each entry of a Devin config file that did not
+// decode while the file still loaded its other entries (#1820). Since Devin CLI
+// v3000.13.4 "a malformed entry in an MCP config file or hooks file no longer
+// hides the other servers and hooks in that file", so the file is not lost the
+// way UnreadableFile is: the valid servers and hooks are in force and checked by
+// the usual rules, and only the named entry is void. Info, with the entry's key,
+// so a reviewer sees that one declaration does nothing while the rest applies.
+func malformedDevinEntries(t *Target) []finding.Finding {
+	if t.MalformedFile == "" || len(t.MalformedEntries) == 0 {
+		return nil
+	}
+	out := make([]finding.Finding, 0, len(t.MalformedEntries))
+	for _, e := range t.MalformedEntries {
+		msg := e.Key + " does not decode, so Devin skips just this entry and keeps the other servers and hooks in the file in force (since Devin CLI v3000.13.4); cfgaudit still checks the valid entries. Fix or remove this entry so what it declares takes effect"
+		if e.Reason != "" {
+			msg += ". The parser reported: " + e.Reason
+		}
+		out = append(out, finding.Finding{
+			RuleID:   "CFG109",
+			Severity: finding.Info,
+			Scope:    t.Scope,
+			File:     t.MalformedFile,
+			Key:      e.Key,
+			Message:  msg,
+		})
+	}
+	return out
 }
 
 // skippedMCPServers reports each server of a .mcp.json that Claude Code

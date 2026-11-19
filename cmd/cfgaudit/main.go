@@ -4111,13 +4111,15 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		// permissions joins the gate now that CFG104 reads it: a file carrying only
 		// an allow list is exactly the case that rule exists for.
 		// requiredPlugins too: Devin installs them from the repository (#1603).
-		if devinCfg != nil && (len(devinCfg.MCPServers) > 0 || len(devinCfg.Hooks) > 0 || devinCfg.Permissions != nil || len(devinCfg.RequiredPlugins) > 0) {
+		if devinCfg != nil && (len(devinCfg.MCPServers) > 0 || len(devinCfg.Hooks) > 0 || devinCfg.Permissions != nil || len(devinCfg.RequiredPlugins) > 0 || len(devinCfg.Malformed) > 0) {
 			targets = append(targets, &rules.Target{
-				Scope:          dc.scope,
-				Devin:          devinCfg,
-				DevinFile:      devinPath,
-				ProjectMCP:     devinCfg.MCPServers,
-				ProjectMCPFile: devinPath,
+				Scope:            dc.scope,
+				Devin:            devinCfg,
+				DevinFile:        devinPath,
+				ProjectMCP:       devinCfg.MCPServers,
+				ProjectMCPFile:   devinPath,
+				MalformedFile:    devinPath,
+				MalformedEntries: devinCfg.Malformed,
 			})
 		}
 	}
@@ -4130,11 +4132,13 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if !scanroot.IsAbsent(err) {
 			skipUnreadable(hooksV1, err)
 		}
-	} else if len(hc.Hooks) > 0 {
+	} else if len(hc.Hooks) > 0 || len(hc.Malformed) > 0 {
 		targets = append(targets, &rules.Target{
-			Scope:     finding.ScopeProject,
-			Devin:     hc,
-			DevinFile: hooksV1,
+			Scope:            finding.ScopeProject,
+			Devin:            hc,
+			DevinFile:        hooksV1,
+			MalformedFile:    hooksV1,
+			MalformedEntries: hc.Malformed,
 		})
 	}
 
@@ -4175,11 +4179,13 @@ func mcpConfigTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		if err != nil {
 			return nil, err
 		}
-		if mcpCfg != nil && len(mcpCfg.MCPServers) > 0 {
+		if mcpCfg != nil && (len(mcpCfg.MCPServers) > 0 || len(mcpCfg.Malformed) > 0) {
 			targets = append(targets, &rules.Target{
-				Scope:          dm.scope,
-				ProjectMCP:     mcpCfg.MCPServers,
-				ProjectMCPFile: mcpPath,
+				Scope:            dm.scope,
+				ProjectMCP:       mcpCfg.MCPServers,
+				ProjectMCPFile:   mcpPath,
+				MalformedFile:    mcpPath,
+				MalformedEntries: mcpCfg.Malformed,
 			})
 		}
 	}

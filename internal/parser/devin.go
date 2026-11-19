@@ -4,6 +4,7 @@
 package parser
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -51,7 +52,21 @@ type DevinConfig struct {
 	// ReadConfigFrom is the read_config_from block (#1819), kept raw. Only the
 	// kiro key is consulted, through ReadsKiroSkills.
 	ReadConfigFrom map[string]json.RawMessage `json:"read_config_from,omitempty"`
+
+	// Malformed lists the entries of this file that did not decode while the rest
+	// did (#1820). Since Devin v3000.13.4 "a malformed entry in an MCP config file
+	// or hooks file no longer hides the other servers and hooks in that file", so
+	// a bad mcpServers/hooks/permissions/requiredPlugins entry is recorded here
+	// and the file still contributes its valid entries, instead of the whole file
+	// being reported unreadable. CFG109 names each one. A file that is not JSON at
+	// all still fails to parse and stays a whole-file CFG109.
+	Malformed []DevinMalformed `json:"-"`
 }
+
+// DevinMalformed is one entry of a Devin config that did not decode: Key is the
+// dotted path (e.g. "mcpServers.bad", "hooks.PreToolUse"), Reason the parser's
+// own message (#1820).
+type DevinMalformed struct{ Key, Reason string }
 
 // ReadsKiroSkills reports whether this project config leaves Devin's import of
 // Kiro skills (.kiro/skills/**/SKILL.md) on. It is on by default and off only
@@ -72,20 +87,53 @@ func (c *DevinConfig) ReadsKiroSkills() bool {
 	return true
 }
 
-// devinTop mirrors the keys DevinConfig reads, with hooks kept raw so each
-// event decodes entry by entry in devinHookGroups. Keep its fields in sync
-// with DevinConfig.
-type devinTop struct {
-	MCPServers      map[string]MCPServer       `json:"mcpServers,omitempty"`
-	Hooks           map[string]json.RawMessage `json:"hooks,omitempty"`
-	Permissions     *Permissions               `json:"permissions,omitempty"`
-	RequiredPlugins []json.RawMessage          `json:"requiredPlugins,omitempty"`
-	ReadConfigFrom  map[string]json.RawMessage `json:"read_config_from,omitempty"`
+// decodeDevinHookEvents decodes the event -> matcher groups map of a Devin hooks
+// surface (the hooks key of config.json, or a hooks.v1.json), keeping the events
+// that decode and recording the ones that do not (#1820). A value that is a JSON
+// array but is not a list of matcher groups is a malformed hook event; a value
+// of any other shape (a "_generated_by" string, say) is a stray key, not a hook,
+// so it is ignored rather than reported.
+func decodeDevinHookEvents(raw json.RawMessage) (map[string][]HookGroup, []DevinMalformed) {
+	var events map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &events); err != nil {
+		return nil, []DevinMalformed{{Key: "hooks", Reason: devinEntryReason(err)}}
+	}
+	hooks := map[string][]HookGroup{}
+	var malformed []DevinMalformed
+	for _, event := range sortedKeys(events) {
+		if groups, ok := devinHookGroups(events[event]); ok {
+			if len(groups) > 0 {
+				hooks[event] = groups
+			}
+		} else if isJSONArray(events[event]) {
+			malformed = append(malformed, DevinMalformed{Key: "hooks." + event, Reason: "not a list of matcher groups"})
+		}
+	}
+	if len(hooks) == 0 {
+		hooks = nil
+	}
+	return hooks, malformed
 }
 
-// ParseDevinConfig reads a .devin/config.json. A missing key yields a zero value
-// rather than an error; a malformed file is an error, so a config that is
-// silently not being scanned is reported rather than mistaken for an empty one.
+// devinEntryReason is the parser's message for one entry that did not decode,
+// used verbatim in the CFG109 finding for that entry.
+func devinEntryReason(err error) string {
+	return err.Error()
+}
+
+// isJSONArray reports whether raw holds a JSON array.
+func isJSONArray(raw json.RawMessage) bool {
+	b := bytes.TrimSpace(raw)
+	return len(b) > 0 && b[0] == '['
+}
+
+// ParseDevinConfig reads a .devin/config.json (and the mcp_config / .local
+// twins). A missing key yields a zero value. A file that is not a JSON object is
+// an error, so a config that is silently not being scanned is reported rather
+// than mistaken for an empty one. Within a valid object, each entry is decoded
+// on its own (#1820): since Devin v3000.13.4 a malformed mcpServers, hooks,
+// permissions or requiredPlugins entry no longer discards the file, so a bad one
+// is collected into Malformed (CFG109 names it) and the valid entries are kept.
 //
 // Devin spells the remote-transport discriminator `transport` where the rest of
 // the MCP ecosystem uses `type`, and it is frequently omitted and inferred from
@@ -97,27 +145,78 @@ func ParseDevinConfig(path string) (*DevinConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	var top devinTop
+	// The top level has to be a JSON object. A file that is not JSON at all is
+	// still wholly unreadable (CFG109 names the file); entry-by-entry resilience
+	// below only applies once the object itself decodes (#1820).
+	var top map[string]json.RawMessage
 	if err := json.Unmarshal(data, &top); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	hooks := map[string][]HookGroup{}
-	for event, raw := range top.Hooks {
-		groups, ok := devinHookGroups(raw)
-		if !ok {
-			return nil, fmt.Errorf("parse %s: hooks.%s is not a list of matcher groups", path, event)
-		}
-		if len(groups) > 0 {
-			hooks[event] = groups
+	cfg := &DevinConfig{}
+	bad := func(key string, err error) {
+		cfg.Malformed = append(cfg.Malformed, DevinMalformed{Key: key, Reason: devinEntryReason(err)})
+	}
+
+	// mcpServers, server by server: Devin keeps the valid servers beside a
+	// malformed one, so a bad entry is recorded and the rest are kept.
+	if raw, ok := top["mcpServers"]; ok {
+		var servers map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &servers); err != nil {
+			bad("mcpServers", err)
+		} else {
+			kept := map[string]MCPServer{}
+			for _, name := range sortedKeys(servers) {
+				var srv MCPServer
+				if err := json.Unmarshal(servers[name], &srv); err != nil {
+					bad("mcpServers."+name, err)
+					continue
+				}
+				if srv.Type == "" && srv.Transport != "" {
+					srv.Type = srv.Transport
+				}
+				kept[name] = srv
+			}
+			if len(kept) > 0 {
+				cfg.MCPServers = kept
+			}
 		}
 	}
-	for name, srv := range top.MCPServers {
-		if srv.Type == "" && srv.Transport != "" {
-			srv.Type = srv.Transport
-			top.MCPServers[name] = srv
+
+	// hooks, event by event, through the shared helper.
+	if raw, ok := top["hooks"]; ok {
+		hooks, malformed := decodeDevinHookEvents(raw)
+		if len(hooks) > 0 {
+			cfg.Hooks = hooks
+		}
+		cfg.Malformed = append(cfg.Malformed, malformed...)
+	}
+
+	// permissions and requiredPlugins are single entries: a bad one is recorded
+	// without discarding the rest of the file (Devin v3000.5.20: "a single
+	// invalid value in config.json no longer discards all user settings").
+	if raw, ok := top["permissions"]; ok {
+		var p Permissions
+		if err := json.Unmarshal(raw, &p); err != nil {
+			bad("permissions", err)
+		} else {
+			cfg.Permissions = &p
 		}
 	}
-	return &DevinConfig{MCPServers: top.MCPServers, Hooks: hooks, Permissions: top.Permissions, RequiredPlugins: top.RequiredPlugins, ReadConfigFrom: top.ReadConfigFrom}, nil
+	if raw, ok := top["requiredPlugins"]; ok {
+		var rp []json.RawMessage
+		if err := json.Unmarshal(raw, &rp); err != nil {
+			bad("requiredPlugins", err)
+		} else {
+			cfg.RequiredPlugins = rp
+		}
+	}
+	if raw, ok := top["read_config_from"]; ok {
+		var rcf map[string]json.RawMessage
+		if json.Unmarshal(raw, &rcf) == nil {
+			cfg.ReadConfigFrom = rcf
+		}
+	}
+	return cfg, nil
 }
 
 // devinMatcher decodes a Devin hook matcher. Devin loads a matcher as a regex
@@ -193,22 +292,15 @@ func ParseDevinHooksV1(path string) (*DevinConfig, error) {
 	// Some real files wrap the table in a "hooks" key anyway, the shape of every
 	// other location. Whether Devin reads that here is unverified; it is read, so
 	// a wrapped file is judged rather than silently skipped.
-	if inner, ok := top["hooks"]; ok {
-		var wrapped map[string]json.RawMessage
-		if json.Unmarshal(inner, &wrapped) == nil {
-			top = wrapped
-		}
+	eventsRaw := data
+	if inner, ok := top["hooks"]; ok && isJSONObject(inner) {
+		eventsRaw = inner
 	}
-	// Entry by entry, so a generator's "_generated_by" string or another stray
-	// key does not cost the file its hooks; anything that is not a list of
-	// matcher groups is left out.
-	hooks := map[string][]HookGroup{}
-	for event, raw := range top {
-		if groups, ok := devinHookGroups(raw); ok && len(groups) > 0 {
-			hooks[event] = groups
-		}
-	}
-	return &DevinConfig{Hooks: hooks}, nil
+	// Entry by entry (#1820): a generator's "_generated_by" string or another
+	// stray key does not cost the file its hooks, a hook event that does not
+	// decode is recorded as malformed, and the valid events are kept.
+	hooks, malformed := decodeDevinHookEvents(eventsRaw)
+	return &DevinConfig{Hooks: hooks, Malformed: malformed}, nil
 }
 
 // DevinSkillPermissions returns the `permissions` block of a Devin CLI SKILL.md
