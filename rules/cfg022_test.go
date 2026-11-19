@@ -272,3 +272,37 @@ func TestCFG022_AutoAllowBashIfSandboxed(t *testing.T) {
 		}
 	}
 }
+
+// A project (or project-local) sandbox.filesystem.allowWrite is inert on a
+// release whose schema takes the key only from the trusted tiers (#1857): the
+// escalation finding drops to info there, while user scope and older releases
+// keep the error.
+func TestCFG022_AllowWriteProjectScopeInert1857(t *testing.T) {
+	const cfg = `{"sandbox":{"filesystem":{"allowWrite":["~/.bashrc"]}}}`
+	for _, tc := range []struct {
+		scope finding.Scope
+		ver   string
+		want  finding.Severity
+	}{
+		{finding.ScopeProject, "2.1.328", finding.Info},
+		{finding.ScopeProject, "2.1.288", finding.Info},
+		{finding.ScopeProjectLocal, "2.1.326", finding.Info},
+		{finding.ScopeProject, "2.1.287", finding.Error}, // before the schema
+		{finding.ScopeProject, "", finding.Error},        // version unknown -> conservative
+		{finding.ScopeUser, "2.1.328", finding.Error},    // trusted tier honours it
+	} {
+		tgt := settingsTarget(t, cfg)
+		tgt.Scope = tc.scope
+		if tc.ver != "" {
+			v, err := version.Parse(tc.ver)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tgt.ClaudeVersion = &v
+		}
+		f := CFG022.Check(tgt)
+		if len(f) != 1 || f[0].Severity != tc.want || !strings.Contains(f[0].Message, "allowWrite") {
+			t.Errorf("scope %q ver %q: expected one %s allowWrite finding, got %+v", tc.scope, tc.ver, tc.want, f)
+		}
+	}
+}

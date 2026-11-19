@@ -18,6 +18,15 @@ var nestedUserNamespacesFrom = version.Version{Major: 2, Minor: 1, Patch: 305}
 // sandboxed Bash commands unless sandbox.autoAllowBashIfSandboxed is true (#1800).
 var autoAllowOffByDefaultFrom = version.Version{Major: 2, Minor: 1, Patch: 325}
 
+// allowWriteScopeEnforcedFrom is the release whose "as enforced" settings schema
+// takes sandbox.filesystem.allowWrite only from user, managed and --settings
+// scope, so a project .claude/settings.json entry contributes nothing (#618,
+// #1857). Measured with the sandbox on (bubblewrap) on 2.1.325 and 2.1.328: a
+// project allowWrite, even a broad ~ grant, opens none of the paths this rule
+// flags, while a user/--settings grant does. Before this release a project entry
+// may still have been honoured, so the escalation finding stays an error there.
+var allowWriteScopeEnforcedFrom = version.Version{Major: 2, Minor: 1, Patch: 288}
+
 type cfg022 struct{}
 
 var CFG022 = &cfg022{}
@@ -149,9 +158,20 @@ func (r *cfg022) Check(t *Target) []finding.Finding {
 	// search dir, a system dir, or a shell startup file lets a sandboxed command
 	// plant code that later runs unsandboxed (privilege escalation).
 	if sb.Filesystem != nil {
+		// A project (or project-local) entry is inert on a release whose schema
+		// takes filesystem.allowWrite only from the trusted tiers (#618, #1857): it
+		// grants nothing, so the escalation cannot happen and the committed entry is
+		// reported at info, not error. User/managed scope, and releases before the
+		// schema, still honour it, so there it stays an error.
+		projectScope := t.Scope == finding.ScopeProject || t.Scope == finding.ScopeProjectLocal
+		projectInert := projectScope && t.ClaudeVersion != nil && t.ClaudeVersion.AtLeast(allowWriteScopeEnforcedFrom)
 		for _, p := range sb.Filesystem.AllowWrite {
 			if reason := dangerousSandboxWritePath(p); reason != "" {
-				add(finding.Error, "sandbox.filesystem.allowWrite grants sandboxed commands write access to \""+strings.TrimSpace(p)+"\" ("+reason+") — a command inside the sandbox can plant code there that later runs unsandboxed, escaping the boundary. Grant write access only to specific project paths")
+				if projectInert {
+					add(finding.Info, "sandbox.filesystem.allowWrite in a project settings file names \""+strings.TrimSpace(p)+"\" ("+reason+"), but Claude Code "+t.ClaudeVersion.String()+" takes filesystem.allowWrite only from user, managed and --settings scope, so this project entry grants nothing and has no effect (measured on 2.1.325 and 2.1.328: a project allowWrite does not open the path, a user/managed one does). Remove it; writing to such a path would be a privilege-escalation risk if it were granted")
+				} else {
+					add(finding.Error, "sandbox.filesystem.allowWrite grants sandboxed commands write access to \""+strings.TrimSpace(p)+"\" ("+reason+") — a command inside the sandbox can plant code there that later runs unsandboxed, escaping the boundary. Grant write access only to specific project paths")
+				}
 			}
 		}
 		// filesystem.disabled turns the whole filesystem-isolation layer off. It is
