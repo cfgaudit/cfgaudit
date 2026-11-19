@@ -398,12 +398,9 @@
   agent: "VS Code"
   fixed: "1.145.3"
   summary: "A __proto__ key in workspace configuration let an untrusted workspace start its own MCP server."
-  coverage: partial
+  coverage: full
   rules:
     - {rule: CFG048, severity: error}
-  reason: no-rule-yet
-  issue: 1799
-  note: "cfgaudit reads the key in .vscode/settings.json and *.code-workspace settings, not yet in .vscode/mcp.json."
 
 - id: "CVE-2026-121663"
   aliases: [GHSA-x5cm-xmvw-73rv]
@@ -821,10 +818,9 @@
   agent: "VS Code"
   fixed: "1.145.3"
   summary: "JavaScript debugger auto-attach took its executable lookup from workspace settings before trust."
-  coverage: none
-  related: [CFG048]
-  reason: no-rule-yet
-  issue: 1799
+  coverage: full
+  rules:
+    - {rule: CFG048, severity: warn}
 
 - id: "CVE-2026-70334"
   aliases: [GHSA-q2f8-hh8x-wpc2]

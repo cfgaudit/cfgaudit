@@ -1859,6 +1859,14 @@ func vscodeTargets(dir string) ([]*rules.Target, error) {
 	} else if err != nil && !scanroot.IsAbsent(err) {
 		skipUnreadable(extPath, err)
 	}
+	// .vscode/mcp.json carries the same __proto__ prototype-pollution bypass as
+	// the settings file (CVE-2026-121662, #1799). Its raw object rides its own
+	// target for CFG048; a malformed file is left to the MCP server loader, which
+	// already reports it, so it is not listed twice.
+	mcpPath := filepath.Join(dir, ".vscode", "mcp.json")
+	if raw, err := parser.ParseVSCodeMCPRaw(mcpPath); err == nil && raw != nil {
+		targets = append(targets, &rules.Target{Scope: finding.ScopeProject, VSCodeMCPRaw: raw, VSCodeMCPRawFile: mcpPath})
+	}
 	return append(targets, codeWorkspaceTargets(dir)...), nil
 }
 
