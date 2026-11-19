@@ -246,7 +246,7 @@ func (r *cfg048) Check(t *Target) []finding.Finding {
 		return nil
 	}
 	if t.VSCodeSettings == nil {
-		return checkExtensionRecommendations(t)
+		return append(checkExtensionRecommendations(t), r.checkVSCodeMCPProto(t)...)
 	}
 	var findings []finding.Finding
 	for _, key := range blanketAutoApproveKeys {

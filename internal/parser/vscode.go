@@ -454,6 +454,32 @@ func ParseVSCodeSettingsBytes(data []byte, path string) (*VSCodeSettings, error)
 	return &VSCodeSettings{Raw: raw, order: topLevelKeyOrder(clean)}, nil
 }
 
+// ParseVSCodeMCPRaw decodes a committed .vscode/mcp.json into its top-level
+// object, kept raw, so CFG048 can scan it for a __proto__ key (CVE-2026-121662,
+// #1799) — the same prototype-pollution bypass the settings file carries. VS
+// Code reads the file as JSON with comments. Returns (nil, nil) when the file is
+// absent, empty, or not a JSON object; a malformed non-empty file is an error,
+// which the caller leaves to the MCP loader (its servers path already reports
+// it) rather than listing twice.
+func ParseVSCodeMCPRaw(path string) (map[string]json.RawMessage, error) {
+	data, err := scanroot.ReadFile(path)
+	if err != nil {
+		if scanroot.IsAbsent(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	clean := stripJSONC(data)
+	if len(bytes.TrimSpace(clean)) == 0 {
+		return nil, nil
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(clean, &raw); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return raw, nil
+}
+
 // topLevelKeyOrder returns the top-level keys of a JSON object in the order they
 // first appear. A repeated key keeps its first position and, through
 // json.Unmarshal, its last value, which is how JSON.parse treats it too.

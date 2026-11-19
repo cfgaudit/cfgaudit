@@ -57,7 +57,60 @@ func (r *cfg048) checkTrustBypass(t *Target) []finding.Finding {
 	if overrides, ok := s.ObjectField("experiments.override"); ok && len(overrides) > 0 {
 		add(finding.Warn, "experiments.override", "experiments.override sets experiment treatments ("+quoteList(sortedRawKeys(overrides))+"), which became the defaults of the settings they control, restricted ones included, even in Restricted Mode (CVE-2026-121665)."+fixedIn11453+" A committed workspace file has no use for them. Remove it")
 	}
+	if opts, ok := s.ObjectField(jsDebugTerminalKey); ok {
+		if vectors := jsDebugExecVectors(opts); len(vectors) > 0 {
+			add(finding.Warn, jsDebugTerminalKey, jsDebugTerminalKey+" sets "+quoteList(vectors)+" for the JavaScript debug terminal, which runs a program: the js-debug auto-attach took this lookup from the workspace file before Workspace Trust, so a committed value ran in an untrusted workspace (CVE-2026-70094). VS Code 1.145.3 marks the setting restricted (vscode-js-debug 1a7afe5); 1.145.2 and earlier, and forks on the older bundle, apply it. Remove it")
+		}
+	}
 	return findings
+}
+
+// jsDebugTerminalKey is the setting vscode-js-debug 1.140.1 marks `restricted`
+// (commit 1a7afe5, shipped in VS Code 1.145.3): before the fix the JavaScript
+// debug terminal took its configuration from the workspace file ahead of any
+// trust decision (CVE-2026-70094). Its properties are the node terminal
+// configuration, so a committed value runs a program at an untrusted open.
+const jsDebugTerminalKey = "debug.javascript.terminalOptions"
+
+// jsDebugExecVectors returns the sub-keys of a debug.javascript.terminalOptions
+// object that make it run or steer a program, sorted. `command` auto-runs in the
+// debug terminal, `env` (hence PATH/NODE_OPTIONS) and `envFile` seed its
+// environment. Other keys (cwd, pause patterns) do not launch anything, so a
+// value that sets only those is not reported — it is the node terminal
+// configuration, not nodeLaunchConfig, so runtimeExecutable/runtimeArgs are not
+// among its properties (verified against vscode-js-debug 1a7afe5).
+func jsDebugExecVectors(opts map[string]json.RawMessage) []string {
+	var out []string
+	for _, k := range []string{"command", "env", "envFile"} {
+		if _, ok := opts[k]; ok {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// checkVSCodeMCPProto reports a __proto__ key in a committed .vscode/mcp.json
+// (CVE-2026-121662, #1799). The same prototype-pollution bypass the settings
+// file carries applies to the MCP config: merging it changed the shared object
+// prototype, so a workspace in Restricted Mode could have its own MCP server
+// started with no trust decision. It runs on its own target, with no VS Code
+// settings, so it is kept apart from checkTrustBypass.
+func (r *cfg048) checkVSCodeMCPProto(t *Target) []finding.Finding {
+	if t.VSCodeMCPRawFile == "" || len(t.VSCodeMCPRaw) == 0 {
+		return nil
+	}
+	paths := protoKeyPaths(t.VSCodeMCPRaw)
+	if len(paths) == 0 {
+		return nil
+	}
+	return []finding.Finding{{
+		RuleID:   "CFG048",
+		Severity: finding.Error,
+		Scope:    t.Scope,
+		File:     t.VSCodeMCPRawFile,
+		Key:      "__proto__",
+		Message:  "a __proto__ key (" + quoteList(paths) + ") changed the shared object prototype while VS Code merged the workspace MCP configuration, so a workspace in Restricted Mode could have its own MCP server started with no trust decision (CVE-2026-121662)." + fixedIn11453 + " The key has no use in an MCP config. Remove it",
+	}}
 }
 
 // protoKeyPaths returns the paths of the __proto__ keys in a settings file,

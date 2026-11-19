@@ -4,6 +4,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"sort"
 
@@ -192,6 +193,13 @@ type Target struct {
 	// VSCodeExtensionsFile is the file.
 	VSCodeExtensions     []string
 	VSCodeExtensionsFile string
+
+	// VSCodeMCPRaw is the top-level object of a committed .vscode/mcp.json, kept
+	// raw so CFG048 can scan it for a __proto__ key (CVE-2026-121662, #1799): the
+	// same prototype-pollution bypass the settings file carries. VSCodeMCPRawFile
+	// is the path. Nil when the file is absent or is not a JSON object.
+	VSCodeMCPRaw     map[string]json.RawMessage
+	VSCodeMCPRawFile string
 
 	// Gemini holds a parsed Gemini CLI settings.json (.gemini/settings.json or
 	// ~/.gemini/settings.json). Its security surface mirrors Claude Code's

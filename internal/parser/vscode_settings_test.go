@@ -5,6 +5,7 @@ package parser
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -153,5 +154,26 @@ func TestStripJSONC_TrailingCommaEdges(t *testing.T) {
 		if got := string(stripJSONC([]byte(tc.in))); got != tc.want {
 			t.Errorf("%q: got %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// ParseVSCodeMCPRaw keeps a __proto__ key and strips JSON-with-comments, so
+// CFG048 can scan a committed .vscode/mcp.json (#1799).
+func TestParseVSCodeMCPRaw(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mcp.json")
+	if err := os.WriteFile(path, []byte("{\n  // comment\n  \"servers\": {},\n  \"__proto__\": {\"x\": 1},\n}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := ParseVSCodeMCPRaw(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, ok := raw["__proto__"]; !ok {
+		t.Errorf("__proto__ key dropped: %v", raw)
+	}
+	// A missing file is (nil, nil), not an error.
+	if raw2, err := ParseVSCodeMCPRaw(filepath.Join(dir, "none.json")); err != nil || raw2 != nil {
+		t.Errorf("absent file: raw=%v err=%v, want nil nil", raw2, err)
 	}
 }
