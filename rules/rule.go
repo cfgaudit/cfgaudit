@@ -577,6 +577,15 @@ type Target struct {
 	UnreadableFile   string
 	UnreadableReason string
 
+	// MalformedFile and MalformedEntries name a committed config file that parsed
+	// and contributed its valid entries while one or more of its entries did not
+	// decode (Devin, #1820): the agent keeps the valid servers and hooks beside a
+	// malformed one. Unlike UnreadableFile this is not a lost file, so CFG109
+	// reports each entry at info, and the valid entries on the same target's other
+	// fields are checked by the usual rules.
+	MalformedFile    string
+	MalformedEntries []parser.DevinMalformed
+
 	// EscapedLink is a path under the scanned directory that is, or passes
 	// through, a symbolic link resolving outside it, and EscapedTarget is the
 	// committed link text. cfgaudit does not read such a file (it would be a file

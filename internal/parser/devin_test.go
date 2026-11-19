@@ -102,19 +102,35 @@ func TestParseDevinConfig_ListMatcher(t *testing.T) {
 	}
 }
 
-func TestParseDevinConfig_MalformedHookEventStillErrors(t *testing.T) {
+// An event whose value is not a list at all (a string, a stray "_generated_by"
+// meta key) is not a hook; since #1820 the file still parses, the event is left
+// out, and it is not recorded as malformed (a non-list value is indistinguishable
+// from a stray key, so reporting it would be a false positive).
+func TestParseDevinConfig_NonListEventIgnored(t *testing.T) {
 	path := writeDevin(t, `{"hooks": {"PreToolUse": "not a list"}}`)
-	if _, err := ParseDevinConfig(path); err == nil {
-		t.Error("expected an error when an event is not a list of matcher groups")
+	c, err := ParseDevinConfig(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(c.Hooks) != 0 || len(c.Malformed) != 0 {
+		t.Errorf("hooks = %+v, malformed = %+v; want both empty", c.Hooks, c.Malformed)
 	}
 }
 
-// A group that is not an object is not a matcher group, so the file stays a
-// parse error instead of losing the group silently behind the loose decode.
-func TestParseDevinConfig_NonObjectGroupStillErrors(t *testing.T) {
+// A group that is not an object is not a matcher group. The event's value is a
+// list, so since #1820 the file still parses and the event is recorded as
+// malformed (CFG109 names it) instead of losing the whole file.
+func TestParseDevinConfig_NonObjectGroupMalformed(t *testing.T) {
 	path := writeDevin(t, `{"hooks": {"PreToolUse": ["not a group"]}}`)
-	if _, err := ParseDevinConfig(path); err == nil {
-		t.Error("expected an error when a group is not an object")
+	c, err := ParseDevinConfig(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(c.Hooks) != 0 {
+		t.Errorf("hooks = %+v, want none", c.Hooks)
+	}
+	if len(c.Malformed) != 1 || c.Malformed[0].Key != "hooks.PreToolUse" {
+		t.Errorf("malformed = %+v, want one hooks.PreToolUse entry", c.Malformed)
 	}
 }
 
@@ -137,15 +153,22 @@ func TestParseDevinConfig_MatcherOfOtherShape(t *testing.T) {
 	}
 }
 
-// A handler entry that does not decode is not dropped: the file stays a parse
-// error, so a hook Devin still loads cannot slip past cfgaudit inside the
-// loose pass.
-func TestParseDevinConfig_MalformedHandlerStillErrors(t *testing.T) {
+// A handler entry that does not decode makes its event malformed (since #1820):
+// the file still parses and keeps its other entries, and CFG109 names the event,
+// so a hook Devin still loads cannot slip past cfgaudit unreported.
+func TestParseDevinConfig_MalformedHandlerRecorded(t *testing.T) {
 	path := writeDevin(t, `{
 	  "hooks": { "PreToolUse": [ { "matcher": "Exec", "hooks": ["timeout"] } ] }
 	}`)
-	if _, err := ParseDevinConfig(path); err == nil {
-		t.Error("expected an error when a handler entry does not decode")
+	c, err := ParseDevinConfig(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(c.Hooks) != 0 {
+		t.Errorf("hooks = %+v, want none", c.Hooks)
+	}
+	if len(c.Malformed) != 1 || c.Malformed[0].Key != "hooks.PreToolUse" {
+		t.Errorf("malformed = %+v, want one hooks.PreToolUse entry", c.Malformed)
 	}
 }
 
@@ -204,5 +227,49 @@ func TestDevinReadsKiroSkills(t *testing.T) {
 	}
 	if !(*DevinConfig)(nil).ReadsKiroSkills() {
 		t.Error("nil config should read Kiro skills")
+	}
+}
+
+// Since #1820 a malformed mcpServers entry no longer discards the file: the
+// valid servers are kept and the bad one is recorded for CFG109.
+func TestParseDevinConfig_MalformedServerKeepsOthers(t *testing.T) {
+	path := writeDevin(t, `{"mcpServers":{"bad":{"command":123},"good":{"command":"node","args":["s.js"]}}}`)
+	c, err := ParseDevinConfig(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, ok := c.MCPServers["good"]; !ok || len(c.MCPServers) != 1 {
+		t.Errorf("MCPServers = %+v, want just good", c.MCPServers)
+	}
+	if len(c.Malformed) != 1 || c.Malformed[0].Key != "mcpServers.bad" || c.Malformed[0].Reason == "" {
+		t.Errorf("malformed = %+v, want one mcpServers.bad with a reason", c.Malformed)
+	}
+}
+
+// A malformed permissions block is recorded, not fatal, and the rest of the
+// file (an MCP server) is kept (#1820, Devin v3000.5.20).
+func TestParseDevinConfig_MalformedPermissionsKeepsRest(t *testing.T) {
+	path := writeDevin(t, `{"permissions":"nope","mcpServers":{"good":{"command":"node"}}}`)
+	c, err := ParseDevinConfig(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if c.Permissions != nil {
+		t.Errorf("permissions = %+v, want nil", c.Permissions)
+	}
+	if _, ok := c.MCPServers["good"]; !ok {
+		t.Errorf("MCPServers = %+v, want good kept", c.MCPServers)
+	}
+	if len(c.Malformed) != 1 || c.Malformed[0].Key != "permissions" {
+		t.Errorf("malformed = %+v, want one permissions entry", c.Malformed)
+	}
+}
+
+// A file that is not a JSON object at all still fails to parse, so CFG109 names
+// the whole file (#1820: only entry-level resilience, not a tolerant decoder).
+func TestParseDevinConfig_NotJSONStillErrors(t *testing.T) {
+	path := writeDevin(t, `this is not json`)
+	if _, err := ParseDevinConfig(path); err == nil {
+		t.Error("expected an error for a file that is not JSON")
 	}
 }
