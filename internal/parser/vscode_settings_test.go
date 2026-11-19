@@ -176,4 +176,25 @@ func TestParseVSCodeMCPRaw(t *testing.T) {
 	if raw2, err := ParseVSCodeMCPRaw(filepath.Join(dir, "none.json")); err != nil || raw2 != nil {
 		t.Errorf("absent file: raw=%v err=%v, want nil nil", raw2, err)
 	}
+
+	// An empty or comment-only file is (nil, nil): VS Code treats it as no config.
+	empty := filepath.Join(dir, "empty.json")
+	if err := os.WriteFile(empty, []byte("  // just a comment\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if raw2, err := ParseVSCodeMCPRaw(empty); err != nil || raw2 != nil {
+		t.Errorf("empty file: raw=%v err=%v, want nil nil", raw2, err)
+	}
+
+	// A malformed non-empty file is an error (left to the MCP loader to report).
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseVSCodeMCPRaw(bad); err == nil {
+		t.Error("malformed file: expected an error")
+	}
+
+	// (A genuine read error on line 470 is unreachable through scanroot.ReadFile,
+	// which records read errors and returns nil, so it is not asserted here.)
 }
