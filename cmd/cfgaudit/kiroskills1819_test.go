@@ -106,3 +106,21 @@ func TestKiroSkills1819(t *testing.T) {
 		}
 	})
 }
+
+// An unreadable project .kiro/skills is named and fails the scan, the same as
+// .claude/skills (#1819); the rest of the repository is still scanned.
+func TestRun_UnreadableKiroSkillsDir(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".claude/settings.json":   errorSettings,
+		".kiro/skills/x/SKILL.md": "---\nname: x\n---\nhi\n",
+	})
+	lockPath(t, filepath.Join(root, ".kiro", "skills")) // skips on root/windows
+	code, ids, stderr := scanJSON(t, root)
+	if code != 2 {
+		t.Errorf("exit code %d, want 2", code)
+	}
+	if !strings.Contains(strings.Join(ids, " "), "CFG004") {
+		t.Errorf("the readable settings.json was not scanned: %v", ids)
+	}
+	wantIncomplete(t, stderr, root, ".kiro/skills")
+}
