@@ -325,9 +325,11 @@ Devin keeps **four** project files, and cfgaudit reads all of them, attributing 
 
 MCP servers moved into the dedicated files in **v3000.3** (*"the Local 3.6 release"*); the `mcpServers` key of the main config is still honoured by older versions and migrated on startup by newer ones, so both locations are read rather than one replacing the other. The `.local` twins are gitignored by design and get the project-local scope cfgaudit already uses for `.claude/settings.local.json` and `.continue/settings.local.json` — a committed one still applies, and takes precedence over the shared file. The dedicated MCP files contribute servers only: a hook or permission finding is never attributed to them.
 
-**A repository with no `.devin/` directory at all can still affect a Devin session.** Devin CLI imports configuration from other tools' files, and its `read_config_from` reference lists eight keys — `agents_standard`, `cursor`, `windsurf`, `claude`, `copilot`, `opencode`, `vscode`, `zed` — **all defaulting to `true` when absent**. Setting one to `false` narrows the import; there is no value that widens beyond the default. That is why `read_config_from` is not a rule: it grants a repository no capability it could not get by writing `.devin/config.json` directly.
+**A repository with no `.devin/` directory at all can still affect a Devin session.** Devin CLI imports configuration from other tools' files, and its `read_config_from` reference lists ten keys — `agents_standard`, `cursor`, `windsurf`, `claude`, `copilot`, `codex`, `kiro`, `opencode`, `zed`, and `cloud` (user-config only) — **all defaulting to `true` when absent** (`vscode` was dropped from the list; `codex`, `kiro` and `cloud` were added). Setting one to `false` narrows the import; there is no value that widens beyond the default. For most keys that is why `read_config_from` is not a rule: it grants a repository no capability it could not get by writing `.devin/config.json` directly, and the imported files are scanned on their own account for the in-scope agent that owns them.
 
-What it does mean is that cfgaudit's existing findings already cover most of that path. Of the files Devin imports:
+`kiro` is the one key cfgaudit reads (#1819). Devin v3000.13.4 imports Kiro skills, `.kiro/skills/**/SKILL.md`, and cfgaudit does **not** scan Kiro as an agent of its own, so that folder is a trusted-skill surface only because Devin imports it. It is scanned as instruction content and attributed to Devin, so a prompt-injection or auto-run override committed there is reported. Because Devin is the only in-scope reader, a committed `read_config_from.kiro: false` (or the same in the gitignored `.devin/config.local.json`, which overrides it) removes the surface and the project skills are not reported; a user-level scan (`--user`) still reads `~/.kiro/skills` on its own account.
+
+What the other keys mean is that cfgaudit's existing findings already cover most of that path. Of the files Devin imports:
 
 | Devin imports | cfgaudit |
 |---|---|
@@ -336,8 +338,9 @@ What it does mean is that cfgaudit's existing findings already cover most of tha
 | `.windsurf/rules/**/*.md`, `.windsurf/global_rules.md` | scanned |
 | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`, `.claude/skills/**/SKILL.md`, `.claude/commands/**/*.md` | scanned |
 | `.mcp.json`, `.claude/settings.json`, `.claude/settings.local.json` | scanned |
-| `.github/skills/**/SKILL.md` | scanned |
-| `.vscode/mcp.json`, `.github/mcp.json`, `.zed/settings.json` | scanned |
+| `.github/skills/**/SKILL.md`, `.codex/skills/**/SKILL.md` | scanned |
+| `.kiro/skills/**/SKILL.md` | scanned as instruction content, attributed to Devin, gated on `read_config_from.kiro` |
+| `.github/mcp.json`, `.zed/settings.json` | scanned |
 | `opencode.json`, `opencode.jsonc`, `.opencode/opencode.json(c)` | scanned (`mcp`, `shell`, `lsp`, `formatter`, `agent.prompt`, `command.template`) |
 | `.opencode/{agent,agents,command,commands}/**/*.md`, `.opencode/{mode,modes}/*.md`, `.opencode/{skill,skills}/**/SKILL.md` | instruction content; agent and mode `permission` frontmatter → CFG105 |
 | `.opencode/{plugin,plugins,tool,tools}/*.{ts,js}` | CFG114 |

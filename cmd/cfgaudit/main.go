@@ -2249,6 +2249,19 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range gooseSkills {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
+	// Devin CLI imports Kiro skills (.kiro/skills/**/SKILL.md) by default (#1819).
+	// Nothing else cfgaudit scans reads them, so they are read only when the
+	// project .devin config leaves read_config_from.kiro on; config.local.json,
+	// gitignored but still applied, overrides the committed value.
+	if devinReadsKiroSkills(dir) {
+		kiroSkills, err := agentSkillsFiles(dir, devinKiroSkillsDirs)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range kiroSkills {
+			paths = append(paths, scopedPath{m, finding.ScopeProject})
+		}
+	}
 	for _, m := range goosehintsFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
@@ -2361,6 +2374,16 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 			return nil, err
 		}
 		for _, m := range userSkills {
+			paths = append(paths, scopedPath{m, finding.ScopeUser})
+		}
+		// Devin reads ~/.kiro/skills too (#1819). The user scan reports a home
+		// config on its own account, so it is not gated on any project's
+		// read_config_from; the project .kiro/skills walk above carries that gate.
+		userKiroSkills, err := agentSkillsFiles(home, devinKiroSkillsDirs)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range userKiroSkills {
 			paths = append(paths, scopedPath{m, finding.ScopeUser})
 		}
 	}
@@ -3062,6 +3085,18 @@ var (
 	gooseSkillsDirs = []string{
 		filepath.Join(".goose", "skills"),
 	}
+
+	// devinKiroSkillsDirs is the Kiro skills root Devin CLI imports (#1819).
+	// Devin v3000.13.4 discovers .kiro/skills/<name>/SKILL.md "in a project and
+	// in ~/.kiro/skills/" (changelog, 2026-11-16), with read_config_from.kiro on
+	// by default. cfgaudit does not scan Kiro as an agent of its own, so this
+	// folder is read solely because Devin imports it: the project walk is gated
+	// on the project .devin config's read_config_from.kiro, and findings are
+	// attributed to Devin. Kept apart from projectSkillsDirs so the Claude Code
+	// same-name collision check (CFG102) is not asserted for it.
+	devinKiroSkillsDirs = []string{
+		filepath.Join(".kiro", "skills"),
+	}
 )
 
 // clineRulesExts are the extensions Cline's rule loader reads as rule text
@@ -3388,6 +3423,29 @@ func loadDevinConfigOptional(path string) (*parser.DevinConfig, error) {
 		return nil, nil
 	}
 	return c, nil
+}
+
+// devinReadsKiroSkills reports whether Devin's import of project Kiro skills is
+// left on for dir (#1819). It is on unless the project .devin/config.json, or
+// its gitignored .devin/config.local.json which overrides it, sets
+// read_config_from.kiro to false. A missing or malformed config leaves it on,
+// matching the scan's bias toward reporting a surface rather than hiding one.
+//
+// The config is parsed directly, not through loadDevinConfigOptional: a
+// malformed one is reported as unreadable by the main Devin pass, so going
+// through that helper here would list it a second time.
+func devinReadsKiroSkills(dir string) bool {
+	reads := true
+	for _, name := range []string{"config.json", "config.local.json"} {
+		cfg, err := parser.ParseDevinConfig(filepath.Join(dir, ".devin", name))
+		if err != nil || cfg == nil || cfg.ReadConfigFrom == nil {
+			continue
+		}
+		if _, ok := cfg.ReadConfigFrom["kiro"]; ok {
+			reads = cfg.ReadsKiroSkills()
+		}
+	}
+	return reads
 }
 
 // loadCursorPermissionsOptional parses .cursor/permissions.json, returning

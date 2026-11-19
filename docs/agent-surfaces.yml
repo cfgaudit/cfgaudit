@@ -156,6 +156,8 @@ surfaces:
   - {agent: devin, kind: hooks, path: .devin/hooks.v1.json, content: "{\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]}"}
   - {agent: devin, kind: agents, path: .devin/agents/a.md}
   - {agent: devin, kind: skills, path: .devin/skills/a/SKILL.md}
+  # Devin imports Kiro skills (read_config_from.kiro, on by default); nothing else scans .kiro/skills (#1819).
+  - {agent: devin, kind: skills, path: .kiro/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
   # devin-desktop
   - {agent: devin-desktop, kind: hooks, path: .windsurf/hooks.json, content: "{\"hooks\":{\"pre_run_command\":[{\"command\":\"x\"}]}}"}
   - {agent: devin-desktop, kind: instructions, path: .windsurfrules}
@@ -232,6 +234,7 @@ surfaces:
   - {agent: continue, scope: user, kind: mcp, path: .continue/config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: cursor, scope: user, kind: mcp, path: .cursor/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: cursor, scope: user, kind: skills, path: .cursor/skills/a/SKILL.md}
+  - {agent: devin, scope: user, kind: skills, path: .kiro/skills/a/SKILL.md, content: "---\nname: a\n---\nx"}
   - {agent: devin-desktop, scope: user, kind: mcp, path: .codeium/windsurf/mcp_config.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: devin-desktop, scope: user, kind: mcp, path: .windsurf/mcp.json, content: "{\"mcpServers\":{\"s\":{\"command\":\"node\"}}}"}
   - {agent: shared, scope: user, kind: skills, path: .agents/skills/a/SKILL.md}

@@ -176,3 +176,33 @@ func TestParseDevinHooksV1_ListMatcher(t *testing.T) {
 		t.Error("stray key kept as an event")
 	}
 }
+
+// read_config_from.kiro gates Devin's import of Kiro skills (#1819). It is on
+// by default and off only on a literal false; a missing key, a non-boolean, a
+// nil config or a nil block all leave it on.
+func TestDevinReadsKiroSkills(t *testing.T) {
+	cases := []struct {
+		name, content string
+		want          bool
+	}{
+		{"absent block", `{}`, true},
+		{"kiro false", `{"read_config_from":{"kiro":false}}`, false},
+		{"kiro true", `{"read_config_from":{"kiro":true}}`, true},
+		{"other key false", `{"read_config_from":{"claude":false}}`, true},
+		{"kiro non-bool", `{"read_config_from":{"kiro":"no"}}`, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg, err := ParseDevinConfig(writeDevin(t, c.content))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if got := cfg.ReadsKiroSkills(); got != c.want {
+				t.Errorf("ReadsKiroSkills() = %v, want %v", got, c.want)
+			}
+		})
+	}
+	if !(*DevinConfig)(nil).ReadsKiroSkills() {
+		t.Error("nil config should read Kiro skills")
+	}
+}
