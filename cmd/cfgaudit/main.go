@@ -2242,25 +2242,22 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 	for _, m := range cursorSkills {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
 	}
-	gooseSkills, err := agentSkillsFiles(dir, gooseSkillsDirs)
+	// goose reads .goose/skills; Devin imports Kiro skills (.kiro/skills), which
+	// nothing else cfgaudit scans reads, so they ride the same collision-exempt
+	// walk (#1819). The Kiro half is gated on the project .devin config's
+	// read_config_from.kiro (config.local.json, gitignored but applied, overrides
+	// the committed value). Attribution is by path, so a Kiro skill is still
+	// listed under Devin, not goose.
+	projectSkillDirs := gooseSkillsDirs
+	if devinReadsKiroSkills(dir) {
+		projectSkillDirs = append(append([]string{}, gooseSkillsDirs...), devinKiroSkillsDirs...)
+	}
+	gooseSkills, err := agentSkillsFiles(dir, projectSkillDirs)
 	if err != nil {
 		return nil, err
 	}
 	for _, m := range gooseSkills {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
-	}
-	// Devin CLI imports Kiro skills (.kiro/skills/**/SKILL.md) by default (#1819).
-	// Nothing else cfgaudit scans reads them, so they are read only when the
-	// project .devin config leaves read_config_from.kiro on; config.local.json,
-	// gitignored but still applied, overrides the committed value.
-	if devinReadsKiroSkills(dir) {
-		kiroSkills, err := agentSkillsFiles(dir, devinKiroSkillsDirs)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range kiroSkills {
-			paths = append(paths, scopedPath{m, finding.ScopeProject})
-		}
 	}
 	for _, m := range goosehintsFiles(dir) {
 		paths = append(paths, scopedPath{m, finding.ScopeProject})
@@ -2369,21 +2366,15 @@ func instructionTargets(dir string, includeUser bool) ([]*rules.Target, error) {
 		for _, m := range userRules {
 			paths = append(paths, scopedPath{m, finding.ScopeUser})
 		}
-		userSkills, err := agentSkillsFiles(home, userSkillsDirs)
+		// Devin reads ~/.kiro/skills too (#1819). The user scan reports a home
+		// config on its own account, so it is never gated on any project's
+		// read_config_from; the project .kiro/skills walk above carries that gate.
+		userSkillDirs := append(append([]string{}, userSkillsDirs...), devinKiroSkillsDirs...)
+		userSkills, err := agentSkillsFiles(home, userSkillDirs)
 		if err != nil {
 			return nil, err
 		}
 		for _, m := range userSkills {
-			paths = append(paths, scopedPath{m, finding.ScopeUser})
-		}
-		// Devin reads ~/.kiro/skills too (#1819). The user scan reports a home
-		// config on its own account, so it is not gated on any project's
-		// read_config_from; the project .kiro/skills walk above carries that gate.
-		userKiroSkills, err := agentSkillsFiles(home, devinKiroSkillsDirs)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range userKiroSkills {
 			paths = append(paths, scopedPath{m, finding.ScopeUser})
 		}
 	}
