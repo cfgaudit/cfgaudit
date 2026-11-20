@@ -85,9 +85,32 @@ func checkSeverityAndOWASP(t *testing.T, id, readme string, codeSev map[string]b
 		}
 	}
 
-	if docLLM, readmeLLM := llmRe.FindString(string(doc)), llmRe.FindString(row); docLLM != readmeLLM {
-		t.Errorf("%s: OWASP mismatch — doc %q vs rule index %q", id, docLLM, readmeLLM)
+	// Compared as sets, like the severity: a rule mapped to several categories
+	// must keep every one on both sides, not just the first match.
+	docLLM := llmSet(owaspHeader(string(doc)))
+	readmeLLM := llmSet(cells[len(cells)-2])
+	if !eqSevSet(docLLM, readmeLLM) {
+		t.Errorf("%s: OWASP mismatch — doc header %v vs rule index %v", id, sevList(docLLM), sevList(readmeLLM))
 	}
+}
+
+// owaspHeader returns the text after "**OWASP:**" on the doc's header line.
+func owaspHeader(doc string) string {
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.HasPrefix(line, "**OWASP:**") {
+			return strings.TrimPrefix(line, "**OWASP:**")
+		}
+	}
+	return ""
+}
+
+// llmSet is every LLMxx category named in s.
+func llmSet(s string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range llmRe.FindAllString(s, -1) {
+		out[m] = true
+	}
+	return out
 }
 
 // codeSeverities scans the rule source files for the finding.Error/Warn/Info
@@ -321,6 +344,10 @@ func TestLLMMappingTableConsistency(t *testing.T) {
 	if i := strings.Index(covered, "**Not covered**"); i >= 0 {
 		covered = covered[:i]
 	}
+	registered := map[string]bool{}
+	for _, r := range All {
+		registered[r.ID()] = true
+	}
 	rows := map[string]map[string]bool{}
 	for _, m := range readmeLLMRowRe.FindAllStringSubmatch(covered, -1) {
 		ids := map[string]bool{}
@@ -328,11 +355,18 @@ func TestLLMMappingTableConsistency(t *testing.T) {
 		for _, r := range cfgRangeRe.FindAllStringSubmatch(cell, -1) {
 			from, to := atoi(r[1]), atoi(r[2])
 			for i := from; i <= to; i++ {
-				ids[fmt.Sprintf("CFG%03d", i)] = true
+				id := fmt.Sprintf("CFG%03d", i)
+				if !registered[id] {
+					t.Errorf("the %s row of the OWASP mapping table expands %s to %s, but %s is not a registered rule", m[1], r[0], id, id)
+				}
+				ids[id] = true
 			}
 		}
 		for _, id := range cfgIDRe.FindAllString(cfgRangeRe.ReplaceAllString(cell, ""), -1) {
 			ids[id] = true
+		}
+		if _, dup := rows[m[1]]; dup {
+			t.Errorf("the %s row appears more than once in the OWASP mapping table", m[1])
 		}
 		rows[m[1]] = ids
 	}
@@ -346,11 +380,21 @@ func TestLLMMappingTableConsistency(t *testing.T) {
 		cats := map[string]bool{}
 		for _, llm := range llmRe.FindAllString(cells[len(cells)-1], -1) {
 			cats[llm] = true
-			if row, ok := rows[llm]; ok && !row[r.ID()] {
+			row, ok := rows[llm]
+			if !ok {
+				t.Errorf("%s maps to %s in the rules table but the OWASP mapping table has no %s row", r.ID(), llm, llm)
+			} else if !row[r.ID()] {
 				t.Errorf("%s maps to %s in the rules table but is missing from the %s row of the OWASP mapping table", r.ID(), llm, llm)
 			}
 		}
 		mapped[r.ID()] = cats
+	}
+	for llm, ids := range rows {
+		for id := range ids {
+			if !mapped[id][llm] && !registered[id] {
+				t.Errorf("the %s row of the OWASP mapping table lists %s, which is not a registered rule", llm, id)
+			}
+		}
 	}
 	for llm, ids := range rows {
 		for id := range ids {
