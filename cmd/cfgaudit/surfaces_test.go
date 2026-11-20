@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cfgaudit/cfgaudit/rules"
 	"gopkg.in/yaml.v3"
 )
 
@@ -24,6 +25,31 @@ type agentSurface struct {
 	Kind    string `yaml:"kind"`
 	Path    string `yaml:"path"`
 	Content string `yaml:"content"`
+}
+
+// surfaceKinds is the allowed set of `kind` values in docs/agent-surfaces.yml.
+// A new kind is a deliberate addition here, so a typo cannot pass.
+var surfaceKinds = []string{
+	"agents", "cli", "code", "commands", "config", "debug", "env", "extension", "extensions",
+	"hooks", "instructions", "lsp", "mcp", "modes", "permissions", "plugins", "prompts",
+	"recipes", "rules", "sandbox", "settings", "skills", "submodules", "tasks", "tools",
+	"workflows", "workspace",
+}
+
+// mcpServerNames returns the server names a JSON MCP surface declares under
+// mcpServers or servers, or nil when the content is not of that shape.
+func mcpServerNames(content string) []string {
+	var doc map[string]map[string]json.RawMessage
+	if json.Unmarshal([]byte(content), &doc) != nil {
+		return nil
+	}
+	var names []string
+	for _, key := range []string{"mcpServers", "servers"} {
+		for name := range doc[key] {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func loadSurfaces(t *testing.T) []agentSurface {
@@ -54,6 +80,9 @@ func TestAgentSurfacesAreDiscovered(t *testing.T) {
 		t.Run(s.Scope+"/"+s.Path, func(t *testing.T) {
 			if s.Agent == "" || s.Kind == "" || s.Path == "" {
 				t.Fatalf("incomplete entry: %+v", s)
+			}
+			if !slices.Contains(surfaceKinds, s.Kind) {
+				t.Fatalf("unknown kind %q: %+v", s.Kind, s)
 			}
 			if s.Scope != "" && s.Scope != "user" {
 				t.Fatalf("unknown scope: %+v", s)
@@ -86,6 +115,15 @@ func TestAgentSurfacesAreDiscovered(t *testing.T) {
 					if f.Path == want {
 						if a.Agent != s.Agent {
 							t.Errorf("listed under %q, want %q", a.Agent, s.Agent)
+						}
+						// A structured MCP surface is also interpreted: the
+						// server its example declares is in the inventory.
+						if s.Kind == "mcp" {
+							for _, name := range mcpServerNames(s.Content) {
+								if !slices.ContainsFunc(f.MCP, func(m rules.MCPItem) bool { return m.Name == name }) {
+									t.Errorf("MCP server %q from the example is not in the inventory entry: %+v", name, f.MCP)
+								}
+							}
 						}
 						return
 					}
