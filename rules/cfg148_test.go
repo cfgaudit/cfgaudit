@@ -115,10 +115,6 @@ func TestCFG148_Helpers(t *testing.T) {
 	if got := splitStatements("a | b && c || d"); len(got) != 3 {
 		t.Errorf("splitStatements = %d parts, want 3", len(got))
 	}
-	// maxInt both branches.
-	if maxInt(5, 2) != 5 || maxInt(1, 9) != 9 {
-		t.Error("maxInt")
-	}
 	// pipeReadToEgress with no egress tool returns false.
 	if _, ok := pipeReadToEgress("cat .env | grep KEY"); ok {
 		t.Error("no egress, no pipe exfil")

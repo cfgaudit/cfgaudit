@@ -49,12 +49,12 @@ var (
 	// header), where a secret-bearing variable is being sent, not used to
 	// authenticate.
 	dataFlagRe = regexp.MustCompile(`(?i)(?:^|\s)(?:--data(?:-binary|-raw|-urlencode)?|-d|--form|-F|--upload-file|-T|--post-data|--post-file)(?:[=\s]|$)`)
-	// uploadPreRe matches the characters right before a credential path that put
-	// it in an upload or request-body position: `@~/path`, `-T path`,
-	// `--upload-file path`, `--data @path`, `-d @path`. Path-leading characters
-	// (~/, ./, /home/…) may sit between the marker and the matched file token,
-	// but no space may, so a later unrelated path does not match.
-	uploadPreRe = regexp.MustCompile(`(?i)(?:@|(?:-T|--upload-file|--post-file|--data(?:-binary|-raw)?|-d)[=\s]+@?)["']?[\w./~$-]*$`)
+	// uploadFlagRe matches a standalone flag whose following argument is the file
+	// to send: `-T path`, `--upload-file path`, `-d @path`, `--data @path`.
+	uploadFlagRe = regexp.MustCompile(`(?i)^(?:-T|--upload-file|--post-file|--data(?:-binary|-raw)?|-d)$`)
+	// uploadInlineFlagRe matches the long form that carries the file in the same
+	// token after `=`: `--upload-file=path`, `--post-file=path`, `--data=@path`.
+	uploadInlineFlagRe = regexp.MustCompile(`(?i)^(?:--upload-file|--post-file|--data(?:-binary|-raw)?)=`)
 	// ncHostRe captures the host argument of an nc/ncat/netcat command before
 	// its port.
 	ncHostRe = regexp.MustCompile(`(?i)\b(?:nc|ncat|netcat)\s+(?:-\S+\s+)*([\w.\-]+)\s+\d`)
@@ -66,9 +66,6 @@ func (r *cfg148) Check(t *Target) []finding.Finding {
 	}
 	var findings []finding.Finding
 	for _, site := range commandSites(t) {
-		if site.HookInput {
-			continue // a Codex mcp_tool input is passed to a tool, not run
-		}
 		if file, dest, _, ok := credentialExfil(site.Command); ok {
 			findings = append(findings, finding.Finding{
 				RuleID:   "CFG148",
@@ -222,17 +219,30 @@ func pipeReadToEgress(st string) (string, bool) {
 }
 
 // uploadCredFile reports a credential file passed to an egress upload or
-// request-body position: `curl -F f=@~/.aws/credentials`, `curl --upload-file
-// .env`.
+// request-body position: `curl -F "f=@~/.aws/credentials"`, `curl
+// --upload-file /long/path/.env`, `wget --post-file=.env`. It reads the
+// command word by word so a long path before the flag still matches.
 func uploadCredFile(st string) (string, bool) {
-	for _, m := range exfilCredFileRe.FindAllStringSubmatchIndex(st, -1) {
-		tok := st[m[2]:m[3]]
-		if exfilEnvTemplateRe.MatchString(tok) {
-			continue
+	tokens := strings.Fields(st)
+	for i, tok := range tokens {
+		clean := strings.Trim(tok, `"'`)
+		// @path, name=@path, --data=@path: a file after an @ in this token.
+		if at := strings.LastIndexByte(clean, '@'); at >= 0 {
+			if f, ok := credFileMatch(clean[at:]); ok {
+				return f, true
+			}
 		}
-		pre := st[maxInt(0, m[0]-40):m[0]]
-		if uploadPreRe.MatchString(pre) {
-			return tok, true
+		// --upload-file=path, --post-file=path, --data=path in one token.
+		if uploadInlineFlagRe.MatchString(clean) {
+			if f, ok := credFileMatch(clean); ok {
+				return f, true
+			}
+		}
+		// A preceding flag whose argument is this file: `-T path`.
+		if i > 0 && uploadFlagRe.MatchString(strings.Trim(tokens[i-1], `"'`)) {
+			if f, ok := credFileMatch(clean); ok {
+				return f, true
+			}
 		}
 	}
 	return "", false
@@ -267,11 +277,4 @@ func splitStatements(cmd string) []stmt {
 	}
 	out = append(out, stmt{cmd[start:], start})
 	return out
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
