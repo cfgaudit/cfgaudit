@@ -5,7 +5,9 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -270,6 +272,82 @@ func TestPolicy_OpenCodeKilo(t *testing.T) {
 	got = policyFindings(t, root)
 	if len(got) != 2 || !strings.Contains(got[0], "Kilo Code does not block it") || !strings.Contains(got[1], "OpenCode does not block it") {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// scanFindingLines runs a whole scan of root and returns "RuleID severity
+// relpath" lines, sorted, with the file relative to root in forward slashes. cfg
+// is the --config path, or "" to let discovery find a committed .cfgaudit.yml.
+func scanFindingLines(t *testing.T, root, cfg string) []string {
+	t.Helper()
+	args := []string{"--claude-version", "2.1.316", "--format", "json"}
+	if cfg != "" {
+		args = append(args, "--config", cfg)
+	}
+	code, out, errOut := runCLI(t, append(args, root)...)
+	if code == 2 {
+		t.Fatalf("exit 2: %s", errOut)
+	}
+	var fs []struct{ File, RuleID, Severity string }
+	if err := json.Unmarshal([]byte(out), &fs); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	var lines []string
+	for _, f := range fs {
+		rel, err := filepath.Rel(root, f.File)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, f.RuleID+" "+f.Severity+" "+filepath.ToSlash(rel))
+	}
+	sort.Strings(lines)
+	return lines
+}
+
+// A committed .cfgaudit.yml is discovered on an ordinary CLI run, and its policy
+// findings are combined with the independent findings every scan makes. The
+// corpus runner always passes --config os.DevNull, so no corpus case exercises
+// this discovered-policy shape (#1863). Pointing --config at an empty file is the
+// same scan without the policy: it drops only the policy findings and leaves the
+// independent ones untouched.
+func TestPolicy_ActiveConfigCombinesWithFindings(t *testing.T) {
+	root := runFixture(t, map[string]string{
+		".cfgaudit.yml":      "policy:\n  deny:\n    commands: [\"git push\"]\n",
+		".devin/config.json": `{"mcpServers":{"ext":{"url":"https://mcp.example.invalid/sse","headers":{"Authorization":"Bearer sk-ant-abcdef1234567890"}}}}`,
+		"opencode.json":      `{"permission":{"bash":{"git *":"allow"}}}`,
+	})
+
+	withPolicy := scanFindingLines(t, root, "")
+	noPolicy := scanFindingLines(t, root, os.DevNull)
+
+	// The policy deny neither file covers fires CFG025 on both agent formats.
+	// Discovery reports them; an empty config does not.
+	policy := []string{
+		"CFG025 error .devin/config.json",
+		"CFG025 error opencode.json",
+	}
+	for _, want := range policy {
+		if !slices.Contains(withPolicy, want) {
+			t.Fatalf("discovery run is missing the policy finding %q\ngot: %v", want, withPolicy)
+		}
+		if slices.Contains(noPolicy, want) {
+			t.Fatalf("empty-config run still reports the policy finding %q\ngot: %v", want, noPolicy)
+		}
+	}
+
+	// An independent finding (a hardcoded MCP credential) stands on its own and
+	// has to survive the empty-config run.
+	if len(noPolicy) == 0 {
+		t.Fatal("expected an independent finding that survives an empty config")
+	}
+
+	// So the two runs differ by exactly the policy findings: discovery is the
+	// independent findings plus the policy findings, and nothing else moved.
+	want := append(append([]string{}, noPolicy...), policy...)
+	sort.Strings(want)
+	if strings.Join(withPolicy, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("discovery must be the independent findings plus the policy findings\ngot:\n%s\nwant:\n%s",
+			strings.Join(withPolicy, "\n"), strings.Join(want, "\n"))
 	}
 }
 
