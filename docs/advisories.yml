@@ -281,7 +281,7 @@
   coverage: full
   rules:
     - {rule: CFG126, severity: error}
-    - {rule: CFG049, severity: warn}
+    - {rule: CFG049, severity: info}
 
 - id: "CVE-2025-68432"
   aliases: [GHSA-29cp-2hmh-hcxj]

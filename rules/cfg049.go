@@ -28,7 +28,8 @@ func (r *cfg049) ID() string { return "CFG049" }
 //     external endpoint).
 //   - warn:  TLS transport to a non-loopback hostname.
 //   - info:  TLS transport to an endpoint a vendor documents for its own
-//     service (mcpvendors.go, #1202), or to an RFC 2606 example host (#1669).
+//     service (mcpvendors.go, #1202), or to a reserved placeholder host: an
+//     RFC 2606 example host (#1669) or an RFC 6761 .invalid host (#1864).
 //
 // Loopback urls, empty values, and shell-variable references are exempt. Covers
 // every MCP source in scope (settings.json, .mcp.json, other agents' configs).
@@ -89,16 +90,22 @@ func classifyMCPEndpoint(v string) (finding.Severity, string, bool) {
 		return finding.Info, "the MCP endpoint " + vendor.vendor + " documents for its service (" + vendor.doc + "); it still receives the context and headers the agent sends, so keep it only if the project uses " + vendor.vendor, true
 	}
 	if reservedExampleHost(host) {
-		return finding.Info, "an RFC 2606 example host — documentation or a placeholder, not a live endpoint", true
+		rfc := "RFC 2606 example"
+		if h := strings.ToLower(host); h == "invalid" || strings.HasSuffix(h, ".invalid") {
+			rfc = "RFC 6761 invalid"
+		}
+		return finding.Info, "a reserved placeholder host (" + rfc + ") — documentation or a placeholder, not a live endpoint", true
 	}
 	return finding.Warn, "a non-loopback host — verify it is a trusted endpoint, or point it at a loopback address", true
 }
 
-// reservedExampleHost reports RFC 2606 example names: example.com/org/net
-// and the ".example" TLD (#1669).
+// reservedExampleHost reports reserved placeholder names that are guaranteed not
+// to be a live endpoint: the RFC 2606 example names (example.com/org/net and the
+// ".example" TLD, #1669) and the RFC 6761 section 6.4 ".invalid" TLD, which is
+// reserved for names that never resolve (#1864).
 func reservedExampleHost(host string) bool {
 	h := strings.ToLower(host)
-	for _, suf := range []string{"example.com", "example.org", "example.net", "example"} {
+	for _, suf := range []string{"example.com", "example.org", "example.net", "example", "invalid"} {
 		if h == suf || strings.HasSuffix(h, "."+suf) {
 			return true
 		}
