@@ -302,7 +302,9 @@ func TestCFGNNN_Trigger(t *testing.T) {
 
 The **Agents** line lists every agent whose files this rule reads today, as the slugs in `knownAgents` (`cmd/cfgaudit/ruleagents.go`), which match the `agent: <slug>` issue labels. It is not the agents the rule *could* apply to: a rule over Claude Code `settings.json` lists `claude-code` only, while an instruction-content rule lists every agent whose instruction files, skills or rules files are scanned. `cfgaudit list --format json` carries the line as `agents`, and `cfgaudit list --agent cursor` filters by it. A new slug goes into `knownAgents` first; `TestList_AgentsLines` rejects any other.
 
-Give each fence under **Trigger example** the file it belongs in, after the language: ```` ```json path=.claude/settings.json ````, ```` ```markdown path=CLAUDE.md ````, and `version=2.1.300` as well when the rule is gated on a Claude Code version. `TestRuleDocTriggerExamples` (`cmd/cfgaudit`) writes every annotated fence into an empty project, scans it and fails when the rule does not fire, so the example cannot go stale. Leave a fence unannotated when it is not a complete file on its own (a second file of the same example, a safe variant, shell output); `cfgaudit explain` drops the annotations.
+Give each fence under **Trigger example** the file it belongs in, after the language: ```` ```json path=.claude/settings.json ````, ```` ```markdown path=CLAUDE.md ````, and `version=2.1.300` as well when the rule is gated on a Claude Code version. When the trigger needs more than one file (a shadowing pair, a hook plus the script it launches, a policy plus the config it checks), give each fence the same `group=<name>`: `TestRuleDocTriggerExamples` writes the fences of a group into one project and scans them together. That test (`cmd/cfgaudit`) writes every annotated fence into an empty project, scans it and fails when the rule does not fire, so the example cannot go stale. Leave a fence unannotated when it is not a complete file on its own (a safe variant, shell output); `cfgaudit explain` drops the annotations.
+
+Every registered rule must carry an executable example, or an entry in `exampleExceptions` (`cmd/cfgaudit/triggerexamples_test.go`) that says why it cannot and names the test covering it instead: a trigger that only a real codepoint, a symlink, a binary archive or `.pyc`, or an external tool such as ShellCheck can produce. `TestEveryRuleHasTriggerExampleOrException` fails when a rule has neither, when an exception names a rule that now has an example, and when it names no registered rule.
 
 The consistency test (`rules/consistency_test.go`) requires:
 
@@ -312,7 +314,7 @@ The consistency test (`rules/consistency_test.go`) requires:
 
 ### 6. Add fixtures
 
-- **Trigger fixture** (required): `testdata/settings/invalid/CFGNNN_<slug>.json`. The cross-cutting test in `rules/fixtures_test.go` derives the expected rule ID from the filename prefix and asserts that the rule fires.
+- **Trigger fixture**: `testdata/settings/invalid/CFGNNN_<slug>.json`, for a rule whose surface is a Claude Code `settings.json`. The cross-cutting test in `rules/fixtures_test.go` derives the expected rule ID from the filename prefix and asserts that the rule fires. A rule that reads another file format does not get one here; its executable trigger example (step 5) is its runtime check.
 - **Valid fixtures**: every file in `testdata/settings/valid/` must produce **zero** findings across all rules. If your new rule would flag any of `minimal.json`, `full.json`, `team-project.json`, `managed-org.json`, fix the rule or update the fixture.
 
 The schema-validation workflow (`.github/workflows/schema-validation.yml`) validates `valid/*.json` against the upstream Claude Code schema on push and nightly. `invalid/*.json` is only checked for parseable JSON (with `jq empty`), since invalid fixtures are intentionally non-compliant.
