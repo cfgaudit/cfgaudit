@@ -54,8 +54,8 @@ func TestCFG049_VendorEndpoints1202(t *testing.T) {
 		{"https://api.githubcopilot.com.example.com/mcp", finding.Info},
 		{"https://learn.microsoft.com/en-us/docs", finding.Warn},
 		{"https://huggingface.co/someone/space", finding.Warn},
-		{"https://api.githubcopilot.com@evil.invalid/mcp", finding.Warn},
-		{"https://evil.invalid/api.githubcopilot.com/mcp", finding.Warn},
+		{"https://api.githubcopilot.com@evil.attacker.net/mcp", finding.Warn},
+		{"https://evil.attacker.net/api.githubcopilot.com/mcp", finding.Warn},
 		{"http://mcp.sentry.dev/mcp", finding.Error},
 		{"http://10.0.0.5:8080/mcp", finding.Error},
 	} {
@@ -124,6 +124,38 @@ func TestLocalhostSubdomain_Unparsable(t *testing.T) {
 	}
 	if !localhostSubdomain("https://a.localhost/mcp") {
 		t.Error("https://a.localhost/mcp: want true")
+	}
+}
+
+// RFC 6761 section 6.4 reserves .invalid for names guaranteed not to resolve, so
+// a .invalid host is a placeholder like an RFC 2606 example host: reported at
+// info, not warn (#1864). It covers a direct MCP url and the stdio proxy form,
+// including the exact host "invalid". Cleartext and IP precedence stay ahead of
+// it, and a host where "invalid" is only an inner label stays warn.
+func TestCFG049_InvalidPlaceholderHost1864(t *testing.T) {
+	for _, tc := range []struct {
+		url  string
+		want finding.Severity
+		msg  string
+	}{
+		{"https://mcp.example.invalid/mcp", finding.Info, "RFC 6761"},
+		{"https://example.invalid/sse", finding.Info, "RFC 6761"},
+		{"https://invalid/mcp", finding.Info, "RFC 6761"},
+		{"https://user@service.invalid/mcp", finding.Info, "RFC 6761"},
+		{"https://invalid.attacker.com/mcp", finding.Warn, "non-loopback host"},
+		{"https://notinvalid.com/mcp", finding.Warn, "non-loopback host"},
+		{"http://mcp.example.invalid/mcp", finding.Error, "cleartext"},
+	} {
+		f := CFG049.Check(settingsTarget(t, `{"mcpServers":{"m":{"type":"http","url":"`+tc.url+`"}}}`))
+		if len(f) != 1 || f[0].Severity != tc.want || !strings.Contains(f[0].Message, tc.msg) {
+			t.Errorf("%s: got %+v, want one %s with %q", tc.url, f, tc.want, tc.msg)
+		}
+	}
+
+	// The stdio proxy form (mcp-remote starting a .invalid remote) is info too.
+	f := CFG049.Check(settingsTarget(t, `{"mcpServers":{"m":{"command":"npx","args":["-y","mcp-remote@0.1.15","https://example.invalid/mcp"]}}}`))
+	if len(f) != 1 || f[0].Severity != finding.Info || !strings.Contains(f[0].Message, "RFC 6761") {
+		t.Errorf("stdio proxy to a .invalid remote: got %+v, want one info with RFC 6761", f)
 	}
 }
 

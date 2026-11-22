@@ -53,7 +53,7 @@ func TestCFG049StdioProxy1406(t *testing.T) {
 	if f := check("npx", `["-y","mcp-remote@0.1.16","https://localhost:8443/sse"]`); len(f) != 0 {
 		t.Errorf("loopback mcp-remote: %+v", f)
 	}
-	if f := check("supergateway", `["--sse","https://mcp.example.invalid/sse"]`); len(f) != 1 || f[0].Severity != finding.Warn {
+	if f := check("supergateway", `["--sse","https://gateway.acme-mcp.net/sse"]`); len(f) != 1 || f[0].Severity != finding.Warn {
 		t.Errorf("supergateway https: %+v", f)
 	}
 	if f := check("npx", `["-y","supergateway","--streamableHttp","http://mcp.example.invalid/mcp"]`); len(f) != 1 || f[0].Severity != finding.Error {
