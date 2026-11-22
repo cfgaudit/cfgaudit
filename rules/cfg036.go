@@ -190,6 +190,46 @@ var substTemplateRe = regexp.MustCompile(`(?i)\.env\.(?:example|sample|template|
 // around text with no backtick in it.
 var inlineCodeSpanRe = regexp.MustCompile("`[^`\n]+`")
 
+// outputFileRe captures the file a command writes to rather than reads: a
+// curl/wget -o/--output/--output-document file, or a >/>> redirection. The path
+// there is a write destination, so it is not a credential being read (#1866). It
+// does not cover -O/--remote-name, which take no operand (see savesDownload).
+var outputFileRe = regexp.MustCompile("(?i)(?:^|\\s)(?:-o|--output|--output-document)(?:=|\\s+)\"?([^\\s\"'`;|&)]+)|(?:^|\\s)(?:\\d|&)?>>?\\s*\"?([^\\s\"'`;|&)<>]+)")
+
+// teeTargetRe captures the file a tee writes to, also a write destination.
+var teeTargetRe = regexp.MustCompile("(?i)(?:^|[\\s;|&(`])tee\\b(?:\\s+-\\S+)*\\s+\"?([^\\s\"'`;|&)]+)")
+
+// remoteNameRe matches curl/wget -O or --remote-name, which save the response
+// to a file named by the URL. It is case-sensitive: curl's -o (output file) and
+// -O (remote name) are different flags.
+var remoteNameRe = regexp.MustCompile(`(?:^|\s)(?:-O|--remote-name)(?:\s|$)`)
+
+// discardSinks are output targets that throw the response away, so the fetch
+// stays a remote probe, not a saved download (#1176).
+var discardSinks = map[string]bool{"/dev/null": true, "-": true, "/dev/stdout": true, "/dev/stderr": true}
+
+// savesDownload reports whether span is a curl/wget that writes the response it
+// fetches to a real file: a download, so a sensitive name in the fetched URL is
+// downloaded content, not a remote secret being read (#1866). A discard sink
+// (/dev/null, -) keeps the probe reading of #1176.
+func savesDownload(span string) bool {
+	if !strings.Contains(span, "curl") && !strings.Contains(span, "wget") {
+		return false
+	}
+	for _, re := range []*regexp.Regexp{outputFileRe, teeTargetRe} {
+		for _, m := range re.FindAllStringSubmatch(span, -1) {
+			target := m[1]
+			if len(m) > 2 && target == "" {
+				target = m[2]
+			}
+			if !discardSinks[strings.Trim(target, `"'`)] {
+				return true
+			}
+		}
+	}
+	return remoteNameRe.MatchString(span)
+}
+
 // readOutCommands are the programs that print, copy or send a file's content.
 var readOutCommands = map[string]bool{
 	"cat": true, "head": true, "tail": true, "less": true, "more": true, "bat": true,
@@ -425,7 +465,16 @@ var dollarSubstRe = regexp.MustCompile(`\$\([^)]*\)?`)
 // setting to a local tool (#885).
 func sensitiveSubstitution(line string, inFence, jsFence bool) ([]int, finding.Severity) {
 	check := func(span string) bool {
-		cleaned := substTemplateRe.ReplaceAllString(span, "")
+		// A write destination (a curl/wget -o/--output file, a >/>> redirection,
+		// a tee target) is not a credential being read (#1866).
+		cleaned := outputFileRe.ReplaceAllString(span, " ")
+		cleaned = teeTargetRe.ReplaceAllString(cleaned, " ")
+		// A curl/wget that saves the response to a real file is a download, so a
+		// sensitive name in the fetched URL is content, not a remote secret (#1866).
+		if savesDownload(span) {
+			cleaned = substURLRe.ReplaceAllString(cleaned, " ")
+		}
+		cleaned = substTemplateRe.ReplaceAllString(cleaned, "")
 		cleaned = dollarSubstRe.ReplaceAllStringFunc(cleaned, func(sub string) string {
 			if countsOnly(sub) {
 				return ""
