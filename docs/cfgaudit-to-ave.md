@@ -33,6 +33,14 @@ Rechecked 2026-09-25 against **AVE-2026-00081 through AVE-2026-00083**, the thre
 
 Rechecked 2026-11-14 against **AVE v1.3.0** (tag `647e1ce`), the first release that rejects records: AVE-2026-00052, 00053, 00060 and 00061 are `rejected` (aveproject/ave#455), the other 85 stay `active`. Only 00061 was mapped. CFG075 carried it and now carries no AVE id, and the class moves to Direction 3 with a pointer to CWE-295 ([#1768](https://github.com/cfgaudit/cfgaudit/issues/1768)). 00052 and 00053 were already listed below as needing server-side source. 00060 was never mapped. The bucket counts above predate the release and are not recounted here.
 
+Rechecked 2026-11-23 for the v1.23.0 release ([#1874](https://github.com/cfgaudit/cfgaudit/issues/1874)): the three rules added since v1.22.0 all join classes AVE already ships, so no new record is needed and the bucket counts above are unchanged.
+
+- **Mapped to AVE-2026-00003** (credential exfil): CFG148, a command or script that reads a credential file and sends it to the network, beside CFG031, CFG036, CFG037 and CFG038.
+- **Mapped to AVE-2026-00057** (obfuscated payload evading scanners): CFG147, an auto-run command that disguises its program name, beside CFG141.
+- **Mapped to AVE-2026-00063** (approval gate bypassed via declarative configuration): CFG146, `disableAllHooks: true` in a repository's Claude Code settings, which turns off every hook and so every hook-based approval gate.
+
+The upstream record set was checked on 2026-11-23 and is unchanged since AVE v1.3.0 (the latest release and tag, 2026-11-14; 89 records, 85 active and four rejected, highest id AVE-2026-00089), so no newer record changes an existing mapping.
+
 Rechecked 2026-11-15 for the v1.22.0 release ([#1793](https://github.com/cfgaudit/cfgaudit/issues/1793)): the record set is unchanged since AVE v1.3.0 (89 records, four rejected). Of the rules added since v1.21.0:
 
 - **Mapped to AVE-2026-00063:** CFG139, a committed Kimi Code `local.toml` allow rule that removes an approval prompt. Its `info` finding for an `additional_dir` outside the repository is not part of that class.
@@ -86,7 +94,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG056 broad / always-on trigger | AVE-2026-00058 deceptive trigger scope · AVE-2026-00038 unbounded tool use *(partial)* · AVE-2026-00022 scope creep *(partial)* |
 | CFG057 encoded payload | AVE-2026-00057 obfuscated payload evading scanners · AVE-2026-00026 output-encoding exfil *(partial)* |
 | CFG119 payload markers in a script an auto-run hook or task starts | AVE-2026-00057 obfuscated payload evading scanners *(partial)* |
-| CFG141 an auto-run command decodes an embedded base64, base32 or hex payload | AVE-2026-00057 obfuscated payload evading scanners |
+| CFG141 an auto-run command decodes an embedded base64, base32 or hex payload · CFG147 an auto-run command disguises its program name | AVE-2026-00057 obfuscated payload evading scanners |
 | CFG081 survive compaction | AVE-2026-00027 multi-turn instruction persistence |
 | CFG090 network reconnaissance | AVE-2026-00032 network-reconnaissance instruction |
 | CFG051 / CFG085 delegation & tool grants | AVE-2026-00048 unsafe agent delegation chain |
@@ -99,7 +107,7 @@ The prior pass, 2026-08-04, covered AVE-2026-00060 through AVE-2026-00070: the f
 | CFG008 reverse shell · CFG014 curl\|sh · CFG019 inline script / eval | AVE-2026-00004 shell-pipe code execution · AVE-2026-00033 unsafe deserialization / eval |
 | CFG039 rm -rf | AVE-2026-00005 recursive filesystem destruction |
 | CFG027 persistence · CFG028 write trust files | AVE-2026-00008 self-replication |
-| CFG037 SSH keys · CFG038 env dump · CFG072 DNS exfil | AVE-2026-00003 · AVE-2026-00013 · AVE-2026-00039 |
+| CFG037 SSH keys · CFG038 env dump · CFG072 DNS exfil · CFG148 credential file sent to the network | AVE-2026-00003 · AVE-2026-00013 · AVE-2026-00039 |
 
 ### MCP configuration
 
@@ -118,7 +126,7 @@ Added in the 2026-08-04 refresh, against the records AVE shipped from [aveprojec
 
 | CFG | AVE |
 |---|---|
-| CFG003 `enableAllProjectMcpServers` · CFG004 `defaultMode` · CFG048 VS Code `chat.permissions.default` · CFG053 blanket MCP-trust keys · CFG063 Codex `approval_policy` / `approvals_reviewer` · CFG079 `autoMode` classifier · CFG087 hook answers a permission gate · CFG091 qwen `approvalMode: yolo` · CFG093 `.cursor/permissions.json` allowlist · CFG096 Gemini MCP `trust` · CFG104 Devin `permissions.allow` · CFG105 OpenCode `permission` block · CFG125 a command line that turns off a child agent's approval controls · CFG139 Kimi Code `local.toml` allow rules (not its `additional_dir` finding) | AVE-2026-00063 approval gate bypassed via declarative configuration |
+| CFG003 `enableAllProjectMcpServers` · CFG004 `defaultMode` · CFG048 VS Code `chat.permissions.default` · CFG053 blanket MCP-trust keys · CFG063 Codex `approval_policy` / `approvals_reviewer` · CFG079 `autoMode` classifier · CFG087 hook answers a permission gate · CFG091 qwen `approvalMode: yolo` · CFG093 `.cursor/permissions.json` allowlist · CFG096 Gemini MCP `trust` · CFG104 Devin `permissions.allow` · CFG105 OpenCode `permission` block · CFG125 a command line that turns off a child agent's approval controls · CFG139 Kimi Code `local.toml` allow rules (not its `additional_dir` finding) · CFG146 `disableAllHooks: true` turns off every hook and so every hook-based approval gate | AVE-2026-00063 approval gate bypassed via declarative configuration |
 | CFG047 `.vscode/tasks.json` `folderOpen` + Zed `create_worktree` · CFG086 zero-click hook event · CFG067 committed project hooks · CFG114 committed OpenCode plugin/tool code · CFG134 pi project packages and extensions · CFG136 Claude Code plugin hooks module | AVE-2026-00064 zero-click code execution via project-load auto-run configuration (CFG114: measured on opencode 1.18.18, the loader runs the files at startup with no prompt, the condition the CFG100 row below names) |
 | CFG010 unpinned `@latest`/`:latest` · CFG074 `skills-lock.json` with no integrity pin · CFG055 / CFG089 unpinned marketplace source · CFG098 `marketplace.json` archive with no `sha256` · CFG143 a registry or index the repository chooses | AVE-2026-00062 unpinned dependency, supply-chain substitution |
 | CFG097 Gemini remote-agent `auth` literal | AVE-2026-00047 hardcoded credentials in component |
