@@ -75,6 +75,7 @@ var aveByRule = map[string]string{
 	//                             Imperfect fit: CFG119 also fires on download-and-run plus a
 	//                             credential hunt without obfuscation, which no record covers.
 	"CFG141": "AVE-2026-00057", // a hook, MCP launch or task decodes an embedded payload → obfuscated payload
+	"CFG147": "AVE-2026-00057", // an auto-run command disguises its program name → obfuscated payload
 	"CFG081": "AVE-2026-00027", // survive compaction → multi-turn persistence
 	"CFG085": "AVE-2026-00048", // subagent perm mode → unsafe delegation
 	"CFG090": "AVE-2026-00032", // network reconnaissance instruction
@@ -86,6 +87,7 @@ var aveByRule = map[string]string{
 	"CFG028": "AVE-2026-00008", // write trust files → self-replication
 	"CFG037": "AVE-2026-00003", // SSH key read → credential exfil
 	"CFG038": "AVE-2026-00003", // env dump → credential exfil
+	"CFG148": "AVE-2026-00003", // command or script sends a credential file to the network → credential exfil
 	"CFG039": "AVE-2026-00005", // rm -rf → recursive filesystem destruction
 	"CFG072": "AVE-2026-00039", // DNS exfil → covert channel
 
@@ -134,6 +136,7 @@ var aveByRule = map[string]string{
 	"CFG139": "AVE-2026-00063", // committed Kimi Code local.toml allow rules remove an approval prompt
 	//                             (not the additional_dir info finding) (#1793).
 	"CFG125": "AVE-2026-00063", // a command line that turns off a child agent's approval controls
+	"CFG146": "AVE-2026-00063", // disableAllHooks: true turns off every hook, and so every hook-based approval gate
 	//                             (--dangerously-skip-permissions, --yolo): no instruction text.
 
 	// Zero-click auto-run on project load (AVE-2026-00064).
