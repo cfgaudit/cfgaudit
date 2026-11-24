@@ -44,3 +44,27 @@ func TestCodexGuardianV2_BothSpellings(t *testing.T) {
 		}
 	}
 }
+
+// #1879: the denial-reconsideration flag is a plain boolean under [features],
+// decoded next to guardianv2 without disturbing it.
+func TestCodexFeatures_GuardianDenialReconsideration(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		body string
+		want *bool
+	}{
+		{"[features]\nguardian_denial_reconsideration = true\n", &on},
+		{"[features]\nguardian_denial_reconsideration = false\n", &off},
+		{"[features]\nguardianv2 = false\n", nil},
+	} {
+		c := parseCodexTOML(t, tc.body)
+		got := c.Features.GuardianDenialReconsideration
+		if (got == nil) != (tc.want == nil) || (got != nil && *got != *tc.want) {
+			t.Errorf("%q: got %v, want %v", tc.body, got, tc.want)
+		}
+	}
+	c := parseCodexTOML(t, "[features]\nguardian_denial_reconsideration = true\n\n[features.guardianv2]\nenabled = false\n")
+	if c.Features.GuardianDenialReconsideration == nil || !*c.Features.GuardianDenialReconsideration || !c.Features.GuardianV2.Off() {
+		t.Errorf("both keys should decode, got %+v", c.Features)
+	}
+}

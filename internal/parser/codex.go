@@ -86,15 +86,15 @@ type CodexConfig struct {
 	BrowserUse  *CodexBrowserUse  `toml:"browser_use"`
 	ComputerUse *CodexComputerUse `toml:"computer_use"`
 
-	// Features is the centralized [features] table. Only guardianv2 is modelled:
-	// it configures Codex's own security reviewer, and `features` is not on
-	// PROJECT_LOCAL_CONFIG_DENYLIST, so a committed value crosses. The
-	// project-layer sanitizer removes several keys from inside this table
+	// Features is the centralized [features] table. Only the keys that configure
+	// Codex's own security reviewer are modelled (see CodexFeatures), and
+	// `features` is not on PROJECT_LOCAL_CONFIG_DENYLIST, so a committed value
+	// crosses. The project-layer sanitizer removes several keys from inside this table
 	// (respect_system_proxy, system_proxy_fallback, credential_masking and
 	// multi_agent_v2.message_board_remote always; shell_snapshot, network_proxy
 	// in its boolean form, network_proxy.credential_broker/credentials and
 	// network_proxy.enabled once the credential broker is configured; loader/mod.rs
-	// at bd27456), but guardianv2 is not among them.
+	// at bd27456), but none of the modelled keys is among them.
 	Features CodexFeatures `toml:"features"`
 
 	// ShellEnvironmentPolicy is [shell_environment_policy], described upstream as
@@ -206,6 +206,16 @@ type CodexFeatures struct {
 	// is honoured ("Under-development features enabled:
 	// guardian_conversation_history_tools").
 	GuardianConversationHistoryTools *bool `toml:"guardian_conversation_history_tools"`
+
+	// GuardianDenialReconsideration is the under-development feature (default
+	// off, in codex-rs/features/src/lib.rs since 0.168.0) that "Resample[s] a
+	// synchronous Guardian denial once before publishing it" (#1879). The
+	// reviewer's first terminal deny is held back and the same request is sent
+	// again; whatever the second sample says is the decision that is published
+	// (ext/guardian-reviewer/src/reconsideration.rs), so a denied action gets a
+	// second chance to be allowed. apply_map enables any known key regardless of
+	// stage, and the project-layer sanitizer does not remove this one.
+	GuardianDenialReconsideration *bool `toml:"guardian_denial_reconsideration"`
 }
 
 // CodexGuardianV2 is [features.guardianv2], upstream's "User-configurable

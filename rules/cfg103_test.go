@@ -201,3 +201,46 @@ func TestCFG103_ConversationHistoryPrompt(t *testing.T) {
 		t.Errorf("a blank value uses the built-in prompt, got %+v", f)
 	}
 }
+
+// #1879: resampling a Guardian denial is a warn on its own, independent of
+// [features.guardianv2]; false or absent is the default and silent.
+func TestCFG103_DenialReconsideration(t *testing.T) {
+	tg := &Target{
+		Scope:     finding.ScopeProject,
+		Codex:     &parser.CodexConfig{Features: parser.CodexFeatures{GuardianDenialReconsideration: guardianBool(true)}},
+		CodexFile: ".codex/config.toml",
+	}
+	f := CFG103.Check(tg)
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected one warn, got %+v", f)
+	}
+	if !strings.Contains(f[0].Message, "features.guardian_denial_reconsideration") {
+		t.Errorf("message should name the key, got %q", f[0].Message)
+	}
+	if f[0].File != ".codex/config.toml" {
+		t.Errorf("file = %q", f[0].File)
+	}
+	tg.Codex.Features.GuardianDenialReconsideration = guardianBool(false)
+	if f := CFG103.Check(tg); len(f) != 0 {
+		t.Errorf("an explicit false is the default, got %+v", f)
+	}
+	tg.Codex.Features.GuardianDenialReconsideration = nil
+	if f := CFG103.Check(tg); len(f) != 0 {
+		t.Errorf("an absent key is the default, got %+v", f)
+	}
+}
+
+// Next to a switched-off guardianv2 both findings are reported.
+func TestCFG103_DenialReconsiderationAndGuardian(t *testing.T) {
+	f := CFG103.Check(&Target{
+		Scope: finding.ScopeProject,
+		Codex: &parser.CodexConfig{Features: parser.CodexFeatures{
+			GuardianDenialReconsideration: guardianBool(true),
+			GuardianV2:                    &parser.CodexGuardianV2{Enabled: guardianBool(false)},
+		}},
+		CodexFile: ".codex/config.toml",
+	})
+	if len(f) != 2 || f[0].Severity != finding.Warn || f[1].Severity != finding.Error {
+		t.Fatalf("expected warn (reconsideration) then error (off), got %+v", f)
+	}
+}
