@@ -4,7 +4,7 @@
     {
       "agent": "gemini-cli",
       "repo": "google-gemini/gemini-cli",
-      "reviewed_tag": "v0.68.0",
+      "reviewed_tag": "v0.70.0",
       "files": [
         "packages/cli/src/config/extension-manager.ts",
         "packages/cli/src/config/settings.ts",
@@ -23,7 +23,7 @@
     {
       "agent": "codex",
       "repo": "openai/codex",
-      "reviewed_tag": "rust-v0.169.0",
+      "reviewed_tag": "rust-v0.171.0",
       "files": [
         "codex-rs/config/src/config_requirements.rs",
         "codex-rs/config/src/loader/layer_io.rs",
@@ -41,7 +41,7 @@
     {
       "agent": "goose",
       "repo": "aaif-goose/goose",
-      "reviewed_tag": "v1.57.0",
+      "reviewed_tag": "v1.60.2",
       "files": [
         "crates/goose-agent/src/skills/discovery.rs",
         "crates/goose/src/hints/import_files.rs",
