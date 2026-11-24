@@ -380,7 +380,8 @@ type MCPServer struct {
 
 	// HeadersHelperKey is the spelling the source file used for HeadersHelper,
 	// so a finding names a key the reader can grep for. Empty means the Claude
-	// spelling, "headersHelper"; Codex writes "http_headers_helper".
+	// spelling, "headersHelper"; Codex writes "http_headers_helper" and Grok
+	// "headers_helper".
 	HeadersHelperKey string `json:"-"`
 
 	// ApprovalModeKey and ApprovedTools carry Codex's approval settings, which

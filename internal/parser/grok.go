@@ -204,6 +204,13 @@ type GrokMCP struct {
 	// (mcp_bearer_token_file.rs), so the file is always one on the user's
 	// machine, chosen by whoever wrote the config.
 	BearerTokenFile string `toml:"bearer_token_file"`
+
+	// HeadersHelper is a command Grok runs to produce dynamic request headers
+	// for a remote server (Grok Build 1.0.88 changelog: "MCP servers can now
+	// specify a headers_helper command to provide dynamic request headers").
+	// Same class as Claude Code's headersHelper and Codex's http_headers_helper
+	// (#1878).
+	HeadersHelper string `toml:"headers_helper"`
 }
 
 // MCPServerMap converts the Grok mcp_servers tables to the shared MCPServer shape
@@ -216,7 +223,7 @@ func (c *GrokConfig) MCPServerMap() map[string]MCPServer {
 	}
 	out := make(map[string]MCPServer, len(c.MCPServers))
 	for name, s := range c.MCPServers {
-		out[name] = MCPServer{
+		srv := MCPServer{
 			Command:         s.Command,
 			Args:            s.Args,
 			Env:             s.Env,
@@ -224,6 +231,16 @@ func (c *GrokConfig) MCPServerMap() map[string]MCPServer {
 			Headers:         s.Headers,
 			BearerTokenFile: s.BearerTokenFile,
 		}
+		// The helper mints headers for HTTP requests, so it is a command site
+		// only on a streamable-http server. Grok's transport enum is untagged
+		// and tries stdio first, so an entry with `command` is a stdio server
+		// whatever else it sets, and a helper on it never runs.
+		if s.Command == "" {
+			srv.HeadersHelper = s.HeadersHelper
+			// Grok spells the key headers_helper; a finding names that spelling.
+			srv.HeadersHelperKey = "headers_helper"
+		}
+		out[name] = srv
 	}
 	return out
 }
