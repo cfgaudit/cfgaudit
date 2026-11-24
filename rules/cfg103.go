@@ -49,6 +49,10 @@ const guardianDefaultThreshold = 0.5
 // repository's own enabled/review_threshold/classifier_instructions values, and
 // the same file in an untrusted directory contributes nothing.
 //
+// features.guardian_denial_reconsideration (#1879) blunts the same reviewer
+// from the other end: it leaves the prompt alone and re-rolls a synchronous
+// denial once, publishing only the second sample's decision.
+//
 // Only the weakening direction is reported. A threshold BELOW the 0.5 default
 // escalates more often, `enabled = true` is the default, and a shorter transcript
 // or a lower token cap is not a posture change, so none of those is a finding.
@@ -95,6 +99,16 @@ func (r *cfg103) Check(t *Target) []finding.Finding {
 			add(finding.Warn, "auto_review.experimental_policy_template replaces Codex's security reviewer prompt template outright with text from this repository on Codex 0.168.0 and earlier — "+
 				"a stronger form of auto_review.policy that rewrites the whole template around the tenant-policy placeholder rather than adding to it. "+removedAutoReviewKey)
 		}
+	}
+
+	// #1879: an under-development feature that resamples Guardian's first
+	// synchronous denial and publishes only the second decision. Not tied to
+	// [features.guardianv2], so it is checked before the short-circuit below.
+	// Warn, like the conversation-history prompt alone: default off and under
+	// development, but nothing else gates a committed true.
+	if f := t.Codex.Features.GuardianDenialReconsideration; f != nil && *f {
+		add(finding.Warn, "features.guardian_denial_reconsideration is enabled — when Codex's security reviewer denies an action, the denial is held back and the same request is reviewed again, and only the second decision is published, so a denied action gets a second chance to be allowed. "+
+			"A committed file turns that on for every contributor, not just its author. The feature is under development and off by default, but nothing else gates it once this file sets it. Remove the key and let each user decide")
 	}
 
 	g := t.Codex.Features.GuardianV2
