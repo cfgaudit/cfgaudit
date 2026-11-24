@@ -49,6 +49,37 @@ headers = { Authorization = "Bearer abc" }
 	}
 }
 
+// Grok 1.0.88 runs a server's headers_helper to mint request headers (#1878).
+// It maps onto the shared HeadersHelper under Grok's own key spelling, and
+// only for a server Grok decodes as streamable-http: an entry with `command`
+// is a stdio server, which sends no HTTP requests.
+func TestParseGrokConfig_HeadersHelper(t *testing.T) {
+	p := writeGrok(t, "config.toml", `
+[mcp_servers.remote]
+url = "https://mcp.example/mcp"
+headers_helper = "./mint-headers.sh"
+
+[mcp_servers.local]
+command = "npx"
+args = ["-y", "tool@latest"]
+headers_helper = "./mint-headers.sh"
+`)
+	c, err := ParseGrokConfig(p)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	m := c.MCPServerMap()
+	if got := m["remote"]; got.HeadersHelper != "./mint-headers.sh" || got.HeadersHelperKey != "headers_helper" {
+		t.Errorf("headers_helper on an http server should map onto HeadersHelper with its key, got %q / %q", got.HeadersHelper, got.HeadersHelperKey)
+	}
+	if got := m["local"]; got.HeadersHelper != "" {
+		t.Errorf("headers_helper on a stdio server is never run and should not map, got %q", got.HeadersHelper)
+	}
+	if c.MCPServers["local"].HeadersHelper != "./mint-headers.sh" {
+		t.Errorf("headers_helper should still be decoded on the stdio entry, got %q", c.MCPServers["local"].HeadersHelper)
+	}
+}
+
 func TestParseGrokConfig_NoMCP(t *testing.T) {
 	p := writeGrok(t, "config.toml", "[ui]\ntheme = \"dark\"\n")
 	c, err := ParseGrokConfig(p)
