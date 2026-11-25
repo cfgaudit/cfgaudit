@@ -303,6 +303,12 @@ func (r *cfg149) Check(t *Target) []finding.Finding {
 				continue
 			}
 			text := withContinuation(lines, i)
+			// Every not-read clause the checks below accept is a match of one of
+			// these two, so a line with neither is skipped before it is split into
+			// sentences (a long prose line has many).
+			if !unreadWithoutRe.MatchString(text) && !unreadNegRe.MatchString(text) {
+				continue
+			}
 			units, offs := sentenceUnits(text)
 			hit, order := firstUnreadRun(text, units, offs, len(line))
 			if hit < 0 {
