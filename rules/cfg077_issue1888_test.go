@@ -41,6 +41,10 @@ func TestCFG077_GuardDenyContext1888_StillReported(t *testing.T) {
 		// The mirror image: a guard that matches a token in a case arm and then
 		// runs the destructive command in the body still fires on the body.
 		`case "$1" in check) shred -u ~/.bash_history ;; esac`,
+		// A denylist assignment is masked, but a command substitution in its
+		// double-quoted value runs, so the value is kept and the verb stays
+		// reported rather than masking around an executed substitution.
+		`CLOBBER="shred|$(id)"`,
 	} {
 		f := CFG077.Check(hookTarget(t, cmd))
 		if len(f) != 1 || f[0].Severity != finding.Error {

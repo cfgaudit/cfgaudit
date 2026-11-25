@@ -128,9 +128,6 @@ func guardMasksQuotes(seg string) bool {
 		return true
 	}
 	for _, f := range strings.Fields(seg) {
-		if arrayLiteralRe.MatchString(f) {
-			return true
-		}
 		f = strings.TrimLeft(f, "({!")
 		switch {
 		case f == "" || f == "if" || f == "then" || f == "else" || f == "elif" ||

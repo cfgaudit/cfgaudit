@@ -40,6 +40,10 @@ func TestCFG037_GuardDenyContext1888_StillReported(t *testing.T) {
 		`[[ "$1" == id_rsa ]] && cat ~/.ssh/id_ed25519`,
 		`case "$1" in id_rsa) cat ~/.ssh/id_dsa;; esac`,
 		`grep -qf "$HOME/.ssh/id_rsa" /etc/hosts`,
+		// A denylist assignment is masked, but a command substitution in its
+		// double-quoted value runs, so the value is kept and the name stays
+		// reported rather than masking around an executed substitution.
+		`BLOCKED="id_rsa|$(whoami)"`,
 	} {
 		f := CFG037.Check(hookTarget(t, cmd))
 		if len(f) != 1 || f[0].Severity != finding.Error {
