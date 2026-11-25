@@ -42,10 +42,16 @@ func (r *cfg030) ID() string { return "CFG030" }
 // It needs "to the user", so "the deprecated option in the user guide" stays
 // out. show is left out of it: all five corpus matches were display guidance
 // ("do not show this step to the user").
+//
+// The output branch lets show and display back in for one object: what a
+// command produced (outputObject). "Do not show its output to the user" is
+// the conceal half of a malicious AGENTS.md (#1882); "do not show this step to
+// the user" still has no output noun.
 var concealRe = mustFiltered(`(?i)(` +
 	`(?:don'?t|do\s+not|never)\s+(?:tell|inform|mention|notify|reveal|disclose|show)` +
 	`(?:\s+(?:this|that|it|these|those|anything|everything|any\s+of\s+(?:this|that|it)))?` +
 	`(?:\s+(?:to|about))?\s+(?:the\s+)?(?:user|caller)s?\b` +
+	`|(?:don'?t|do\s+not|never)\s+(?:show|display)\s+` + outputObject + `\s+to\s+(?:the\s+)?(?:user|caller)s?\b` +
 	`|(?:don'?t|do\s+not|never)\s+(?:mention|reveal|disclose)\s+(?:the|this|that|these|those|any|your)\s+(?:[\w-]+\s+){1,4}?to\s+(?:the\s+)?(?:user|caller)s?\b` +
 	`|without\s+the\s+user(?:'s)?\s+(?:knowing|knowledge|awareness)` +
 	`|(?:silently|secretly)\s+(?:do|run|execute|perform|send|email|upload|exfiltrate|post|forward|delete|remove|modify|edit|change|install|add|disable|copy|leak)\b` +
@@ -53,6 +59,37 @@ var concealRe = mustFiltered(`(?i)(` +
 	`|keep\s+(?:(?:this|that|these|those|the|it|them|any|all)\s+)?(?:\w+\s+){0,2}?secret\s+from\s+(?:the\s+)?(?:user|caller)s?\b` +
 	`|hide\s+(?:this|it|that)\s+from\s+(?:the\s+)?(?:user|caller|human|operator|reviewer)s?\b|hide\s+(?:this\s+)?from\s+the\s+user|hide\s+(?:this|it|that)\s+and\s+(?:continue|proceed|carry\s+on|move\s+on|keep\s+going)\b` +
 	`)`)
+
+// outputObject is what a command produced: "its output", "the command output",
+// "stdout", "the logs", "what it prints". A free adjective is not allowed, so
+// "never show raw terminal output" (plain-language guidance for a
+// non-technical user) stays out.
+const outputObject = `(?:(?:(?:its|the|their|any|this|that|these|those|your)\s+)?(?:(?:command|script|setup|install|installer|shell)\s+)?(?:output|results?|response|stdout|stderr|logs?(?:\s+output)?)|what\s+(?:it|the\s+(?:command|script))\s+prints)`
+
+// outputPhraseRe is the output branch, for the possessive check ("do not show
+// the output to the user's manager" is about the manager) and the presentation
+// check (showOutputGuidanceRe).
+var outputPhraseRe = regexp.MustCompile(`(?i)\b(?:show|display)\s+` + outputObject + `\s+to\s`)
+
+// outputEndConcealRe is the output branch without "to the user", ending its
+// sentence: "Execute the script and do not display the results." It counts
+// only after a run verb in the same sentence (runVerbRe); "Do not display the
+// results." alone is formatting guidance.
+var outputEndConcealRe = regexp.MustCompile(`(?i)\b(?:don'?t|do\s+not|never)\s+(?:show|display)\s+` + outputObject + `\s*(?:[.;!]|$)`)
+
+var runVerbRe = regexp.MustCompile(`(?i)\b(?:run|runs|execute|executes|launch|launches|invoke|invokes)\b`)
+
+// outputSentenceEndRe ends a sentence: a stop and a space, but not the last
+// dot of an ellipsis ("Execute the script ... and do not display the results.").
+var outputSentenceEndRe = regexp.MustCompile(`(?:^|[^.])[.;!?]\s`)
+
+// showOutputGuidanceRe is the rest of the clause after an output match that
+// makes it presentation guidance: "never show the output to the user without
+// explaining it", "until the tests pass", "verbatim; summarize it". A
+// credential in the clause keeps a secret off the screen: "do not show that
+// output to the user or repeat any credential value". "unless they ask" is
+// not one: withholding until asked is the concealment (#1179).
+var showOutputGuidanceRe = regexp.MustCompile(`(?i)^\s*(?:verbatim|in\s+full|raw)\b|\b(?:without\s+(?:first\s+)?(?:explain|translat|summari|interpret)\w*|until|before|credentials?|secrets?|tokens?|passwords?|api[\s_-]?keys?)\b`)
 
 // withoutNotifyRe matches "without notifying the user" and its synonyms. Alone
 // it is common and harmless ("saves quietly without notifying the user"), so
@@ -76,10 +113,23 @@ func concealMatch(line string) []int {
 		// "keep the key secret from the user's logs" is about the logs, and
 		// "do not mention the fix to the user's manager" about the manager.
 		possessive := strings.HasPrefix(line[loc[1]:], "'") || strings.HasPrefix(line[loc[1]:], "’")
-		if possessive && (strings.HasPrefix(strings.ToLower(line[loc[0]:]), "keep") || nounPhraseConcealRe.MatchString(line[loc[0]:loc[1]])) {
+		if possessive && (strings.HasPrefix(strings.ToLower(line[loc[0]:]), "keep") || nounPhraseConcealRe.MatchString(line[loc[0]:loc[1]]) ||
+			outputPhraseRe.MatchString(line[loc[0]:loc[1]])) {
+			return nil
+		}
+		if outputPhraseRe.MatchString(line[loc[0]:loc[1]]) && showOutputGuidanceRe.MatchString(clauseRest(line[loc[1]:])) {
 			return nil
 		}
 		return loc
+	}
+	if loc := outputEndConcealRe.FindStringIndex(line); loc != nil {
+		start := 0
+		if b := outputSentenceEndRe.FindAllStringIndex(line[:loc[0]], -1); len(b) > 0 {
+			start = b[len(b)-1][1]
+		}
+		if runVerbRe.MatchString(line[start:loc[0]]) {
+			return loc
+		}
 	}
 	loc := withoutNotifyRe.FindStringIndex(line)
 	if loc == nil {
@@ -110,7 +160,7 @@ func (r *cfg030) Check(t *Target) []finding.Finding {
 				continue
 			}
 			sev := finding.Error
-			if hidesProcessOnly(line, loc) {
+			if hidesProcessOnly(line, loc) || hidesOutputOnly(line, loc) {
 				sev = finding.Warn
 			}
 			lineNo := i + 1
@@ -377,6 +427,17 @@ func hidesProcessOnly(line string, loc []int) bool {
 		return false
 	}
 	return processObjectRe.MatchString(line[loc[1]:])
+}
+
+// hidesOutputOnly reports the output branch: show or display with an output
+// object (#1882). It is reported at warn: in a seeded sample nearly every
+// match was workflow plumbing ("This is a silent operation, do not show the
+// output to the user"), the same shape as the process-only case (#1179). A
+// separate conceal on the line ("do not mention this step") is still matched
+// by its own branch first.
+func hidesOutputOnly(line string, loc []int) bool {
+	m := line[loc[0]:loc[1]]
+	return outputPhraseRe.MatchString(m) || outputEndConcealRe.MatchString(m)
 }
 
 // concealDescriptiveRe matches the cues that make a concealment phrase the
