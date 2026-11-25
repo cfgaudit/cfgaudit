@@ -117,6 +117,16 @@ type CodexConfig struct {
 	// only User and SessionFlags layers may write hook state, so a repo cannot
 	// self-trust its own hooks.
 	Hooks CodexHookEventsToml `toml:"hooks"`
+
+	// tui.status_line_provider is deliberately NOT modelled. It is a command
+	// Codex runs to render its status line (the surface class of Claude Code's
+	// statusLine), but the config layer strips it from the project layer:
+	// config_layer_source.rs allows_status_line_provider() returns false for
+	// Self::Project, so effective_values() passes a project config through
+	// without_status_line_provider(), which removes tui.status_line_provider
+	// (verified at rust-v0.171.0). The strip is outside PROJECT_LOCAL_CONFIG_DENYLIST
+	// but has the same net effect, so a committed value is inert and must not be
+	// scanned as a project command surface (#1890).
 }
 
 // CodexShellEnvironmentPolicy is [shell_environment_policy]. Only `set` is
