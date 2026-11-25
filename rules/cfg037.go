@@ -59,7 +59,7 @@ func (r *cfg037) Check(t *Target) []finding.Finding {
 func sshPrivateKeyAccess(cmd string) bool {
 	// Ignore key names that are only data in guard-pattern syntax. Keep the
 	// command shape intact so a key path used as a separate operand still fires.
-	scanText := maskSSHGuardPatterns(cmd)
+	scanText := maskGuardPatterns(cmd)
 	// An explicit private-key filename (id_rsa, …) that is not the .pub variant.
 	for _, m := range privKeyNameRe.FindAllStringIndex(scanText, -1) {
 		if !strings.HasPrefix(scanText[m[1]:], ".pub") {
@@ -82,44 +82,6 @@ func sshPrivateKeyAccess(cmd string) bool {
 	return false // every .ssh reference is a non-key file
 }
 
-func maskSSHGuardPatterns(cmd string) string {
-	masked := []byte(cmd)
-	maskMatches := func(re *regexp.Regexp, base int, text string) {
-		for _, match := range re.FindAllStringSubmatchIndex(text, -1) {
-			if len(match) < 4 || match[2] < 0 {
-				continue
-			}
-			span := text[match[2]:match[3]]
-			if containsExecutableSubstitution(span) {
-				continue
-			}
-			for i := base + match[2]; i < base+match[3]; i++ {
-				masked[i] = ' '
-			}
-		}
-	}
-
-	for _, match := range grepPatternRe.FindAllStringSubmatchIndex(cmd, -1) {
-		if len(match) < 6 || match[4] < 0 || grepUsesPatternFile(cmd[match[2]:match[3]]) {
-			continue
-		}
-		if containsExecutableSubstitution(cmd[match[4]:match[5]]) {
-			continue
-		}
-		for i := match[4]; i < match[5]; i++ {
-			masked[i] = ' '
-		}
-	}
-	maskTestGuardPatterns(masked, cmd)
-	for _, body := range caseBodyRe.FindAllStringSubmatchIndex(cmd, -1) {
-		if len(body) < 4 || body[2] < 0 {
-			continue
-		}
-		maskMatches(casePatternRe, body[2], cmd[body[2]:body[3]])
-	}
-	return string(masked)
-}
-
 func maskTestGuardPatterns(masked []byte, cmd string) {
 	for offset := 0; offset < len(cmd); {
 		open := strings.Index(cmd[offset:], "[[")
@@ -137,7 +99,14 @@ func maskTestGuardPatterns(masked []byte, cmd string) {
 			continue
 		}
 		close += open + 2
-		operator := strings.Index(cmd[open:close], "=~")
+		// The first comparison operator inside [[ ]]: =~, == or !=. Its
+		// right-hand side is the pattern the guard compares against.
+		operator := -1
+		for _, op := range []string{"=~", "==", "!="} {
+			if idx := strings.Index(cmd[open:close], op); idx >= 0 && (operator < 0 || idx < operator) {
+				operator = idx
+			}
+		}
 		if operator < 0 {
 			offset = close + 2
 			continue

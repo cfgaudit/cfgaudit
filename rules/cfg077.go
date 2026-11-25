@@ -58,8 +58,14 @@ func (r *cfg077) Check(t *Target) []finding.Finding {
 	}
 	var findings []finding.Finding
 	for _, site := range commandSitesWithScripts(t) {
+		// A defensive guard or block hook names the destructive commands it
+		// denies in order to match them; that naming is detect/deny data, not
+		// the hook running the command. Mask those positions so a committed
+		// guard stays clean while an executed shred/history -c is still
+		// reported (#1888).
+		scanText := maskGuardPatterns(site.Command)
 		for _, p := range antiForensicsPatterns {
-			if !p.re.MatchString(site.Command) {
+			if !p.re.MatchString(scanText) {
 				continue
 			}
 			findings = append(findings, finding.Finding{
