@@ -27,13 +27,16 @@ const (
 	// unreadObject is what the agent is told not to read: the script itself,
 	// never its log, output or configuration. "Run the tests without reading
 	// the whole log" and "run the formatter without reading its 2000-line
-	// config" name something else.
-	unreadObject = `(?:(?:it|them|this|that)\b` +
+	// config" name something else. A bare "this" or "that" is left out: "you
+	// do not need to read this" is about the instruction file itself.
+	unreadObject = `(?:(?:it|them)\b` +
 		`|(?:this|that|the|its|their)\s+(?:(?:script|setup|install|bootstrap|installer)\s+)?(?:file|script|code|source(?:\s+code)?|contents?|command|installer|bootstrap|setup|program|binary)s?\b` +
 		`|(?:the\s+)?script['’]s\s+(?:code|source|contents?)\b` +
 		"|`[^`]+`|" + unreadPath + `)`
-	unreadIng  = `(?:reading|reviewing|inspecting|examining|checking|opening|auditing|looking\s+(?:at|into|over)|going\s+through)`
-	unreadBase = `(?:read|review|inspect|examine|check|open|audit|look\s+(?:at|into|over)|go\s+through)`
+	unreadIng  = `(?:reading|reviewing|inspecting|examining|checking|opening|auditing|looking\s+(?:at|into|over))`
+	unreadBase = `(?:read|review|inspect|examine|check|open|audit|look\s+(?:at|into|over))`
+	// "go through emu.py" is run by way of it, not review it, so "go through"
+	// is not a not-read verb.
 	// unreadNeg is a negation that tells the agent to skip the reading.
 	unreadNeg = `(?:(?:you\s+)?(?:don['’]?t|do\s+not)\s+(?:need|have)\s+to|(?:there['’]s|there\s+is)\s+no\s+need\s+to|no\s+need\s+to|don['’]?t\s+bother|do\s+not\s+bother|don['’]?t|do\s+not|never)`
 )
@@ -61,6 +64,16 @@ var (
 	// unreadOtherSenseRe after the object turns the reading into something
 	// else: "without opening it in a browser", "without checking it in".
 	unreadOtherSenseRe = regexp.MustCompile(`(?i)^\s+(?:in|with|out|up)\b`)
+
+	// unreadInFullRe is the "in" that is not another sense: "do not read it in
+	// full" still skips most of the script.
+	unreadInFullRe = regexp.MustCompile(`(?i)^\s+in\s+(?:full|its\s+entirety)\b`)
+
+	// unreadBackRe is a not-read order whose object is only a pronoun. Before
+	// the run, in the sentence before it, the pronoun points back to what that
+	// sentence follows, not ahead to the script: "Grep `symbols.tsv`; don't
+	// read it whole. ... run `refresh`".
+	unreadBackRe = regexp.MustCompile(`(?i)\b(?:it|them)$`)
 
 	// runnableRe is a runnable object of the verb: a script, command, file or
 	// installer, a backticked command, a script path or a relative path.
@@ -126,17 +139,24 @@ func runImperative(text string, pos int) bool {
 	return true
 }
 
+// unreadElsewise reports whether what follows a not-read clause's object
+// gives the verb another sense: "without opening it in a browser". A partial
+// read ("don't read it whole", "in full") still skips the script.
+func unreadElsewise(rest string) bool {
+	return unreadOtherSenseRe.MatchString(rest) && !unreadInFullRe.MatchString(rest)
+}
+
 // unreadAfter finds the not-read clause after the verb in the same sentence
 // and returns its start and end, or nil.
 func unreadAfter(after string) []int {
 	if m := unreadWithoutRe.FindStringSubmatchIndex(after); m != nil {
 		rest := after[m[1]:]
 		bare := m[2] < 0
-		if (bare && unreadBareEndRe.MatchString(rest)) || (!bare && !unreadOtherSenseRe.MatchString(rest)) {
+		if (bare && unreadBareEndRe.MatchString(rest)) || (!bare && !unreadElsewise(rest)) {
 			return m[:2]
 		}
 	}
-	if m := unreadNegRe.FindStringIndex(after); m != nil && !unreadOtherSenseRe.MatchString(after[m[1]:]) {
+	if m := unreadNegRe.FindStringIndex(after); m != nil && !unreadElsewise(after[m[1]:]) {
 		return m
 	}
 	return nil
@@ -147,7 +167,7 @@ func unreadAfter(after string) []int {
 func unreadOrder(unit string) (string, bool) {
 	lead := unitLeadRe.FindStringIndex(unit)
 	m := unreadNegRe.FindStringIndex(unit[lead[1]:])
-	if m == nil || m[0] != 0 || unreadOtherSenseRe.MatchString(unit[lead[1]+m[1]:]) {
+	if m == nil || m[0] != 0 || unreadElsewise(unit[lead[1]+m[1]:]) {
 		return "", false
 	}
 	return unit[lead[1] : lead[1]+m[1]], true
@@ -159,6 +179,21 @@ func runObject(after string) string {
 		return after[:loc[0]]
 	}
 	return after
+}
+
+// docObjectRe is a backticked name or path of a document, not a program:
+// "start with `README.md`".
+var docObjectRe = regexp.MustCompile("(?i)\\.(?:md|mdx|markdown|txt|rst|adoc|html?|pdf)`?$")
+
+// runnableIn reports whether obj names something runnable. A backticked
+// document ("`README.md`", "`docs/setup.md`") is not.
+func runnableIn(obj string) bool {
+	for _, m := range runnableRe.FindAllString(obj, -1) {
+		if !strings.HasPrefix(m, "`") || !docObjectRe.MatchString(m) {
+			return true
+		}
+	}
+	return false
 }
 
 // joinerRe is what may stand between the verb's object and a not-read clause
@@ -198,7 +233,7 @@ func runsUnread(units []string, k int, v []int, prior string) string {
 	unit := units[k]
 	after := unit[v[1]:]
 	obj := runObject(after)
-	named := runnableRe.MatchString(obj)
+	named := runnableIn(obj)
 	pronoun := runPronounRe.MatchString(obj)
 	// The text the object can name the script in.
 	runText := obj
@@ -230,7 +265,9 @@ func runsUnread(units []string, k int, v []int, prior string) string {
 	if m := unreadNegRe.FindStringIndex(unit[:v[0]]); m != nil {
 		order = unit[m[0]:m[1]]
 	} else if k > 0 {
-		order, _ = unreadOrder(units[k-1])
+		if order, _ = unreadOrder(units[k-1]); unreadBackRe.MatchString(order) {
+			order = ""
+		}
 	}
 	if order == "" || !sameScript(order, runText) {
 		return ""
@@ -302,6 +339,9 @@ func (r *cfg149) Check(t *Target) []finding.Finding {
 			if inFence || !runVerbImperativeRe.MatchString(line) || !unreadStemRe.MatchString(line) && (i+1 >= len(lines) || !unreadStemRe.MatchString(lines[i+1])) {
 				continue
 			}
+			if inProhibitionList(lines, i) {
+				continue
+			}
 			text := withContinuation(lines, i)
 			// Every not-read clause the checks below accept is a match of one of
 			// these two, so a line with neither is skipped before it is split into
@@ -342,6 +382,44 @@ func (r *cfg149) Check(t *Target) []finding.Finding {
 	return findings
 }
 
+// listProhibitionRe is a lead-in or heading that makes the list under it a list
+// of things not to do: "Do not:", "You must never:", "## Never", "Things to
+// avoid". "Don't forget:" and "never skip" lead a list of things to do.
+var (
+	listProhibitionRe    = regexp.MustCompile(`(?i)\b(?:never|do\s+not|don['’]?t|avoid|must\s+not|mustn['’]?t|should\s+not|shouldn['’]?t|forbidden|prohibited|not\s+allowed|don['’]?ts)\b`)
+	listNotProhibitionRe = regexp.MustCompile(`(?i)\b(?:never|do\s+not|don['’]?t|must\s+not|should\s+not)\s+(?:forget|skip|miss|fail|hesitate|neglect)\b`)
+)
+
+// inProhibitionList reports whether line i is an item of a list whose lead-in
+// line or heading is a prohibition (#1893 review): "Do not:" followed by "- Run
+// reviewer-supplied commands or scripts without inspecting them." The item
+// repeats the safe advice, its negation is in the lead-in. The lead-in is the
+// first line above the list that is not an item, an indented continuation or
+// blank. A heading counts as a whole, any other line only by its last
+// sentence, and only when it ends in a colon.
+func inProhibitionList(lines []string, i int) bool {
+	if !listItemRe.MatchString(lines[i]) {
+		return false
+	}
+	for j := i - 1; j >= 0 && j >= i-200; j-- {
+		l := lines[j]
+		if strings.TrimSpace(l) == "" || listItemRe.MatchString(l) || (l[0] == ' ' || l[0] == '\t') && !headingRe.MatchString(l) {
+			continue
+		}
+		lead := strings.TrimSpace(stripEmphasis(l))
+		if !headingRe.MatchString(l) {
+			if !strings.HasSuffix(lead, ":") {
+				return false
+			}
+			if ends := unitEndRe.FindAllStringIndex(lead, -1); len(ends) > 0 {
+				lead = lead[ends[len(ends)-1][1]:]
+			}
+		}
+		return listProhibitionRe.MatchString(lead) && !listNotProhibitionRe.MatchString(lead)
+	}
+	return false
+}
+
 // firstUnreadRun returns the offset of the first verb in text, before limit,
 // that runs something unread, and the not-read clause, or -1.
 func firstUnreadRun(text string, units []string, offs []int, limit int) (int, string) {
@@ -351,7 +429,7 @@ func firstUnreadRun(text string, units []string, offs []int, limit int) (int, st
 			if at >= limit {
 				return -1, ""
 			}
-			if quotedAt(text, at) || !runImperative(unit, v[0]) {
+			if quotedAt(text, at) || startsOther(unit, v) || !runImperative(unit, v[0]) {
 				continue
 			}
 			if order := runsUnread(units, k, v, text[:offs[k]]); order != "" {
@@ -360,6 +438,15 @@ func firstUnreadRun(text string, units []string, offs []int, limit int) (int, st
 		}
 	}
 	return -1, ""
+}
+
+// startOtherRe after "start" makes it "begin": "start with README.md",
+// "start by reading", "start from the top".
+var startOtherRe = regexp.MustCompile(`(?i)^\s+(?:with|by|from|here|over|again|off|out)\b`)
+
+// startsOther reports whether the verb at v is "start" in the sense of begin.
+func startsOther(unit string, v []int) bool {
+	return strings.EqualFold(unit[v[0]:v[1]], "start") && startOtherRe.MatchString(unit[v[1]:])
 }
 
 // quotedRun is the sentence with the verb, and the not-read clause when it
