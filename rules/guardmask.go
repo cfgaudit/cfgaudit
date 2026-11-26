@@ -69,15 +69,11 @@ func maskGuardPatterns(cmd string) string {
 	// [[ ... (=~|==|!=) pattern ]] comparison right-hand side.
 	maskTestGuardPatterns(masked, cmd)
 
-	// case pattern arms.
+	// case pattern arms. caseBodyRe and casePatternRe each have one
+	// non-optional capture group, so FindAllStringSubmatchIndex always fills
+	// body[2:4] and m[2:4] on a match: slicing with them needs no presence guard.
 	for _, body := range caseBodyRe.FindAllStringSubmatchIndex(cmd, -1) {
-		if len(body) < 4 || body[2] < 0 {
-			continue
-		}
 		for _, m := range casePatternRe.FindAllStringSubmatchIndex(cmd[body[2]:body[3]], -1) {
-			if len(m) < 4 || m[2] < 0 {
-				continue
-			}
 			from, to := body[2]+m[2], body[2]+m[3]
 			if containsExecutableSubstitution(cmd[from:to]) {
 				continue
