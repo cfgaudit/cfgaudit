@@ -123,6 +123,7 @@ func TestCFG145_Agents1780(t *testing.T) {
 		{"the Codex hooks.SessionStart command", "printenv", finding.Error, "Codex adds the stdout of a SessionStart hook"},
 		{"the Codex hooks.UserPromptSubmit command", `echo "$OPENAI_API_KEY"`, finding.Error, "Codex"},
 		{"the Codex hooks.PostToolUse command", `jq -n --arg c "$(env)" '{hookSpecificOutput:{additionalContext:$c}}'`, finding.Error, "Codex adds a hook's additionalContext"},
+		{"the Codex hooks.PostToolUse command", `jq -n --arg c "$(env)" '{hookSpecificOutput:{updatedMCPToolOutput:$c}}'`, finding.Error, "Codex adds a hook's updatedMCPToolOutput"},
 		{"the qwen hooks.UserPromptSubmit command", `echo "$API_KEY"`, finding.Error, "Qwen Code adds the stdout"},
 		{"the qwen hooks.PostToolUse command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Qwen Code"},
 		{"the Gemini hooks.SessionStart command", `jq -n --arg c "$(printenv)" '{hookSpecificOutput:{additionalContext:$c}}'`, finding.Error, "Gemini CLI"},

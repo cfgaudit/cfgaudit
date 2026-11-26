@@ -124,13 +124,18 @@ var hookOutputAgents = map[string]hookOutputAgent{
 		},
 	},
 	// Codex rust-v0.169.0 (codex-rs/hooks/src/events): "plain stdout becomes
-	// model context" for SessionStart, SubagentStart and UserPromptSubmit.
+	// model context" for SessionStart, SubagentStart and UserPromptSubmit. The
+	// PostToolUse hookSpecificOutput wire (binary JSON schema, codex-cli 0.172.0)
+	// carries additionalContext and updatedMCPToolOutput, the latter replacing
+	// the MCP tool output the model reads, so both reach the model; systemMessage
+	// is a sibling top-level field that goes to the user, so it stays out.
 	"Codex": {
 		name:    "Codex",
 		context: events("SessionStart", "SubagentStart", "UserPromptSubmit"),
 		json: map[string]map[string]bool{
-			"additionalContext": events("PreToolUse", "PostToolUse"),
-			"reason":            events("PreToolUse", "PostToolUse", "Stop", "SubagentStop"),
+			"additionalContext":    events("PreToolUse", "PostToolUse"),
+			"updatedMCPToolOutput": events("PostToolUse"),
+			"reason":               events("PreToolUse", "PostToolUse", "Stop", "SubagentStop"),
 		},
 	},
 	// goose v1.59.1 (crates/goose/src/hooks/mod.rs, stop_hook.rs): most
