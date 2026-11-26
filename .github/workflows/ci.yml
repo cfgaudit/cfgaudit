@@ -650,7 +650,7 @@ jobs:
       # workspace; rm -f drops a file or symlink the pull request put here.
       - run: rm -f .cfgaudit-ci.yml && touch .cfgaudit-ci.yml
       - name: Scan agent instructions, settings and the plugin package
-        uses: cfgaudit/cfgaudit@8e1374248086b74eca344066633c7bae8aa019eb # v1.21.0
+        uses: cfgaudit/cfgaudit@bc33e81653518be8f51759128268067d57f69087 # v1.22.0
         with:
           plugins: .
           config: .cfgaudit-ci.yml
