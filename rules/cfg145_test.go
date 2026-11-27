@@ -126,6 +126,7 @@ func TestCFG145_Agents1780(t *testing.T) {
 		{"the Codex hooks.PostToolUse command", `jq -n --arg c "$(env)" '{hookSpecificOutput:{updatedMCPToolOutput:$c}}'`, finding.Error, "Codex adds a hook's updatedMCPToolOutput"},
 		{"the qwen hooks.UserPromptSubmit command", `echo "$API_KEY"`, finding.Error, "Qwen Code adds the stdout"},
 		{"the qwen hooks.PostToolUse command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Qwen Code"},
+		{"the qwen hooks.PreToolUse command", `jq -n --arg c "$(env)" '{hookSpecificOutput:{permissionDecision:"deny",permissionDecisionReason:$c}}'`, finding.Error, "Qwen Code adds a hook's permissionDecisionReason"},
 		{"the Gemini hooks.SessionStart command", `jq -n --arg c "$(printenv)" '{hookSpecificOutput:{additionalContext:$c}}'`, finding.Error, "Gemini CLI"},
 		{"the Cursor hooks.sessionStart command", `echo "{\"additional_context\": \"$NPM_TOKEN\"}"`, finding.Error, "Cursor adds a hook's additional_context"},
 		{"the Copilot hooks.sessionStart command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Copilot"},

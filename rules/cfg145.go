@@ -113,14 +113,20 @@ var hookOutputAgents = map[string]hookOutputAgent{
 			"reason":            events("AfterAgent", "BeforeTool", "AfterTool"),
 		},
 	},
-	// Qwen Code v0.27.4 (hookRunner.ts PLAIN_TEXT_CONTEXT_EVENTS): plain
-	// stdout becomes context for three events.
+	// Qwen Code v0.28.7 (packages/core/src/hooks/hookRunner.ts
+	// PLAIN_TEXT_CONTEXT_EVENTS): plain stdout becomes context for three
+	// events. A PreToolUse deny carries its reason in permissionDecisionReason
+	// (core/toolHookTriggers.ts: blockReason = permissionDecisionReason ||
+	// getEffectiveReason), which becomes the tool-result error the model reads,
+	// so it reaches the model as the Grok and Copilot entries already record for
+	// the same wire; the top-level reason is only the fallback.
 	"qwen": {
 		name:    "Qwen Code",
 		context: events("SessionStart", "UserPromptSubmit", "UserPromptExpansion"),
 		json: map[string]map[string]bool{
-			"additionalContext": events("PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch", "SubagentStart", "PreCompact"),
-			"reason":            events("UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolBatch", "Stop", "SubagentStop", "TodoCreated", "TodoCompleted"),
+			"additionalContext":        events("PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch", "SubagentStart", "PreCompact"),
+			"permissionDecisionReason": events("PreToolUse"),
+			"reason":                   events("UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolBatch", "Stop", "SubagentStop", "TodoCreated", "TodoCompleted"),
 		},
 	},
 	// Codex rust-v0.169.0 (codex-rs/hooks/src/events): "plain stdout becomes
