@@ -73,15 +73,26 @@ var hookOutputAgents = map[string]hookOutputAgent{
 		},
 	},
 	// Copilot CLI and VS Code (.github/hooks): docs.github.com hooks
-	// configuration reference, and the CLI changelog (1.0.11 sessionStart,
-	// 1.0.65 userPromptSubmitted additionalContext).
+	// reference and the CLI changelog, through CLI v1.0.117. The model reads
+	// additionalContext (sessionStart, userPromptSubmitted, preToolUse 1.0.24,
+	// postToolUse, postToolUseFailure, notification, subagentStart), a
+	// replacement tool result (modifiedResult, postToolUse) or subagent
+	// response returned to the parent (modifiedResponse, subagentStop), a
+	// rewritten model-facing prompt (modifiedTransformedPrompt,
+	// userPromptTransformed), a preToolUse deny reason (permissionDecisionReason)
+	// and a permissionRequest deny message, both fed back to the LLM, and an
+	// agentStop/subagentStop block reason. modifiedPrompt (userPromptSubmitted)
+	// is honored for SDK programmatic hooks only, so it stays out.
 	"Copilot": {
 		name: "Copilot",
 		json: map[string]map[string]bool{
-			"additionalContext":        events("sessionStart", "userPromptSubmitted", "postToolUse", "postToolUseFailure", "notification", "subagentStart"),
-			"modifiedResult":           events("postToolUse"),
-			"permissionDecisionReason": events("preToolUse"),
-			"reason":                   events("agentStop", "subagentStop"),
+			"additionalContext":         events("sessionStart", "userPromptSubmitted", "preToolUse", "postToolUse", "postToolUseFailure", "notification", "subagentStart"),
+			"message":                   events("permissionRequest"),
+			"modifiedResponse":          events("subagentStop"),
+			"modifiedResult":            events("postToolUse"),
+			"modifiedTransformedPrompt": events("userPromptTransformed"),
+			"permissionDecisionReason":  events("preToolUse"),
+			"reason":                    events("agentStop", "subagentStop"),
 		},
 	},
 	// Devin CLI (docs.devin.ai/cli/extensibility/hooks): a JSON object on

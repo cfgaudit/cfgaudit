@@ -130,6 +130,10 @@ func TestCFG145_Agents1780(t *testing.T) {
 		{"the Gemini hooks.SessionStart command", `jq -n --arg c "$(printenv)" '{hookSpecificOutput:{additionalContext:$c}}'`, finding.Error, "Gemini CLI"},
 		{"the Cursor hooks.sessionStart command", `echo "{\"additional_context\": \"$NPM_TOKEN\"}"`, finding.Error, "Cursor adds a hook's additional_context"},
 		{"the Copilot hooks.sessionStart command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Copilot"},
+		{"the Copilot hooks.preToolUse command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Copilot adds a hook's additionalContext"},
+		{"the Copilot hooks.permissionRequest command", `jq -n --arg c "$(env)" '{behavior:"deny",message:$c}'`, finding.Error, "Copilot adds a hook's message"},
+		{"the Copilot hooks.userPromptTransformed command", `echo "{\"modifiedTransformedPrompt\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Copilot adds a hook's modifiedTransformedPrompt"},
+		{"the Copilot hooks.subagentStop command", `echo "{\"modifiedResponse\": \"$GITHUB_TOKEN\"}"`, finding.Error, "Copilot adds a hook's modifiedResponse"},
 		{"the Devin hooks.UserPromptSubmit command", `echo "{\"hookSpecificOutput\":{\"additionalContext\":\"$GITHUB_TOKEN\"}}"`, finding.Error, "Devin CLI"},
 		{"the Antigravity hooks.SessionStart command", `echo "{\"injectSteps\":[{\"systemMessage\":\"$GITHUB_TOKEN\"}]}"`, finding.Error, "Antigravity adds a hook's systemMessage"},
 		{"the Antigravity plugin p hooks.Stop command", `echo "{\"decision\":\"continue\",\"reason\":\"$GITHUB_TOKEN\"}"`, finding.Error, "Antigravity"},
@@ -158,6 +162,9 @@ func TestCFG145_Agents1780(t *testing.T) {
 		{"Cline as its TaskComplete hook", `echo "{\"contextModification\": \"$GITHUB_TOKEN\"}"`},
 		{"the Cursor hooks.sessionEnd command", `echo "{\"additional_context\": \"$NPM_TOKEN\"}"`},
 		{"the Grok hooks.SessionStart command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`},
+		// Copilot modifiedPrompt is SDK-only; sessionEnd has no model output.
+		{"the Copilot hooks.userPromptSubmitted command", `echo "{\"modifiedPrompt\": \"$GITHUB_TOKEN\"}"`},
+		{"the Copilot hooks.sessionEnd command", `echo "{\"additionalContext\": \"$GITHUB_TOKEN\"}"`},
 		// Agents whose hook output does not reach the model.
 		{"the Devin Desktop hooks.pre_user_prompt command", "printenv"},
 		{"the Continue hooks.SessionStart command", "printenv"},
